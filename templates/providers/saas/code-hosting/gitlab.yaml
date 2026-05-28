@@ -1,0 +1,63 @@
+provider: gitlab
+display_name: GitLab
+category: code-hosting
+description: "GitLab — personal access tokens and project tokens."
+docs_url: https://docs.gitlab.com/api/rest/
+docs:
+  credentials_url: https://docs.gitlab.com/user/profile/personal_access_tokens/
+  scopes_url: https://docs.gitlab.com/user/profile/personal_access_tokens/#personal-access-token-scopes
+
+secret_fields:
+  - name: access_token
+    label: Personal Access Token
+    required: true
+    sensitive: true
+    env_var: GITLAB_TOKEN
+    secret_kind: personal_token
+    required_scopes:
+      - api
+      - read_repository
+
+env_mappings:
+  access_token: GITLAB_TOKEN
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: PRIVATE-TOKEN
+
+storage_path_tpl: "{{.Namespace}}/code-hosting/gitlab/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: repos.read
+    description: Read repositories and code
+  - name: issues.manage
+    description: Manage issues and MRs
+  - name: pipelines.trigger
+    description: Trigger CI/CD pipelines
+
+allowed_command_prefixes:
+  - "node "
+  - "glab "
+
+injection_rules:
+  - env_var: GITLAB_TOKEN
+    source: access_token
+
+redaction:
+  - pattern: 'glpat-[A-Za-z0-9\-_]{20,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://gitlab.com/api/v4/user
+  expect:
+    status_code: 200
+    markers:
+      - id

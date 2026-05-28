@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: keylatch
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: keylatch
+    main: ./cmd/keylatch
+    binary: keylatch
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X 'github.com/keylatch/keylatch/internal/version.Version={{.Version}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
+
+  # keylatchd is the Tauri desktop sidecar. It is declared in
+  # src-tauri/tauri.conf.json as externalBin and must be staged into
+  # src-tauri/binaries/ at Tauri bundle time.
+  - id: keylatchd
+    main: ./cmd/keylatchd
+    binary: keylatchd
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X 'github.com/keylatch/keylatch/internal/version.Version={{.Version}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "keylatch-{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+changelog:
+  use: github
+
+brews:
+  - name: keylatch
+    repository:
+      owner: keylatch
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/keylatch/keylatch
+    description: Zero-trust credential vault CLI for AI-assisted workflows
+    license: Apache-2.0
+    install: |
+      bin.install "keylatch"
+      generate_completions_from_executable(bin/"keylatch", "completion")
+    test: |
+      system "#{bin}/keylatch", "--version"
+
+scoops:
+  - repository:
+      owner: keylatch
+      name: scoop
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+    homepage: https://github.com/keylatch/keylatch
+    description: Zero-trust credential vault CLI for AI-assisted workflows
+    license: Apache-2.0
+
+# Container images — Phase 1.1.0 (requires ghcr.io docker login step in release.yml)
+# dockers:
+#   - image_templates:
+#       - ghcr.io/keylatch/keylatch:{{ .Version }}
+#       - ghcr.io/keylatch/keylatch:latest
+#     dockerfile: Dockerfile.release
+#     build_flag_templates:
+#       - --platform=linux/amd64
+
+# FIPS build — Phase 11
+# builds:
+#   - id: keylatch-fips
+#     tags: [fips]

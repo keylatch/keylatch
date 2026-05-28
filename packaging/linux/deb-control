@@ -1,0 +1,15 @@
+Package: keylatch-app
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Installed-Size: 32000
+Depends: libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37, libappindicator3-1, libayatana-appindicator3-1
+Maintainer: Keylatch Contributors <hello@keylatch.app>
+Homepage: https://keylatch.app
+Description: Secure credential gateway for AI coding tools
+ Keylatch controls how AI coding tools access your API keys and secrets.
+ It provides per-request approval, audit logs, and policy enforcement.
+ .
+ This package installs the Keylatch desktop shell (Tauri-based) with the
+ keylatchd Go sidecar bundled as an external binary.

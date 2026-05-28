@@ -1,0 +1,1 @@
+{"keylatch-default":{"identifier":"keylatch-default","description":"Keylatch default capabilities — minimal allow-list per S14-8","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","notification:default","deep-link:default","log:default","process:allow-restart","process:allow-exit"]}}

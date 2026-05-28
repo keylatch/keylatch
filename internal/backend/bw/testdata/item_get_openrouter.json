@@ -1,0 +1,24 @@
+{
+  "id": "bwitem001",
+  "name": "openrouter",
+  "type": 1,
+  "folderId": null,
+  "collectionIds": [],
+  "login": {
+    "username": "",
+    "password": ""
+  },
+  "fields": [
+    {
+      "name": "api_key",
+      "value": "KEYLATCH_CANARY_PHASE2_0xDEADBEEF",
+      "type": 1
+    },
+    {
+      "name": "base_url",
+      "value": "https://openrouter.ai/api/v1",
+      "type": 0
+    }
+  ],
+  "revisionDate": "2026-05-11T12:00:00.000Z"
+}

@@ -1,0 +1,162 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Design tokens — must be imported before @theme so vars are in scope */
+@import './tokens/colors.css';
+@import './tokens/typography.css';
+@import './tokens/layout.css';
+@import './tokens/motion.css';
+
+/* Expose existing OKLCH tokens as Tailwind theme values.
+ * Tailwind v4 @theme is a compile-time directive — literal values only.
+ * Self-referential var() doesn't work here; use inline OKLCH values from token files.
+ */
+@theme {
+  /* Colors — brand/primary (teal) */
+  --color-primary-50:  oklch(0.97 0.012 195);
+  --color-primary-100: oklch(0.93 0.025 195);
+  --color-primary-200: oklch(0.86 0.050 195);
+  --color-primary-300: oklch(0.76 0.080 195);
+  --color-primary-400: oklch(0.65 0.110 195);
+  --color-primary-500: oklch(0.55 0.130 195);
+  --color-primary-600: oklch(0.46 0.120 195);
+  --color-primary-700: oklch(0.38 0.100 195);
+  --color-primary-800: oklch(0.30 0.080 195);
+  --color-primary-900: oklch(0.22 0.055 195);
+
+  /* Colors — neutrals */
+  --color-neutral-50:  oklch(0.975 0.010 220);
+  --color-neutral-100: oklch(0.945 0.010 220);
+  --color-neutral-200: oklch(0.890 0.010 220);
+  --color-neutral-300: oklch(0.810 0.010 220);
+  --color-neutral-400: oklch(0.700 0.010 220);
+  --color-neutral-500: oklch(0.580 0.010 220);
+  --color-neutral-600: oklch(0.460 0.012 220);
+  --color-neutral-700: oklch(0.350 0.012 220);
+  --color-neutral-800: oklch(0.245 0.012 220);
+  --color-neutral-900: oklch(0.155 0.012 220);
+  --color-neutral-950: oklch(0.090 0.012 220);
+
+  /* Colors — semantic */
+  --color-success-light: oklch(0.90 0.060 148);
+  --color-success:       oklch(0.62 0.150 148);
+  --color-success-dark:  oklch(0.40 0.120 148);
+  --color-warning-light: oklch(0.93 0.060 65);
+  --color-warning:       oklch(0.72 0.160 65);
+  --color-warning-dark:  oklch(0.48 0.130 65);
+  --color-danger-light:  oklch(0.92 0.055 18);
+  --color-danger:        oklch(0.62 0.200 18);
+  --color-danger-dark:   oklch(0.40 0.160 18);
+  --color-info-light:    oklch(0.92 0.045 250);
+  --color-info:          oklch(0.60 0.130 250);
+  --color-info-dark:     oklch(0.38 0.110 250);
+
+  /* Colors — semantic surface/text (resolved from token aliases) */
+  --color-surface:         oklch(0.975 0.010 220);
+  --color-surface-raised:  oklch(0.99 0.008 220);
+  --color-surface-overlay: oklch(0.97 0.009 220);
+  --color-text-primary:    oklch(0.155 0.012 220);
+  --color-text-secondary:  oklch(0.460 0.012 220);
+  --color-text-disabled:   oklch(0.700 0.010 220);
+  --color-text-inverse:    oklch(0.975 0.010 220);
+  --color-border:          oklch(0.890 0.010 220);
+  --color-border-strong:   oklch(0.700 0.010 220);
+  --color-focus-ring:      oklch(0.55 0.130 195);
+
+  /* shadcn/ui CSS variable bridge (resolved to literal OKLCH values) */
+  --color-background:         oklch(0.975 0.010 220);
+  --color-foreground:         oklch(0.155 0.012 220);
+  --color-card:               oklch(0.99 0.008 220);
+  --color-card-foreground:    oklch(0.155 0.012 220);
+  --color-popover:            oklch(0.97 0.009 220);
+  --color-popover-foreground: oklch(0.155 0.012 220);
+  --color-primary:            oklch(0.46 0.120 195);
+  --color-primary-foreground: oklch(0.975 0.010 220);
+  --color-secondary:          oklch(0.945 0.010 220);
+  --color-secondary-foreground: oklch(0.155 0.012 220);
+  --color-muted:              oklch(0.945 0.010 220);
+  --color-muted-foreground:   oklch(0.460 0.012 220);
+  --color-accent:             oklch(0.97 0.012 195);
+  --color-accent-foreground:  oklch(0.22 0.055 195);
+  --color-destructive:        oklch(0.62 0.200 18);
+  --color-destructive-foreground: oklch(0.975 0.010 220);
+  --color-input:              oklch(0.890 0.010 220);
+  --color-ring:               oklch(0.55 0.130 195);
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Liberation Mono',
+    Menlo, monospace;
+
+  /* Border radius */
+  --radius-sm:   0.25rem;
+  --radius-md:   0.375rem;
+  --radius-lg:   0.5rem;
+  --radius-xl:   0.75rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px oklch(0.2 0.01 220 / 0.06);
+  --shadow-sm: 0 1px 3px oklch(0.2 0.01 220 / 0.10), 0 1px 2px oklch(0.2 0.01 220 / 0.06);
+  --shadow-md: 0 4px 6px oklch(0.2 0.01 220 / 0.07), 0 2px 4px oklch(0.2 0.01 220 / 0.06);
+  --shadow-lg: 0 10px 15px oklch(0.2 0.01 220 / 0.10), 0 4px 6px oklch(0.2 0.01 220 / 0.05);
+
+  /* Spacing */
+  --spacing-sidebar: 220px;
+  --spacing-topbar:  56px;
+}
+
+/* shadcn/ui CSS variables (OKLCH-native) */
+:root {
+  --background: var(--color-surface);
+  --foreground: var(--color-text-primary);
+  --card: var(--color-surface-raised);
+  --card-foreground: var(--color-text-primary);
+  --popover: var(--color-surface-overlay);
+  --popover-foreground: var(--color-text-primary);
+  --primary: var(--color-primary-600);
+  --primary-foreground: var(--color-text-inverse);
+  --secondary: var(--color-neutral-100);
+  --secondary-foreground: var(--color-neutral-900);
+  --muted: var(--color-neutral-100);
+  --muted-foreground: var(--color-text-secondary);
+  --accent: var(--color-primary-50);
+  --accent-foreground: var(--color-primary-900);
+  --destructive: var(--color-danger);
+  --destructive-foreground: var(--color-text-inverse);
+  --border: var(--color-border);
+  --input: var(--color-border);
+  --ring: var(--color-focus-ring);
+  --radius: var(--radius-md);
+  --ring-offset-background: var(--color-surface);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-neutral-950);
+    --foreground: var(--color-neutral-50);
+    --card: var(--color-neutral-900);
+    --card-foreground: var(--color-neutral-50);
+    --popover: var(--color-neutral-800);
+    --popover-foreground: var(--color-neutral-50);
+    --primary: var(--color-primary-400);
+    --primary-foreground: var(--color-neutral-950);
+    --secondary: var(--color-neutral-800);
+    --secondary-foreground: var(--color-neutral-50);
+    --muted: var(--color-neutral-800);
+    --muted-foreground: var(--color-neutral-400);
+    --accent: var(--color-neutral-800);
+    --accent-foreground: var(--color-primary-300);
+    --destructive: var(--color-danger);
+    --destructive-foreground: var(--color-neutral-50);
+    --border: var(--color-neutral-700);
+    --input: var(--color-neutral-700);
+    --ring: var(--color-primary-400);
+    --ring-offset-background: var(--color-neutral-950);
+  }
+}
+
+@import './global.css';
+@import './a11y.css';
+@import './components.css';

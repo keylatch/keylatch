@@ -1,0 +1,62 @@
+provider: posthog
+display_name: PostHog
+category: observability
+description: "PostHog product analytics — personal and project API keys."
+docs_url: https://posthog.com/docs/api
+docs:
+  credentials_url: https://app.posthog.com/settings/user-api-keys
+
+secret_fields:
+  - name: personal_api_key
+    label: Personal API Key
+    required: true
+    sensitive: true
+    env_var: POSTHOG_PERSONAL_API_KEY
+    secret_kind: personal_token
+  - name: project_api_key
+    label: Project API Key (write-only)
+    required: false
+    sensitive: true
+    env_var: POSTHOG_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  personal_api_key: POSTHOG_PERSONAL_API_KEY
+  project_api_key: POSTHOG_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/observability/posthog/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: events.capture
+    description: Capture analytics events
+  - name: persons.read
+    description: Query person data
+  - name: insights.read
+    description: Read analytics insights
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: POSTHOG_PERSONAL_API_KEY
+    source: personal_api_key
+  - env_var: POSTHOG_API_KEY
+    source: project_api_key
+
+test_strategy:
+  kind: http_get
+  endpoint: https://app.posthog.com/api/users/@me/
+  expect:
+    status_code: 200

@@ -1,0 +1,61 @@
+provider: notion
+display_name: Notion
+category: work-management
+description: "Notion workspace API — internal integration tokens."
+docs_url: https://developers.notion.com/
+docs:
+  credentials_url: https://www.notion.so/my-integrations
+  scopes_url: https://developers.notion.com/reference/capabilities
+
+secret_fields:
+  - name: api_key
+    label: Integration Token
+    required: true
+    sensitive: true
+    env_var: NOTION_API_KEY
+    secret_kind: bearer_token
+
+env_mappings:
+  api_key: NOTION_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/work-management/notion/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: pages.read
+    description: Read pages and databases
+  - name: pages.write
+    description: Create and update pages
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: NOTION_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'secret_[A-Za-z0-9]{40,}'
+    replacement: "****"
+  - pattern: 'ntn_[A-Za-z0-9]{40,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.notion.com/v1/users/me
+  expect:
+    status_code: 200
+    markers:
+      - bot

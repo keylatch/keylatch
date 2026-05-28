@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata for Keylatch — required for Flathub/OBS packaging. -->
+<component type="desktop-application">
+  <id>com.keylatch.app</id>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+
+  <name>Keylatch</name>
+  <summary>Secure credential gateway for AI coding tools</summary>
+
+  <description>
+    <p>
+      Keylatch is a secure credential gateway that controls how AI coding
+      tools like Claude Code and Copilot access your API keys and secrets.
+      It provides per-request approval workflows, audit logs, and policy
+      enforcement so you stay in control of your credentials.
+    </p>
+    <p>
+      Key features:
+    </p>
+    <ul>
+      <li>Per-request credential approval with tray notifications</li>
+      <li>Tamper-evident audit log of every credential access</li>
+      <li>Policy engine: allow/deny by tool, provider, or action</li>
+      <li>HMAC-authenticated local IPC — no cloud required</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.keylatch.app.desktop</launchable>
+
+  <url type="homepage">https://keylatch.app</url>
+  <url type="bugtracker">https://github.com/keylatch/keylatch/issues</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Keylatch approval notification</caption>
+      <!-- Placeholder: replace with actual screenshot URL before publishing -->
+      <image>https://keylatch.app/screenshots/approval-notification.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.0" date="2026-05-14">
+      <description>
+        <p>Initial desktop release with Tauri shell and Go sidecar.</p>
+      </description>
+    </release>
+  </releases>
+
+  <provides>
+    <binary>keylatch-app</binary>
+  </provides>
+
+  <content_rating type="oars-1.1" />
+</component>

@@ -1,0 +1,31 @@
+.TH KEYLATCH\-SANDBOX 1 "2026-05-17" "keylatch" "Keylatch Manual"
+.SH NAME
+keylatch\-sandbox \- start an isolated credential environment
+.SH SYNOPSIS
+.B keylatch sandbox
+.RI [ flags ]
+.SH DESCRIPTION
+\fBkeylatch sandbox\fR launches an isolated shell or process environment where
+credential access is strictly mediated via the gateway. All runtime modes in
+v1.0.0 prevent raw credential values from reaching the subprocess environment.
+.PP
+For the strongest subprocess isolation, use \fBkeylatch run\fR with
+\fI--runtime gateway_typed\fR (the default). The gateway keeps the raw provider
+key inside the \fBkeylatchd\fR process and gives the subprocess only a
+short-lived session token.
+.SH OPTIONS
+No stable flags defined yet. Pass \fB\-\-help\fR to see available options.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 2
+Security block (LLM session guard prevented execution).
+.TP
+.B 5
+Not yet implemented.
+.SH SEE ALSO
+.BR keylatch (1),
+.BR keylatch\-run (1),
+.BR keylatch\-proxy (1)

@@ -1,0 +1,63 @@
+provider: cloudflare
+display_name: Cloudflare
+category: cdn
+description: "Cloudflare CDN, DNS, and security platform."
+docs_url: https://developers.cloudflare.com/api/
+
+secret_fields:
+  - name: api_token
+    label: API Token
+    required: true
+    sensitive: true
+    env_var: CLOUDFLARE_API_TOKEN
+
+config_fields:
+  - name: account_id
+    label: Account ID
+    required: true
+    env_var: CLOUDFLARE_ACCOUNT_ID
+
+env_mappings:
+  api_token: CLOUDFLARE_API_TOKEN
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/cdn/cloudflare/{{.Account}}"
+trust_level: 0
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: dns.manage
+    description: Manage DNS records
+  - name: firewall.configure
+    description: Configure firewall rules
+  - name: workers.deploy
+    description: Deploy Cloudflare Workers
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: CLOUDFLARE_API_TOKEN
+    source: api_token
+
+redaction:
+  - pattern: '[A-Za-z0-9_\-]{37}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.cloudflare.com/client/v4/user/tokens/verify
+  expect:
+    status_code: 200
+    markers:
+      - success

@@ -1,0 +1,71 @@
+{
+  "name": "Keylatch",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4338ca"
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/keylatch/keylatch"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Getting Started",
+      "icon": "rocket",
+      "url": "index"
+    },
+    {
+      "name": "Core Concepts",
+      "icon": "cube",
+      "url": "configuration"
+    },
+    {
+      "name": "Security",
+      "icon": "shield",
+      "url": "security/threat-model"
+    },
+    {
+      "name": "Release Notes",
+      "icon": "tag",
+      "url": "release-notes/1.0.0"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": ["index", "installation", "quickstart"]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": ["configuration", "backends", "architecture/modes"]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "providers/index",
+        "faq",
+        "troubleshooting",
+        "default-state-recommendations"
+      ]
+    },
+    {
+      "group": "Security",
+      "pages": ["security/threat-model", "security/sandbox"]
+    },
+    {
+      "group": "Release Notes",
+      "pages": ["release-notes/1.0.0"]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/keylatch/keylatch"
+  }
+}

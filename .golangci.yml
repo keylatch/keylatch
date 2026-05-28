@@ -1,0 +1,100 @@
+# golangci-lint configuration for keylatch.
+#
+# Minimum linter set per the gap-analysis recommendation: errcheck,
+# staticcheck, gosec, govet, plus ineffassign and unused for hygiene.
+#
+# Full lint mode (no --new-from-rev). All findings must be fixed or
+# explicitly suppressed with a //nolint: comment + reason. This provides
+# a reliable gate that never flakes on diffs/rebases.
+#
+# Run locally:
+#   golangci-lint run --config=.golangci.yml --timeout=10m
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags:
+    - integration
+
+linters:
+  default: none
+  enable:
+    - errcheck     # detect unchecked errors
+    - govet        # standard go vet checks
+    - ineffassign  # detect unused assignments
+    - staticcheck  # comprehensive static analysis
+    - unused       # detect unused code
+    - gosec        # security-focused linter
+
+  settings:
+    errcheck:
+      # Type assertion ok-idiom is already enforced by code review; the linter
+      # flagging `v.(T)` inside sync.Map ok-checks creates noise without value.
+      check-type-assertions: false
+
+    gosec:
+      excludes:
+        # G104 (unchecked errors) is covered by errcheck.
+        - G104
+        # G304 (file inclusion via variable): keylatch reads from
+        # user-provided paths in vault/audit by design; rely on the
+        # vault/path canonicalizer instead of suppressing per-call.
+        - G304
+        # G404 (use of weak random): the audit/canary packages use
+        # math/rand in test-only paths. crypto/rand is enforced manually
+        # in production paths via code review.
+        - G404
+        # G204 (variable subprocess): keylatch launches its own binary and
+        # platform tools from validated paths as part of daemon/UI setup.
+        - G204
+
+    staticcheck:
+      checks:
+        - all
+        # Disable noisy "should not use ALL_CAPS in Go names" for canary
+        # constants that must match an exact external token format.
+        - -ST1003
+
+  exclusions:
+    # Skip generated code and tauri/Rust artifacts.
+    paths:
+      - ^src-tauri/
+      - .*\.gen\.go$
+      - .*_generated\.go$
+    rules:
+      # Test files often have unchecked errors that are not worth
+      # cluttering — restrict errcheck/gosec noise to production code.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unused
+      # backendtest is a test support package (not a _test.go file but used
+      # exclusively by compliance test suites). Defer close errors are
+      # non-actionable in test teardown.
+      - path: internal/backendtest/
+        linters:
+          - errcheck
+      # The canary package intentionally contains decoy patterns that
+      # gosec flags as hardcoded credentials.
+      - path: internal/canary/
+        linters:
+          - gosec
+      # fmt.Fprintf/Fprintln/Fprint to io.Writer targets (stdout/stderr/cobra
+      # writers) — write errors are non-actionable in a CLI context. The
+      # underlying writer is an os.File; a write failure here means the
+      # terminal is gone, and there is nowhere to report it.
+      - linters:
+          - errcheck
+        text: "Error return value of `fmt\\.F(print|println|printf|println|println)`"
+      # defer resp.Body.Close() — draining the body is best-effort cleanup;
+      # the error from Close is non-actionable after the response has been read.
+      - linters:
+          - errcheck
+        text: "Error return value of `.*\\.Body\\.Close`"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# keylatch-hook-version: 1
+# Windsurf agent guard — blocks credential-access patterns.
+# Note: Windsurf does not currently expose a hook API for tool interception.
+# This script is provided for manual invocation or future hook API integration.
+# For now, use gateway mode for strongest protection:
+#   keylatch proxy start --port 8080
+set -euo pipefail
+
+TOOL_NAME="${WINDSURF_TOOL_NAME:-}"
+TOOL_INPUT="${WINDSURF_TOOL_INPUT:-}"
+
+block() {
+	echo "[hook/keylatch] Blocked: $1" >&2
+	exit 2
+}
+
+case "$TOOL_NAME" in
+Bash|bash|shell|run_command)
+	# Block keylatch get without --masked
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])keylatch[[:space:]]+get([[:space:]]|$|'|\")" && \
+	   ! echo "$TOOL_INPUT" | grep -qE '\-\-masked'; then
+		block "keylatch get is disabled in LLM sessions; use keylatch get --masked or keylatch run"
+	fi
+
+	# Block macOS security commands
+	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])security[[:space:]]+find-(generic|internet)-password'; then
+		block "security find-password is disabled in LLM sessions"
+	fi
+
+	# Block 1Password CLI
+	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])op[[:space:]]+(read|item[[:space:]]+get)'; then
+		block "op read is disabled in LLM sessions"
+	fi
+
+	# Block Bitwarden CLI
+	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])bw[[:space:]]+(get|list)'; then
+		block "bw get is disabled in LLM sessions"
+	fi
+
+	# Block cat of keylatch config or keychain-db
+	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])cat[[:space:]]+.*\.keylatch/(config\.yaml|keylatch\.keychain-db)'; then
+		block "cat of .keylatch files is disabled in LLM sessions"
+	fi
+	;;
+
+read_file|ReadFile)
+	# Block direct reads of ~/.keylatch/ paths
+	if echo "$TOOL_INPUT" | grep -qE '(^|~/)\.keylatch/'; then
+		block "direct read of ~/.keylatch/ is disabled in LLM sessions"
+	fi
+	;;
+esac
+
+exit 0

@@ -1,0 +1,24 @@
+# Go build artifacts
+keylatch
+keylatchd
+release-manifest
+*.test
+*.out
+
+# Node / VitePress
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# macOS
+.DS_Store
+
+# Tauri sidecar binaries (staged at build time by goreleaser or go build)
+src-tauri/binaries/keylatchd-*
+
+# Cargo build artifacts
+src-tauri/target/
+.worktrees/
+.cache/
+internal/ui/web/tsconfig.tsbuildinfo
+dist/

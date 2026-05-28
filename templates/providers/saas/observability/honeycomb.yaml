@@ -1,0 +1,50 @@
+provider: honeycomb
+display_name: Honeycomb
+category: observability
+description: "Honeycomb observability — API keys and ingest keys."
+docs_url: https://docs.honeycomb.io/api/
+docs:
+  credentials_url: https://docs.honeycomb.io/get-started/configure/environments/manage-api-keys/
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: HONEYCOMB_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: HONEYCOMB_API_KEY
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: X-Honeycomb-Team
+
+storage_path_tpl: "{{.Namespace}}/observability/honeycomb/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: events.send
+    description: Send telemetry events
+  - name: datasets.query
+    description: Query datasets
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: HONEYCOMB_API_KEY
+    source: api_key
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.honeycomb.io/1/auth
+  expect:
+    status_code: 200

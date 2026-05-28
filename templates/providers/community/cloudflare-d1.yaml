@@ -1,0 +1,56 @@
+provider: cloudflare-d1
+display_name: Cloudflare D1
+category: storage
+description: "Cloudflare D1 serverless SQLite database."
+docs_url: https://developers.cloudflare.com/d1/
+
+secret_fields:
+  - name: api_token
+    label: API Token
+    required: true
+    sensitive: true
+    env_var: CLOUDFLARE_D1_TOKEN
+    secret_kind: bearer_token
+
+env_mappings:
+  api_token: CLOUDFLARE_D1_TOKEN
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/storage/cloudflare-d1/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_sdk
+  supported:
+    - gateway_sdk
+    - direct_brokered
+
+capabilities:
+  - name: db.query
+    description: Execute SQL queries against a D1 database
+
+gateway_actions:
+  - name: query
+    description: Execute a SQL query
+    method: POST
+    sdk_path: /v1/query
+    upstream_path: /client/v4/accounts/{account_id}/d1/database/{database_id}/query
+
+injection_rules:
+  - env_var: CLOUDFLARE_D1_TOKEN
+    source: api_token
+
+redaction:
+  - pattern: 'Bearer [A-Za-z0-9_\-]{20,}'
+    replacement: "Bearer ****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.cloudflare.com/client/v4/user/tokens/verify
+  expect:
+    status_code: 200

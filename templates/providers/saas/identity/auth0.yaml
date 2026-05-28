@@ -1,0 +1,68 @@
+provider: auth0
+display_name: Auth0
+category: identity
+description: "Auth0 / Okta Customer Identity — M2M application client credentials."
+docs_url: https://auth0.com/docs/api/management/v2
+docs:
+  credentials_url: https://auth0.com/docs/get-started/authentication-and-authorization-flow/client-credentials-flow
+  scopes_url: https://auth0.com/docs/get-started/apis/scopes
+
+secret_fields:
+  - name: client_id
+    label: Client ID
+    required: true
+    sensitive: false
+    env_var: AUTH0_CLIENT_ID
+  - name: client_secret
+    label: Client Secret
+    required: true
+    sensitive: true
+    env_var: AUTH0_CLIENT_SECRET
+    secret_kind: client_secret
+  - name: domain
+    label: Auth0 Domain
+    required: true
+    sensitive: false
+    env_var: AUTH0_DOMAIN
+
+env_mappings:
+  client_id: AUTH0_CLIENT_ID
+  client_secret: AUTH0_CLIENT_SECRET
+  domain: AUTH0_DOMAIN
+
+auth_flow: oauth_browser
+
+storage_path_tpl: "{{.Namespace}}/identity/auth0/{{.Account}}"
+trust_level: 3
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: users.read
+    description: Read user management API
+  - name: users.update
+    description: Update user profiles and metadata
+  - name: roles.manage
+    description: Manage roles and permissions
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: AUTH0_CLIENT_ID
+    source: client_id
+  - env_var: AUTH0_CLIENT_SECRET
+    source: client_secret
+  - env_var: AUTH0_DOMAIN
+    source: domain
+
+test_strategy:
+  kind: sdk_call
+  endpoint: https://{domain}/.well-known/openid-configuration
+  expect:
+    status_code: 200
+    markers:
+      - issuer

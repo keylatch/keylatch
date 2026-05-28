@@ -1,0 +1,50 @@
+provider: n8n
+display_name: n8n
+category: automation
+description: "n8n workflow automation — self-hosted and cloud API."
+docs_url: https://docs.n8n.io/api/
+docs:
+  credentials_url: https://docs.n8n.io/api/authentication/
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: N8N_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: N8N_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: X-N8N-API-KEY
+
+storage_path_tpl: "{{.Namespace}}/automation/n8n/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: workflows.read
+    description: List and read workflows
+  - name: workflows.execute
+    description: Trigger workflow executions
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: N8N_API_KEY
+    source: api_key
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.n8n.io/api/v1/workflows
+  expect:
+    status_code: 200

@@ -1,0 +1,11 @@
+name = "keylatch-receipt-share"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "RECEIPTS"
+id = "b12ae8bdb9d14348af9fd9874ea0bc50"
+preview_id = "c17bdd8d7fb94ceca447a1716fd4b947"
+
+[vars]
+ENVIRONMENT = "production"

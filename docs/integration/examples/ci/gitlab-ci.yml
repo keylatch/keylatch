@@ -1,0 +1,59 @@
+# Keylatch GitLab CI integration example
+#
+# CI/CD variables required (Settings → CI/CD → Variables):
+#   KEYLATCH_VAULT_B64  — base64-encoded vault file (Masked, Protected)
+#   KEYLATCH_VAULT_PASS — vault passphrase (Masked, Protected)
+#
+# To create KEYLATCH_VAULT_B64 locally:
+#   base64 < ~/.keylatch/vault/vault.age | tr -d '\n'
+
+variables:
+  KEYLATCH_BACKEND: file
+  KEYLATCH_VAULT_PATH: /tmp/ci-vault.age
+
+stages:
+  - setup
+  - run
+
+install-keylatch:
+  stage: setup
+  script:
+    - curl -sSfL https://keylatch.dev/install.sh | sh
+    - export PATH="${HOME}/.local/bin:${PATH}"
+    - keylatch --version
+  artifacts:
+    paths:
+      - .keylatch-bin/
+    expire_in: 1 hour
+
+restore-and-bootstrap:
+  stage: setup
+  needs: [install-keylatch]
+  script:
+    - export PATH="${HOME}/.local/bin:${PATH}"
+    # Restore encrypted vault from CI variable
+    - echo "${KEYLATCH_VAULT_B64}" | base64 -d > "${KEYLATCH_VAULT_PATH}"
+    - chmod 600 "${KEYLATCH_VAULT_PATH}"
+    # Bootstrap Keylatch with the file backend
+    - keylatch bootstrap --backend=file --non-interactive
+    # Verify the setup
+    - keylatch doctor --quiet
+
+run-with-credentials:
+  stage: run
+  needs: [restore-and-bootstrap]
+  script:
+    - export PATH="${HOME}/.local/bin:${PATH}"
+    # Restore vault again (each job gets a fresh runner)
+    - echo "${KEYLATCH_VAULT_B64}" | base64 -d > "${KEYLATCH_VAULT_PATH}"
+    - chmod 600 "${KEYLATCH_VAULT_PATH}"
+    # keylatch run injects KEYLATCH_GATEWAY_TOKEN and KEYLATCH_GATEWAY_URL.
+    # The raw credential is never exposed in job logs.
+    - |
+      keylatch run \
+        --clean-env \
+        --runtime gateway_typed \
+        openrouter \
+        -- python3 docs/integration/examples/python/fetch_data.py
+  # The KEYLATCH_VAULT_PASS variable is automatically masked in job logs
+  # because it is defined as a Masked variable in CI/CD settings.

@@ -1,0 +1,71 @@
+provider: supabase
+display_name: Supabase
+category: data
+description: "Supabase open-source Firebase alternative — service role and anon keys."
+docs_url: https://supabase.com/docs/guides/api
+docs:
+  credentials_url: https://supabase.com/docs/guides/api/api-keys
+
+secret_fields:
+  - name: service_role_key
+    label: Service Role Key
+    required: true
+    sensitive: true
+    env_var: SUPABASE_SERVICE_ROLE_KEY
+    secret_kind: bearer_token
+  - name: anon_key
+    label: Anon / Public Key
+    required: false
+    sensitive: true
+    env_var: SUPABASE_ANON_KEY
+    secret_kind: bearer_token
+  - name: url
+    label: Project URL
+    required: true
+    sensitive: false
+    env_var: SUPABASE_URL
+
+env_mappings:
+  service_role_key: SUPABASE_SERVICE_ROLE_KEY
+  anon_key: SUPABASE_ANON_KEY
+  url: SUPABASE_URL
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/data/supabase/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: database.read
+    description: Read from PostgreSQL via REST API
+  - name: database.write
+    description: Write to PostgreSQL via REST API
+  - name: auth.admin
+    description: Manage users via Admin API
+
+allowed_command_prefixes:
+  - "node "
+  - "npx "
+
+injection_rules:
+  - env_var: SUPABASE_SERVICE_ROLE_KEY
+    source: service_role_key
+  - env_var: SUPABASE_ANON_KEY
+    source: anon_key
+  - env_var: SUPABASE_URL
+    source: url
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.supabase.com/v1/projects
+  expect:
+    status_code: 200

@@ -1,0 +1,73 @@
+provider: okta
+display_name: Okta
+category: identity
+description: "Okta identity — SSWS API tokens and OAuth client credentials."
+docs_url: https://developer.okta.com/docs/reference/
+docs:
+  credentials_url: https://developer.okta.com/docs/guides/create-an-api-token/main/
+  scopes_url: https://developer.okta.com/docs/reference/scopes/
+
+secret_fields:
+  - name: api_token
+    label: SSWS API Token
+    required: true
+    sensitive: true
+    env_var: OKTA_API_TOKEN
+    secret_kind: api_key
+  - name: client_secret
+    label: OAuth Client Secret
+    required: false
+    sensitive: true
+    env_var: OKTA_CLIENT_SECRET
+    secret_kind: client_secret
+  - name: domain
+    label: Okta Domain
+    required: true
+    sensitive: false
+    env_var: OKTA_DOMAIN
+
+env_mappings:
+  api_token: OKTA_API_TOKEN
+  client_secret: OKTA_CLIENT_SECRET
+  domain: OKTA_DOMAIN
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: SSWS
+
+storage_path_tpl: "{{.Namespace}}/identity/okta/{{.Account}}"
+trust_level: 3
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: users.read
+    description: Read user directory
+  - name: users.provision
+    description: Provision and deprovision users
+  - name: groups.manage
+    description: Manage groups and memberships
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: OKTA_API_TOKEN
+    source: api_token
+  - env_var: OKTA_CLIENT_SECRET
+    source: client_secret
+  - env_var: OKTA_DOMAIN
+    source: domain
+
+test_strategy:
+  kind: sdk_call
+  endpoint: https://{domain}/api/v1/users/me
+  expect:
+    status_code: 200
+    markers:
+      - id

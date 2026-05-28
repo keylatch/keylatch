@@ -1,0 +1,26 @@
+{
+  "id": "abc123opitem",
+  "title": "openrouter",
+  "vault": {
+    "id": "vaultid001",
+    "name": "Keylatch"
+  },
+  "category": "API_CREDENTIAL",
+  "urls": [],
+  "fields": [
+    {
+      "id": "field001",
+      "label": "api_key",
+      "type": "CONCEALED",
+      "value": "KEYLATCH_CANARY_PHASE2_0xDEADBEEF"
+    },
+    {
+      "id": "field002",
+      "label": "base_url",
+      "type": "STRING",
+      "value": "https://openrouter.ai/api/v1"
+    }
+  ],
+  "tags": ["keylatch", "ns:default"],
+  "updated_at": "2026-05-11T12:00:00Z"
+}

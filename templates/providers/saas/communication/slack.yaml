@@ -1,0 +1,68 @@
+provider: slack
+display_name: Slack
+category: communication
+description: "Slack messaging platform — bot tokens and webhook signing secrets."
+docs_url: https://api.slack.com/authentication
+docs:
+  credentials_url: https://api.slack.com/authentication/token-types
+  scopes_url: https://api.slack.com/scopes
+
+secret_fields:
+  - name: bot_token
+    label: Bot Token
+    required: true
+    sensitive: true
+    env_var: SLACK_BOT_TOKEN
+    secret_kind: bearer_token
+  - name: signing_secret
+    label: Signing Secret
+    required: false
+    sensitive: true
+    env_var: SLACK_SIGNING_SECRET
+    secret_kind: webhook_signing_secret
+
+env_mappings:
+  bot_token: SLACK_BOT_TOKEN
+  signing_secret: SLACK_SIGNING_SECRET
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/communication/slack/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: messaging.send
+    description: Send messages to channels and DMs
+  - name: messaging.read
+    description: Read channel history
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: SLACK_BOT_TOKEN
+    source: bot_token
+  - env_var: SLACK_SIGNING_SECRET
+    source: signing_secret
+
+redaction:
+  - pattern: 'xoxb-[A-Za-z0-9\-]{20,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://slack.com/api/auth.test
+  expect:
+    status_code: 200
+    markers:
+      - ok

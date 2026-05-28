@@ -1,0 +1,61 @@
+provider: google_workspace
+display_name: Google Workspace
+category: workspace
+description: "Google Workspace (Gmail, Drive, Calendar, Docs, Sheets)."
+docs_url: https://developers.google.com/workspace
+
+secret_fields:
+  - name: oauth_credentials
+    label: OAuth Credentials JSON
+    required: true
+    sensitive: true
+    env_var: GOOGLE_APPLICATION_CREDENTIALS
+
+env_mappings:
+  oauth_credentials: GOOGLE_APPLICATION_CREDENTIALS
+
+auth_flow: oauth_browser
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/workspace/google_workspace/{{.Account}}"
+trust_level: 0
+multi_account: true
+
+runtime_support:
+  preferred: direct_brokered
+  supported:
+    - direct_brokered
+    - gateway_proxy
+
+capabilities:
+  - name: gmail
+    description: Access Gmail messages and threads
+  - name: drive
+    description: Access Google Drive files
+  - name: calendar
+    description: Access Google Calendar events
+  - name: sheets
+    description: Access Google Sheets
+
+allowed_command_prefixes:
+  - "python3 "
+  - "node "
+
+injection_rules:
+  - env_var: GOOGLE_APPLICATION_CREDENTIALS
+    source: oauth_credentials
+
+redaction:
+  - pattern: 'ya29\.[A-Za-z0-9\-_]{50,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://www.googleapis.com/oauth2/v3/userinfo
+  expect:
+    status_code: 200
+    markers:
+      - email

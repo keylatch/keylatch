@@ -1,0 +1,50 @@
+provider: postmark
+display_name: Postmark
+category: email
+description: "Postmark transactional email — server and account tokens."
+docs_url: https://postmarkapp.com/developer
+docs:
+  credentials_url: https://account.postmarkapp.com/api_tokens
+
+secret_fields:
+  - name: server_token
+    label: Server API Token
+    required: true
+    sensitive: true
+    env_var: POSTMARK_SERVER_TOKEN
+    secret_kind: api_key
+
+env_mappings:
+  server_token: POSTMARK_SERVER_TOKEN
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: X-Postmark-Server-Token
+
+storage_path_tpl: "{{.Namespace}}/email/postmark/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: emails.send
+    description: Send transactional emails
+  - name: stats.read
+    description: Read delivery statistics
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: POSTMARK_SERVER_TOKEN
+    source: server_token
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.postmarkapp.com/server
+  expect:
+    status_code: 200

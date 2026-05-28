@@ -1,0 +1,82 @@
+[package]
+name = "keylatch-app"
+version = "1.0.0"
+edition = "2021"
+description = "Keylatch desktop shell — Tauri v2 thin shell over the Go sidecar"
+authors = ["Keylatch Contributors"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "keylatch_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+serde_json = "1"
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-log = "2"
+tauri-plugin-process = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HMAC-SHA256 IPC authentication
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+
+# CBOR framing for IPC
+ciborium = "0.2"
+
+# Async utilities
+async-trait = "0.1"
+
+# URL parsing (for WebView navigation policy)
+url = "2"
+
+# Hex encoding (for audit label HMAC)
+hex = "0.4"
+
+# Error handling
+thiserror = "1"
+
+# Temporary files (for tests)
+tempfile = "3"
+
+# Semver comparison for update manager (M4)
+semver = "1"
+
+# Logging
+log = "0.4"
+
+# Home/config directory resolution (used in launch.rs)
+dirs = "5"
+
+# HTTP client for approval watcher (sync, no tokio dependency)
+ureq = { version = "2", features = ["json"] }
+
+# OS-level utilities (Unix-specific: process signals, fs, Unix sockets)
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", features = ["process", "signal", "fs", "socket"] }
+libc = "0.2"
+
+# Windows registry access (launch-at-login)
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+# staging: allows updater endpoint override for QA builds
+staging = []

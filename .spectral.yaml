@@ -1,0 +1,5 @@
+extends: ["spectral:oas"]
+rules:
+  # Suppress warnings that are not actionable for an internal API
+  info-contact: off
+  operation-tags: off

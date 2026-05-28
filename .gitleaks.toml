@@ -1,0 +1,13 @@
+[allowlist]
+description = "Allow committed dummy credentials used by redaction and backend tests."
+paths = [
+  '''internal/agentsnippet/leak_test\.go''',
+  '''internal/backend/lastpass/lastpass_test\.go''',
+  '''internal/backend/op/op_test\.go''',
+  '''internal/config/config_test\.go''',
+  '''internal/crypto/envelope/testdata/.*''',
+  '''internal/gateway/redact/redact_test\.go''',
+  '''internal/masking/redactor_test\.go''',
+  '''internal/team/oidc/oidc_test\.go''',
+  '''src-tauri/src/redaction\.rs''',
+]

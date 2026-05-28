@@ -1,0 +1,56 @@
+provider: linear
+display_name: Linear
+category: work-management
+description: "Linear issue tracker — personal API keys."
+docs_url: https://developers.linear.app/docs
+docs:
+  credentials_url: https://developers.linear.app/docs/graphql/personal-api-keys
+
+secret_fields:
+  - name: api_key
+    label: Personal API Key
+    required: true
+    sensitive: true
+    env_var: LINEAR_API_KEY
+    secret_kind: personal_token
+
+env_mappings:
+  api_key: LINEAR_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/work-management/linear/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: issues.read
+    description: Read issues and project data
+  - name: issues.write
+    description: Create and update issues
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: LINEAR_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'lin_api_[A-Za-z0-9]{40,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_post
+  endpoint: https://api.linear.app/graphql
+  expect:
+    status_code: 200

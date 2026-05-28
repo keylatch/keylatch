@@ -1,0 +1,288 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://keylatch.io/schemas/provider-template/v1",
+  "title": "ProviderConnectionTemplate",
+  "description": "Schema for a Keylatch provider connection template.",
+  "type": "object",
+  "required": [
+    "provider",
+    "display_name",
+    "category",
+    "secret_fields",
+    "auth_flow",
+    "storage_path_tpl",
+    "trust_level",
+    "runtime_support"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "Kebab-case lowercase provider slug.",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable provider name."
+    },
+    "category": {
+      "type": "string",
+      "description": "Provider category, e.g. ai, observability, storage, cdn, workspace."
+    },
+    "description": {
+      "type": "string"
+    },
+    "docs_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "credentials_url": { "type": "string", "format": "uri" },
+        "scopes_url":      { "type": "string", "format": "uri" }
+      }
+    },
+    "secret_fields": {
+      "type": "array",
+      "description": "Fields whose values are stored as secrets in the vault.",
+      "items": {
+        "type": "object",
+        "required": ["name", "required", "sensitive"],
+        "additionalProperties": false,
+        "properties": {
+          "name":        { "type": "string" },
+          "label":       { "type": "string" },
+          "description": { "type": "string" },
+          "required":    { "type": "boolean" },
+          "env_var":     { "type": "string" },
+          "sensitive":   { "type": "boolean" },
+          "secret_kind": {
+            "type": "string",
+            "enum": [
+              "bearer_token",
+              "webhook_signing_secret",
+              "client_secret",
+              "service_account_json",
+              "personal_token",
+              "refresh_token",
+              "api_key"
+            ]
+          },
+          "required_scopes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "config_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "name":        { "type": "string" },
+          "label":       { "type": "string" },
+          "description": { "type": "string" },
+          "required":    { "type": "boolean" },
+          "default":     { "type": "string" },
+          "env_var":     { "type": "string" }
+        }
+      }
+    },
+    "env_mappings": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "auth_flow": {
+      "type": "string",
+      "enum": [
+        "api_key",
+        "oauth_browser",
+        "oauth_device",
+        "basic",
+        "bearer",
+        "certificate",
+        "custom"
+      ]
+    },
+    "auth_placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "in":     { "type": "string", "enum": ["header", "query", "body"] },
+        "name":   { "type": "string" },
+        "scheme": { "type": "string" }
+      }
+    },
+    "storage_path_tpl": {
+      "type": "string",
+      "description": "Go template string for the vault storage path."
+    },
+    "trust_level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "multi_account": {
+      "type": "boolean"
+    },
+    "runtime_support": {
+      "type": "object",
+      "required": ["preferred"],
+      "additionalProperties": false,
+      "properties": {
+        "preferred": {
+          "type": "string",
+          "enum": ["gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy"]
+        },
+        "supported": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy"]
+          }
+        },
+        "default_runtime":  { "type": "string" },
+        "runtime_reason":   { "type": "string" },
+        "gateway_supported":{ "type": "boolean" }
+      }
+    },
+    "sdk_compat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "language": { "type": "string" },
+        "package":  { "type": "string" },
+        "version":  { "type": "string" }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name":        { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "description": "EPIC-20 action catalog — named HTTP operations available via keylatch call.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["method", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+          },
+          "path": { "type": "string", "pattern": "^/" },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type":     { "type": "string", "enum": ["string", "integer", "boolean"] },
+                "required": { "type": "boolean" },
+                "in":       { "type": "string", "enum": ["query", "path", "body"] }
+              }
+            }
+          },
+          "response_schema": { "type": "string" }
+        }
+      }
+    },
+    "gateway_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name":                   { "type": "string" },
+          "description":            { "type": "string" },
+          "sdk_path":               { "type": "string" },
+          "method":                 { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          "upstream_path":          { "type": "string" },
+          "exchange_strategy":      { "type": "string" },
+          "max_access_token_ttl":   { "type": "string" },
+          "required_scopes":        { "type": "array", "items": { "type": "string" } },
+          "masking_profile":        { "type": "string" },
+          "allowed_fields":         { "type": "array", "items": { "type": "string" } },
+          "risk_label":             { "type": "string" },
+          "untrusted_content_source": { "type": "boolean" },
+          "llm_session_deny":       { "type": "boolean" }
+        }
+      }
+    },
+    "allowed_command_prefixes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "injection_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["env_var", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "env_var": { "type": "string" },
+          "source":  { "type": "string" }
+        }
+      }
+    },
+    "redaction": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pattern", "replacement"],
+        "additionalProperties": false,
+        "properties": {
+          "pattern":     { "type": "string" },
+          "replacement": { "type": "string" }
+        }
+      }
+    },
+    "overbroad_scopes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "rate_limit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests_per_minute": { "type": "integer" },
+        "burst_size":          { "type": "integer" }
+      }
+    },
+    "test_strategy": {
+      "type": "object",
+      "required": ["kind", "endpoint"],
+      "additionalProperties": false,
+      "properties": {
+        "kind":     { "type": "string", "enum": ["http_get", "http_post", "sdk_call"] },
+        "endpoint": { "type": "string" },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status_code": { "type": "integer" },
+            "markers": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

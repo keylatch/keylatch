@@ -1,0 +1,67 @@
+provider: sentry
+display_name: Sentry
+category: observability
+description: "Sentry error tracking and performance monitoring."
+docs_url: https://docs.sentry.io/api/
+
+secret_fields:
+  - name: auth_token
+    label: Auth Token
+    required: true
+    sensitive: true
+    env_var: SENTRY_AUTH_TOKEN
+
+config_fields:
+  - name: org_slug
+    label: Organization Slug
+    required: true
+    env_var: SENTRY_ORG
+
+env_mappings:
+  auth_token: SENTRY_AUTH_TOKEN
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/observability/sentry/{{.Account}}"
+trust_level: 0
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: errors.report
+    description: Report errors and exceptions
+  - name: performance.monitor
+    description: Track transactions and performance
+
+gateway_actions:
+  - name: error_reporting
+    description: Report errors and exceptions
+    method: POST
+    risk_label: ""
+    upstream_path: /api/0/projects/
+
+allowed_command_prefixes:
+  - "node "
+  - "python3 "
+
+injection_rules:
+  - env_var: SENTRY_AUTH_TOKEN
+    source: auth_token
+
+redaction:
+  - pattern: 'sntrys_[A-Za-z0-9\-_]{32,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://sentry.io/api/0/organizations/
+  expect:
+    status_code: 200

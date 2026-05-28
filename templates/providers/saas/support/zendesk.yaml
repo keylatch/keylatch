@@ -1,0 +1,67 @@
+provider: zendesk
+display_name: Zendesk
+category: support
+description: "Zendesk customer support — API tokens."
+docs_url: https://developer.zendesk.com/api-reference/
+docs:
+  credentials_url: https://developer.zendesk.com/documentation/api-basics/api-token-access/
+
+secret_fields:
+  - name: api_token
+    label: API Token
+    required: true
+    sensitive: true
+    env_var: ZENDESK_API_TOKEN
+    secret_kind: api_key
+  - name: subdomain
+    label: Subdomain
+    required: true
+    sensitive: false
+    env_var: ZENDESK_SUBDOMAIN
+  - name: email
+    label: Admin Email
+    required: true
+    sensitive: false
+    env_var: ZENDESK_EMAIL
+
+env_mappings:
+  api_token: ZENDESK_API_TOKEN
+  subdomain: ZENDESK_SUBDOMAIN
+  email: ZENDESK_EMAIL
+
+auth_flow: basic
+
+storage_path_tpl: "{{.Namespace}}/support/zendesk/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: tickets.read
+    description: Read support tickets
+  - name: tickets.write
+    description: Create and update tickets
+  - name: users.read
+    description: Read user profiles
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: ZENDESK_API_TOKEN
+    source: api_token
+  - env_var: ZENDESK_SUBDOMAIN
+    source: subdomain
+  - env_var: ZENDESK_EMAIL
+    source: email
+
+test_strategy:
+  kind: sdk_call
+  endpoint: https://{subdomain}.zendesk.com/api/v2/users/me.json
+  expect:
+    status_code: 200
+    markers:
+      - user

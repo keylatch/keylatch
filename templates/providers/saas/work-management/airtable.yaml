@@ -1,0 +1,57 @@
+provider: airtable
+display_name: Airtable
+category: work-management
+description: "Airtable — personal access tokens for database API."
+docs_url: https://airtable.com/developers/web/api/introduction
+docs:
+  credentials_url: https://airtable.com/create/tokens
+
+secret_fields:
+  - name: api_key
+    label: Personal Access Token
+    required: true
+    sensitive: true
+    env_var: AIRTABLE_API_KEY
+    secret_kind: personal_token
+
+env_mappings:
+  api_key: AIRTABLE_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/work-management/airtable/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: bases.read
+    description: Read bases and tables
+  - name: records.read
+    description: Read records
+  - name: records.write
+    description: Create and update records
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: AIRTABLE_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'pat[A-Za-z0-9]{14}\.[A-Za-z0-9]{64}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.airtable.com/v0/meta/bases
+  expect:
+    status_code: 200

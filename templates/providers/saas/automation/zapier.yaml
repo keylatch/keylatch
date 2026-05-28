@@ -1,0 +1,51 @@
+provider: zapier
+display_name: Zapier
+category: automation
+description: "Zapier NLA (Natural Language Actions) API."
+docs_url: https://nla.zapier.com/docs/
+docs:
+  credentials_url: https://zapier.com/app/settings/security
+
+secret_fields:
+  - name: api_key
+    label: NLA API Key
+    required: true
+    sensitive: true
+    env_var: ZAPIER_NLA_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: ZAPIER_NLA_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/automation/zapier/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: actions.list
+    description: List available NLA actions
+  - name: actions.run
+    description: Execute NLA actions
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: ZAPIER_NLA_API_KEY
+    source: api_key
+
+test_strategy:
+  kind: http_get
+  endpoint: https://nla.zapier.com/api/v1/dynamic/exposed/
+  expect:
+    status_code: 200

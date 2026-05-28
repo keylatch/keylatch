@@ -1,0 +1,53 @@
+provider: mailchimp
+display_name: Mailchimp
+category: email
+description: "Mailchimp email marketing API — API keys."
+docs_url: https://mailchimp.com/developer/marketing/api/
+docs:
+  credentials_url: https://mailchimp.com/developer/marketing/guides/quick-start/#generate-your-api-key
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: MAILCHIMP_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: MAILCHIMP_API_KEY
+
+auth_flow: basic
+
+storage_path_tpl: "{{.Namespace}}/email/mailchimp/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: campaigns.read
+    description: Read campaigns
+  - name: lists.manage
+    description: Manage subscriber lists
+  - name: emails.send
+    description: Send transactional emails
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: MAILCHIMP_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: '[a-f0-9]{32}-us[0-9]+'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://login.mailchimp.com/oauth2/metadata
+  expect:
+    status_code: 200

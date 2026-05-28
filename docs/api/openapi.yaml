@@ -1,0 +1,1123 @@
+openapi: 3.1.0
+info:
+  title: keylatchd HTTP API
+  version: 0.1.0
+  x-stability: internal
+  x-stability-warning: "Unstable: subject to change pre-1.0"
+  description: |
+    REST API exposed by the `keylatchd` sidecar process (bound to `127.0.0.1:7890` by default).
+
+    **Stability:** All endpoints are Unstable — subject to change pre-1.0.
+
+    **Authentication:**
+    - Session cookie `KEYLATCH_SESSION` is required on all endpoints except `GET /health` and `GET /v1/health`.
+    - Mutating endpoints (`POST`) additionally require the CSRF token header `X-Keylatch-CSRF`.
+
+servers:
+  - url: http://127.0.0.1:7890
+    description: Local keylatchd instance
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: KEYLATCH_SESSION
+      description: Session cookie issued by keylatchd on first authenticated request.
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-Keylatch-CSRF
+      description: CSRF token required on all state-mutating (POST) requests.
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: 0.1.0
+      example:
+        status: ok
+        version: 0.1.0
+
+    ConnectionStatus:
+      type: object
+      required: [active, backend, provider_count]
+      properties:
+        active:
+          type: boolean
+          description: Whether the daemon has an active session.
+        backend:
+          type: string
+          description: Name of the configured credential backend.
+          example: keychain
+        provider_count:
+          type: integer
+          description: Number of connected providers.
+          example: 3
+      example:
+        active: true
+        backend: keychain
+        provider_count: 3
+
+    Connection:
+      type: object
+      required: [id, provider, account, backend, created_at]
+      properties:
+        id:
+          type: string
+          description: Stable connection identifier.
+        provider:
+          type: string
+          description: Provider slug (e.g. openrouter).
+        account:
+          type: string
+          description: Account label (default is "default").
+        backend:
+          type: string
+          description: Backend that stores this connection's credentials.
+        created_at:
+          type: string
+          format: date-time
+      example:
+        id: conn_openrouter_default
+        provider: openrouter
+        account: default
+        backend: keychain
+        created_at: "2025-01-01T00:00:00Z"
+
+    BackendInfo:
+      type: object
+      required: [name, available, encrypted, capabilities]
+      properties:
+        name:
+          type: string
+          description: Backend identifier.
+          example: keychain
+        available:
+          type: boolean
+          description: Whether the backend is reachable and authenticated.
+        encrypted:
+          type: boolean
+          description: Whether the backend encrypts values at rest.
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: List of capability strings (e.g. CapList, CapNetworkedFetch).
+      example:
+        name: keychain
+        available: true
+        encrypted: true
+        capabilities: [CapList, CapGet, CapSet, CapDelete]
+
+    ProviderInfo:
+      type: object
+      required: [provider, display_name, category, trust_level, connected]
+      properties:
+        provider:
+          type: string
+          description: Provider slug.
+        display_name:
+          type: string
+          description: Human-readable provider name.
+        category:
+          type: string
+          description: Provider category.
+        trust_level:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Trust level (0=open, 1=team, 2=elevated, 3=privileged).
+        connected:
+          type: boolean
+          description: Whether credentials are stored for this provider.
+      example:
+        provider: openrouter
+        display_name: OpenRouter
+        category: ai-gateway
+        trust_level: 1
+        connected: true
+
+    ConnectRequest:
+      type: object
+      required: [provider, field, value]
+      properties:
+        provider:
+          type: string
+          description: Provider slug.
+        field:
+          type: string
+          description: Credential field name (e.g. api_key).
+        value:
+          type: string
+          description: Credential value. Transmitted over localhost only; never logged.
+        account:
+          type: string
+          description: Account label. Defaults to "default".
+          default: default
+      example:
+        provider: openrouter
+        field: api_key
+        value: sk-or-v1-...
+        account: default
+
+    AgentSetupRequest:
+      type: object
+      required: [agent]
+      properties:
+        agent:
+          type: string
+          description: Agent identifier (e.g. claude-code, codex).
+        providers:
+          type: array
+          items:
+            type: string
+          description: Provider slugs to include in the agent profile.
+        ttl_seconds:
+          type: integer
+          description: Token TTL for this agent session in seconds.
+      example:
+        agent: claude-code
+        providers: [openrouter, anthropic]
+        ttl_seconds: 3600
+
+    ReadinessResult:
+      type: object
+      required: [ready, checks]
+      properties:
+        ready:
+          type: boolean
+          description: Whether all readiness checks passed.
+        checks:
+          type: array
+          items:
+            type: object
+            required: [name, ok, message]
+            properties:
+              name:
+                type: string
+              ok:
+                type: boolean
+              message:
+                type: string
+      example:
+        ready: true
+        checks:
+          - name: backend
+            ok: true
+            message: keychain available
+          - name: wizard
+            ok: true
+            message: wizard completed
+
+    RuntimeReceipt:
+      type: object
+      required: [id, mode, provider, actor, exit_code, created_at]
+      properties:
+        id:
+          type: string
+          description: Unique receipt identifier.
+        mode:
+          type: string
+          description: Runtime mode used (e.g. gateway_typed).
+        provider:
+          type: string
+          description: Provider slug.
+        actor:
+          type: string
+          description: Actor that made the request.
+        exit_code:
+          type: integer
+          description: Exit code of the subprocess.
+        created_at:
+          type: string
+          format: date-time
+      example:
+        id: rcpt_01HX
+        mode: gateway_typed
+        provider: openrouter
+        actor: claude-code
+        exit_code: 0
+        created_at: "2025-01-01T00:00:00Z"
+
+    Approval:
+      type: object
+      required: [id, actor, provider, mode, status, created_at]
+      properties:
+        id:
+          type: string
+          description: Unique approval identifier.
+        actor:
+          type: string
+          description: Requesting actor.
+        provider:
+          type: string
+          description: Provider being accessed.
+        mode:
+          type: string
+          description: Runtime mode requested.
+        status:
+          type: string
+          enum: [pending, approved, denied, expired]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+      example:
+        id: appr_01HX
+        actor: claude-code
+        provider: openrouter
+        mode: gateway_typed
+        status: pending
+        created_at: "2025-01-01T00:00:00Z"
+        expires_at: "2025-01-01T00:05:00Z"
+
+    ApprovalDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [approve, deny]
+          description: Approval decision.
+      example:
+        decision: approve
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+        code:
+          type: integer
+          description: Keylatch exit code (1=UserError, 2=SecurityBlock, 3=Missing, 4=BackendUnavailable, 5=OperationFailed).
+      example:
+        error: unauthorized
+        code: 2
+
+paths:
+  /health:
+    x-stability: internal
+    get:
+      operationId: getHealthPlain
+      summary: Health check (plain path)
+      description: |
+        Returns `{"status":"ok","version":"..."}` when the daemon is running. No authentication required.
+        This is the non-versioned alias of `GET /v1/health`, provided for liveness probes that do not use versioned paths.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security: []
+      responses:
+        "200":
+          description: Daemon is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                version: 0.1.0
+        "405":
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/health:
+    x-stability: internal
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: |
+        Returns `{"status":"ok","version":"..."}` when the daemon is running. No authentication required.
+        Use this as a liveness probe.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security: []
+      responses:
+        "200":
+          description: Daemon is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                version: 0.1.0
+        "405":
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/health/readiness:
+    x-stability: internal
+    get:
+      operationId: getReadiness
+      summary: Readiness check
+      description: |
+        Returns detailed readiness check results including backend availability and configuration state. Suitable for use as a container/process readiness probe.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Readiness check results. Returns 200 even if some checks fail — inspect `ready` field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResult"
+              example:
+                ready: false
+                checks:
+                  - name: backend
+                    ok: false
+                    message: keychain unavailable — authenticate with Touch ID first
+                  - name: wizard
+                    ok: true
+                    message: wizard completed
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: unauthorized
+                code: 2
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/status:
+    x-stability: internal
+    get:
+      operationId: getStatus
+      summary: Session status
+      description: |
+        Returns the current session status including active backend and connected provider count.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current session status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionStatus"
+              example:
+                active: true
+                backend: keychain
+                provider_count: 2
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: unauthorized
+                code: 2
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/connections:
+    x-stability: internal
+    get:
+      operationId: listConnections
+      summary: List connections
+      description: |
+        Returns all stored credential connections (metadata only — no credential values).
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of connections.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Connection"
+              example:
+                - id: conn_openrouter_default
+                  provider: openrouter
+                  account: default
+                  backend: keychain
+                  created_at: "2025-01-01T00:00:00Z"
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/backends:
+    x-stability: internal
+    get:
+      operationId: listBackends
+      summary: List backends
+      description: |
+        Returns all registered backends with their availability and capability information.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of backends.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BackendInfo"
+              example:
+                - name: keychain
+                  available: true
+                  encrypted: true
+                  capabilities: [CapList, CapGet, CapSet, CapDelete]
+                - name: file
+                  available: true
+                  encrypted: true
+                  capabilities: [CapList, CapGet, CapSet, CapDelete]
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/providers:
+    x-stability: internal
+    get:
+      operationId: listProviders
+      summary: List providers
+      description: |
+        Returns all registered provider templates with connection status.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of providers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderInfo"
+              example:
+                - provider: openrouter
+                  display_name: OpenRouter
+                  category: ai-gateway
+                  trust_level: 1
+                  connected: true
+                - provider: anthropic
+                  display_name: Anthropic
+                  category: ai-direct
+                  trust_level: 2
+                  connected: false
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/connect:
+    x-stability: internal
+    post:
+      operationId: createConnection
+      summary: Store a credential
+      description: |
+        Stores a credential for the given provider and field. The value is encrypted by the configured backend before write.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectRequest"
+            example:
+              provider: openrouter
+              field: api_key
+              value: sk-or-v1-...
+              account: default
+      responses:
+        "201":
+          description: Credential stored successfully.
+        "400":
+          description: Invalid request body or unknown provider/field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: unknown provider "foobar"
+                code: 1
+        "401":
+          description: Missing or invalid session cookie or CSRF token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/agent/setup:
+    x-stability: internal
+    post:
+      operationId: agentSetup
+      summary: Write agent configuration
+      description: |
+        Writes an agent profile configuration file for the specified agent (e.g. Claude Code settings snippet with MCP server registration).
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentSetupRequest"
+            example:
+              agent: claude-code
+              providers: [openrouter]
+              ttl_seconds: 3600
+      responses:
+        "200":
+          description: Agent configuration written successfully.
+        "400":
+          description: Invalid request body or unknown agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: unknown agent "foobar"
+                code: 1
+        "401":
+          description: Missing or invalid session cookie or CSRF token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/receipts:
+    x-stability: internal
+    get:
+      operationId: listReceipts
+      summary: List runtime receipts
+      description: |
+        Returns runtime receipts for all `keylatch run` invocations in the current session. Receipts are value-free — they record mode, provider, actor, and exit code, but never credential values.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of runtime receipts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RuntimeReceipt"
+              example:
+                - id: rcpt_01HX
+                  mode: gateway_typed
+                  provider: openrouter
+                  actor: claude-code
+                  exit_code: 0
+                  created_at: "2025-01-01T00:00:00Z"
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: submitReceipt
+      summary: Submit a runtime receipt
+      description: |
+        Submits a runtime receipt produced by `keylatch run`. Called internally by the daemon after each run invocation. Receipts are value-free.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeReceipt"
+            example:
+              id: rcpt_01HX
+              mode: gateway_typed
+              provider: openrouter
+              actor: claude-code
+              exit_code: 0
+              created_at: "2025-01-01T00:00:00Z"
+      responses:
+        "201":
+          description: Receipt stored successfully.
+        "400":
+          description: Invalid receipt body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid session cookie or CSRF token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/receipts/stream:
+    x-stability: internal
+    get:
+      operationId: streamReceipts
+      summary: Stream runtime receipts (SSE)
+      description: |
+        Server-Sent Events stream of runtime receipts. Each `data:` event is a JSON-encoded `RuntimeReceipt`. The stream stays open until the client disconnects.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: SSE stream of runtime receipts.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Newline-delimited SSE events. Each event:
+                  ```
+                  data: {"id":"rcpt_01HX","mode":"gateway_typed","provider":"openrouter","actor":"claude-code","exit_code":0,"created_at":"2025-01-01T00:00:00Z"}
+                  ```
+              example: |
+                data: {"id":"rcpt_01HX","mode":"gateway_typed","provider":"openrouter","actor":"claude-code","exit_code":0,"created_at":"2025-01-01T00:00:00Z"}
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/approvals:
+    x-stability: internal
+    get:
+      operationId: listApprovals
+      summary: List pending approvals
+      description: |
+        Returns all approval requests (pending, approved, denied, expired). Used by the UI approval inbox.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: List of approvals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Approval"
+              example:
+                - id: appr_01HX
+                  actor: claude-code
+                  provider: openrouter
+                  mode: gateway_typed
+                  status: pending
+                  created_at: "2025-01-01T00:00:00Z"
+                  expires_at: "2025-01-01T00:05:00Z"
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/approvals/stream:
+    x-stability: internal
+    get:
+      operationId: streamApprovals
+      summary: Stream approval requests (SSE)
+      description: |
+        Server-Sent Events stream of approval requests. Each `data:` event is a JSON-encoded `Approval`. The stream stays open until the client disconnects. Used by the browser UI to update the approval inbox in real time.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: SSE stream of approval requests.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Newline-delimited SSE events. Each event:
+                  ```
+                  data: {"id":"appr_01HX","actor":"claude-code","provider":"openrouter","mode":"gateway_typed","status":"pending","created_at":"...","expires_at":"..."}
+                  ```
+              example: |
+                data: {"id":"appr_01HX","actor":"claude-code","provider":"openrouter","mode":"gateway_typed","status":"pending","created_at":"2025-01-01T00:00:00Z","expires_at":"2025-01-01T00:05:00Z"}
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/approvals/{id}:
+    x-stability: internal
+    get:
+      operationId: getApproval
+      summary: Get approval by ID
+      description: |
+        Returns a single approval request by its identifier.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Approval identifier.
+          example: appr_01HX
+      responses:
+        "200":
+          description: Approval details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Approval"
+              example:
+                id: appr_01HX
+                actor: claude-code
+                provider: openrouter
+                mode: gateway_typed
+                status: pending
+                created_at: "2025-01-01T00:00:00Z"
+                expires_at: "2025-01-01T00:05:00Z"
+        "401":
+          description: Missing or invalid session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Approval not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: approval not found
+                code: 3
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      operationId: decideApproval
+      summary: Approve or deny a request
+      description: |
+        Approves or denies a pending approval request by submitting a `decision` field. Once decided, the result is final — expired or already-decided approvals return 409.
+
+        To approve: `{"decision": "approve"}`. To deny: `{"decision": "deny"}`.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Approval identifier.
+          example: appr_01HX
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecisionRequest"
+            example:
+              decision: approve
+      responses:
+        "200":
+          description: Decision recorded.
+        "400":
+          description: Invalid decision value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: invalid decision "maybe" — must be "approve" or "deny"
+                code: 1
+        "401":
+          description: Missing or invalid session cookie or CSRF token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Approval not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approval already decided or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: approval already decided
+                code: 1
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/approvals/{id}/approve:
+    x-stability: internal
+    post:
+      operationId: approveApproval
+      summary: Approve a request (action path)
+      description: |
+        Convenience path that approves a pending approval request without a request body. Equivalent to `POST /v1/approvals/{id}` with `{"decision":"approve"}`.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Approval identifier.
+          example: appr_01HX
+      responses:
+        "200":
+          description: Approval recorded.
+        "401":
+          description: Missing or invalid session cookie or CSRF token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Approval not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approval already decided or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/approvals/{id}/deny:
+    x-stability: internal
+    post:
+      operationId: denyApproval
+      summary: Deny a request (action path)
+      description: |
+        Convenience path that denies a pending approval request without a request body. Equivalent to `POST /v1/approvals/{id}` with `{"decision":"deny"}`.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security:
+        - sessionCookie: []
+          csrfHeader: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Approval identifier.
+          example: appr_01HX
+      responses:
+        "200":
+          description: Denial recorded.
+        "401":
+          description: Missing or invalid session cookie or CSRF token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Approval not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Approval already decided or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics:
+    x-stability: internal
+    get:
+      operationId: getMetrics
+      summary: Prometheus metrics (stub)
+      description: |
+        Returns a Prometheus text-format exposition. The current implementation returns a stub with a single `keylatch_ui_up` gauge always set to 1. Full OpenTelemetry integration is planned for a future release.
+
+        No authentication required. Suitable for Prometheus scrape jobs configured against the UI server.
+
+        **Stability:** Unstable — subject to change pre-1.0.
+      security: []
+      responses:
+        "200":
+          description: Prometheus text-format metrics exposition.
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: |
+                  Prometheus text format (exposition format 0.0.4).
+                  Example:
+                  ```
+                  # HELP keylatch_ui_up Always 1 while the UI server is running.
+                  # TYPE keylatch_ui_up gauge
+                  keylatch_ui_up 1
+                  ```
+              example: |
+                # HELP keylatch_ui_up Always 1 while the UI server is running.
+                # TYPE keylatch_ui_up gauge
+                keylatch_ui_up 1
+        "405":
+          description: Method not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

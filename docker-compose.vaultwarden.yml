@@ -1,0 +1,22 @@
+version: "3.8"
+# Vaultwarden E2E test fixture.
+# Starts a Vaultwarden instance on a random available port.
+# Used by `make test-e2e-bw`.
+#
+# TLS is disabled here for test-only use.
+# Production deployments must use TLS.
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    environment:
+      DISABLE_ADMIN_TOKEN: "true"
+      WEBSOCKET_ENABLED: "false"
+      # Test-only: disable HTTPS. Production always requires HTTPS.
+      ROCKET_TLS: ""
+    ports:
+      - "0:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/alive"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

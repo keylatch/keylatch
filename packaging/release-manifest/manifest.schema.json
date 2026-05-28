@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReleaseManifest",
+  "description": "Keylatch release manifest — consumed by the Tauri updater and CLI updater (S14-9)",
+  "type": "object",
+  "required": ["version", "channel", "published_at", "notes", "artifacts", "signature_url", "manifest_url"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Semantic version string (e.g. 1.2.3)"
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["stable", "beta", "nightly"],
+      "description": "Release channel"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC publication timestamp"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Human-readable release notes (Markdown)"
+    },
+    "artifacts": {
+      "type": "object",
+      "description": "Map of platform-arch to artifact metadata",
+      "additionalProperties": {
+        "$ref": "#/definitions/Artifact"
+      }
+    },
+    "signature_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the cosign signature (.sig) for this manifest"
+    },
+    "manifest_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical URL of this manifest (self-referential, for verification)"
+    }
+  },
+  "definitions": {
+    "Artifact": {
+      "type": "object",
+      "required": ["url", "sha256", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Download URL for the artifact"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 hex digest of the artifact"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Artifact file size in bytes"
+        },
+        "platform": {
+          "type": "string",
+          "description": "Target platform (darwin, linux, windows)"
+        },
+        "arch": {
+          "type": "string",
+          "description": "Target architecture (amd64, arm64)"
+        }
+      }
+    }
+  }
+}

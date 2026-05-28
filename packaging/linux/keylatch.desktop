@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Keylatch
+Comment=Secure credential gateway for AI coding tools
+Exec=keylatch-app %u
+Icon=keylatch
+Type=Application
+Categories=Utility;Security;
+MimeType=x-scheme-handler/keylatch;
+StartupNotify=false
+NoDisplay=false
+Terminal=false
+Keywords=credentials;api;keys;security;gateway;

@@ -1,0 +1,40 @@
+[
+  {
+    "id": "bwitem001",
+    "name": "openrouter",
+    "type": 1,
+    "folderId": null,
+    "collectionIds": [],
+    "login": {
+      "username": "",
+      "password": ""
+    },
+    "fields": [
+      {
+        "name": "api_key",
+        "value": "",
+        "type": 1
+      }
+    ],
+    "revisionDate": "2026-05-11T12:00:00.000Z"
+  },
+  {
+    "id": "bwitem002",
+    "name": "anthropic",
+    "type": 1,
+    "folderId": null,
+    "collectionIds": [],
+    "login": {
+      "username": "",
+      "password": ""
+    },
+    "fields": [
+      {
+        "name": "api_key",
+        "value": "",
+        "type": 1
+      }
+    ],
+    "revisionDate": "2026-05-11T11:00:00.000Z"
+  }
+]

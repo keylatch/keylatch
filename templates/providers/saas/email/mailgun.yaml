@@ -1,0 +1,55 @@
+provider: mailgun
+display_name: Mailgun
+category: email
+description: "Mailgun email delivery API — private and public keys."
+docs_url: https://documentation.mailgun.com/
+docs:
+  credentials_url: https://app.mailgun.com/settings/api-security
+
+secret_fields:
+  - name: api_key
+    label: Private API Key
+    required: true
+    sensitive: true
+    env_var: MAILGUN_API_KEY
+    secret_kind: api_key
+  - name: domain
+    label: Sending Domain
+    required: true
+    sensitive: false
+    env_var: MAILGUN_DOMAIN
+
+env_mappings:
+  api_key: MAILGUN_API_KEY
+  domain: MAILGUN_DOMAIN
+
+auth_flow: basic
+
+storage_path_tpl: "{{.Namespace}}/email/mailgun/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: emails.send
+    description: Send transactional emails
+  - name: logs.read
+    description: Read email logs
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: MAILGUN_API_KEY
+    source: api_key
+  - env_var: MAILGUN_DOMAIN
+    source: domain
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.mailgun.net/v4/domains
+  expect:
+    status_code: 200

@@ -1,0 +1,103 @@
+# Dependabot configuration for keylatch.
+#
+# Covers all three runtimes in the repo:
+#   - Go module (root)
+#   - npm package (web/ — SPA dependencies)
+#   - Cargo crate (src-tauri/ — desktop shell)
+#   - GitHub Actions workflow versions
+#
+# Schedule: weekly to keep PR volume manageable while still surfacing
+# CVEs and minor updates within a reasonable window. Security updates
+# are always proposed immediately regardless of schedule.
+#
+# Reviewers: keep blank to allow GitHub's default CODEOWNERS routing.
+
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      go-stdlib-extensions:
+        patterns:
+          - "golang.org/x/*"
+      indirect-minor:
+        update-types:
+          - minor
+          - patch
+        dependency-type: indirect
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: "chore(deps-web)"
+      include: scope
+    groups:
+      types:
+        patterns:
+          - "@types/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@vitejs/*"
+      build-tooling:
+        patterns:
+          - "vite"
+          - "typescript"
+          - "eslint*"
+          - "@typescript-eslint/*"
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - cargo
+      - tauri
+    commit-message:
+      prefix: "chore(deps-tauri)"
+      include: scope
+    groups:
+      tauri:
+        patterns:
+          - "tauri*"
+      serde:
+        patterns:
+          - "serde*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(deps-ci)"
+      include: scope

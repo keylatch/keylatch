@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "keylatch-default",
+  "description": "Keylatch default capabilities — minimal allow-list per S14-8",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "notification:default",
+    "deep-link:default",
+    "log:default",
+    "process:allow-restart",
+    "process:allow-exit"
+  ]
+}

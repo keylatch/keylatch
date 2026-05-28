@@ -1,0 +1,150 @@
+# coverage-allowlist.txt — packages excluded from the 85% per-package coverage gate
+#
+# Format: one package path per non-comment line (exact match).
+# Each block must have a comment explaining why the package is allowlisted.
+# Keep this list as small as possible — default to writing tests.
+
+# --- CLI entry points ---
+# cmd/keylatch — main entry; behaviour covered by e2e and smoke tests
+github.com/keylatch/keylatch/cmd/keylatch
+# cmd/keylatchd — daemon sidecar entry point; exercised via integration tests
+github.com/keylatch/keylatch/cmd/keylatchd
+# internal/cmd/trust — CLI command wiring for trust/shared-secret subcommands; no unit-testable
+#   logic (RunE functions call external services: team API, sharedsecret, llmcontext). Covered
+#   by integration tests. Extracted from internal/cli as ADR-005 Phase 11/12 beachhead.
+github.com/keylatch/keylatch/internal/cmd/trust
+
+# --- Test-support infrastructure ---
+# internal/backendtest — compliance test harness; only invoked from _test.go files
+github.com/keylatch/keylatch/internal/backendtest
+# internal/testutil — shared test helpers; only imported from _test.go files
+github.com/keylatch/keylatch/internal/testutil
+# internal/backend/memory — in-process backend for tests; not production code
+github.com/keylatch/keylatch/internal/backend/memory
+# internal/auditverify — HMAC-chain verification helper; used internally in test assertions
+github.com/keylatch/keylatch/internal/auditverify
+
+# --- Platform-specific hardware drivers ---
+# internal/trust/fido2 — requires physical FIDO2 token; not testable in portable CI
+github.com/keylatch/keylatch/internal/trust/fido2
+# internal/trust/gpgcard — requires physical GPG smartcard; not testable in portable CI
+github.com/keylatch/keylatch/internal/trust/gpgcard
+# internal/trust/pkcs11 — requires PKCS11 module/hardware; not testable in portable CI
+github.com/keylatch/keylatch/internal/trust/pkcs11
+# internal/trust/secureenclave — macOS Secure Enclave API; darwin-only, requires hardware
+github.com/keylatch/keylatch/internal/trust/secureenclave
+# internal/trust/vault — HashiCorp Vault transit engine; requires live Vault instance
+github.com/keylatch/keylatch/internal/trust/vault
+
+# --- External password manager backends ---
+# These are thin wrappers around third-party CLI tools / HTTP APIs.
+# Functional testing requires live credentials or running services; covered by
+# provider integration tests run outside the standard CI suite.
+# internal/backend/bw — Bitwarden CLI wrapper
+github.com/keylatch/keylatch/internal/backend/bw
+# internal/backend/infisical — Infisical API client
+github.com/keylatch/keylatch/internal/backend/infisical
+# internal/backend/keeper — Keeper Commander CLI wrapper
+github.com/keylatch/keylatch/internal/backend/keeper
+# internal/backend/keychain — macOS/Linux system keychain; OS-level API
+github.com/keylatch/keylatch/internal/backend/keychain
+# internal/backend/lastpass — LastPass CLI wrapper
+github.com/keylatch/keylatch/internal/backend/lastpass
+# internal/backend/nordpass — NordPass CLI wrapper
+github.com/keylatch/keylatch/internal/backend/nordpass
+# internal/backend/op — 1Password CLI wrapper
+github.com/keylatch/keylatch/internal/backend/op
+# internal/backend/protonpass — ProtonPass CLI wrapper
+github.com/keylatch/keylatch/internal/backend/protonpass
+
+# --- OS-level platform integration ---
+# internal/daemon — OS process/signal management; platform-specific notify and process code
+github.com/keylatch/keylatch/internal/daemon
+# internal/sidecar/ipc — Tauri/Go IPC over Unix domain sockets; requires live sidecar process
+github.com/keylatch/keylatch/internal/sidecar/ipc
+
+# --- Build-time tooling ---
+# packaging/release-manifest — standalone go:generate tool; invoked by goreleaser, not unit-tested
+github.com/keylatch/keylatch/packaging/release-manifest
+
+# --- Core packages below threshold at baseline (2026-05-18) ---
+# These packages have meaningful tests but have not yet reached 85%.
+# They are allowlisted against the EPIC-28 gate to keep CI green while
+# targeted improvement work continues in Phase 5+.
+# Remove each entry once the package crosses 85% and CI confirms it.
+github.com/keylatch/keylatch/internal/paths
+github.com/keylatch/keylatch/internal/allow
+github.com/keylatch/keylatch/internal/telemetry
+github.com/keylatch/keylatch/internal/cli
+github.com/keylatch/keylatch/internal/backend
+github.com/keylatch/keylatch/internal/mcp
+github.com/keylatch/keylatch/internal/crypto/kek
+github.com/keylatch/keylatch/internal/exec
+github.com/keylatch/keylatch/internal/agent
+github.com/keylatch/keylatch/internal/crypto/jcs
+github.com/keylatch/keylatch/internal/backend/dispatch
+github.com/keylatch/keylatch/internal/budget
+github.com/keylatch/keylatch/internal/trust/sshagent
+github.com/keylatch/keylatch/internal/gateway/broker
+github.com/keylatch/keylatch/internal/crypto/keyring
+github.com/keylatch/keylatch/internal/connections
+github.com/keylatch/keylatch/internal/crypto/envelope
+github.com/keylatch/keylatch/internal/team/scim
+github.com/keylatch/keylatch/internal/audit
+github.com/keylatch/keylatch/internal/trust/fallback
+github.com/keylatch/keylatch/internal/team
+github.com/keylatch/keylatch/internal/audit/salt
+github.com/keylatch/keylatch/internal/team/ci
+github.com/keylatch/keylatch/internal/gateway/docker
+github.com/keylatch/keylatch/internal/agentsnippet
+github.com/keylatch/keylatch/internal/config
+github.com/keylatch/keylatch/internal/vault
+github.com/keylatch/keylatch/internal/sidecar/events
+github.com/keylatch/keylatch/internal/runner
+github.com/keylatch/keylatch/internal/backend/azurekv
+github.com/keylatch/keylatch/internal/store
+github.com/keylatch/keylatch/internal/team/orgpolicy
+github.com/keylatch/keylatch/internal/bootstrap
+github.com/keylatch/keylatch/internal/team/approval
+github.com/keylatch/keylatch/internal/registry
+github.com/keylatch/keylatch/internal/ui/api
+github.com/keylatch/keylatch/internal/gateway/token
+github.com/keylatch/keylatch/internal/broker/strategies
+github.com/keylatch/keylatch/internal/backend/file
+github.com/keylatch/keylatch/internal/trust
+github.com/keylatch/keylatch/internal/validate
+github.com/keylatch/keylatch/internal/team/registry
+github.com/keylatch/keylatch/internal/team/breakglass
+github.com/keylatch/keylatch/internal/backend/gcpsm
+github.com/keylatch/keylatch/internal/backend/vault
+github.com/keylatch/keylatch/internal/team/envsep
+github.com/keylatch/keylatch/internal/vault/meta
+github.com/keylatch/keylatch/internal/grant
+github.com/keylatch/keylatch/internal/team/sharedsecret
+github.com/keylatch/keylatch/internal/broker
+github.com/keylatch/keylatch/internal/gateway/approval
+github.com/keylatch/keylatch/internal/llmcontext
+github.com/keylatch/keylatch/internal/runtime
+github.com/keylatch/keylatch/internal/trust/attest
+github.com/keylatch/keylatch/internal/doctor
+github.com/keylatch/keylatch/internal/masking
+github.com/keylatch/keylatch/internal/vault/path
+github.com/keylatch/keylatch/internal/completion
+github.com/keylatch/keylatch/internal/sandbox
+github.com/keylatch/keylatch/internal/cmd/registry
+github.com/keylatch/keylatch/internal/backend/awssm
+github.com/keylatch/keylatch/internal/policy/match
+github.com/keylatch/keylatch/internal/trust/challenge
+github.com/keylatch/keylatch/internal/guard
+# --- Newly surfaced by statement-weighted coverage (EPIC-28 C1 fix) ---
+# These packages were previously hidden by the unweighted function-average method.
+# Statement-weighted totals expose them as genuinely below 85% at baseline.
+# Remove each entry once the package crosses 85% and CI confirms it.
+github.com/keylatch/keylatch/internal/backend/doppler
+github.com/keylatch/keylatch/internal/backend/opconnect
+github.com/keylatch/keylatch/internal/crypto/argon2
+github.com/keylatch/keylatch/internal/gateway
+github.com/keylatch/keylatch/internal/policy
+github.com/keylatch/keylatch/internal/proxy
+github.com/keylatch/keylatch/internal/team/simulate
+github.com/keylatch/keylatch/internal/ui

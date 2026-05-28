@@ -1,0 +1,31 @@
+{
+  "version": "{{.Version}}",
+  "description": "Zero-trust credential vault CLI for AI-assisted workflows",
+  "homepage": "https://github.com/keylatch/keylatch",
+  "license": "Apache-2.0",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/keylatch/keylatch/releases/download/v{{.Version}}/keylatch_{{.Version}}_windows_amd64.zip",
+      "hash": "{{.SHA256_WIN_AMD64}}",
+      "bin": "keylatch.exe"
+    },
+    "arm64": {
+      "url": "https://github.com/keylatch/keylatch/releases/download/v{{.Version}}/keylatch_{{.Version}}_windows_arm64.zip",
+      "hash": "{{.SHA256_WIN_ARM64}}",
+      "bin": "keylatch.exe"
+    }
+  },
+  "checkver": {
+    "github": "https://github.com/keylatch/keylatch"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/keylatch/keylatch/releases/download/v$version/keylatch_$version_windows_amd64.zip"
+      },
+      "arm64": {
+        "url": "https://github.com/keylatch/keylatch/releases/download/v$version/keylatch_$version_windows_arm64.zip"
+      }
+    }
+  }
+}

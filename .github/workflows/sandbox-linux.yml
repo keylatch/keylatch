@@ -1,0 +1,47 @@
+name: Sandbox Linux (EPIC-24)
+
+# Runs bwrap-backed direct_classic_sandboxed tests on ubuntu-latest.
+# These tests require bubblewrap which is not available on macOS runners.
+# Cross-reference: internal/sandbox/driver_linux.go, internal/runner/driver_classic_sandboxed.go
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'internal/sandbox/**'
+      - 'internal/runner/driver_classic_sandboxed*.go'
+      - '.github/workflows/sandbox-linux.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'internal/sandbox/**'
+      - 'internal/runner/driver_classic_sandboxed*.go'
+      - '.github/workflows/sandbox-linux.yml'
+
+concurrency:
+  group: sandbox-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sandbox-linux:
+    name: Sandbox tests (bwrap)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install bubblewrap
+        run: sudo apt-get install -y bubblewrap
+
+      - name: Verify bwrap
+        run: bwrap --version
+
+      - name: Run sandbox and driver tests
+        run: |
+          go test ./internal/sandbox/... ./internal/runner/... \
+            -run "TestClassicSandboxed|TestDirectClassicSandboxed|TestHashExecutable" \
+            -v -count=1 -timeout=120s

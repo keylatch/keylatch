@@ -1,0 +1,74 @@
+provider: github
+display_name: GitHub
+category: code-hosting
+description: "GitHub — code hosting and developer collaboration platform."
+docs_url: https://docs.github.com/en/rest
+docs:
+  credentials_url: https://github.com/settings/tokens
+  scopes_url: https://docs.github.com/en/developers/apps/building-oauth-apps/scopes-for-oauth-apps
+
+secret_fields:
+  - name: token
+    label: Personal Access Token
+    required: true
+    sensitive: true
+    env_var: GITHUB_TOKEN
+    secret_kind: personal_token
+  - name: webhook_secret
+    label: Webhook Secret
+    required: false
+    sensitive: true
+    env_var: GITHUB_WEBHOOK_SECRET
+    secret_kind: webhook_signing_secret
+
+env_mappings:
+  token: GITHUB_TOKEN
+  webhook_secret: GITHUB_WEBHOOK_SECRET
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/code-hosting/github/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: repos.read
+    description: Read repository contents
+  - name: repos.write
+    description: Write to repositories
+  - name: issues.manage
+    description: Manage issues and pull requests
+
+allowed_command_prefixes:
+  - "gh "
+  - "node "
+  - "python3 "
+
+injection_rules:
+  - env_var: GITHUB_TOKEN
+    source: token
+  - env_var: GITHUB_WEBHOOK_SECRET
+    source: webhook_secret
+
+redaction:
+  - pattern: 'gh[pousr]_[A-Za-z0-9]{36,}'
+    replacement: "****"
+  - pattern: 'github_pat_[A-Za-z0-9_]{36,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.github.com/user
+  expect:
+    status_code: 200
+    markers:
+      - login

@@ -1,0 +1,59 @@
+provider: dropbox
+display_name: Dropbox
+category: storage
+description: "Dropbox cloud file storage and sharing."
+docs_url: https://www.dropbox.com/developers/documentation/http/overview
+
+secret_fields:
+  - name: access_token
+    label: Access Token
+    required: true
+    sensitive: true
+    env_var: DROPBOX_ACCESS_TOKEN
+
+env_mappings:
+  access_token: DROPBOX_ACCESS_TOKEN
+
+auth_flow: oauth_browser
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/storage/dropbox/{{.Account}}"
+trust_level: 0
+multi_account: true
+
+runtime_support:
+  preferred: direct_brokered
+  supported:
+    - direct_brokered
+    - gateway_proxy
+
+capabilities:
+  - name: files.read
+    description: Read files from Dropbox
+  - name: files.write
+    description: Write files to Dropbox
+  - name: sharing
+    description: Share files and folders
+
+allowed_command_prefixes:
+  - "node "
+  - "python3 "
+
+injection_rules:
+  - env_var: DROPBOX_ACCESS_TOKEN
+    source: access_token
+
+redaction:
+  - pattern: 'sl\.[A-Za-z0-9\-_]{40,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_post
+  endpoint: https://api.dropboxapi.com/2/users/get_current_account
+  expect:
+    status_code: 200
+    markers:
+      - account_id

@@ -1,0 +1,53 @@
+provider: hubspot
+display_name: HubSpot
+category: crm
+description: "HubSpot CRM — private app access tokens."
+docs_url: https://developers.hubspot.com/docs/api/overview
+docs:
+  credentials_url: https://developers.hubspot.com/docs/api/private-apps
+
+secret_fields:
+  - name: access_token
+    label: Private App Access Token
+    required: true
+    sensitive: true
+    env_var: HUBSPOT_ACCESS_TOKEN
+    secret_kind: bearer_token
+
+env_mappings:
+  access_token: HUBSPOT_ACCESS_TOKEN
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/crm/hubspot/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: contacts.read
+    description: Read CRM contacts
+  - name: contacts.write
+    description: Create and update contacts
+  - name: deals.manage
+    description: Manage deals and pipeline
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: HUBSPOT_ACCESS_TOKEN
+    source: access_token
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.hubapi.com/crm/v3/objects/contacts
+  expect:
+    status_code: 200

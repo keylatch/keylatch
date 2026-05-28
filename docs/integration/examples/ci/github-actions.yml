@@ -1,0 +1,77 @@
+name: keylatch-integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Secrets required:
+#   KEYLATCH_VAULT_B64  — base64-encoded ~/.keylatch/vault/vault.age
+#   KEYLATCH_VAULT_PASS — vault passphrase
+#
+# To create KEYLATCH_VAULT_B64 locally:
+#   base64 < ~/.keylatch/vault/vault.age | tr -d '\n'
+
+env:
+  KEYLATCH_BACKEND: file
+  KEYLATCH_VAULT_PATH: /tmp/ci-vault.age
+
+jobs:
+  keylatch-check:
+    name: Run with Keylatch credentials
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Keylatch
+        run: |
+          curl -sSfL https://keylatch.dev/install.sh | sh
+          # Add to PATH for subsequent steps
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Restore vault from secret
+        env:
+          KEYLATCH_VAULT_B64: ${{ secrets.KEYLATCH_VAULT_B64 }}
+        run: |
+          echo "${KEYLATCH_VAULT_B64}" | base64 -d > "${KEYLATCH_VAULT_PATH}"
+          chmod 600 "${KEYLATCH_VAULT_PATH}"
+
+      - name: Bootstrap Keylatch (file backend)
+        env:
+          KEYLATCH_VAULT_PASS: ${{ secrets.KEYLATCH_VAULT_PASS }}
+        run: |
+          keylatch bootstrap \
+            --backend=file \
+            --non-interactive
+
+      - name: Verify Keylatch setup
+        env:
+          KEYLATCH_VAULT_PASS: ${{ secrets.KEYLATCH_VAULT_PASS }}
+        run: keylatch doctor --quiet
+
+      - name: Run script with credentials injected
+        env:
+          KEYLATCH_VAULT_PASS: ${{ secrets.KEYLATCH_VAULT_PASS }}
+        run: |
+          # keylatch run injects KEYLATCH_GATEWAY_TOKEN and KEYLATCH_GATEWAY_URL.
+          # The raw credential is never exposed in logs.
+          keylatch run \
+            --clean-env \
+            --runtime gateway_typed \
+            openrouter \
+            -- python3 docs/integration/examples/python/fetch_data.py
+
+      - name: Mask gateway token (belt-and-suspenders)
+        # keylatch run never prints the raw credential, but if you need
+        # to forward the gateway token to another step, mask it first:
+        env:
+          KEYLATCH_VAULT_PASS: ${{ secrets.KEYLATCH_VAULT_PASS }}
+        run: |
+          # Example: extract the token from dry-run JSON output and mask it
+          TOKEN=$(keylatch run --dry-run --json openrouter -- true 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('gateway_token',''))" \
+            || true)
+          if [[ -n "${TOKEN}" ]]; then
+            echo "::add-mask::${TOKEN}"
+          fi

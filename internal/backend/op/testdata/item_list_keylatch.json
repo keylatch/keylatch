@@ -1,0 +1,42 @@
+[
+  {
+    "id": "abc123opitem",
+    "title": "openrouter",
+    "vault": {
+      "id": "vaultid001",
+      "name": "Keylatch"
+    },
+    "category": "API_CREDENTIAL",
+    "urls": [],
+    "fields": [
+      {
+        "id": "field001",
+        "label": "api_key",
+        "type": "CONCEALED",
+        "value": ""
+      }
+    ],
+    "tags": ["keylatch", "ns:default"],
+    "updated_at": "2026-05-11T12:00:00Z"
+  },
+  {
+    "id": "def456opitem",
+    "title": "anthropic",
+    "vault": {
+      "id": "vaultid001",
+      "name": "Keylatch"
+    },
+    "category": "API_CREDENTIAL",
+    "urls": [],
+    "fields": [
+      {
+        "id": "field003",
+        "label": "api_key",
+        "type": "CONCEALED",
+        "value": ""
+      }
+    ],
+    "tags": ["keylatch", "ns:default"],
+    "updated_at": "2026-05-11T11:00:00Z"
+  }
+]

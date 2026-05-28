@@ -1,0 +1,12 @@
+[
+  {
+    "description": "Argon2id KAT: passphrase=password salt=somesalt time=1 memory=65536KiB threads=4 keyLen=32",
+    "time": 1,
+    "memory": 65536,
+    "threads": 4,
+    "key_len": 32,
+    "passphrase": "password",
+    "salt": "somesalt",
+    "expected": "716733ba17477e10c0eac8788a61e795df9c5086d785b7de8e295b910fe9fd4a"
+  }
+]

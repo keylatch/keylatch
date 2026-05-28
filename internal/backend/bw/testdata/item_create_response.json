@@ -1,0 +1,19 @@
+{
+  "id": "bwitem003",
+  "name": "newservice",
+  "type": 1,
+  "folderId": null,
+  "collectionIds": [],
+  "login": {
+    "username": "",
+    "password": ""
+  },
+  "fields": [
+    {
+      "name": "api_key",
+      "value": "",
+      "type": 1
+    }
+  ],
+  "revisionDate": "2026-05-11T13:00:00.000Z"
+}

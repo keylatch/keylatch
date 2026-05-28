@@ -1,0 +1,59 @@
+provider: atlassian
+display_name: Atlassian
+category: work-management
+description: "Atlassian Cloud — Jira, Confluence API tokens."
+docs_url: https://developer.atlassian.com/cloud/jira/platform/rest/v3/
+docs:
+  credentials_url: https://id.atlassian.com/manage-profile/security/api-tokens
+
+secret_fields:
+  - name: api_token
+    label: API Token
+    required: true
+    sensitive: true
+    env_var: ATLASSIAN_API_TOKEN
+    secret_kind: personal_token
+  - name: email
+    label: Account Email
+    required: true
+    sensitive: false
+    env_var: ATLASSIAN_EMAIL
+
+env_mappings:
+  api_token: ATLASSIAN_API_TOKEN
+  email: ATLASSIAN_EMAIL
+
+auth_flow: basic
+
+storage_path_tpl: "{{.Namespace}}/work-management/atlassian/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: issues.read
+    description: Read Jira issues
+  - name: issues.write
+    description: Create and update Jira issues
+  - name: pages.read
+    description: Read Confluence pages
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: ATLASSIAN_API_TOKEN
+    source: api_token
+  - env_var: ATLASSIAN_EMAIL
+    source: email
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.atlassian.com/me
+  expect:
+    status_code: 200
+    markers:
+      - accountId

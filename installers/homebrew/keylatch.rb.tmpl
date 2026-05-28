@@ -1,0 +1,16 @@
+class Keylatch < Formula
+  desc "Zero-trust credential vault CLI for AI-assisted workflows"
+  homepage "https://github.com/keylatch/keylatch"
+  url "https://github.com/keylatch/keylatch/releases/download/v{{.Version}}/keylatch_{{.Version}}_{{.OS}}_{{.Arch}}.tar.gz"
+  sha256 "{{.SHA256}}"
+  license "Apache-2.0"
+  version "{{.Version}}"
+
+  def install
+    bin.install "keylatch"
+  end
+
+  test do
+    system "#{bin}/keylatch", "--version"
+  end
+end

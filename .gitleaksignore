@@ -1,0 +1,12 @@
+# .gitleaksignore — known-safe patterns that gitleaks should not flag.
+# Each line is a SHA256 fingerprint of a finding that has been audited
+# and confirmed safe. Generated format: gitleaks detect --report-format json
+# then hash each finding's fingerprint field.
+#
+# CANARY SENTINELS (internal/canary/canary.go)
+# These KEYLATCH_CANARY_* strings are intentional test sentinels embedded in
+# the binary to detect credential leakage. They are not real secrets.
+# They must live in internal/canary/ and nowhere else (enforced by CI).
+#
+# To add a new entry: run `gitleaks detect --report-format json -r /tmp/report.json`
+# then for each false-positive finding, record its Fingerprint field here.

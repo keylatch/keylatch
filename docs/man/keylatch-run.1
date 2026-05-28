@@ -1,0 +1,71 @@
+.TH KEYLATCH\-RUN 1 "2026-05-17" "keylatch" "Keylatch Manual"
+.SH NAME
+keylatch\-run \- run a command with injected credentials
+.SH SYNOPSIS
+.B keylatch run
+.I connection
+.RB [ \-\-runtime
+.IR mode ]
+.RB [ \-\-dry\-run ]
+.RB [ \-\-clean\-env ]
+.RB [ \-\-extra
+.IR var ]
+.B \-\-
+.I command
+.RI [ args... ]
+.SH DESCRIPTION
+\fBkeylatch run\fR launches \fIcommand\fR with credentials for \fIconnection\fR
+injected via the selected runtime mode. In all modes, raw credential values are
+never returned to the calling process. All four v1.0.0 runtime modes are
+permitted in LLM sessions.
+.SH OPTIONS
+.TP
+.B \-\-runtime \fImode\fR
+Runtime mode for credential exchange. Valid values:
+.RS
+.TP
+.B gateway_typed
+Gateway with typed, schema-validated exchange (default).
+.TP
+.B gateway_sdk
+Gateway with SDK-compatible exchange.
+.TP
+.B direct_brokered
+Direct injection via a trusted broker process. No gateway required.
+.TP
+.B gateway_proxy
+Gateway via local credential proxy (HTTPS MITM).
+.RE
+.TP
+.B \-\-dry\-run
+Print what would be injected without running the command.
+.TP
+.B \-\-clean\-env
+Reduce the child environment to PATH, HOME, USER, SHELL, TERM, LANG, and
+injected credential variables. All other variables are stripped.
+.TP
+.B \-\-extra \fIvar\fR
+Preserve an additional variable when \fI--clean-env\fR is set. Repeatable.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+User error (invalid arguments or configuration).
+.TP
+.B 2
+Security block (LLM session guard prevented execution).
+.TP
+.B 3
+Missing (connection or credential not found).
+.TP
+.B 4
+Backend unavailable.
+.TP
+.B 5
+Operation failed.
+.SH SEE ALSO
+.BR keylatch (1),
+.BR keylatch\-runtime\-doctor (1),
+.BR keylatch\-proxy (1)

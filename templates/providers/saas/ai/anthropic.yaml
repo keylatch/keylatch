@@ -1,0 +1,63 @@
+provider: anthropic
+display_name: Anthropic
+category: ai
+description: "Anthropic Claude AI models — safety-focused large language models."
+docs_url: https://docs.anthropic.com/
+docs:
+  credentials_url: https://console.anthropic.com/settings/keys
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: ANTHROPIC_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: ANTHROPIC_API_KEY
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: x-api-key
+
+storage_path_tpl: "{{.Namespace}}/ai/anthropic/{{.Account}}"
+trust_level: 0
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+    - gateway_sdk
+
+capabilities:
+  - name: chat.completion
+    description: Chat completion via Claude models
+  - name: models.list
+    description: List available Claude models
+
+actions:
+  list-models:
+    method: GET
+    path: /v1/models
+
+allowed_command_prefixes:
+  - "node "
+  - "python3 "
+
+injection_rules:
+  - env_var: ANTHROPIC_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'sk-ant-[A-Za-z0-9\-_]{40,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.anthropic.com/v1/models
+  expect:
+    status_code: 200
+    markers:
+      - data

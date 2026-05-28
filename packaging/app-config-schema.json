@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppConfig",
+  "description": "Keylatch desktop app persistent configuration state",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Config schema version"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "fresh-install-first-update-pending",
+        "fresh-install-update-failed",
+        "running-version",
+        "update-staged",
+        "update-applied"
+      ],
+      "description": "App lifecycle state"
+    },
+    "current_version": {
+      "type": "string",
+      "description": "Currently running keylatch version"
+    },
+    "launch_at_login": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether keylatch launches at OS login (per-user, no elevation required)"
+    },
+    "last_update_check": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the last update manifest fetch"
+    },
+    "previous_version": {
+      "type": "string",
+      "description": "Version in the rollback slot (must have a cosign-verified manifest fragment)"
+    },
+    "staged_version": {
+      "type": "string",
+      "description": "Version currently staged for apply"
+    },
+    "fresh_install_heartbeat_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the first successful update heartbeat after install"
+    }
+  },
+  "required": ["version", "state", "launch_at_login"],
+  "additionalProperties": false
+}

@@ -1,0 +1,55 @@
+provider: anthropic-beta
+display_name: Anthropic (Beta)
+category: ai
+description: "Anthropic Claude API with access to beta features and models."
+docs_url: https://docs.anthropic.com/
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: ANTHROPIC_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: ANTHROPIC_API_KEY
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: x-api-key
+
+storage_path_tpl: "{{.Namespace}}/ai/anthropic-beta/{{.Account}}"
+trust_level: 0
+
+runtime_support:
+  preferred: gateway_sdk
+  supported:
+    - gateway_sdk
+    - direct_brokered
+
+capabilities:
+  - name: chat.completion
+    description: Chat completions via Claude models
+
+gateway_actions:
+  - name: messages
+    description: Claude Messages API (including beta models)
+    method: POST
+    sdk_path: /v1/messages
+    upstream_path: /v1/messages
+
+injection_rules:
+  - env_var: ANTHROPIC_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'sk-ant-[A-Za-z0-9_\-]{20,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.anthropic.com/v1/models
+  expect:
+    status_code: 200

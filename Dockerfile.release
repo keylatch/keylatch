@@ -1,0 +1,23 @@
+# Keylatch CLI release container — consumes a pre-built binary.
+#
+# This Dockerfile is used by goreleaser's `dockers` stanza. Goreleaser
+# builds the keylatch binary on the host runner (with reproducible
+# ldflags) and stages it into the build context as `keylatch`; this
+# Dockerfile copies that binary into a distroless image and sets the
+# entrypoint.
+#
+# Do NOT build this manually with `docker build` — the binary will be
+# missing. For local development use the source-build Dockerfile at
+# the repo root instead.
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY keylatch /keylatch
+
+USER nonroot:nonroot
+ENTRYPOINT ["/keylatch"]
+
+LABEL org.opencontainers.image.title="keylatch"
+LABEL org.opencontainers.image.description="Zero-trust credential vault CLI for AI-assisted workflows"
+LABEL org.opencontainers.image.source="https://github.com/keylatch/keylatch"
+LABEL org.opencontainers.image.licenses="Apache-2.0"

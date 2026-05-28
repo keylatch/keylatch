@@ -1,0 +1,86 @@
+name: Publish Registry Bundles
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'templates/providers/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-community-bundle:
+    permissions:
+      contents: read
+      id-token: write # Required for keyless OIDC signing via Fulcio (default path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.5.0'
+
+      - name: assemble community bundle
+        run: |
+          mkdir -p dist/provider-bundles
+          go run ./scripts/assemble-community-bundle.go \
+            --templates-dir templates/providers/community \
+            --output dist/provider-bundles/community.json
+
+      - name: sign community bundle (keyless OIDC)
+        if: env.REGISTRY_COSIGN_USE_KEYED != '1'
+        run: |
+          cosign sign-blob --yes \
+            --output-signature dist/provider-bundles/community.json.sig \
+            --output-certificate dist/provider-bundles/community.json.cert \
+            dist/provider-bundles/community.json
+          echo "Bundle signed with keyless OIDC (Fulcio + Rekor)"
+
+      - name: sign community bundle (keyed ECDSA-P256)
+        if: env.REGISTRY_COSIGN_USE_KEYED == '1'
+        env:
+          REGISTRY_COSIGN_PRIVATE_KEY: ${{ secrets.REGISTRY_COSIGN_PRIVATE_KEY }}
+          REGISTRY_COSIGN_PASSWORD: ${{ secrets.REGISTRY_COSIGN_PASSWORD }}
+        run: |
+          bash scripts/sign-provider-bundle.sh dist/provider-bundles/
+
+      - name: verify bundle signature (keyless OIDC)
+        if: env.REGISTRY_COSIGN_USE_KEYED != '1'
+        run: |
+          cosign verify-blob \
+            --certificate dist/provider-bundles/community.json.cert \
+            --signature dist/provider-bundles/community.json.sig \
+            --certificate-identity-regexp="https://github.com/keylatch/keylatch/.github/workflows/publish-registry.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            dist/provider-bundles/community.json
+          echo "Bundle signature verified (keyless)"
+
+      - name: verify bundle signature (keyed ECDSA-P256)
+        if: env.REGISTRY_COSIGN_USE_KEYED == '1'
+        run: |
+          if [[ -s dist/provider-bundles/community.json.sig ]]; then
+            cosign verify-blob \
+              --key internal/registry/cosign.pub \
+              --signature dist/provider-bundles/community.json.sig \
+              dist/provider-bundles/community.json
+            echo "Bundle signature verified (keyed)"
+          else
+            echo "::warning::Signature file empty — skipping verify (no key configured)"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: community-bundle
+          path: |
+            dist/provider-bundles/community.json
+            dist/provider-bundles/community.json.sig
+            dist/provider-bundles/community.json.cert
+          retention-days: 30

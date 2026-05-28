@@ -1,0 +1,96 @@
+provider: openai
+display_name: OpenAI
+category: ai
+description: "OpenAI GPT models and APIs."
+docs_url: https://platform.openai.com/docs
+docs:
+  credentials_url: https://platform.openai.com/api-keys
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: OPENAI_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: OPENAI_API_KEY
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/ai/openai/{{.Account}}"
+trust_level: 0
+
+runtime_support:
+  preferred: gateway_sdk
+  supported:
+    - gateway_sdk
+    - gateway_typed
+
+sdk_compat:
+  language: javascript
+  package: openai
+
+capabilities:
+  - name: chat.completion
+    description: Chat completion via GPT models
+  - name: embeddings.generate
+    description: Generate text embeddings
+  - name: models.list
+    description: List available models
+
+actions:
+  list-models:
+    method: GET
+    path: /v1/models
+  list-files:
+    method: GET
+    path: /v1/files
+
+gateway_actions:
+  - name: chat_completion
+    description: Chat completions
+    sdk_path: /v1/chat/completions
+    method: POST
+    upstream_path: /v1/chat/completions
+  - name: responses
+    description: Responses API
+    sdk_path: /v1/responses
+    method: POST
+    upstream_path: /v1/responses
+  - name: embeddings
+    description: Generate embeddings
+    sdk_path: /v1/embeddings
+    method: POST
+    upstream_path: /v1/embeddings
+  - name: model_listing
+    description: List available models
+    sdk_path: /v1/models
+    method: GET
+    upstream_path: /v1/models
+
+allowed_command_prefixes:
+  - "node "
+  - "python3 "
+  - "tsx "
+
+injection_rules:
+  - env_var: OPENAI_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'sk-[A-Za-z0-9_\-]{32,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.openai.com/v1/models
+  expect:
+    status_code: 200
+    markers:
+      - data

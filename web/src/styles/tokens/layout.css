@@ -1,0 +1,42 @@
+/* Layout / Spacing tokens */
+
+:root {
+  /* Spacing scale (space-0..space-8; space-9 and space-10 intentionally absent) */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+
+  /* Border radius */
+  --radius-sm:   0.25rem;
+  --radius-md:   0.375rem;
+  --radius-lg:   0.5rem;
+  --radius-xl:   0.75rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px oklch(0.2 0.01 220 / 0.06);
+  --shadow-sm: 0 1px 3px oklch(0.2 0.01 220 / 0.10), 0 1px 2px oklch(0.2 0.01 220 / 0.06);
+  --shadow-md: 0 4px 6px oklch(0.2 0.01 220 / 0.07), 0 2px 4px oklch(0.2 0.01 220 / 0.06);
+  --shadow-lg: 0 10px 15px oklch(0.2 0.01 220 / 0.10), 0 4px 6px oklch(0.2 0.01 220 / 0.05);
+
+  /* Layout constants */
+  --sidebar-width:   220px;
+  --topbar-height:    56px;
+  --wizard-max-width: 560px;
+  --content-max:     1200px;
+
+  /* Z-index scale */
+  --z-base:           1;
+  --z-sticky:         100;
+  --z-drawer-underlay: 199;
+  --z-drawer:         200;
+  --z-overlay:        300;
+  --z-modal:          400;
+  --z-toast:          500;
+}

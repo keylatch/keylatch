@@ -1,0 +1,61 @@
+provider: twilio
+display_name: Twilio
+category: communication
+description: "Twilio communications platform — Account SID and Auth Token."
+docs_url: https://www.twilio.com/docs/usage/api
+docs:
+  credentials_url: https://www.twilio.com/docs/usage/api/account
+
+secret_fields:
+  - name: account_sid
+    label: Account SID
+    required: true
+    sensitive: false
+    env_var: TWILIO_ACCOUNT_SID
+  - name: auth_token
+    label: Auth Token
+    required: true
+    sensitive: true
+    env_var: TWILIO_AUTH_TOKEN
+    secret_kind: api_key
+
+env_mappings:
+  account_sid: TWILIO_ACCOUNT_SID
+  auth_token: TWILIO_AUTH_TOKEN
+
+auth_flow: basic
+
+storage_path_tpl: "{{.Namespace}}/communication/twilio/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: sms.send
+    description: Send SMS messages
+  - name: voice.call
+    description: Make and receive voice calls
+  - name: messaging.verify
+    description: Verify phone numbers via OTP
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: TWILIO_ACCOUNT_SID
+    source: account_sid
+  - env_var: TWILIO_AUTH_TOKEN
+    source: auth_token
+
+redaction:
+  - pattern: 'SK[a-f0-9]{32}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.twilio.com/2010-04-01/Accounts.json
+  expect:
+    status_code: 200

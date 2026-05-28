@@ -1,0 +1,58 @@
+provider: supabase-service-role
+display_name: Supabase Service Role
+category: storage
+description: "Supabase service role key for server-side operations."
+docs_url: https://supabase.com/docs/guides/api
+
+secret_fields:
+  - name: service_role_key
+    label: Service Role Key
+    required: true
+    sensitive: true
+    env_var: SUPABASE_SERVICE_ROLE_KEY
+    secret_kind: bearer_token
+
+env_mappings:
+  service_role_key: SUPABASE_SERVICE_ROLE_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/storage/supabase-service-role/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_sdk
+  supported:
+    - gateway_sdk
+    - direct_brokered
+
+capabilities:
+  - name: db.query
+    description: Query Supabase database via REST API
+  - name: auth.admin
+    description: Supabase admin authentication operations
+
+gateway_actions:
+  - name: rest
+    description: Access Supabase REST API
+    method: GET
+    sdk_path: /rest/v1/
+    upstream_path: /rest/v1/
+
+injection_rules:
+  - env_var: SUPABASE_SERVICE_ROLE_KEY
+    source: service_role_key
+
+redaction:
+  - pattern: 'eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.supabase.com/v1/projects
+  expect:
+    status_code: 200

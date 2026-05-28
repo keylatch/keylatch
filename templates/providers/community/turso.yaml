@@ -1,0 +1,56 @@
+provider: turso
+display_name: Turso
+category: storage
+description: "Turso edge database powered by libSQL."
+docs_url: https://docs.turso.tech/api-reference
+
+secret_fields:
+  - name: auth_token
+    label: Auth Token
+    required: true
+    sensitive: true
+    env_var: TURSO_AUTH_TOKEN
+    secret_kind: bearer_token
+
+env_mappings:
+  auth_token: TURSO_AUTH_TOKEN
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/storage/turso/{{.Account}}"
+trust_level: 1
+
+runtime_support:
+  preferred: gateway_sdk
+  supported:
+    - gateway_sdk
+    - direct_brokered
+
+capabilities:
+  - name: db.query
+    description: Execute SQL queries against a Turso database
+
+gateway_actions:
+  - name: query
+    description: Execute a SQL query on a Turso database
+    method: POST
+    sdk_path: /v1/organizations/{org}/databases/{database}/query
+    upstream_path: /v1/organizations/{org}/databases/{database}/query
+
+injection_rules:
+  - env_var: TURSO_AUTH_TOKEN
+    source: auth_token
+
+redaction:
+  - pattern: 'Bearer [A-Za-z0-9_\-]{20,}'
+    replacement: "Bearer ****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.turso.tech/v1/organizations
+  expect:
+    status_code: 200

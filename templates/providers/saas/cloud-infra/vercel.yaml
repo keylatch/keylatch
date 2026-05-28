@@ -1,0 +1,56 @@
+provider: vercel
+display_name: Vercel
+category: cloud-infra
+description: "Vercel deployment platform — access tokens."
+docs_url: https://vercel.com/docs/rest-api
+docs:
+  credentials_url: https://vercel.com/account/tokens
+
+secret_fields:
+  - name: api_token
+    label: Access Token
+    required: true
+    sensitive: true
+    env_var: VERCEL_TOKEN
+    secret_kind: personal_token
+
+env_mappings:
+  api_token: VERCEL_TOKEN
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/cloud-infra/vercel/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: deployments.read
+    description: List and inspect deployments
+  - name: deployments.create
+    description: Create new deployments
+  - name: projects.read
+    description: Read project configuration
+
+allowed_command_prefixes:
+  - "npx "
+  - "vercel "
+
+injection_rules:
+  - env_var: VERCEL_TOKEN
+    source: api_token
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.vercel.com/v2/user
+  expect:
+    status_code: 200
+    markers:
+      - id

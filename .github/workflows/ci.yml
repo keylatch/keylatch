@@ -1,0 +1,419 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: gofmt -l . | (! grep .)
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+          golangci-lint run --config=.golangci.yml --timeout=10m
+
+  policy-lint:
+    # policy-lint bundles complementary policy checks:
+    #
+    # env-docs: T-08-03 (EPIC-08) — every KEYLATCH_* env var read in production Go
+    # source must have an entry in docs/cli/environment.md.
+    #
+    # frontend-policy (safecopy-regex): T-13-04 (EPIC-13) — SafeCopyButton TOKEN_REGEX
+    # must cover all provider key prefixes.
+    #
+    # frontend-policy (callmeta-fields): T-13-06 (EPIC-13) — callMeta struct fields
+    # must be covered by callMetaAllowedFields.
+    #
+    # audit-perms: T-11-02 (S-FIND-14, EPIC-06) — audit salt file must be 0600 and
+    # its directory must be 0700. Fails if permissions are relaxed.
+    #
+    # Rename from env-docs-lint: the job covers multiple distinct policy domains;
+    # "policy-lint" makes failure attribution clearer in the CI summary.
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: lint-env-docs
+        run: bash scripts/lint-env-docs.sh
+      - name: lint-safecopy-regex
+        run: bash scripts/lint-safecopy-regex.sh
+      - name: lint-callmeta-fields
+        run: bash scripts/lint-callmeta-fields.sh
+      - name: lint-docs-no-secrets
+        # EPIC-02 Task 5: guard against insecure secret-in-argv examples in docs.
+        run: bash scripts/lint-docs-no-secrets.sh
+      - name: lint-audit-perms
+        # EPIC-06 S-FIND-14: assert salt file is 0600 and directory is 0700.
+        # The script skips gracefully when the salt file does not exist yet
+        # (e.g. bootstrap has not been run on this CI runner). It will FAIL
+        # if the salt file exists with relaxed permissions — verifying that
+        # chmod 0644/0755 is caught before merge.
+        run: bash scripts/lint-audit-perms.sh
+      - name: lint-no-production-todos
+        run: bash scripts/lint-no-production-todos.sh
+
+  go-test:
+    needs: lint
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run tests with coverage
+        shell: bash
+        env:
+          KEYLATCH_BACKEND: file
+        run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 120s
+      - name: Check coverage threshold
+        run: bash release-gates/coverage-threshold.sh coverage.out
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.os }}
+          path: coverage.out
+          retention-days: 7
+      - name: go test crypto
+        run: go test -run TestCrypto -v ./internal/crypto/...
+      - name: go test canary
+        run: go test -run TestCanary -v ./internal/canary/...
+      - name: go test canary meta
+        run: go test -tags meta ./internal/canary/...
+
+  bootstrap-smoke:
+    # EPIC-11 Task 3: clean-machine smoke test for the bootstrap onboarding flow.
+    # Verifies the three first-run guards (exit 7 → bootstrap → exit 6 → setup → exit 5|0).
+    # Runs on ubuntu-latest only; macOS behaviour is covered by go-test matrix.
+    needs: go-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: bootstrap smoke test
+        run: bash packaging/ci/test-clean-machine-bootstrap.sh
+
+  receipts-canary:
+    # EPIC-16: S-RM-9 canary scan — verifies that credential bytes never appear
+    # in any receipt output channel (GET /v1/receipts or keylatch receipts list).
+    needs: go-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: receipts credential-leak canary scan
+        env:
+          KEYLATCH_BACKEND: file
+        run: bash packaging/ci/test-receipts-no-credential-leak.sh
+
+  go-mod-tidy:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go mod tidy
+        run: go mod tidy
+      - name: check drift
+        run: |
+          git diff --exit-code go.mod go.sum || {
+            echo "go.mod/go.sum drift detected — run 'go mod tidy' locally and commit the result"
+            exit 1
+          }
+
+  frontend:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: bun install
+        run: cd web && bun install --frozen-lockfile
+      - name: type-check
+        run: cd web && bun run type-check
+      - name: test
+        run: cd web && bun run test
+      - name: build
+        run: cd web && bun run build
+      - name: verify bundle
+        run: bash web/scripts/verify-bundle.sh
+
+  desktop-lint:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: S14-8 IPC allowlist
+        run: bash packaging/ci/lint-ipc-methods.sh
+      - name: S14-6 notification fields
+        run: bash packaging/ci/lint-notification-fields.sh
+      - name: S14-14 secret-in-storage
+        run: bash packaging/ci/scan-no-secret-in-storage.sh
+
+  tauri-build:
+    needs: desktop-lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-directories: ~/.cargo/bin
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: bun install
+        run: cd web && bun install --frozen-lockfile
+      - name: build web assets
+        run: cd web && bun run build
+      - name: build keylatchd sidecar
+        run: go build -o src-tauri/binaries/keylatchd-aarch64-apple-darwin ./cmd/keylatchd
+      - name: install cargo-binstall (downloads prebuilt tauri-cli, no Rust compilation)
+        uses: cargo-bins/cargo-binstall@main
+      - name: install tauri-cli binary
+        run: cargo binstall tauri-cli --version "^2" --no-confirm --locked
+      - name: verify updater pubkey matches signing secret
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: go run scripts/check-tauri-pubkey.go
+      - name: Build Tauri app
+        run: cd src-tauri && cargo tauri build --no-bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+  tauri-build-windows:
+    needs: desktop-lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+      - name: install frontend deps
+        run: bun install
+        working-directory: web
+      - name: build web assets
+        run: bun run build
+        working-directory: web
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Cache ~/.cargo/bin so tauri-cli binary persists between runs
+          cache-directories: ~/.cargo/bin
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build keylatchd sidecar
+        run: go build -o src-tauri/binaries/keylatchd-x86_64-pc-windows-msvc.exe ./cmd/keylatchd
+      - name: install cargo-binstall (downloads prebuilt tauri-cli, no Rust compilation)
+        uses: cargo-bins/cargo-binstall@main
+      - name: install tauri-cli binary
+        run: cargo binstall tauri-cli --version "^2" --no-confirm --locked
+      - name: verify updater pubkey matches signing secret
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: go run scripts/check-tauri-pubkey.go
+      - name: tauri build (no-bundle, windows)
+        run: cargo tauri build --no-bundle
+        working-directory: src-tauri
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  hook-test:
+    needs: lint
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: verify hook exists
+        run: stat contrib/agent-guards/claude-code/block-keylatch-exfiltration.sh
+      - name: run hook test
+        run: bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh
+
+  smoke:
+    needs: lint
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: go build -o $RUNNER_TEMP/keylatch ./cmd/keylatch
+      - name: smoke
+        run: |
+          SMOKE_HOME=$(mktemp -d)
+          HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch bootstrap --dry-run --json
+          HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch bootstrap
+          DOCTOR_DIR=$(mktemp -d)
+          doctor_exit=0
+          (cd "$DOCTOR_DIR" && HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch doctor --json) || doctor_exit=$?
+          if [ "$doctor_exit" -ge 2 ]; then exit "$doctor_exit"; fi
+          $RUNNER_TEMP/keylatch --help
+
+  binary-size:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build stripped
+        run: go build -ldflags="-s -w" -trimpath -o $RUNNER_TEMP/keylatch ./cmd/keylatch
+      - name: check size
+        run: bash scripts/ci/check-binary-size.sh $RUNNER_TEMP/keylatch
+
+  integration:
+    name: Integration (mock backend)
+    needs: [lint, go-test]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run integration tests
+        shell: bash
+        run: go test -tags=integration -race -count=1 ./internal/integration/...
+
+  validate-provider-templates:
+    name: Validate provider templates
+    needs: [lint, go-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build keylatch binary
+        run: go build -buildvcs=false -o $RUNNER_TEMP/keylatch ./cmd/keylatch
+      - name: Validate provider YAML templates
+        run: bash release-gates/provider-template-validate.sh $RUNNER_TEMP/keylatch
+
+  gateway-e2e:
+    name: Gateway E2E (EPIC-04)
+    needs: [lint, go-test]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run gateway E2E tests
+        run: bash packaging/ci/test-gateway-end-to-end.sh
+      - name: S-INV-4a canary leak scan (EPIC-05)
+        run: bash packaging/ci/test-s-inv-4a-no-canary-leak.sh
+      - name: External store reference roundtrip (EPIC-10)
+        run: bash packaging/ci/test-external-ref-roundtrip.sh
+
+  operating-modes:
+    name: Operating Modes (EPIC-17)
+    needs: [lint, go-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run operating-mode integration tests
+        env:
+          KEYLATCH_BACKEND: file
+        run: bash packaging/ci/test-operating-modes.sh
+
+  telemetry-canary:
+    # EPIC-18: S-TEL-1 canary scan — verifies that credential bytes never appear
+    # in any telemetry event body emitted to the remote sink.
+    name: Telemetry credential-leak canary (EPIC-18)
+    needs: go-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: telemetry credential-leak canary scan
+        env:
+          KEYLATCH_BACKEND: file
+        run: bash packaging/ci/test-telemetry-no-credential-leak.sh
+
+  docs-build:
+    # Path-conditional: only runs when docs/ or examples/ change.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - 'examples/**'
+      - uses: oven-sh/setup-bun@v2
+        if: steps.filter.outputs.docs == 'true' || github.event_name == 'push'
+        with:
+          bun-version: '1.3.14'
+      - name: bun install
+        if: steps.filter.outputs.docs == 'true' || github.event_name == 'push'
+        run: cd web && bun install --frozen-lockfile
+      - name: docs build
+        if: steps.filter.outputs.docs == 'true' || github.event_name == 'push'
+        run: cd web && bun run docs:build

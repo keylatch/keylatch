@@ -1,0 +1,55 @@
+provider: sendgrid
+display_name: SendGrid
+category: email
+description: "Twilio SendGrid email delivery — API keys."
+docs_url: https://docs.sendgrid.com/api-reference
+docs:
+  credentials_url: https://app.sendgrid.com/settings/api_keys
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: SENDGRID_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: SENDGRID_API_KEY
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/email/sendgrid/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: emails.send
+    description: Send transactional and marketing emails
+  - name: stats.read
+    description: Read email statistics
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: SENDGRID_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'SG\.[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]{40,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.sendgrid.com/v3/user/account
+  expect:
+    status_code: 200

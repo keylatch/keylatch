@@ -1,0 +1,55 @@
+provider: elevenlabs
+display_name: ElevenLabs
+category: ai
+description: "ElevenLabs text-to-speech and voice AI API."
+docs_url: https://elevenlabs.io/docs/api-reference
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: ELEVENLABS_API_KEY
+    secret_kind: api_key
+
+env_mappings:
+  api_key: ELEVENLABS_API_KEY
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: xi-api-key
+
+storage_path_tpl: "{{.Namespace}}/ai/elevenlabs/{{.Account}}"
+trust_level: 0
+
+runtime_support:
+  preferred: gateway_sdk
+  supported:
+    - gateway_sdk
+    - direct_brokered
+
+capabilities:
+  - name: tts.synthesize
+    description: Text-to-speech synthesis
+
+gateway_actions:
+  - name: tts
+    description: Convert text to speech
+    method: POST
+    sdk_path: /v1/text-to-speech/{voice_id}
+    upstream_path: /v1/text-to-speech/{voice_id}
+
+injection_rules:
+  - env_var: ELEVENLABS_API_KEY
+    source: api_key
+
+redaction:
+  - pattern: 'xi-api-key: [A-Za-z0-9_\-]{20,}'
+    replacement: "xi-api-key: ****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.elevenlabs.io/v1/user
+  expect:
+    status_code: 200

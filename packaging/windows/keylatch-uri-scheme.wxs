@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  keylatch-uri-scheme.wxs — WiX fragment to register the keylatch:// URI scheme
+  under HKCU (per-user) on Windows.
+
+  S14-10: registration is per-user (HKCU), not system-wide (HKLM), so no
+  administrator elevation is required.
+
+  This fragment is included by the main WiX product file during MSI/NSIS
+  packaging. If Tauri's built-in URI scheme registration is sufficient, this
+  file can be omitted; it exists as an explicit override for edge cases where
+  the built-in registration targets HKLM.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <ComponentGroup Id="KeylatchURIScheme" Directory="TARGETDIR">
+      <Component Id="KeylatchURISchemeReg" Guid="{A3F2B1C4-DE21-4A5B-9F3D-8E7C6B2A1D90}">
+        <!-- HKCU\Software\Classes\keylatch — per-user, no elevation (S14-10) -->
+        <RegistryKey Root="HKCU"
+                     Key="Software\Classes\keylatch"
+                     Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="string" Value="URL:Keylatch Protocol" />
+          <RegistryValue Name="URL Protocol" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKCU"
+                     Key="Software\Classes\keylatch\shell\open\command"
+                     Action="createAndRemoveOnUninstall">
+          <!-- [INSTALLFOLDER] is the WiX placeholder for the install directory. -->
+          <RegistryValue Type="string"
+                         Value="&quot;[INSTALLFOLDER]keylatch-app.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

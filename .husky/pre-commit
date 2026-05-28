@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run go vet on staged Go files.
+go vet ./... || exit 1
+
+# Enforce canary sentinel discipline: KEYLATCH_CANARY_ must not appear in
+# non-test, non-canary production Go files.
+if git diff --cached --name-only | grep '\.go$' | grep -v '_test\.go' | grep -v 'internal/canary/' | xargs grep -l 'KEYLATCH_CANARY_' 2>/dev/null; then
+  echo "pre-commit: KEYLATCH_CANARY_ sentinel found in production Go source — aborting" >&2
+  exit 1
+fi
+
+# Schema-validate any staged provider templates.
+if git diff --cached --name-only | grep '^templates/providers/.*\.yaml$'; then
+  go run ./internal/cmd/registry/... validate templates/providers/ || exit 1
+fi

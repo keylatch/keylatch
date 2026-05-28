@@ -1,0 +1,64 @@
+provider: datadog
+display_name: Datadog
+category: observability
+description: "Datadog monitoring — API key and application key pair."
+docs_url: https://docs.datadoghq.com/api/latest/
+docs:
+  credentials_url: https://docs.datadoghq.com/account_management/api-app-keys/
+
+secret_fields:
+  - name: api_key
+    label: API Key
+    required: true
+    sensitive: true
+    env_var: DD_API_KEY
+    secret_kind: api_key
+  - name: app_key
+    label: Application Key
+    required: false
+    sensitive: true
+    env_var: DD_APP_KEY
+    secret_kind: personal_token
+
+env_mappings:
+  api_key: DD_API_KEY
+  app_key: DD_APP_KEY
+
+auth_flow: api_key
+auth_placement:
+  in: header
+  name: DD-API-KEY
+
+storage_path_tpl: "{{.Namespace}}/observability/datadog/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: metrics.submit
+    description: Submit custom metrics
+  - name: logs.send
+    description: Send log entries
+  - name: monitors.read
+    description: Read monitor status
+
+allowed_command_prefixes:
+  - "node "
+  - "ddtrace-run "
+
+injection_rules:
+  - env_var: DD_API_KEY
+    source: api_key
+  - env_var: DD_APP_KEY
+    source: app_key
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.datadoghq.com/api/v1/validate
+  expect:
+    status_code: 200
+    markers:
+      - valid

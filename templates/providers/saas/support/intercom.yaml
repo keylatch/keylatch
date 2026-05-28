@@ -1,0 +1,55 @@
+provider: intercom
+display_name: Intercom
+category: support
+description: "Intercom customer messaging — access tokens."
+docs_url: https://developers.intercom.com/docs/references
+docs:
+  credentials_url: https://developers.intercom.com/docs/build-an-integration/getting-started
+
+secret_fields:
+  - name: access_token
+    label: Access Token
+    required: true
+    sensitive: true
+    env_var: INTERCOM_ACCESS_TOKEN
+    secret_kind: bearer_token
+
+env_mappings:
+  access_token: INTERCOM_ACCESS_TOKEN
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/support/intercom/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: conversations.read
+    description: Read customer conversations
+  - name: conversations.write
+    description: Reply to conversations
+  - name: contacts.read
+    description: Read contact profiles
+
+allowed_command_prefixes:
+  - "node "
+
+injection_rules:
+  - env_var: INTERCOM_ACCESS_TOKEN
+    source: access_token
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.intercom.io/me
+  expect:
+    status_code: 200
+    markers:
+      - id

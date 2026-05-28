@@ -1,0 +1,71 @@
+provider: stripe
+display_name: Stripe
+category: payments
+description: "Stripe payment processing — secret key, restricted keys, and webhook signing secret."
+docs_url: https://stripe.com/docs/api
+docs:
+  credentials_url: https://stripe.com/docs/keys
+
+secret_fields:
+  - name: secret_key
+    label: Secret Key
+    required: true
+    sensitive: true
+    env_var: STRIPE_SECRET_KEY
+    secret_kind: api_key
+  - name: webhook_signing_secret
+    label: Webhook Signing Secret
+    required: false
+    sensitive: true
+    env_var: STRIPE_WEBHOOK_SIGNING_SECRET
+    secret_kind: webhook_signing_secret
+
+env_mappings:
+  secret_key: STRIPE_SECRET_KEY
+  webhook_signing_secret: STRIPE_WEBHOOK_SIGNING_SECRET
+
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+
+storage_path_tpl: "{{.Namespace}}/payments/stripe/{{.Account}}"
+trust_level: 3
+
+runtime_support:
+  preferred: gateway_typed
+  supported:
+    - gateway_typed
+
+capabilities:
+  - name: payments.read
+    description: Read payment intents and charges
+  - name: payments.create
+    description: Create payment intents
+  - name: customers.manage
+    description: Manage customer records
+  - name: webhooks.receive
+    description: Verify and process webhook events
+
+allowed_command_prefixes:
+  - "node "
+  - "stripe "
+
+injection_rules:
+  - env_var: STRIPE_SECRET_KEY
+    source: secret_key
+  - env_var: STRIPE_WEBHOOK_SIGNING_SECRET
+    source: webhook_signing_secret
+
+redaction:
+  - pattern: 'sk_(?:live|test)_[A-Za-z0-9]{20,}'
+    replacement: "****"
+  - pattern: 'whsec_[A-Za-z0-9+/=]{30,}'
+    replacement: "****"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://api.stripe.com/v1/balance
+  expect:
+    status_code: 200

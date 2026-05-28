@@ -1,0 +1,29 @@
+.TH KEYLATCH\-RUNTIME\-DOCTOR 1 "2026-05-13" "keylatch" "Keylatch Manual"
+.SH NAME
+keylatch\-runtime\-doctor \- diagnose runtime mode configuration and gateway connectivity
+.SH SYNOPSIS
+.B keylatch runtime doctor
+.RB [ \-\-json ]
+.SH DESCRIPTION
+\fBkeylatch runtime doctor\fR runs a series of checks to diagnose the runtime
+mode configuration, gateway reachability, and credential broker status. It
+reports which runtime modes are available and why certain modes may be
+restricted in the current environment.
+.SH OPTIONS
+.TP
+.B \-\-json
+Output the diagnostic report as a JSON object.
+.SH EXIT STATUS
+.TP
+.B 0
+All checks passed.
+.TP
+.B 1
+At least one check failed.
+.TP
+.B 5
+Operation failed (internal error).
+.SH SEE ALSO
+.BR keylatch (1),
+.BR keylatch\-run (1),
+.BR keylatch\-proxy (1)
