@@ -19,7 +19,7 @@ interface ProviderListProps {
  */
 export function ProviderList({
   connections,
-  onAddProvider,
+  onAddProvider: _onAddProvider,
   onEditProvider,
   onDeleteProvider,
 }: ProviderListProps) {

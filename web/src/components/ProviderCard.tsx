@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ProviderBadge } from './ProviderBadge'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -100,13 +99,6 @@ function useDoctorHealth(provider: string) {
   return { health, checks }
 }
 
-// ── FieldModeBadge ────────────────────────────────────────────────────────────
-
-interface FieldModeBadgeProps {
-  name: string
-  mode: 'direct' | 'reference'
-  uri?: string
-}
 
 const SCHEME_LABELS: Record<string, string> = {
   keychain:   'Keychain',

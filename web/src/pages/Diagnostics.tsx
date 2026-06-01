@@ -156,12 +156,6 @@ export function Diagnostics() {
           ? 'Errors detected'
           : null
 
-  const overallColor =
-    overallExit === 0
-      ? 'text-emerald-700'
-      : overallExit === 1
-        ? 'text-amber-700'
-        : 'text-destructive'
 
   return (
     <div className="space-y-6">

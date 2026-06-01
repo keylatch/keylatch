@@ -12,7 +12,6 @@ import { useState, useEffect } from 'react'
 import { FieldInput } from './FieldInput'
 import type { PMScheme } from './FieldInput'
 import { PMBrowseBody, PM_LABELS } from './PMBrowseModal'
-import { WizardStepper } from './WizardStepper'
 import { ProviderBadge } from './ProviderBadge'
 import {
   Sheet,
@@ -68,10 +67,6 @@ interface ProviderWizardProps {
   onClose: () => void
 }
 
-const WIZARD_STEPS = [
-  { label: 'Choose provider' },
-  { label: 'Configure fields' },
-]
 
 /**
  * ProviderWizard — two-step dialog for adding a provider connection.

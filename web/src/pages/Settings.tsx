@@ -93,7 +93,7 @@ export function Settings() {
   const [activeBackend, setActiveBackend] = useState<string>('')
   const [pendingBackend, setPendingBackend] = useState<string | null>(null)
   const [backendSwitching, setBackendSwitching] = useState(false)
-  const [backendDone, setBackendDone] = useState<string | null>(null)
+  const [_backendDone, setBackendDone] = useState<string | null>(null)
   const [backendError, setBackendError] = useState<string | null>(null)
   const retryControllerRef = useRef<AbortController | null>(null)
 

@@ -10,7 +10,6 @@
  */
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -97,7 +96,7 @@ export function FieldInput({
   onModeChange,
   onValueChange,
   onUriChange,
-  onBrowseRequest,
+  onBrowseRequest: _onBrowseRequest,
 }: FieldInputProps) {
   const [browseScheme, setBrowseScheme] = useState<PMScheme>('op')
 
@@ -110,15 +109,6 @@ export function FieldInput({
     ? PM_OPTIONS.filter((opt) => availablePMs[opt.scheme])
     : PM_OPTIONS
 
-  const handleBrowseClick = () => {
-    // Determine scheme from current URI prefix, default to first visible scheme or 'op'.
-    let scheme: PMScheme = visiblePMs[0]?.scheme ?? 'op'
-    if (uri.startsWith('aws-sm://')) scheme = 'aws_sm'
-    else if (uri.startsWith('hashivault://')) scheme = 'hashivault'
-    else if (uri.startsWith('op://')) scheme = 'op'
-    setBrowseScheme(scheme)
-    onBrowseRequest?.(scheme)
-  }
 
   return (
     <div className="flex flex-col gap-1.5" data-field={fieldName}>
