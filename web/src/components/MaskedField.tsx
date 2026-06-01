@@ -99,7 +99,7 @@ export function MaskedField({
         ) : (
           <>
             <span
-              className="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-disabled)] tracking-widest"
+              className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground tracking-widest"
               aria-hidden="true"
             >
               ••••••••

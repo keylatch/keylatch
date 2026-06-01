@@ -8,7 +8,9 @@ interface ReceiptCardProps {
 }
 
 /**
- * ReceiptCard — displays a single runtime receipt in the activity timeline.
+ * ReceiptCard — single row in the activity timeline.
+ *
+ * Renders as a compact flex row: status dot | provider | capability | runtime badge | TTL | outcome.
  *
  * Security invariants (S-RM-9):
  *   - Renders only provider, capability, runtime mode, timestamp, and exit code.
@@ -23,43 +25,53 @@ export function ReceiptCard({ receipt, className }: ReceiptCardProps) {
   return (
     <div
       role="listitem"
+      aria-label={`Receipt: ${receipt.provider} ${receipt.capability}`}
       className={cn(
-        'rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-3',
+        'flex items-center gap-3 px-3 py-2.5',
         className
       )}
-      aria-label={`Receipt: ${receipt.provider} ${receipt.capability}`}
     >
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-[var(--color-text-primary)]">
-          {receipt.provider}
-        </span>
-        <span className="text-sm text-[var(--color-text-secondary)]">
-          {receipt.capability}
-        </span>
-        <span
-          className={cn(
-            'ml-auto text-xs font-semibold',
-            passed ? 'text-[var(--color-success-dark)]' : 'text-[var(--color-danger-dark)]'
-          )}
-          aria-label={passed ? 'Pass' : 'Fail'}
-        >
-          {passed ? '✓' : '✗'}
-        </span>
-      </div>
-
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="text-xs">
-          {receipt.runtime}
-        </Badge>
-        <Badge variant="outline" className="text-xs">
-          {receipt.policy_decision}
-        </Badge>
-        {ttlSeconds != null && (
-          <Badge variant="outline" className="text-xs">
-            {ttlSeconds}s TTL
-          </Badge>
+      {/* Status dot */}
+      <div
+        className={cn(
+          'h-2 w-2 rounded-full shrink-0',
+          passed ? 'bg-emerald-500' : 'bg-destructive'
         )}
-      </div>
+        aria-hidden="true"
+      />
+
+      {/* Provider */}
+      <span className="text-sm font-medium text-foreground w-24 shrink-0 truncate">
+        {receipt.provider}
+      </span>
+
+      {/* Capability */}
+      <span className="text-sm text-muted-foreground flex-1 truncate">
+        {receipt.capability}
+      </span>
+
+      {/* Runtime badge */}
+      <Badge variant="secondary" className="text-xs shrink-0">
+        {receipt.runtime}
+      </Badge>
+
+      {/* TTL */}
+      {ttlSeconds != null && (
+        <span className="text-xs text-muted-foreground w-14 text-right shrink-0">
+          {ttlSeconds}s
+        </span>
+      )}
+
+      {/* Outcome */}
+      <span
+        className={cn(
+          'text-xs font-semibold shrink-0 w-14 text-right',
+          passed ? 'text-emerald-600' : 'text-destructive'
+        )}
+        aria-label={passed ? 'Allowed' : 'Denied'}
+      >
+        {receipt.policy_decision}
+      </span>
     </div>
   )
 }

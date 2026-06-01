@@ -92,11 +92,11 @@ export function SafeCopyButton({ content, label = 'Copy', className }: SafeCopyB
       }
       title={state === 'copied' ? 'Copied!' : state === 'refused' ? 'Cannot copy (security)' : label}
       className={cn(
-        'inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--color-border)] bg-transparent transition-colors',
-        'hover:bg-[var(--color-surface-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
-        state === 'refused' && 'border-[var(--color-danger)] text-[var(--color-danger)]',
-        state === 'copied' && 'border-[var(--color-success)] text-[var(--color-success-dark)]',
-        state === 'idle' && 'text-[var(--color-text-secondary)]',
+        'inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-transparent transition-colors',
+        'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        state === 'refused' && 'border-destructive text-destructive',
+        state === 'copied' && 'border-emerald-500 text-emerald-600',
+        state === 'idle' && 'text-muted-foreground',
         className
       )}
     >
@@ -110,7 +110,6 @@ export function SafeCopyButton({ content, label = 'Copy', className }: SafeCopyB
           <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
         </svg>
       )}
-      {/* aria-live region announces state change to screen readers */}
       <span aria-live="polite" aria-atomic="true" className="sr-only">
         {state === 'copied' ? 'Copied to clipboard' : state === 'refused' ? 'Copy blocked — credential-shaped content' : ''}
       </span>

@@ -14,24 +14,27 @@
  * submitting. Spaces in item titles are replaced with hyphens so the URI is valid.
  *
  * Implemented in T-14-05.
+ *
+ * Exports:
+ *   PMBrowseBody — the browse body without any Sheet wrapper (used inline in ProviderWizard)
+ *   PMBrowseModal — standalone Sheet-wrapped version for use outside the wizard
  */
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetClose,
+} from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '../lib/api'
+import type { PMScheme } from './FieldInput'
 import { validateRefURI } from './FieldInput'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type PMScheme = 'op' | 'aws_sm' | 'hashivault'
 
 interface PMItem {
   id: string
@@ -76,24 +79,25 @@ function buildURI(pm: PMScheme, item: PMItem): string {
   }
 }
 
-const PM_LABELS: Record<PMScheme, string> = {
+export const PM_LABELS: Record<PMScheme, string> = {
   op: '1Password',
   aws_sm: 'AWS Secrets Manager',
   hashivault: 'HashiCorp Vault',
 }
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+// ── PMBrowseBody ──────────────────────────────────────────────────────────────
 
-interface PMBrowseModalProps {
+interface PMBrowseBodyProps {
   pm: PMScheme
   onSelect: (uri: string) => void
-  onClose: () => void
+  onBack: () => void
 }
 
 /**
- * PMBrowseModal — shows PM items when authenticated, hint when not.
+ * PMBrowseBody — the PM browse content without any Sheet wrapper.
+ * Used inline inside ProviderWizard so the wizard stays a single drawer.
  */
-export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
+export function PMBrowseBody({ pm, onSelect, onBack }: PMBrowseBodyProps) {
   const [response, setResponse] = useState<PMBrowseResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -154,138 +158,157 @@ export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
     onSelect(uri)
   }
 
+  // onBack is provided so callers can wire the header back arrow — not used inside the body itself.
+  void onBack
+
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Browse {PM_LABELS[pm]}</DialogTitle>
-        </DialogHeader>
+    <div className="flex flex-col gap-5 px-6 py-5">
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-busy="true">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" />
+          Loading…
+        </div>
+      )}
 
-        <div className="flex flex-col gap-4">
-          {loading && (
-            <div
-              className="text-sm text-[var(--color-text-secondary)]"
-              aria-busy="true"
-              aria-label="Loading password manager items"
-            >
-              Loading…
-            </div>
-          )}
+      {error && (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
-          {error && (
-            <div
-              role="alert"
-              className="rounded-md bg-[var(--color-danger-light)] px-3 py-2 text-sm text-[var(--color-danger-dark)]"
-            >
-              {error}
-            </div>
-          )}
-
-          {!loading && !error && response && (
-            <>
-              {response.authenticated ? (
-                <>
-                  <p className="text-sm text-[var(--color-text-secondary)]">Select an item to build the URI:</p>
-                  {(!response.items || response.items.length === 0) ? (
-                    <p role="status" className="text-sm text-[var(--color-text-secondary)]">No items found.</p>
-                  ) : (
-                    <ul
-                      className="flex flex-col gap-1 max-h-52 overflow-y-auto"
-                      role="listbox"
-                      aria-label="Password manager items"
+      {!loading && !error && response && (
+        response.authenticated ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">Select an item to build the reference URI:</p>
+            {(!response.items || response.items.length === 0) ? (
+              <p role="status" className="text-sm text-muted-foreground">No items found.</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5" role="listbox" aria-label="Password manager items">
+                {response.items.map((item) => (
+                  <li key={item.id} role="option">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between rounded-lg border border-border px-3 py-2.5 text-left text-sm text-foreground hover:bg-accent hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                      onClick={() => handleSelectItem(item)}
                     >
-                      {response.items.map((item) => (
-                        <li key={item.id} role="option">
-                          <button
-                            type="button"
-                            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 transition-colors"
-                            onClick={() => handleSelectItem(item)}
-                            aria-label={`Select ${item.title}`}
-                          >
-                            {item.title}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              ) : (
-                <div
-                  className="flex flex-col gap-3"
-                  role="status"
-                  aria-label="Not authenticated"
+                      {item.title}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground shrink-0" aria-hidden="true">
+                        <path d="m9 18 6-6-6-6" />
+                      </svg>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3" role="status">
+            <p className="text-sm text-muted-foreground">
+              Not signed in to {PM_LABELS[pm]}. Run this command in your terminal, then reopen:
+            </p>
+            {response.hint && (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md bg-neutral-100 px-3 py-2 font-mono text-xs text-foreground">
+                  {response.hint}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyHint}
+                  aria-label={copied ? 'Copied to clipboard' : 'Copy authentication command'}
+                  title={copied ? 'Copied!' : 'Copy'}
+                  className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <p className="text-sm text-[var(--color-text-secondary)]">
-                    Not authenticated. Run the following command and try again:
-                  </p>
-                  {response.hint && (
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 rounded-md bg-[var(--color-neutral-100)] px-3 py-2 font-mono text-xs text-[var(--color-text-primary)]">
-                        {response.hint}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={handleCopyHint}
-                        aria-label={copied ? 'Copied to clipboard' : 'Copy authentication command'}
-                        title={copied ? 'Copied!' : 'Copy'}
-                        className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-transparent text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
-                      >
-                        {copied ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
-                        )}
-                      </button>
-                    </div>
+                  {copied ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
                   )}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Manual fallback — always available.
-              For 1Password, selecting an item populates this input with an op://slug/<field>
-              placeholder that the user must complete before submitting. */}
-          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-4" aria-label="Manual URI input">
-            <Label htmlFor="pm-browse-manual-input">
-              {pm === 'op'
-                ? 'Complete the URI (replace <field> with the actual field name):'
-                : 'Or enter URI manually:'}
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                id="pm-browse-manual-input"
-                type="text"
-                value={manualURI}
-                onChange={(e) => { setManualURI(e.target.value); setManualError(null) }}
-                placeholder="op://vault/item/field"
-                aria-label="Manual reference URI"
-                aria-invalid={!!manualError}
-                aria-describedby={manualError ? 'pm-browse-manual-error' : undefined}
-                autoComplete="off"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleManualSubmit}
-                disabled={!manualURI.trim()}
-              >
-                Use this URI
-              </Button>
-            </div>
-            {manualError && (
-              <div
-                id="pm-browse-manual-error"
-                role="alert"
-                className="text-xs text-[var(--color-danger)]"
-                aria-live="polite"
-              >
-                {manualError}
+                </button>
               </div>
             )}
           </div>
+        )
+      )}
+
+      {/* Manual URI — always visible */}
+      <div className="flex flex-col gap-2 border-t border-border pt-4">
+        <Label htmlFor="pm-browse-manual-input" className="text-sm">
+          {pm === 'op' ? 'Complete the URI (replace <field> with the field name):' : 'Enter URI manually:'}
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            id="pm-browse-manual-input"
+            type="text"
+            value={manualURI}
+            onChange={(e) => { setManualURI(e.target.value); setManualError(null) }}
+            placeholder={pm === 'op' ? 'op://vault/item/field' : pm === 'aws_sm' ? 'aws-sm://region/secret-id' : 'hashivault://mount/path#field'}
+            aria-invalid={!!manualError}
+            aria-describedby={manualError ? 'pm-browse-manual-error' : undefined}
+            autoComplete="off"
+          />
+          <Button type="button" variant="outline" onClick={handleManualSubmit} disabled={!manualURI.trim()}>
+            Use URI
+          </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+        {manualError && (
+          <p id="pm-browse-manual-error" role="alert" className="text-xs text-destructive" aria-live="polite">
+            {manualError}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── PMBrowseModal (Sheet-wrapped standalone version) ──────────────────────────
+
+interface PMBrowseModalProps {
+  pm: PMScheme
+  onSelect: (uri: string) => void
+  onClose: () => void
+}
+
+/**
+ * PMBrowseModal — shows PM items when authenticated, hint when not.
+ * Wraps PMBrowseBody in a Sheet for standalone use outside ProviderWizard.
+ */
+export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
+  return (
+    <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
+      <SheetContent side="right" hideCloseButton className="flex flex-col gap-0 p-0 w-full sm:max-w-lg bg-background">
+        {/* Header — matches ProviderWizard */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Go back"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <SheetTitle className="text-base font-semibold">Browse {PM_LABELS[pm]}</SheetTitle>
+          </div>
+          <SheetClose asChild>
+            <button
+              type="button"
+              aria-label="Close"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </SheetClose>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <PMBrowseBody pm={pm} onSelect={onSelect} onBack={onClose} />
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

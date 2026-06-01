@@ -55,11 +55,11 @@ export function HealthScore({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clampedScore])
 
-  // Color the fill based on score
+  // Color the fill based on score — use CSS variable values directly in style
   const fillColor =
-    clampedScore >= 80 ? 'var(--color-success)' :
-    clampedScore >= 50 ? 'var(--color-warning)' :
-    'var(--color-danger)'
+    clampedScore >= 80 ? '#22c55e' :
+    clampedScore >= 50 ? '#eab308' :
+    '#ef4444'
 
   return (
     <div className={cn('flex items-center gap-3', className)} title={tooltip}>
@@ -69,14 +69,14 @@ export function HealthScore({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${label}: ${clampedScore} out of 100`}
-        className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--color-neutral-200)]"
+        className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200"
       >
         <div
-          className="h-full rounded-full transition-[width] duration-[var(--duration-slow)]"
+          className="h-full rounded-full transition-[width] duration-500"
           style={{ width: `${displayed}%`, backgroundColor: fillColor }}
         />
       </div>
-      <span className="w-8 text-right text-xs font-medium tabular-nums text-[var(--color-text-secondary)]" aria-hidden="true">
+      <span className="w-8 text-right text-xs font-medium tabular-nums text-muted-foreground" aria-hidden="true">
         {displayed}
       </span>
     </div>

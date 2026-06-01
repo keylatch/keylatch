@@ -45,12 +45,24 @@ function computePillState(
   return { state: 'ready' }
 }
 
-// ── Pill display config ───────────────────────────────────────────────────────
+// ── Banner display config ──────────────────────────────────────────────────────
 
-const PILL_CLASSES: Record<ReadinessPillState, string> = {
-  not_ready: 'bg-[var(--color-danger-light)] text-[var(--color-danger-dark)] hover:bg-[var(--color-danger)] hover:text-[var(--color-text-inverse)]',
-  ready:     'bg-[var(--color-success-light)] text-[var(--color-success-dark)]',
-  degraded:  'bg-[var(--color-warning-light)] text-[var(--color-warning-dark)] hover:bg-[var(--color-warning)] hover:text-[var(--color-text-inverse)]',
+const BANNER_CONFIG: Record<ReadinessPillState, { wrapper: string; dot: string; text: string }> = {
+  ready: {
+    wrapper: 'bg-emerald-50 border border-emerald-200',
+    dot:     'bg-emerald-500 animate-pulse',
+    text:    'text-emerald-700',
+  },
+  not_ready: {
+    wrapper: 'bg-red-50 border border-red-200',
+    dot:     'bg-red-500',
+    text:    'text-red-700',
+  },
+  degraded: {
+    wrapper: 'bg-amber-50 border border-amber-200',
+    dot:     'bg-amber-500',
+    text:    'text-amber-700',
+  },
 }
 
 // ── ReadinessPillWidget ────────────────────────────────────────────────────────
@@ -63,7 +75,7 @@ interface ReadinessPillWidgetProps {
 }
 
 /**
- * ReadinessPillWidget — dominant above-fold status pill.
+ * ReadinessPillWidget — dominant above-fold status banner.
  *
  * Three states: not_ready (red), ready (green), degraded (amber).
  * Polls /api/status every 5 s; also re-derives state when `connections` changes.
@@ -101,6 +113,9 @@ export function ReadinessPillWidget({ connections, onNavigate }: ReadinessPillWi
   }, [])
 
   const pill = computePillState(daemonOk, kekLoaded, connections)
+  const config = BANNER_CONFIG[pill.state]
+  const label = pillLabel_for(pill)
+  const isInteractive = pill.state !== 'ready'
 
   const handlePillClick = () => {
     if (!onNavigate) return
@@ -111,35 +126,35 @@ export function ReadinessPillWidget({ connections, onNavigate }: ReadinessPillWi
     }
   }
 
-  const label = pillLabel_for(pill)
-  const isInteractive = pill.state !== 'ready'
-  const baseClasses = cn(
-    'inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold tracking-wide transition-colors',
-    PILL_CLASSES[pill.state]
+  const bannerContent = (
+    <>
+      <div className={cn('h-2 w-2 rounded-full shrink-0', config.dot)} aria-hidden="true" />
+      <span className={cn('text-sm font-medium', config.text)}>{label}</span>
+    </>
   )
 
   return (
-    <div
-      className="py-4"
-      aria-label="Keylatch readiness status"
-    >
+    <div aria-label="Keylatch readiness status">
       {isInteractive ? (
         <button
           type="button"
-          className={cn(baseClasses, 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]')}
+          className={cn(
+            'flex items-center gap-2 rounded-lg px-4 py-2.5 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            config.wrapper
+          )}
           onClick={handlePillClick}
           aria-label={label}
         >
-          {label}
+          {bannerContent}
         </button>
       ) : (
         <div
-          className={cn(baseClasses, 'cursor-default')}
+          className={cn('flex items-center gap-2 rounded-lg px-4 py-2.5', config.wrapper)}
           role="status"
           aria-label={label}
           aria-live="polite"
         >
-          {label}
+          {bannerContent}
         </div>
       )}
     </div>

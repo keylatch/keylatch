@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApprovalCard } from '../components/ApprovalCard'
 import type { Approval } from '../lib/types'
-import { api } from '../lib/api'
-import { ApiError } from '../lib/api'
+import { api, ApiError, DEV_MOCK } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { DEFAULT_APPROVAL_TTL_S } from './Settings'
 
@@ -46,30 +45,32 @@ export function ApprovalInbox() {
   }, [])
 
   useEffect(() => {
-    // SSE primary.
-    try {
-      const es = new EventSource('/api/approvals/stream')
-      eventSourceRef.current = es
-      es.addEventListener('approval', () => { fetchApprovals() })
-      es.onopen = () => {
-        setConnected(true)
-        // Clear any polling fallback when SSE reconnects successfully.
-        if (pollRef.current) {
-          clearInterval(pollRef.current)
-          pollRef.current = null
+    // SSE primary — skip in mock mode, poll only.
+    if (!DEV_MOCK) {
+      try {
+        const es = new EventSource('/api/approvals/stream')
+        eventSourceRef.current = es
+        es.addEventListener('approval', () => { fetchApprovals() })
+        es.onopen = () => {
+          setConnected(true)
+          // Clear any polling fallback when SSE reconnects successfully.
+          if (pollRef.current) {
+            clearInterval(pollRef.current)
+            pollRef.current = null
+          }
         }
-      }
-      es.onerror = () => {
-        setConnected(false)
-        // Start polling only if not already polling (prevents stacked intervals).
+        es.onerror = () => {
+          setConnected(false)
+          // Start polling only if not already polling (prevents stacked intervals).
+          if (!pollRef.current) {
+            pollRef.current = setInterval(fetchApprovals, 5000)
+          }
+        }
+      } catch {
+        // SSE not supported; fall back to polling.
         if (!pollRef.current) {
           pollRef.current = setInterval(fetchApprovals, 5000)
         }
-      }
-    } catch {
-      // SSE not supported; fall back to polling.
-      if (!pollRef.current) {
-        pollRef.current = setInterval(fetchApprovals, 5000)
       }
     }
 
@@ -147,10 +148,10 @@ export function ApprovalInbox() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <h2 className="text-2xl font-semibold text-[var(--color-text-primary)]">
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">
         Pending Approvals
-      </h2>
+      </h1>
 
       {!connected && (
         <p className="sr-only" aria-live="polite">Using polling mode (SSE unavailable)</p>
@@ -160,7 +161,7 @@ export function ApprovalInbox() {
       {autoDenyBanners.map((banner) => (
         <div
           key={banner.id}
-          className="flex items-start justify-between gap-4 rounded-md border border-[var(--color-warning)] bg-[var(--color-warning-light)] p-3 text-sm text-[var(--color-warning-dark)]"
+          className="flex items-start justify-between gap-4 rounded-md border border-warning bg-[#fef9c3] p-3 text-sm text-amber-700"
           role="alert"
           aria-live="assertive"
         >
@@ -180,7 +181,7 @@ export function ApprovalInbox() {
             size="sm"
             onClick={() => dismissBanner(banner.id)}
             aria-label="Dismiss auto-deny notification"
-            className="shrink-0 border-[var(--color-warning-dark)] text-[var(--color-warning-dark)] hover:bg-[var(--color-warning)] hover:text-[var(--color-text-inverse)]"
+            className="shrink-0 border-amber-500 text-amber-700 hover:bg-warning hover:text-primary-foreground"
           >
             Dismiss
           </Button>
@@ -188,13 +189,13 @@ export function ApprovalInbox() {
       ))}
 
       {actionError && (
-        <p className="text-sm text-[var(--color-danger)]" role="alert" aria-live="assertive">
+        <p className="text-sm text-destructive" role="alert" aria-live="assertive">
           {actionError}
         </p>
       )}
 
       {approvals.length === 0 ? (
-        <p className="text-sm text-[var(--color-text-secondary)]">
+        <p className="text-sm text-muted-foreground">
           No pending approvals. You&apos;re all caught up.
         </p>
       ) : (

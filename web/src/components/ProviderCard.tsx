@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { ProviderBadge } from './ProviderBadge'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { api } from '../lib/api'
 import type { ProviderConnection } from '../stores/connections'
@@ -101,27 +108,19 @@ interface FieldModeBadgeProps {
   uri?: string
 }
 
-function FieldModeBadge({ name, mode, uri }: FieldModeBadgeProps) {
-  const scheme = uri ? uri.split('://')[0] : undefined
-  const label = mode === 'direct' ? 'direct' : `ref:${scheme ?? 'pm'}`
-
-  return (
-    <Badge
-      variant={mode === 'direct' ? 'success' : 'secondary'}
-      className="font-mono text-xs"
-      title={mode === 'reference' ? uri : `${name} stored directly`}
-      aria-label={`${name}: ${label}`}
-    >
-      {name}: <span className="font-semibold">{label}</span>
-    </Badge>
-  )
+const SCHEME_LABELS: Record<string, string> = {
+  keychain:   'Keychain',
+  op:         '1Password',
+  'aws-sm':   'AWS Secrets',
+  hashivault: 'HashiCorp Vault',
+  bw:         'Bitwarden',
 }
 
 // ── ProviderCard ──────────────────────────────────────────────────────────────
 
 interface ProviderCardProps {
   connection: ProviderConnection
-  onEdit?: (id: string) => void
+  onEdit?: () => void
   onDelete?: (name: string) => void
 }
 
@@ -142,79 +141,127 @@ export function ProviderCard({ connection, onEdit, onDelete }: ProviderCardProps
   const dotLabel = STATUS_DOT_LABEL[health]
 
   const dotColor = {
-    pending: 'bg-[var(--color-neutral-300)]',
-    green:   'bg-[var(--color-success)]',
-    yellow:  'bg-[var(--color-warning)]',
-    red:     'bg-[var(--color-danger)]',
+    pending: 'bg-neutral-300',
+    green:   'bg-emerald-500',
+    yellow:  'bg-amber-400',
+    red:     'bg-red-500',
   }[health]
+
+  const fieldsText = connection.fields.map((f) => {
+    const scheme = f.uri ? f.uri.split('://')[0] : undefined
+    const storage = f.mode === 'direct' ? 'Vault' : (SCHEME_LABELS[scheme ?? ''] ?? 'Password manager')
+    return `${f.name} · ${storage}`
+  }).join('  ·  ')
 
   return (
     <article
-      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4 flex flex-col gap-3 shadow-[0px_1px_3px_-1px_rgba(0,0,0,0.08),0px_0px_0px_1px_rgba(0,0,0,0.04)]"
+      className="rounded-lg border border-border bg-card px-4 py-3 flex flex-col gap-0"
       aria-label={`Provider: ${connection.provider}`}
     >
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <ProviderBadge provider={connection.provider} />
-        <div className="flex flex-1 flex-col gap-0.5 min-w-0">
-          <span className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{connection.name}</span>
-          <span className="text-xs text-[var(--color-text-secondary)] truncate">{connection.provider}</span>
+      {/* Single row */}
+      <div className="flex items-center gap-4 min-w-0">
+        {/* Logo */}
+        <ProviderBadge provider={connection.provider} className="h-8 w-8 shrink-0 text-xs" />
+
+        {/* Name + field metadata */}
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-sm font-semibold text-foreground truncate">{connection.name}</span>
+          {fieldsText && <span className="text-xs text-muted-foreground truncate">{fieldsText}</span>}
         </div>
-        <button
+
+        {/* Status badge */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={cn('h-2 w-2 rounded-full shrink-0', dotColor)} aria-hidden="true" />
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{dotLabel}</span>
+        </div>
+
+        {/* Show details */}
+        <Button
           type="button"
-          aria-label={dotLabel}
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-xs h-7 px-2 text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-expanded={panelOpen}
-          title={`${dotLabel} — click to ${panelOpen ? 'hide' : 'show'} details`}
           onClick={() => setPanelOpen((prev) => !prev)}
-          className={cn('h-3 w-3 rounded-full flex-shrink-0 cursor-pointer border-0 p-0', dotColor)}
+          aria-label={panelOpen ? 'Hide health details' : 'Show health details'}
         >
-          <span className="sr-only">{dotLabel}</span>
-        </button>
+          {panelOpen ? 'Hide details' : 'Show details'}
+        </Button>
+
+        {/* Kebab */}
+        {(onEdit || onDelete) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Actions for ${connection.name}`}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="5" r="1" />
+                  <circle cx="12" cy="12" r="1" />
+                  <circle cx="12" cy="19" r="1" />
+                </svg>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onEdit && (
+                <DropdownMenuItem onClick={() => onEdit()}>
+                  Edit
+                </DropdownMenuItem>
+              )}
+              {onEdit && onDelete && <DropdownMenuSeparator />}
+              {onDelete && (
+                <DropdownMenuItem destructive onClick={() => onDelete(connection.name)}>
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
-      {/* Field mode badges */}
-      {connection.fields.length > 0 && (
-        <div className="flex flex-wrap gap-1.5" aria-label="Field storage modes">
-          {connection.fields.map((f) => (
-            <FieldModeBadge key={f.name} name={f.name} mode={f.mode} uri={f.uri} />
-          ))}
-        </div>
-      )}
-
-      {/* Doctor check panel */}
+      {/* Doctor check panel — expands below the row */}
       {panelOpen && (
         <div
-          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+          className="mt-3 rounded-md border border-border bg-background px-3 py-2"
           role="region"
           aria-label="Doctor check results"
         >
-          <h4 className="text-xs font-semibold text-[var(--color-text-secondary)] mb-2">Health Checks</h4>
+          <h4 className="text-xs font-semibold text-muted-foreground mb-2">Health Checks</h4>
           {checks.length === 0 ? (
-            <p className="text-xs text-[var(--color-text-secondary)]">No check data yet.</p>
+            <p className="text-xs text-muted-foreground">No check data yet.</p>
           ) : (
             <table className="w-full text-xs" aria-label="Doctor checks">
               <thead>
-                <tr className="text-left text-[var(--color-text-disabled)]">
+                <tr className="text-left text-muted-foreground">
                   <th className="pb-1 pr-3 font-medium">Category</th>
                   <th className="pb-1 pr-3 font-medium">Check</th>
                   <th className="pb-1 pr-3 font-medium">Status</th>
-                  <th className="pb-1 font-medium">Fix</th>
+                  <th className="pb-1 font-medium">Detail</th>
                 </tr>
               </thead>
               <tbody>
                 {checks.map((c) => (
-                  <tr
-                    key={`${c.section}-${c.name}`}
-                    className={cn(
-                      'border-t border-[var(--color-border)]',
-                      !c.ok && c.warn && 'bg-[var(--color-warning-light)]',
-                      !c.ok && !c.warn && 'bg-[var(--color-danger-light)]'
-                    )}
-                  >
-                    <td className="py-1 pr-3 text-[var(--color-text-secondary)]">{c.section}</td>
-                    <td className="py-1 pr-3 text-[var(--color-text-primary)]">{c.name}</td>
+                  <tr key={`${c.section}-${c.name}`} className={cn(
+                    'border-t border-border',
+                    !c.ok && c.warn && 'bg-amber-50',
+                    !c.ok && !c.warn && 'bg-red-50',
+                  )}>
+                    <td className="py-1 pr-3 text-muted-foreground">{c.section}</td>
+                    <td className="py-1 pr-3 text-foreground">{c.name}</td>
                     <td className="py-1 pr-3">{c.ok ? 'OK' : c.warn ? 'Warning' : 'Error'}</td>
-                    <td className="py-1 text-[var(--color-text-secondary)]">{c.fix ?? ''}</td>
+                    <td className="py-1 text-muted-foreground">{c.detail}</td>
                   </tr>
                 ))}
               </tbody>
@@ -222,28 +269,6 @@ export function ProviderCard({ connection, onEdit, onDelete }: ProviderCardProps
           )}
         </div>
       )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1 border-t border-[var(--color-border)]">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => onEdit?.(connection.id)}
-          aria-label={`Edit ${connection.name}`}
-        >
-          Edit
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          size="sm"
-          onClick={() => onDelete?.(connection.name)}
-          aria-label={`Delete ${connection.name}`}
-        >
-          Delete
-        </Button>
-      </div>
     </article>
   )
 }

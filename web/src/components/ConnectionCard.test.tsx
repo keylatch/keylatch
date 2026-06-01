@@ -39,24 +39,35 @@ describe('ConnectionCard', () => {
     expect(onSelect).toHaveBeenCalledWith('my-openrouter')
   })
 
-  it('error state adds visual indicator (inset shadow)', () => {
+  it('renders as button when onSelect is provided', () => {
+    render(<ConnectionCard connection={mockConn} onSelect={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /Connection: my-openrouter/i })).toBeInTheDocument()
+  })
+
+  it('renders as article (non-interactive) when no onSelect provided', () => {
+    render(<ConnectionCard connection={mockConn} />)
+    expect(screen.queryByRole('button', { name: /Connection: my-openrouter/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: /Connection: my-openrouter/i })).toBeInTheDocument()
+  })
+
+  it('error state adds destructive ring indicator', () => {
     const errorConn: Connection = { ...mockConn, status: 'error' }
     render(<ConnectionCard connection={errorConn} />)
-    const card = screen.getByRole('button')
-    // Error state uses inset box-shadow for left accent to avoid border shorthand conflicts
-    expect(card.className).toContain('shadow-[inset_3px_0_0_var(--color-danger)]')
+    // Non-interactive card renders as article
+    const card = screen.getByRole('article')
+    expect(card.className).toContain('ring-destructive')
   })
 
   it('grid variant default — column layout', () => {
-    render(<ConnectionCard connection={mockConn} />)
-    const card = screen.getByRole('button')
+    render(<ConnectionCard connection={mockConn} onSelect={vi.fn()} />)
+    const card = screen.getByRole('button', { name: /Connection: my-openrouter/i })
     // grid variant uses flex-col, not flex-row
     expect(card.className).toContain('flex-col')
   })
 
   it('list variant — row layout', () => {
-    render(<ConnectionCard connection={mockConn} variant="list" />)
-    const card = screen.getByRole('button')
+    render(<ConnectionCard connection={mockConn} variant="list" onSelect={vi.fn()} />)
+    const card = screen.getByRole('button', { name: /Connection: my-openrouter/i })
     // list variant adds flex-row
     expect(card.className).toContain('flex-row')
   })

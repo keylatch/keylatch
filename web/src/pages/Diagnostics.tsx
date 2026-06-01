@@ -3,13 +3,16 @@ import { fetchDoctorReport } from '../api/doctor'
 import type { DoctorCheck, DoctorResponse } from '../api/doctor'
 import { ApiError } from '../lib/api'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 
 /** Status icon for a single check row. */
 function CheckIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
   if (!ok) {
     return (
       <span
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger)] text-white text-xs font-bold"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold"
         aria-label="Failed"
         title="Failed"
       >
@@ -20,7 +23,7 @@ function CheckIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
   if (warn) {
     return (
       <span
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-warning,#f59e0b)] text-white text-xs font-bold"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white text-xs font-bold"
         aria-label="Warning"
         title="Warning"
       >
@@ -30,7 +33,7 @@ function CheckIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
   }
   return (
     <span
-      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-success)] text-white text-xs font-bold"
+      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white text-xs font-bold"
       aria-label="OK"
       title="OK"
     >
@@ -39,29 +42,27 @@ function CheckIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
   )
 }
 
-/** A single check row in the diagnostics table. */
+/** A single check row. */
 function CheckRow({ check }: { check: DoctorCheck }) {
   return (
-    <tr className="border-b border-[var(--color-border)] last:border-0">
-      <td className="py-2 pr-3 align-top">
+    <div className="flex items-start gap-4 px-6 py-3 border-b border-border last:border-0 transition-colors hover:bg-muted/40">
+      <div className="mt-0.5 shrink-0">
         <CheckIcon ok={check.ok} warn={check.warn} />
-      </td>
-      <td className="py-2 pr-4 align-top text-sm font-medium text-[var(--color-text-primary)]">
-        {check.name}
-      </td>
-      <td className="py-2 pr-4 align-top text-sm text-[var(--color-text-secondary)]">
-        {check.detail}
-      </td>
-      <td className="py-2 align-top text-sm text-[var(--color-text-secondary)]">
-        {(!check.ok || check.warn) && check.fix ? (
-          <span className="italic">{check.fix}</span>
-        ) : null}
-      </td>
-    </tr>
+      </div>
+      <div className="w-44 shrink-0">
+        <span className="text-sm font-medium text-foreground">{check.name}</span>
+      </div>
+      <div className="flex-1 text-sm text-muted-foreground">{check.detail}</div>
+      <div className="w-40 shrink-0 text-sm text-muted-foreground text-right">
+        {(!check.ok || check.warn) && check.fix
+          ? <span className="italic">{check.fix}</span>
+          : null}
+      </div>
+    </div>
   )
 }
 
-/** Grouped table of checks for one section. */
+/** Grouped list of checks for one section. */
 function SectionTable({
   section,
   checks,
@@ -75,26 +76,18 @@ function SectionTable({
   if (visible.length === 0) return null
 
   return (
-    <div className="space-y-1">
-      <h3 className="text-sm font-semibold text-[var(--color-text-secondary)]">
-        {section}
-      </h3>
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="text-left text-xs text-[var(--color-text-secondary)]">
-            <th className="pb-1 pr-3 w-7 font-medium">Status</th>
-            <th className="pb-1 pr-4 font-medium">Check</th>
-            <th className="pb-1 pr-4 font-medium">Detail</th>
-            <th className="pb-1 font-medium">Fix hint</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((check) => (
-            <CheckRow key={`${check.section}-${check.name}`} check={check} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Card>
+      <CardHeader className="pb-3 border-b border-border">
+        <CardTitle className="text-xs font-semibold text-muted-foreground">
+          {section}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {visible.map((check) => (
+          <CheckRow key={`${check.section}-${check.name}`} check={check} />
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -165,26 +158,27 @@ export function Diagnostics() {
 
   const overallColor =
     overallExit === 0
-      ? 'text-[var(--color-success-dark)]'
+      ? 'text-emerald-700'
       : overallExit === 1
-        ? 'text-[var(--color-warning,#b45309)]'
-        : 'text-[var(--color-danger)]'
+        ? 'text-amber-700'
+        : 'text-destructive'
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-2xl font-semibold text-[var(--color-text-primary)]">Diagnostics</h2>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Diagnostics</h1>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-[var(--color-border)]"
-              checked={quietMode}
-              onChange={(e) => setQuietMode(e.target.checked)}
-              aria-label="Quiet mode — hide OK rows"
-            />
+          <Checkbox
+            id="quiet-mode"
+            checked={quietMode}
+            onCheckedChange={(checked) => setQuietMode(checked === true)}
+          />
+          <Label
+            htmlFor="quiet-mode"
+            className="text-sm text-muted-foreground cursor-pointer select-none"
+          >
             Hide OK rows
-          </label>
+          </Label>
           <Button
             type="button"
             variant="outline"
@@ -203,35 +197,42 @@ export function Diagnostics() {
       </div>
 
       {report && (
-        <div className="flex items-center gap-4 flex-wrap text-sm text-[var(--color-text-secondary)]">
-          {overallLabel && (
-            <span className={`font-medium ${overallColor}`}>{overallLabel}</span>
-          )}
-          <span>Version: {report.version}</span>
-          <span>Platform: {report.platform}</span>
-          {lastRefreshed && (
-            <span>Last refreshed: {lastRefreshed.toLocaleTimeString()}</span>
-          )}
+        <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
+          overallExit === 0
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : overallExit === 1
+              ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className={`h-2 w-2 rounded-full shrink-0 ${
+            overallExit === 0 ? 'bg-emerald-500' : overallExit === 1 ? 'bg-amber-500' : 'bg-red-500'
+          }`} />
+          {overallLabel && <span className="font-medium">{overallLabel}</span>}
+          <span className="text-muted-foreground ml-auto flex gap-4">
+            <span>v{report.version}</span>
+            <span>{report.platform}</span>
+            {lastRefreshed && <span>Refreshed {lastRefreshed.toLocaleTimeString()}</span>}
+          </span>
         </div>
       )}
 
       {error && (
-        <p className="rounded-md bg-[var(--color-danger-light,#fee2e2)] px-4 py-3 text-sm text-[var(--color-danger)]" role="alert">
+        <p className="rounded-md bg-[#fee2e2] px-4 py-3 text-sm text-destructive" role="alert">
           {error}
         </p>
       )}
 
       {loading && !report && (
-        <p role="status" aria-live="polite" className="text-sm text-[var(--color-text-secondary)]">
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
           Running diagnostics…
         </p>
       )}
 
       {!loading && report && report.checks.length === 0 && (
-        <p className="text-sm text-[var(--color-text-secondary)]">No checks returned.</p>
+        <p className="text-sm text-muted-foreground">No checks returned.</p>
       )}
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {sectionOrder.map((sec) => (
           <SectionTable
             key={sec}

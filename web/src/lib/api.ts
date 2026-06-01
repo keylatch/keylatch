@@ -3,7 +3,12 @@
  *
  * Security: all write methods include the X-CSRF-Token header read from
  * the kl_csrf cookie (double-submit pattern).
+ *
+ * Mock mode: when VITE_DEV_MOCK=true the real server is never contacted.
+ * mockGet() returns stub data for known paths; write methods succeed silently.
  */
+
+import { mockGet, mockPatch } from './mockData'
 
 function getCsrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)kl_csrf=([^;]+)/)
@@ -18,7 +23,22 @@ export interface RequestOptions {
   signal?: AbortSignal
 }
 
+/** True when the dev server is running with VITE_DEV_MOCK=true. */
+export const DEV_MOCK = import.meta.env.VITE_DEV_MOCK === 'true'
+
 async function request<T>(method: Method, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+  // Mock mode: return stub data, skip CSRF / network entirely.
+  if (DEV_MOCK) {
+    if (WRITE_METHODS.includes(method)) {
+      const patched = mockPatch(path, body)
+      if (patched !== undefined) return patched as T
+      return undefined as T
+    }
+    const stub = mockGet(path)
+    if (stub !== undefined) return stub as T
+    // Unknown GET: fall through to real fetch so Vite HMR still works.
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
