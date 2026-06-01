@@ -342,7 +342,7 @@ jobs:
         run: bash release-gates/provider-template-validate.sh $RUNNER_TEMP/keylatch
 
   gateway-e2e:
-    name: Gateway E2E (EPIC-04)
+    name: Gateway E2E
     needs: [lint, go-test]
     strategy:
       matrix:
@@ -356,13 +356,13 @@ jobs:
           cache: true
       - name: Run gateway E2E tests
         run: bash packaging/ci/test-gateway-end-to-end.sh
-      - name: S-INV-4a canary leak scan (EPIC-05)
+      - name: canary leak scan
         run: bash packaging/ci/test-s-inv-4a-no-canary-leak.sh
-      - name: External store reference roundtrip (EPIC-10)
+      - name: external store reference roundtrip
         run: bash packaging/ci/test-external-ref-roundtrip.sh
 
   operating-modes:
-    name: Operating Modes (EPIC-17)
+    name: Operating Modes
     needs: [lint, go-test]
     runs-on: ubuntu-latest
     steps:
@@ -379,7 +379,7 @@ jobs:
   telemetry-canary:
     # EPIC-18: S-TEL-1 canary scan — verifies that credential bytes never appear
     # in any telemetry event body emitted to the remote sink.
-    name: Telemetry credential-leak canary (EPIC-18)
+    name: Telemetry credential-leak canary
     needs: go-test
     runs-on: ubuntu-latest
     steps:
