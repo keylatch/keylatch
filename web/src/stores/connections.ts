@@ -29,6 +29,8 @@ export interface ProviderConnection {
   fields: ConnectionField[]
   created_at?: string
   updated_at?: string
+  /** Per-connection approval policy override. "" or absent means "use global default". */
+  approval_policy?: string
 }
 
 /** Payload for creating a new connection (POST /api/connections). */

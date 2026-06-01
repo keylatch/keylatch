@@ -163,3 +163,67 @@ func TestConnectionDetailHandler_RotateField(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestConnectionUpdate_ApprovalPolicy(t *testing.T) {
+	initAPIRegistry(t)
+	t.Parallel()
+	store := newAPIMemoryStore()
+
+	// Create the connection first.
+	create := &api.ConnectionsHandler{Store: store}
+	create.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodPost, "/api/connections",
+			bytes.NewBufferString(`{"provider":"openrouter","fields":{"api_key":"test-key"}}`)),
+	)
+
+	// PUT with approval_policy "trust".
+	detail := &api.ConnectionDetailHandler{Store: store}
+	putReq := httptest.NewRequest(http.MethodPut, "/api/connections/openrouter",
+		bytes.NewBufferString(`{"fields":[],"approval_policy":"trust"}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	detail.ServeHTTP(putRec, putReq)
+	require.Equal(t, http.StatusOK, putRec.Code)
+
+	// GET /api/connections and verify approval_policy is "trust".
+	list := &api.ConnectionsHandler{Store: store}
+	getReq := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
+	getRec := httptest.NewRecorder()
+	list.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var body struct {
+		Connections []struct {
+			Provider       string `json:"provider"`
+			ApprovalPolicy string `json:"approval_policy"`
+		} `json:"connections"`
+	}
+	require.NoError(t, json.NewDecoder(getRec.Body).Decode(&body))
+	require.Len(t, body.Connections, 1)
+	assert.Equal(t, "openrouter", body.Connections[0].Provider)
+	assert.Equal(t, "trust", body.Connections[0].ApprovalPolicy)
+}
+
+func TestConnectionUpdate_ApprovalPolicy_Invalid(t *testing.T) {
+	initAPIRegistry(t)
+	t.Parallel()
+	store := newAPIMemoryStore()
+
+	// Create the connection first.
+	create := &api.ConnectionsHandler{Store: store}
+	create.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodPost, "/api/connections",
+			bytes.NewBufferString(`{"provider":"openrouter","fields":{"api_key":"test-key"}}`)),
+	)
+
+	// PUT with an invalid approval_policy value.
+	detail := &api.ConnectionDetailHandler{Store: store}
+	putReq := httptest.NewRequest(http.MethodPut, "/api/connections/openrouter",
+		bytes.NewBufferString(`{"fields":[],"approval_policy":"always"}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	detail.ServeHTTP(putRec, putReq)
+	assert.Equal(t, http.StatusBadRequest, putRec.Code)
+}

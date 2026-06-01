@@ -38,6 +38,8 @@ export interface Connection {
   lastTestedAt?: string
   /** Risk classification for this connection. */
   risk: RiskLevel
+  /** Per-connection approval policy override. "" or absent means "use global default". */
+  approval_policy?: string
   /**
    * NOTE: `value` is intentionally absent. The API never returns credential
    * values; only the vault holds them.

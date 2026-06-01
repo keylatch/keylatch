@@ -39,6 +39,49 @@ type ConnectionField struct {
 	URI string `json:"uri,omitempty"`
 }
 
+// connectionPolicyPath returns the vault path for per-connection approval policy.
+// Canonical format: namespace/category/provider/policy (S-FIND-23).
+func connectionPolicyPath(namespace, provider, _ string) string {
+	if namespace == "" {
+		namespace = defaultConnectionNamespace
+	}
+	cat := providerCategory(provider)
+	return fmt.Sprintf("%s/%s/%s/policy", namespace, cat, provider)
+}
+
+// connectionPolicy holds the persisted approval policy override for a connection.
+type connectionPolicy struct {
+	ApprovalPolicy string `json:"approval_policy"`
+}
+
+// loadConnectionPolicy reads the stored approval policy for a connection.
+// Returns "" (meaning "use global default") when no override has been stored.
+func loadConnectionPolicy(r *http.Request, store connections.Store, namespace, provider, account string) string {
+	data, _, err := store.Get(r.Context(), connectionPolicyPath(namespace, provider, account))
+	if err != nil {
+		return ""
+	}
+	var p connectionPolicy
+	if err := json.Unmarshal(data, &p); err != nil {
+		return ""
+	}
+	return p.ApprovalPolicy
+}
+
+// saveConnectionPolicy persists the approval policy override for a connection.
+func saveConnectionPolicy(r *http.Request, store connections.Store, namespace, provider, account, policy string) error {
+	path := connectionPolicyPath(namespace, provider, account)
+	data, err := json.Marshal(connectionPolicy{ApprovalPolicy: policy})
+	if err != nil {
+		return err
+	}
+	return store.Set(r.Context(), path, data, backend.Meta{
+		Path:    path,
+		Backend: "vault",
+		Version: 1,
+	})
+}
+
 // fieldModesPath returns the vault path for per-field mode metadata.
 // Canonical format: namespace/category/provider/fieldmodes (S-FIND-23),
 // matching connectionMetaPath and secretFieldPath.
@@ -104,15 +147,16 @@ func (h *ConnectionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Value-free: no credential values are ever included (S10-V).
 type connListItem struct {
 	// ID is a stable identifier derived from namespace/provider/account.
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Provider  string            `json:"provider"`
-	Account   string            `json:"account"`
-	Namespace string            `json:"namespace"`
-	Status    string            `json:"status"`
-	Fields    []ConnectionField `json:"fields"`
-	CreatedAt string            `json:"created_at,omitempty"`
-	UpdatedAt string            `json:"updated_at,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	Provider       string            `json:"provider"`
+	Account        string            `json:"account"`
+	Namespace      string            `json:"namespace"`
+	Status         string            `json:"status"`
+	Fields         []ConnectionField `json:"fields"`
+	CreatedAt      string            `json:"created_at,omitempty"`
+	UpdatedAt      string            `json:"updated_at,omitempty"`
+	ApprovalPolicy string            `json:"approval_policy,omitempty"` // "" = global default
 }
 
 // list returns all connections (value-free) with per-field storage mode metadata.
@@ -156,16 +200,20 @@ func (h *ConnectionsHandler) list(w http.ResponseWriter, r *http.Request) {
 			updatedAt = conn.UpdatedAt.Format("2006-01-02T15:04:05Z")
 		}
 
+		// Load per-connection approval policy override (never errors — returns "" on miss).
+		approvalPolicy := loadConnectionPolicy(r, h.Store, conn.Namespace, conn.Provider, conn.Account)
+
 		items = append(items, connListItem{
-			ID:        connectionID(conn.Namespace, conn.Provider, conn.Account),
-			Name:      connectionName(conn.Provider, conn.Account),
-			Provider:  conn.Provider,
-			Account:   conn.Account,
-			Namespace: conn.Namespace,
-			Status:    conn.Status,
-			Fields:    fields,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
+			ID:             connectionID(conn.Namespace, conn.Provider, conn.Account),
+			Name:           connectionName(conn.Provider, conn.Account),
+			Provider:       conn.Provider,
+			Account:        conn.Account,
+			Namespace:      conn.Namespace,
+			Status:         conn.Status,
+			Fields:         fields,
+			CreatedAt:      createdAt,
+			UpdatedAt:      updatedAt,
+			ApprovalPolicy: approvalPolicy,
 		})
 	}
 	writeJSON(w, map[string]interface{}{"connections": items})
@@ -492,7 +540,8 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 	}
 
 	var req struct {
-		Fields []createFieldReq `json:"fields"`
+		Fields         []createFieldReq `json:"fields"`
+		ApprovalPolicy *string          `json:"approval_policy"` // nil = not changing
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -551,6 +600,25 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 				http.Error(w, "store error", http.StatusInternalServerError)
 				return
 			}
+		}
+	}
+
+	// Persist approval policy override when explicitly provided.
+	if req.ApprovalPolicy != nil {
+		validPolicies := map[string]bool{
+			"":          true,
+			"global":    true,
+			"prompt":    true,
+			"first-run": true,
+			"trust":     true,
+		}
+		if !validPolicies[*req.ApprovalPolicy] {
+			http.Error(w, "invalid approval_policy value", http.StatusBadRequest)
+			return
+		}
+		if saveErr := saveConnectionPolicy(r, h.Store, ns, conn.Provider, conn.Account, *req.ApprovalPolicy); saveErr != nil {
+			http.Error(w, "could not save approval policy", http.StatusInternalServerError)
+			return
 		}
 	}
 
