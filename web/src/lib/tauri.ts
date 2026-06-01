@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { relaunch } from '@tauri-apps/plugin-process'
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env
 const USE_MOCKS = env?.VITE_KEYLATCH_MOCKS === '1'
@@ -11,6 +12,15 @@ export async function safeInvoke<T>(command: string, payload?: MockPayload): Pro
   }
 
   return invoke<T>(command, payload)
+}
+
+/** Restarts the Tauri app. In mock/browser mode, reloads the page instead. */
+export async function safeRelaunch(): Promise<void> {
+  if (USE_MOCKS || !('__TAURI_INTERNALS__' in window)) {
+    setTimeout(() => window.location.reload(), 800)
+    return
+  }
+  await relaunch()
 }
 
 function mockInvoke<T>(command: string, payload?: MockPayload): T {

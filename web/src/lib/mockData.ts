@@ -160,6 +160,7 @@ const mockSettingsState = {
   telemetry_disable: false,
   experimental: false,
   approval_policy: 'prompt',
+  active_backend: 'keychain',
 }
 
 export function mockPatch(path: string, body: unknown): unknown | undefined {
@@ -206,7 +207,12 @@ export function mockGet(path: string): unknown | undefined {
   }
 
   if (path === '/v1/backends') {
-    return [{ name: 'keychain', display_name: 'macOS Keychain', available: true }]
+    return [
+      { name: 'keychain', display_name: 'macOS Keychain', available: true },
+      { name: 'op',       display_name: '1Password',      available: true },
+      { name: 'bw',       display_name: 'Bitwarden',      available: false, install_hint: 'Install the Bitwarden CLI: brew install bitwarden-cli' },
+      { name: 'file',     display_name: 'Encrypted file', available: true },
+    ]
   }
 
   if (path === '/v1/providers') {

@@ -5,7 +5,7 @@ import { ApiError } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 /** Status icon for a single check row. */
 function CheckIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
@@ -76,18 +76,18 @@ function SectionTable({
   if (visible.length === 0) return null
 
   return (
-    <Card>
-      <CardHeader className="pb-3 border-b border-border">
-        <CardTitle className="text-xs font-semibold text-muted-foreground">
-          {section}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        {visible.map((check) => (
-          <CheckRow key={`${check.section}-${check.name}`} check={check} />
-        ))}
-      </CardContent>
-    </Card>
+    <section className="space-y-3">
+      <p className="text-base font-semibold text-foreground">
+        {section.charAt(0).toUpperCase() + section.slice(1)}
+      </p>
+      <Card>
+        <CardContent className="p-0">
+          {visible.map((check) => (
+            <CheckRow key={`${check.section}-${check.name}`} check={check} />
+          ))}
+        </CardContent>
+      </Card>
+    </section>
   )
 }
 
@@ -199,10 +199,10 @@ export function Diagnostics() {
       {report && (
         <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
           overallExit === 0
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800/50 dark:text-emerald-300'
             : overallExit === 1
-              ? 'bg-amber-50 border-amber-200 text-amber-800'
-              : 'bg-red-50 border-red-200 text-red-800'
+              ? 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-300'
+              : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800/50 dark:text-red-300'
         }`}>
           <div className={`h-2 w-2 rounded-full shrink-0 ${
             overallExit === 0 ? 'bg-emerald-500' : overallExit === 1 ? 'bg-amber-500' : 'bg-red-500'
@@ -217,7 +217,7 @@ export function Diagnostics() {
       )}
 
       {error && (
-        <p className="rounded-md bg-[#fee2e2] px-4 py-3 text-sm text-destructive" role="alert">
+        <p className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 dark:bg-red-950/30 dark:border-red-800/50 dark:text-red-300" role="alert">
           {error}
         </p>
       )}

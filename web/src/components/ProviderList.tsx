@@ -1,5 +1,4 @@
 import { ProviderCard } from './ProviderCard'
-import { Button } from '@/components/ui/button'
 import type { ProviderConnection } from '../stores/connections'
 
 interface ProviderListProps {
@@ -26,18 +25,6 @@ export function ProviderList({
 }: ProviderListProps) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground">Providers</h2>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => onAddProvider?.()}
-          aria-label="Add Provider"
-        >
-          + Add Provider
-        </Button>
-      </div>
-
       {connections.length === 0 ? (
         <div
           className="rounded-lg border border-border bg-card px-6 py-8 text-center text-sm text-muted-foreground"

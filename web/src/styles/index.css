@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ─── Design tokens ────────────────────────────────────────────────────────── */
 /* All semantic color utilities (bg-card, bg-primary, bg-sidebar-accent etc.)  */
 /* come from @theme inline — they reference :root CSS vars so they always       */

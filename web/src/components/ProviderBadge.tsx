@@ -149,6 +149,9 @@ export function ProviderBadge({ provider, logoSrc, className, invertOnDark = fal
   const resolvedSrc = logoSrc ?? PROVIDER_LOGOS[key]
   const monogram = PROVIDER_MONOGRAMS[key] ?? provider.slice(0, 2).toUpperCase()
   const colors = PROVIDER_COLORS[key] ?? DEFAULT_COLOR
+  // Auto-invert logos from the built-in map (all monochrome SVGs on transparent).
+  // For a custom logoSrc, respect the explicit invertOnDark prop instead.
+  const shouldInvert = logoSrc ? invertOnDark : !!PROVIDER_LOGOS[key]
 
   if (!resolvedSrc || imgError) {
     return (
@@ -171,7 +174,7 @@ export function ProviderBadge({ provider, logoSrc, className, invertOnDark = fal
     <img
       src={resolvedSrc}
       alt={`${provider} logo`}
-      className={cn('h-10 w-10 rounded-lg object-contain', invertOnDark && 'dark:brightness-0 dark:invert', className)}
+      className={cn('h-10 w-10 rounded-lg object-contain', shouldInvert && 'dark:brightness-0 dark:invert', className)}
       onError={() => setImgError(true)}
     />
   )

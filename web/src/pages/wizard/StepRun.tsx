@@ -53,7 +53,7 @@ export function StepRun({
       </div>
 
       {/* Visual explanation */}
-      <div className="rounded-lg border border-border bg-neutral-50 p-4 text-xs font-mono space-y-4">
+      <div className="rounded-lg border border-border bg-muted p-4 text-xs font-mono space-y-4">
         <div>
           <p className="text-muted-foreground mb-1">without keylatch</p>
           <p className="text-foreground break-all">{envVar}=sk-… claude "…"</p>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
 import { ApiError } from '../lib/api'
-import { safeInvoke } from '../lib/tauri'
+import { safeInvoke, safeRelaunch } from '../lib/tauri'
 import { useSaveStatus } from '@/stores/saveStatus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 /** Shape returned by GET /api/settings and PUT /api/settings (EPIC-27). */
 interface SettingsResponse {
@@ -90,18 +91,16 @@ export function Settings() {
   const [backendsLoading, setBackendsLoading] = useState(true)
   const [backendsError, setBackendsError] = useState<string | null>(null)
   const [activeBackend, setActiveBackend] = useState<string>('')
+  const [pendingBackend, setPendingBackend] = useState<string | null>(null)
   const [backendSwitching, setBackendSwitching] = useState(false)
+  const [backendDone, setBackendDone] = useState<string | null>(null)
   const [backendError, setBackendError] = useState<string | null>(null)
   const retryControllerRef = useRef<AbortController | null>(null)
 
   const fetchBackends = useCallback((signal?: AbortSignal) => {
     setBackendsLoading(true)
     setBackendsError(null)
-    fetch('/v1/backends', { signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<BackendItem[]>
-      })
+    api.get<BackendItem[]>('/v1/backends', { signal })
       .then((data) => {
         setBackends(data)
         setBackendsLoading(false)
@@ -169,25 +168,27 @@ export function Settings() {
     }
   }, [backendsLoading, backends, activeBackend])
 
-  const handleSwitchBackend = async (newBackend: string) => {
-    const previous = activeBackend
+  const confirmSwitchBackend = async () => {
+    if (!pendingBackend) return
+    const target = pendingBackend
+    setPendingBackend(null)
     setBackendError(null)
-    setActiveBackend(newBackend)
+    setBackendDone(null)
     setBackendSwitching(true)
     setSaving()
     try {
-      const result = await safeInvoke<{ ok: boolean; error?: string }>('bootstrap', { backend: newBackend })
+      const result = await safeInvoke<{ ok: boolean; error?: string }>('bootstrap', { backend: target })
       if (!result.ok) {
-        setActiveBackend(previous)
-        setBackendError(result.error ?? 'Failed to switch backend')
+        setBackendError(result.error ?? 'Migration failed')
         setError()
         return
       }
+      setActiveBackend(target)
+      setBackendDone(backends.find((b) => b.name === target)?.display_name ?? target)
       setSaved()
-      setTimeout(() => reset(), 2500)
+      await safeRelaunch()
     } catch (e) {
-      setActiveBackend(previous)
-      setBackendError(e instanceof Error ? e.message : 'Failed to switch backend')
+      setBackendError(e instanceof Error ? e.message : 'Migration failed')
       setError()
     } finally {
       setBackendSwitching(false)
@@ -328,28 +329,6 @@ export function Settings() {
       setError()
     } finally {
       setAdvancedLoading(false)
-    }
-  }
-
-  const handleSwitchBackend = async (newBackend: string) => {
-    const previous = activeBackend
-    setBackendError(null)
-    setActiveBackend(newBackend)  // optimistic update
-    setBackendSwitching(true)
-    try {
-      const result = await safeInvoke<{ ok: boolean; error?: string }>('bootstrap', { backend: newBackend })
-      if (!result.ok) {
-        setActiveBackend(previous)  // revert on failure
-        setBackendError(result.error ?? 'Backend switch failed')
-        return
-      }
-      setBackendSaved(true)
-      setTimeout(() => setBackendSaved(false), 2000)
-    } catch (e) {
-      setActiveBackend(previous)  // revert on failure
-      setBackendError(e instanceof Error ? e.message : 'Backend switch failed')
-    } finally {
-      setBackendSwitching(false)
     }
   }
 
@@ -516,80 +495,111 @@ export function Settings() {
 
       {/* ── Advanced-only sections ─────────────────────────────────────────── */}
 
-      {/* Credential backend — switch vault storage backend from the UI */}
+      {/* Credential backend */}
       {advancedMode && (
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">Credential backend</CardTitle>
-            <CardDescription>
-              Choose where Keylatch stores your vault key.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pb-4 pt-0 space-y-3">
-            {backendsLoading && (
-              <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Loading backends…</p>
-            )}
-            {backendsError && !backendsLoading && (
-              <div className="space-y-2">
-                <p className="text-sm text-destructive" role="alert">{backendsError}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
+        <>
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base">Credential backend</CardTitle>
+              <CardDescription>
+                Where Keylatch stores your vault key. Switching migrates your key and automatically restarts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-4 pt-0 space-y-2">
+              {backendsLoading && (
+                <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Loading…</p>
+              )}
+              {backendsError && !backendsLoading && (
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive" role="alert">{backendsError}</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => {
                     retryControllerRef.current?.abort()
                     const c = new AbortController()
                     retryControllerRef.current = c
                     fetchBackends(c.signal)
-                  }}
-                >
-                  Retry
-                </Button>
-              </div>
-            )}
-            {!backendsLoading && !backendsError && backends.length > 0 && (
-              <RadioGroup
-                value={activeBackend}
-                onValueChange={(value) => void handleSwitchBackend(value)}
-                className="space-y-3"
-                aria-label="Credential backend"
-              >
-                {backends.map((b) => (
+                  }}>Retry</Button>
+                </div>
+              )}
+              {!backendsLoading && !backendsError && backends.map((b) => {
+                const isCurrent = b.name === activeBackend
+                return (
                   <div
                     key={b.name}
-                    className={`flex items-start gap-3 py-1 ${!b.available || backendSwitching ? 'opacity-50' : ''}`}
+                    className={[
+                      'flex items-center justify-between gap-4 rounded-lg border px-4 py-3 transition-colors',
+                      isCurrent ? 'border-primary/40 bg-primary/5' : 'border-border bg-card',
+                      !b.available ? 'opacity-50' : '',
+                    ].join(' ')}
                   >
-                    <RadioGroupItem
-                      value={b.name}
-                      id={`backend-${b.name}`}
-                      disabled={!b.available || backendSwitching}
-                    />
-                    <Label htmlFor={`backend-${b.name}`} className={b.available && !backendSwitching ? 'cursor-pointer' : 'cursor-not-allowed'}>
-                      <span className="block text-sm font-medium text-foreground">
-                        {b.display_name}{!b.available && ' (not available)'}
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                        {b.display_name}
+                        {isCurrent && (
+                          <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                            Current
+                          </span>
+                        )}
+                        {!b.available && (
+                          <span className="text-xs font-normal text-muted-foreground">Not available</span>
+                        )}
                       </span>
-                      <span className="block text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {BACKEND_DESCRIPTIONS[b.name] ?? b.display_name}
                       </span>
                       {!b.available && b.install_hint && (
-                        <span className="block text-xs text-muted-foreground">{b.install_hint}</span>
+                        <span className="text-xs text-muted-foreground italic">{b.install_hint}</span>
                       )}
-                    </Label>
+                    </div>
+                    {!isCurrent && b.available && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={backendSwitching}
+                        onClick={() => setPendingBackend(b.name)}
+                        className="shrink-0"
+                      >
+                        Switch
+                      </Button>
+                    )}
                   </div>
-                ))}
-              </RadioGroup>
-            )}
-            <p className="text-xs text-amber-700" role="note">
-              Switching migrates your vault key and restarts Keylatch.
-            </p>
-            {backendSwitching && (
-              <p role="status" aria-live="polite" className="text-xs text-muted-foreground">Switching backend…</p>
-            )}
-            {backendError && (
-              <p className="text-sm text-destructive" role="alert">{backendError}</p>
-            )}
-          </CardContent>
-        </Card>
+                )
+              })}
+              {backendSwitching && (
+                <div className="flex items-center gap-2 pt-1 text-sm text-muted-foreground" role="status" aria-live="polite">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary shrink-0" />
+                  Migrating vault key… Keylatch will restart shortly.
+                </div>
+              )}
+
+              {backendError && (
+                <p className="text-sm text-destructive" role="alert">{backendError}</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Confirmation dialog */}
+          {pendingBackend && (() => {
+            const target = backends.find((b) => b.name === pendingBackend)
+            return (
+              <Dialog open onOpenChange={(open) => { if (!open) setPendingBackend(null) }}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Switch to {target?.display_name}?</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground">
+                    Your vault key will be migrated to <strong className="text-foreground">{target?.display_name}</strong>.
+                    Keylatch will restart automatically once migration completes.
+                  </p>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" onClick={() => setPendingBackend(null)}>Cancel</Button>
+                    <Button onClick={() => void confirmSwitchBackend()}>Migrate</Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )
+          })()}
+        </>
       )}
 
       {/* Credential reference sources — advanced mode only */}

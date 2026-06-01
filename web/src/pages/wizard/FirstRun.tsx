@@ -15,6 +15,7 @@ import { KeylatchLogo } from "@/components/KeylatchLogo";
 import { StepConnect } from "./StepConnect";
 import { StepRun } from "./StepRun";
 import { StepInstallCLI } from "./StepInstallCLI";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const TOTAL_STEPS = 5;
 
@@ -63,23 +64,28 @@ export function FirstRun() {
     setCurrentStep((s) => Math.max(s - 1, 1));
 
   return (
-    <div className="flex h-[100dvh] bg-white overflow-hidden flex-col">
+    <div className="flex h-[100dvh] bg-background overflow-hidden flex-col">
       {/* Topbar */}
-      <header className="h-14 shrink-0 border-b border-border flex items-center px-6 gap-4 z-10">
-        {currentStep > 1 && (
-          <button
-            type="button"
-            onClick={goBack}
-            aria-label="Go back"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-          </button>
-        )}
-        <KeylatchLogo className="h-7 w-auto" />
-        <div className="ml-auto flex gap-2" aria-label="Wizard progress">
+      <header className="h-14 shrink-0 border-b border-border relative flex items-center px-6 z-10">
+        {/* Left — back + logo */}
+        <div className="flex items-center gap-3 flex-1">
+          {currentStep > 1 && (
+            <button
+              type="button"
+              onClick={goBack}
+              aria-label="Go back"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+          <KeylatchLogo className="h-7 w-auto" />
+        </div>
+
+        {/* Center — progress dots, truly centered */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2" aria-label="Wizard progress">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => (
             <span
               key={i}
@@ -88,10 +94,15 @@ export function FirstRun() {
                   ? "h-1.5 w-6 rounded-full bg-primary"
                   : i + 1 < currentStep
                   ? "h-1.5 w-1.5 rounded-full bg-primary/40"
-                  : "h-1.5 w-1.5 rounded-full bg-neutral-200"
+                  : "h-1.5 w-1.5 rounded-full bg-border"
               }
             />
           ))}
+        </div>
+
+        {/* Right — theme toggle */}
+        <div className="flex items-center flex-1 justify-end">
+          <ThemeToggle />
         </div>
       </header>
 

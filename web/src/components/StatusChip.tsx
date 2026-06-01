@@ -15,9 +15,9 @@ const LABELS: Record<ConnectionStatus, string> = {
 }
 
 const STATUS_CLASSES: Record<ConnectionStatus, string> = {
-  ok:       'bg-emerald-100 text-emerald-700 border-transparent',
-  error:    'bg-red-100 text-red-700 border-transparent',
-  warning:  'bg-amber-100 text-amber-700 border-transparent',
+  ok:       'bg-emerald-100 text-emerald-700 border-transparent dark:bg-emerald-950 dark:text-emerald-300',
+  error:    'bg-red-100 text-red-700 border-transparent dark:bg-red-950 dark:text-red-300',
+  warning:  'bg-amber-100 text-amber-700 border-transparent dark:bg-amber-950 dark:text-amber-300',
   untested: 'bg-secondary text-secondary-foreground border-transparent',
   expired:  'bg-secondary text-secondary-foreground border-transparent',
 }

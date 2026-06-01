@@ -50,7 +50,7 @@ export function AgentSnippet({ snippet, language = 'bash', className }: AgentSni
         </div>
       )}
 
-      <div className="relative bg-neutral-50 rounded-b-lg">
+      <div className="relative bg-muted rounded-b-lg">
         <pre className="overflow-x-auto px-4 py-4 text-sm font-mono text-foreground">
           <code>{snippetToShow}</code>
         </pre>

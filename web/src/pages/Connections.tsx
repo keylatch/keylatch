@@ -96,7 +96,10 @@ export function Connections() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Connections</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Connections</h1>
+        <Button size="sm" onClick={() => setWizardOpen(true)}>+ Add Provider</Button>
+      </div>
       <ProviderList
         connections={connections}
         onAddProvider={() => setWizardOpen(true)}
@@ -147,13 +150,13 @@ export function Connections() {
           <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6">
             {/* Connection name (read-only) */}
             <div className="flex flex-col gap-1">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Connection</p>
+              <p className="text-sm font-medium text-muted-foreground">Connection</p>
               <p className="text-sm font-medium text-foreground">{editConnection}</p>
             </div>
 
             {/* Approval policy override */}
             <div className="flex flex-col gap-3">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Approval policy override</p>
+              <p className="text-sm font-medium text-muted-foreground">Approval policy override</p>
               <RadioGroup
                 value={editApprovalPolicy}
                 onValueChange={(v) => setEditApprovalPolicy(v as ApprovalPolicyOverride)}

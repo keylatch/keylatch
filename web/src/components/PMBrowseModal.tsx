@@ -208,7 +208,7 @@ export function PMBrowseBody({ pm, onSelect, onBack }: PMBrowseBodyProps) {
             </p>
             {response.hint && (
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-md bg-neutral-100 px-3 py-2 font-mono text-xs text-foreground">
+                <code className="flex-1 rounded-md bg-muted px-3 py-2 font-mono text-xs text-foreground">
                   {response.hint}
                 </code>
                 <button
@@ -277,7 +277,7 @@ export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
     <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent side="right" hideCloseButton className="flex flex-col gap-0 p-0 w-full sm:max-w-lg bg-background">
         {/* Header — matches ProviderWizard */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-border">
           <div className="flex items-center gap-2">
             <button
               type="button"

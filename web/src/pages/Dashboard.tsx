@@ -6,7 +6,7 @@ import { ReadinessPillWidget } from '../components/ReadinessPill'
 import { ActivityFeedPlaceholder } from '../components/ActivityFeedPlaceholder'
 import { ProviderWizard } from '../components/ProviderWizard'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import type { Connection, Approval } from '../lib/types'
 import { api, DEV_MOCK } from '../lib/api'
 import { fetchReceipts } from '../api/receipts'
@@ -203,15 +203,15 @@ export function Dashboard() {
       {approvals.length > 0 && (
         <div
           role="alert"
-          className="mt-8 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3"
+          className="mt-8 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30"
         >
-          <span className="text-sm font-medium text-amber-800">
+          <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
             {approvals.length} pending approval{approvals.length > 1 ? 's' : ''} require attention
           </span>
           <Button
             variant="outline"
             size="sm"
-            className="ml-auto shrink-0 bg-transparent border-amber-300 text-amber-700 hover:bg-amber-100"
+            className="ml-auto shrink-0 bg-transparent border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/40"
             onClick={() => navigate('/approvals')}
           >
             Review
@@ -221,7 +221,7 @@ export function Dashboard() {
 
       {/* Connections grid */}
       <section aria-label="Connections" className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Connections</p>
+        <p className="text-base font-semibold text-foreground">Connections</p>
         {connections.length === 0 ? (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
@@ -239,15 +239,15 @@ export function Dashboard() {
         )}
       </section>
 
-      {/* Activity timeline (value-free, S-RM-9) — ReceiptCard owns its own card header */}
-      <Card className="divide-y divide-border overflow-hidden" aria-label="Recent activity">
-        <CardHeader className="px-6 py-4 border-b border-border">
-          <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0" role="list" aria-label="Receipt timeline">
-          {activityContent}
-        </CardContent>
-      </Card>
+      {/* Activity timeline (value-free, S-RM-9) */}
+      <section aria-label="Recent activity" className="space-y-3">
+        <p className="text-base font-semibold text-foreground">Recent Activity</p>
+        <Card className="divide-y divide-border overflow-hidden">
+          <CardContent className="p-0" role="list" aria-label="Receipt timeline">
+            {activityContent}
+          </CardContent>
+        </Card>
+      </section>
 
       {/* Activity feed placeholder — always visible, no close button (spec §4) */}
       <ActivityFeedPlaceholder />

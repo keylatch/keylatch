@@ -69,7 +69,7 @@ export function HealthScore({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${label}: ${clampedScore} out of 100`}
-        className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200"
+        className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
       >
         <div
           className="h-full rounded-full transition-[width] duration-500"

@@ -139,23 +139,52 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
   const slugify = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
-  const handleCustomContinue = () => {
+  // Initialize a default credential field when the custom form opens.
+  useEffect(() => {
+    if (showCustomForm) {
+      setFields([{ id: 'f0', name: 'credential', label: 'Credential', required: true, mode: 'direct', value: '', uri: '', error: null }])
+    }
+  }, [showCustomForm])
+
+  const handleCustomSubmit = async () => {
     const slug = customSlug.trim() || slugify(customName)
     if (!customName.trim() || !slug) return
-    const tmpl: ProviderTemplate = {
-      slug,
-      display_name: customName.trim(),
-      category: 'custom',
-      docs_url: '',
-      runtime_modes: ['gateway_classic'],
+
+    let hasError = false
+    const validated = fields.map((f) => {
+      if (f.mode === 'direct' && f.required && !f.value.trim()) {
+        hasError = true
+        return { ...f, error: `${f.label} is required` }
+      }
+      if (f.mode === 'reference' && !f.uri.trim()) {
+        hasError = true
+        return { ...f, error: 'Reference URI is required' }
+      }
+      return { ...f, error: null }
+    })
+    setFields(validated)
+    if (hasError) return
+
+    const payload: CreateConnectionPayload = {
+      provider: slug,
+      account: customName.trim(),
+      fields: fields.map((f) => ({
+        name: f.name,
+        mode: f.mode,
+        ...(f.mode === 'direct' ? { value: f.value } : { uri: f.uri }),
+      })),
     }
-    setSelectedProvider(tmpl)
-    setConnectionName(tmpl.display_name)
-    setConnectionNameError(null)
-    setFields([{ id: 'f0', name: 'credential', label: 'Credential', required: true, mode: 'direct', value: '', uri: '', error: null }])
-    setFieldsLoading(false)
-    setFieldsError(null)
-    setStep(1)
+
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await createConnection(payload)
+      await onSuccess()
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to create connection')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleAddField = () => {
@@ -294,7 +323,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
     <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent side="right" hideCloseButton className="flex flex-col gap-0 p-0 w-full sm:max-w-lg bg-background">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-border">
           <div className="flex items-center gap-2">
             {showBackButton && (
               <button
@@ -366,8 +395,10 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
           {!browseState && step === 0 && showCustomForm && (
             <div className="flex flex-col gap-5 px-6 py-5">
               <p className="text-sm text-muted-foreground">
-                For any service without a built-in template — internal APIs, private services, OAuth tokens, webhooks, or anything else. You define the credential fields in the next step.
+                For any service without a built-in template — internal APIs, private services, OAuth tokens, or webhooks.
               </p>
+
+              {/* Name */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="custom-name">Name <span className="text-destructive">*</span></Label>
                 <Input
@@ -381,6 +412,8 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
                   autoFocus
                 />
               </div>
+
+              {/* Slug */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="custom-slug">
                   Slug <span className="text-xs font-normal text-muted-foreground">(auto-generated)</span>
@@ -392,8 +425,72 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
                   placeholder="internal-billing-api"
                   className="font-mono"
                 />
-                <p className="text-xs text-muted-foreground">Identifier used in CLI: <code className="font-mono">keylatch run {customSlug || 'your-slug'} -- …</code></p>
+                <p className="text-xs text-muted-foreground">CLI identifier: <code className="font-mono">keylatch run {customSlug || 'your-slug'} -- …</code></p>
               </div>
+
+              {/* Credential fields */}
+              <div className="border-t border-border pt-4 flex flex-col gap-4">
+                <p className="text-base font-semibold text-foreground">Credentials</p>
+                {fields.map((f, idx) => (
+                  <div key={f.id} className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor={`custom-field-label-${f.name}`}>Field name</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`custom-field-label-${f.name}`}
+                          value={f.label}
+                          onChange={(e) => {
+                            const label = e.target.value
+                            const name = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `field_${idx + 1}`
+                            setFields((prev) => prev.map((x) => x.name === f.name ? { ...x, label, name } : x))
+                          }}
+                          placeholder="e.g. API Key, Bearer Token…"
+                          className="flex-1"
+                        />
+                        {fields.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveField(f.name)}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive transition-colors"
+                            aria-label={`Remove ${f.label}`}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <FieldInput
+                      fieldName={f.name}
+                      label={f.label}
+                      required={f.required}
+                      mode={f.mode}
+                      value={f.value}
+                      uri={f.uri}
+                      error={f.error}
+                      advancedMode={advancedMode}
+                      availablePMs={availablePMs}
+                      onModeChange={(mode) => handleFieldChange(f.name, { mode, error: null })}
+                      onValueChange={(value) => handleFieldChange(f.name, { value, error: null })}
+                      onUriChange={(uri) => handleFieldChange(f.name, { uri, error: null })}
+                      onBrowseRequest={(scheme) => setBrowseState({ fieldName: f.name, scheme })}
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleAddField}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  Add field
+                </button>
+              </div>
+
+              {submitError && (
+                <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {submitError}
+                </div>
+              )}
             </div>
           )}
 
@@ -485,7 +582,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
                             className="w-full flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-3 text-left hover:bg-accent hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                             onClick={() => setShowCustomForm(true)}
                           >
-                            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 text-lg font-light">+</span>
+                            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-lg font-light">+</span>
                             <div className="flex flex-col min-w-0 flex-1">
                               <span className="text-sm font-medium text-foreground">Custom provider</span>
                               <span className="text-xs text-muted-foreground">Any service without a built-in template</span>
@@ -507,7 +604,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
               <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
                 <ProviderBadge provider={selectedProvider.slug} className="h-8 w-8 text-xs" />
                 <div>
-                  <p className="text-sm font-medium text-foreground">{selectedProvider.display_name}</p>
+                  <p className="text-sm font-medium text-foreground">{connectionName.trim() || selectedProvider.display_name}</p>
                   <p className="text-xs text-muted-foreground capitalize">{selectedProvider.category}</p>
                 </div>
               </div>
@@ -561,14 +658,17 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
               {/* Credential fields */}
               {!fieldsLoading && fields.length > 0 && (
                 <div className="flex flex-col gap-4">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                  <p className="text-base font-semibold text-foreground">
                     Credential fields
                   </p>
                   {fields.map((f, idx) => (
                     <div key={f.id} className="flex flex-col gap-2">
                       {selectedProvider?.category === 'custom' && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor={`field-label-${f.name}`}>Field name</Label>
+                          <div className="flex items-center gap-2">
                           <Input
+                            id={`field-label-${f.name}`}
                             value={f.label}
                             onChange={(e) => {
                               const label = e.target.value
@@ -588,6 +688,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                             </button>
                           )}
+                          </div>
                         </div>
                       )}
                       <FieldInput
@@ -629,16 +730,17 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
           )}
         </div>
 
-        {/* Footer for custom provider name/slug step */}
+        {/* Footer for custom provider — single-step submit */}
         {!browseState && step === 0 && showCustomForm && (
           <div className="px-6 py-4 border-t border-border shrink-0 bg-background">
             <Button
               type="button"
-              onClick={handleCustomContinue}
-              disabled={!customName.trim()}
+              onClick={() => void handleCustomSubmit()}
+              disabled={!customName.trim() || submitting}
+              aria-busy={submitting}
               className="w-full"
             >
-              Continue
+              {submitting ? 'Saving…' : 'Add connection'}
             </Button>
           </div>
         )}

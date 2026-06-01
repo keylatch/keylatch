@@ -103,7 +103,7 @@ export function AgentSetup() {
                   </div>
                 </div>
                 {/* Snippet */}
-                <div className="flex items-center gap-2 bg-neutral-50 px-4 py-3">
+                <div className="flex items-center gap-2 bg-muted px-4 py-3">
                   <pre className="flex-1 text-sm font-mono text-foreground overflow-x-auto">
                     <code>{snippet}</code>
                   </pre>
