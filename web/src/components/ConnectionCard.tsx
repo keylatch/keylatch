@@ -14,12 +14,24 @@ interface ConnectionCardProps {
   className?: string
 }
 
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic:  'Anthropic',
+  openai:     'OpenAI',
+  github:     'GitHub',
+  stripe:     'Stripe',
+  slack:      'Slack',
+  openrouter: 'OpenRouter',
+  google:     'Google',
+  azure:      'Azure',
+  aws:        'AWS',
+}
+
 /**
  * ConnectionCard — displays a connection in grid or list layout.
  *
  * When isAddCard=true, renders a dashed "Add connection" card.
- * Error state: adds a red left border.
- * Hover: translateY(-2px) via CSS.
+ * Error state: ring-2 ring-destructive ring-inset for reliable cross-browser rendering.
+ * Hover: shadow upgrade via transition-all.
  */
 export function ConnectionCard({
   connection,
@@ -33,8 +45,8 @@ export function ConnectionCard({
       <button
         type="button"
         className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-primary-400)] hover:text-[var(--color-primary-600)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
-          variant === 'list' && 'flex-row justify-start',
+          'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-5 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[120px]',
+          variant === 'list' && 'flex-row justify-start min-h-0',
           className
         )}
         onClick={() => onSelect?.('__add__')}
@@ -49,34 +61,86 @@ export function ConnectionCard({
   if (!connection) return null
 
   const hasError = connection.status === 'error'
+  const isInteractive = !!onSelect
+  const displayProvider = PROVIDER_NAMES[connection.provider] ?? connection.provider
 
-  return (
-    <button
-      type="button"
-      className={cn(
-        'flex w-full cursor-pointer flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4 text-left shadow-[var(--shadow-xs)] transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-[var(--shadow-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
-        hasError && 'shadow-[inset_3px_0_0_var(--color-danger)]',
-        variant === 'list' && 'flex-row items-center',
-        className
-      )}
-      onClick={() => onSelect?.(connection.name)}
-      aria-label={`Connection: ${connection.name}`}
-    >
-      <div className="flex items-center gap-2">
+  // Format expiry relative to today
+  let expiryLabel: string | null = null
+  if (connection.expiresAt) {
+    const now = Date.now()
+    const exp = new Date(connection.expiresAt).getTime()
+    const diffDays = Math.round((exp - now) / (1000 * 60 * 60 * 24))
+    if (diffDays < 0) {
+      expiryLabel = 'Expired'
+    } else if (diffDays === 0) {
+      expiryLabel = 'Expires today'
+    } else {
+      expiryLabel = `Expires in ${diffDays} day${diffDays === 1 ? '' : 's'}`
+    }
+  }
+
+  const cardContent = (
+    <>
+      {/* Header: badge + name */}
+      <div className="flex items-center gap-3">
         <ProviderBadge provider={connection.provider} />
-        <span className="text-sm font-medium text-[var(--color-text-primary)]">
-          {connection.name}
-        </span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-sm font-semibold text-foreground truncate">
+            {connection.name}
+          </span>
+          <span className="text-xs text-muted-foreground truncate">
+            {displayProvider}
+          </span>
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+
+      {/* Status row */}
+      <div className="flex items-center gap-2 flex-wrap">
         <StatusChip status={connection.status} />
         <RiskLabel risk={connection.risk} />
       </div>
-      {connection.expiresAt && (
-        <div className="text-xs text-[var(--color-text-secondary)]">
-          Expires: {new Date(connection.expiresAt).toLocaleDateString()}
+
+      {/* Expiry */}
+      {expiryLabel && (
+        <div className="text-xs text-muted-foreground">
+          {expiryLabel}
         </div>
       )}
-    </button>
+    </>
+  )
+
+  if (isInteractive) {
+    return (
+      <button
+        type="button"
+        className={cn(
+          'rounded-xl border border-border bg-card p-4 hover:border-primary/30 hover:bg-card/80 transition-all duration-150 cursor-pointer text-left w-full',
+          'flex flex-col gap-3',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          hasError && 'ring-2 ring-destructive ring-inset',
+          variant === 'list' && 'flex-row items-center',
+          className
+        )}
+        onClick={() => onSelect(connection.name)}
+        aria-label={`Connection: ${connection.name}`}
+      >
+        {cardContent}
+      </button>
+    )
+  }
+
+  return (
+    <article
+      className={cn(
+        'rounded-xl border border-border bg-card p-4',
+        'flex flex-col gap-3',
+        hasError && 'ring-2 ring-destructive ring-inset',
+        variant === 'list' && 'flex-row items-center',
+        className
+      )}
+      aria-label={`Connection: ${connection.name}`}
+    >
+      {cardContent}
+    </article>
   )
 }

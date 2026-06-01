@@ -1,40 +1,59 @@
+import { cn } from '@/lib/utils'
 import type { ComponentPropsWithoutRef } from 'react'
 
 type DivProps = ComponentPropsWithoutRef<'div'>
 type NavProps = ComponentPropsWithoutRef<'nav'>
 
-function cx(...classes: Array<string | false | undefined>) {
-  return classes.filter(Boolean).join(' ')
-}
-
 export function Sidebar({ className, ...props }: NavProps) {
-  return <nav className={cx('ui-sidebar', className)} {...props} />
+  return (
+    <nav
+      className={cn('flex h-full w-[220px] flex-col bg-sidebar border-r border-sidebar-border', className)}
+      {...props}
+    />
+  )
 }
 
 export function SidebarHeader({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__header', className)} {...props} />
+  return (
+    <div
+      className={cn('flex h-14 items-center px-4 border-b border-border', className)}
+      {...props}
+    />
+  )
 }
 
 export function SidebarContent({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__content', className)} {...props} />
+  return (
+    <div className={cn('flex-1 overflow-y-auto py-2', className)} {...props} />
+  )
 }
 
 export function SidebarGroup({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__group', className)} {...props} />
+  return <div className={cn('px-2 py-1', className)} {...props} />
 }
 
 export function SidebarGroupLabel({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__group-label', className)} {...props} />
+  return (
+    <div
+      className={cn('mb-1 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground', className)}
+      {...props}
+    />
+  )
 }
 
 export function SidebarMenu({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__menu', className)} {...props} />
+  return <div className={cn('space-y-0.5', className)} {...props} />
 }
 
 export function SidebarMenuItem({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__menu-item', className)} {...props} />
+  return <div className={cn('', className)} {...props} />
 }
 
 export function SidebarFooter({ className, ...props }: DivProps) {
-  return <div className={cx('ui-sidebar__footer', className)} {...props} />
+  return (
+    <div
+      className={cn('px-4 py-3 border-t border-border', className)}
+      {...props}
+    />
+  )
 }

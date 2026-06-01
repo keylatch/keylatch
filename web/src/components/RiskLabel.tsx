@@ -1,5 +1,4 @@
 import type { RiskLevel } from '../lib/types'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 interface RiskLabelProps {
@@ -8,9 +7,15 @@ interface RiskLabelProps {
 }
 
 const LABELS: Record<RiskLevel, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
+  low: 'Low risk',
+  medium: 'Medium risk',
+  high: 'High risk',
+}
+
+const RISK_CLASSES: Record<RiskLevel, string> = {
+  low:    'bg-emerald-100 text-emerald-700',
+  medium: 'bg-amber-100 text-amber-700',
+  high:   'bg-red-100 text-red-700',
 }
 
 /**
@@ -20,18 +25,16 @@ const LABELS: Record<RiskLevel, string> = {
  * screen readers announce "Risk level: High" not just "High".
  */
 export function RiskLabel({ risk, className }: RiskLabelProps) {
-  const variant =
-    risk === 'high' ? 'destructive' :
-    risk === 'medium' ? 'warning' :
-    'success'
-
   return (
-    <Badge
-      variant={variant}
-      className={cn(className)}
+    <span
       aria-label={`Risk level: ${LABELS[risk]}`}
+      className={cn(
+        'inline-flex items-center rounded-full border border-transparent px-2.5 py-0.5 text-xs font-semibold',
+        RISK_CLASSES[risk],
+        className
+      )}
     >
       {LABELS[risk]}
-    </Badge>
+    </span>
   )
 }

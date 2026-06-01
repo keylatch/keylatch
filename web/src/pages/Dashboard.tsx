@@ -4,8 +4,11 @@ import { ConnectionCard } from '../components/ConnectionCard'
 import { ReceiptCard } from '../components/ReceiptCard'
 import { ReadinessPillWidget } from '../components/ReadinessPill'
 import { ActivityFeedPlaceholder } from '../components/ActivityFeedPlaceholder'
+import { ProviderWizard } from '../components/ProviderWizard'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { Connection, Approval } from '../lib/types'
-import { api } from '../lib/api'
+import { api, DEV_MOCK } from '../lib/api'
 import { fetchReceipts } from '../api/receipts'
 import type { Receipt } from '../api/receipts'
 
@@ -25,6 +28,7 @@ export function Dashboard() {
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [wizardOpen, setWizardOpen] = useState(false)
 
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [receiptsLoading, setReceiptsLoading] = useState(true)
@@ -78,33 +82,37 @@ export function Dashboard() {
       })
 
     // ── SSE live feed (/v1/receipts/stream) ────────────────────────────────
-    const es = new EventSource('/v1/receipts/stream')
-    esRef.current = es
+    // Skip SSE in mock mode — polling is sufficient and EventSource would
+    // immediately error because the Go server is not running.
+    if (!DEV_MOCK) {
+      const es = new EventSource('/v1/receipts/stream')
+      esRef.current = es
 
-    es.addEventListener('open', () => {
-      if (!mountedRef.current) return
-      setReceiptsError(null)
-    })
-
-    es.addEventListener('receipt', (event: MessageEvent) => {
-      if (!mountedRef.current) return
-      try {
-        const parsed = JSON.parse(event.data) as Receipt
-        const newReceipt: Receipt = { ...parsed, id: crypto.randomUUID() }
-        setReceipts((prev) => [newReceipt, ...prev].slice(0, 10))
+      es.addEventListener('open', () => {
+        if (!mountedRef.current) return
         setReceiptsError(null)
-      } catch {
-        // Ignore malformed SSE data.
-      }
-    })
-
-    es.addEventListener('error', () => {
-      if (!mountedRef.current) return
-      setReceipts((prev) => {
-        if (prev.length === 0) setReceiptsError('Could not load activity. Retrying...')
-        return prev
       })
-    })
+
+      es.addEventListener('receipt', (event: MessageEvent) => {
+        if (!mountedRef.current) return
+        try {
+          const parsed = JSON.parse(event.data) as Receipt
+          const newReceipt: Receipt = { ...parsed, id: crypto.randomUUID() }
+          setReceipts((prev) => [newReceipt, ...prev].slice(0, 10))
+          setReceiptsError(null)
+        } catch {
+          // Ignore malformed SSE data.
+        }
+      })
+
+      es.addEventListener('error', () => {
+        if (!mountedRef.current) return
+        setReceipts((prev) => {
+          if (prev.length === 0) setReceiptsError('Could not load activity. Retrying...')
+          return prev
+        })
+      })
+    }
 
     // ── Polling fallback (5-second interval) ────────────────────────────────
     const POLL_INTERVAL_MS = 5000
@@ -131,7 +139,7 @@ export function Dashboard() {
     return () => {
       mountedRef.current = false
       abortController.abort()
-      es.close()
+      esRef.current?.close()
       esRef.current = null
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current)
@@ -141,11 +149,22 @@ export function Dashboard() {
   }, [])
 
   if (loading) {
-    return <div aria-busy="true" aria-label="Loading dashboard">Loading…</div>
+    return (
+      <div className="flex items-center justify-center py-24" aria-busy="true" aria-label="Loading dashboard">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary" />
+      </div>
+    )
   }
 
   if (error) {
-    return <div role="alert">Error: {error}</div>
+    return (
+      <div
+        role="alert"
+        className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive"
+      >
+        {error}
+      </div>
+    )
   }
 
   // ── Activity section rendering ────────────────────────────────────────────
@@ -153,76 +172,96 @@ export function Dashboard() {
 
   if (receiptsLoading) {
     activityContent = (
-      <div className="text-sm text-[var(--color-text-secondary)]" aria-busy="true" aria-label="Loading activity">
+      <div className="px-3 py-2.5 text-sm text-muted-foreground" aria-busy="true" aria-label="Loading activity">
         Loading recent activity…
       </div>
     )
   } else if (receiptsError && receipts.length === 0) {
     activityContent = (
-      <div role="alert" className="text-sm text-[var(--color-danger)]">
+      <div role="alert" className="px-3 py-2.5 text-sm text-destructive">
         {receiptsError}
       </div>
     )
   } else if (receipts.length === 0) {
     activityContent = (
-      <div className="text-sm text-[var(--color-text-secondary)]">
+      <div className="px-3 py-2.5 text-sm text-muted-foreground">
         No recent activity
       </div>
     )
   } else {
-    activityContent = (
-      <div role="list" className="space-y-2" aria-label="Receipt timeline">
-        {receipts.map((r, idx) => (
-          // eslint-disable-next-line react/no-array-index-key
-          <ReceiptCard key={r.id ?? `${r.provider}-${r.capability}-${idx}`} receipt={r} />
-        ))}
-      </div>
-    )
+    activityContent = receipts.map((r, idx) => (
+      // eslint-disable-next-line react/no-array-index-key
+      <ReceiptCard key={r.id ?? `${r.provider}-${r.capability}-${idx}`} receipt={r} />
+    ))
   }
 
   return (
-    <div className="space-y-6">
-      {/* Readiness pill — dominant above-fold affordance */}
-      <ReadinessPillWidget connections={connections} onNavigate={navigate} />
+    <div className="space-y-8">
+      <h1 className="text-2xl font-bold tracking-tight text-foreground mb-0">Dashboard</h1>
 
-      {/* Pending approvals banner — kept below pill */}
+      {/* Pending approvals banner */}
       {approvals.length > 0 && (
         <div
           role="alert"
-          className="rounded-md bg-[var(--color-warning-light)] px-4 py-3 text-sm font-medium text-[var(--color-warning-dark)]"
+          className="mt-8 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3"
         >
-          {approvals.length} pending approval{approvals.length > 1 ? 's' : ''} require attention
+          <span className="text-sm font-medium text-amber-800">
+            {approvals.length} pending approval{approvals.length > 1 ? 's' : ''} require attention
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto shrink-0 bg-transparent border-amber-300 text-amber-700 hover:bg-amber-100"
+            onClick={() => navigate('/approvals')}
+          >
+            Review
+          </Button>
         </div>
       )}
 
       {/* Connections grid */}
       <section aria-label="Connections" className="space-y-3">
-        <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">Connections</h2>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Connections</p>
         {connections.length === 0 ? (
           <div className="space-y-3">
-            <p className="text-sm text-[var(--color-text-secondary)]">
+            <p className="text-sm text-muted-foreground">
               No connections yet. Add your first connection to get started.
             </p>
-            <ConnectionCard isAddCard />
+            <ConnectionCard isAddCard onSelect={() => setWizardOpen(true)} />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {connections.map((c) => (
               <ConnectionCard key={c.name} connection={c} />
             ))}
-            <ConnectionCard isAddCard />
+            <ConnectionCard isAddCard onSelect={() => setWizardOpen(true)} />
           </div>
         )}
       </section>
 
-      {/* Activity timeline (value-free, S-RM-9) */}
-      <section aria-label="Recent activity" className="space-y-3">
-        <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">Recent Activity</h2>
-        {activityContent}
-      </section>
+      {/* Activity timeline (value-free, S-RM-9) — ReceiptCard owns its own card header */}
+      <Card className="divide-y divide-border overflow-hidden" aria-label="Recent activity">
+        <CardHeader className="px-6 py-4 border-b border-border">
+          <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0" role="list" aria-label="Receipt timeline">
+          {activityContent}
+        </CardContent>
+      </Card>
 
       {/* Activity feed placeholder — always visible, no close button (spec §4) */}
       <ActivityFeedPlaceholder />
+
+      {wizardOpen && (
+        <ProviderWizard
+          onSuccess={async () => {
+            setWizardOpen(false)
+            const data = await api.get<{ connections: Connection[] }>('/api/connections')
+            setConnections(data.connections ?? [])
+          }}
+          onClose={() => setWizardOpen(false)}
+        />
+      )}
     </div>
   )
 }

@@ -94,17 +94,17 @@ export function RuntimeChooser({
           onClick={() => onChange?.(opt.mode)}
           onKeyDown={(e) => handleKeyDown(e, idx)}
           className={cn(
-            'flex w-full flex-col items-start gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50',
+            'flex w-full flex-col items-start gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
             value === opt.mode
-              ? 'border-[var(--color-primary-600)] bg-[var(--color-primary-50)] text-[var(--color-primary-900)]'
-              : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-primary-300)] hover:bg-[var(--color-surface-raised)]'
+              ? 'border-primary bg-primary-50 text-primary-900'
+              : 'border-border bg-background hover:border-primary-300 hover:bg-card'
           )}
           tabIndex={value === opt.mode ? 0 : -1}
         >
           <span className="text-sm font-medium">{opt.label}</span>
           <span className={cn(
             'text-xs',
-            value === opt.mode ? 'text-[var(--color-primary-700)]' : 'text-[var(--color-text-secondary)]'
+            value === opt.mode ? 'text-primary-700' : 'text-muted-foreground'
           )}>
             {opt.description}
           </span>

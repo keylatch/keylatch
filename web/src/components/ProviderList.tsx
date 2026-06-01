@@ -5,7 +5,7 @@ import type { ProviderConnection } from '../stores/connections'
 interface ProviderListProps {
   connections: ProviderConnection[]
   onAddProvider?: () => void
-  onEditProvider?: (id: string) => void
+  onEditProvider?: (name: string) => void
   onDeleteProvider?: (name: string) => void
 }
 
@@ -27,7 +27,7 @@ export function ProviderList({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Providers</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">Providers</h2>
         <Button
           type="button"
           size="sm"
@@ -40,7 +40,7 @@ export function ProviderList({
 
       {connections.length === 0 ? (
         <div
-          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-6 py-8 text-center text-sm text-[var(--color-text-secondary)]"
+          className="rounded-lg border border-border bg-card px-6 py-8 text-center text-sm text-muted-foreground"
           role="status"
         >
           <p>No providers connected yet.</p>
@@ -52,7 +52,7 @@ export function ProviderList({
             <div key={conn.id} role="listitem">
               <ProviderCard
                 connection={conn}
-                onEdit={onEditProvider}
+                onEdit={onEditProvider ? () => onEditProvider(conn.name) : undefined}
                 onDelete={onDeleteProvider}
               />
             </div>

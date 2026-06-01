@@ -64,7 +64,8 @@ describe('ProviderCard — rendering', () => {
 
   it('renders ProviderBadge with monogram', () => {
     render(<ProviderCard connection={baseConn} />)
-    expect(screen.getByText('OP')).toBeInTheDocument()
+    // baseConn uses 'openrouter' which maps to 'OR' monogram in ProviderBadge
+    expect(screen.getByText('OR')).toBeInTheDocument()
   })
 
   it('renders direct mode field badge', () => {
@@ -114,14 +115,15 @@ describe('ProviderCard — doctor health indicator (T-14-07)', () => {
     // Don't resolve yet — keep status as pending.
     mockGet.mockReturnValue(new Promise(() => {}))
     render(<ProviderCard connection={baseConn} />)
-    expect(screen.getByRole('button', { name: 'Health check pending' })).toBeInTheDocument()
+    // Dot is a non-interactive span with aria-label; no button role.
+    expect(screen.getByTitle('Health check pending')).toBeInTheDocument()
   })
 
   it('shows green dot when doctor exit=0', async () => {
     mockGet.mockResolvedValue(healthyDoctor)
     render(<ProviderCard connection={baseConn} />)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Healthy' })).toBeInTheDocument()
+      expect(screen.getByTitle('Healthy')).toBeInTheDocument()
     })
   })
 
@@ -129,7 +131,7 @@ describe('ProviderCard — doctor health indicator (T-14-07)', () => {
     mockGet.mockResolvedValue(warnDoctor)
     render(<ProviderCard connection={baseConn} />)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Warnings detected' })).toBeInTheDocument()
+      expect(screen.getByTitle('Warnings detected')).toBeInTheDocument()
     })
   })
 
@@ -137,44 +139,43 @@ describe('ProviderCard — doctor health indicator (T-14-07)', () => {
     mockGet.mockResolvedValue(errorDoctor)
     render(<ProviderCard connection={baseConn} />)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Errors detected' })).toBeInTheDocument()
+      expect(screen.getByTitle('Errors detected')).toBeInTheDocument()
     })
   })
 
-  it('clicking status dot opens doctor check panel', async () => {
+  it('clicking Health details button opens doctor check panel', async () => {
     mockGet.mockResolvedValue(warnDoctor)
     render(<ProviderCard connection={baseConn} />)
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Warnings detected' })).toBeInTheDocument()
-    })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Warnings detected' }))
+    // Panel is toggled via the "Health details" button in the actions row.
+    const detailsBtn = screen.getByRole('button', { name: 'Show health details' })
+    expect(detailsBtn).toBeInTheDocument()
+
+    fireEvent.click(detailsBtn)
     expect(screen.getByRole('region', { name: 'Doctor check results' })).toBeInTheDocument()
   })
 
   it('doctor panel shows correct check rows when exit=1', async () => {
     mockGet.mockResolvedValue(warnDoctor)
     render(<ProviderCard connection={baseConn} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show health details' }))
+
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Warnings detected' })).toBeInTheDocument()
+      expect(screen.getByText('key_expiry')).toBeInTheDocument()
     })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Warnings detected' }))
-
-    expect(screen.getByText('key_expiry')).toBeInTheDocument()
     expect(screen.getByText('Rotate your API key')).toBeInTheDocument()
   })
 
   it('doctor panel shows error rows with fix hint', async () => {
     mockGet.mockResolvedValue(errorDoctor)
     render(<ProviderCard connection={baseConn} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show health details' }))
+
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Errors detected' })).toBeInTheDocument()
+      expect(screen.getByText('provider_connected')).toBeInTheDocument()
     })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Errors detected' }))
-
-    expect(screen.getByText('provider_connected')).toBeInTheDocument()
     expect(screen.getByText('Run: keylatch connect openrouter')).toBeInTheDocument()
   })
 })

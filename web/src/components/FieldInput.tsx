@@ -10,7 +10,6 @@
  */
 
 import { useState } from 'react'
-import { PMBrowseModal } from './PMBrowseModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,6 +39,12 @@ export function validateRefURI(uri: string): string | null {
 
 export type FieldMode = 'direct' | 'reference'
 
+export const PM_OPTIONS: { scheme: PMScheme; label: string; placeholder: string }[] = [
+  { scheme: 'op',         label: '1Password',            placeholder: 'op://vault/item/field' },
+  { scheme: 'aws_sm',     label: 'AWS Secrets Manager',  placeholder: 'aws-sm://region/secret-id' },
+  { scheme: 'hashivault', label: 'HashiCorp Vault',       placeholder: 'hashivault://mount/path#field' },
+]
+
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface FieldInputProps {
@@ -53,16 +58,31 @@ interface FieldInputProps {
   uri: string
   /** Validation error to display inline. */
   error?: string | null
+  /**
+   * Available password managers. When provided, only PMs with `true` values are shown.
+   * If no PMs are available, a note is shown instead of the PM selector pills.
+   */
+  availablePMs?: { op: boolean; aws_sm: boolean; hashivault: boolean }
+  /**
+   * When false (default), the "Use reference from password manager" disclosure link
+   * is hidden. Only shown when advanced mode is enabled in Settings.
+   */
+  advancedMode?: boolean
   onModeChange: (mode: FieldMode) => void
   onValueChange: (value: string) => void
   onUriChange: (uri: string) => void
+  /**
+   * Called when the user clicks Browse. The parent (ProviderWizard) handles opening
+   * the browse sub-view inline rather than a second Sheet.
+   */
+  onBrowseRequest?: (scheme: PMScheme) => void
 }
 
 /**
  * FieldInput — renders a single credential field with mode toggle.
  *
  * Direct mode: password `<input>` for the field value.
- * Reference mode: text input for the PM URI + Browse button that opens PMBrowseModal.
+ * Reference mode: text input for the PM URI + Browse button that calls onBrowseRequest.
  */
 export function FieldInput({
   fieldName,
@@ -72,77 +92,43 @@ export function FieldInput({
   value,
   uri,
   error,
+  availablePMs,
+  advancedMode = false,
   onModeChange,
   onValueChange,
   onUriChange,
+  onBrowseRequest,
 }: FieldInputProps) {
-  const [browseOpen, setBrowseOpen] = useState(false)
   const [browseScheme, setBrowseScheme] = useState<PMScheme>('op')
 
   const directInputId = `field-${fieldName}-direct`
   const refInputId = `field-${fieldName}-ref`
   const errorId = `field-${fieldName}-error`
 
-  const handleBrowseSelect = (selectedUri: string) => {
-    onUriChange(selectedUri)
-    setBrowseOpen(false)
-  }
+  // Filter PM options to only installed PMs when availablePMs is provided.
+  const visiblePMs = availablePMs
+    ? PM_OPTIONS.filter((opt) => availablePMs[opt.scheme])
+    : PM_OPTIONS
 
-  const handleBrowseOpen = () => {
-    // Determine scheme from current URI prefix, default to op.
-    if (uri.startsWith('aws-sm://')) setBrowseScheme('aws_sm')
-    else if (uri.startsWith('hashivault://')) setBrowseScheme('hashivault')
-    else setBrowseScheme('op')
-    setBrowseOpen(true)
+  const handleBrowseClick = () => {
+    // Determine scheme from current URI prefix, default to first visible scheme or 'op'.
+    let scheme: PMScheme = visiblePMs[0]?.scheme ?? 'op'
+    if (uri.startsWith('aws-sm://')) scheme = 'aws_sm'
+    else if (uri.startsWith('hashivault://')) scheme = 'hashivault'
+    else if (uri.startsWith('op://')) scheme = 'op'
+    setBrowseScheme(scheme)
+    onBrowseRequest?.(scheme)
   }
 
   return (
-    <div className="flex flex-col gap-2" data-field={fieldName}>
-      {/* Header: label + mode toggle */}
-      <div className="flex items-center justify-between gap-2">
-        <Label htmlFor={mode === 'direct' ? directInputId : refInputId}>
-          {label}
-          {required && <span className="text-[var(--color-danger)] ml-0.5" aria-hidden="true"> *</span>}
-        </Label>
+    <div className="flex flex-col gap-1.5" data-field={fieldName}>
+      <Label htmlFor={mode === 'direct' ? directInputId : refInputId}>
+        {label}
+        {required && <span className="text-destructive ml-0.5" aria-hidden="true"> *</span>}
+      </Label>
 
-        {/* Mode toggle — two pill buttons */}
-        <div
-          className="flex rounded-md border border-[var(--color-border)] overflow-hidden"
-          role="group"
-          aria-label={`Storage mode for ${label}`}
-        >
-          <button
-            type="button"
-            className={cn(
-              'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-inset',
-              mode === 'direct'
-                ? 'bg-[var(--color-primary-600)] text-[var(--color-text-inverse)]'
-                : 'bg-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
-            )}
-            onClick={() => onModeChange('direct')}
-            aria-pressed={mode === 'direct'}
-          >
-            Store directly
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-inset border-l border-[var(--color-border)]',
-              mode === 'reference'
-                ? 'bg-[var(--color-primary-600)] text-[var(--color-text-inverse)]'
-                : 'bg-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
-            )}
-            onClick={() => onModeChange('reference')}
-            aria-pressed={mode === 'reference'}
-          >
-            From password manager
-          </button>
-        </div>
-      </div>
-
-      {/* Control */}
-      <div>
-        {mode === 'direct' ? (
+      {mode === 'direct' ? (
+        <>
           <Input
             id={directInputId}
             type="password"
@@ -154,50 +140,78 @@ export function FieldInput({
             aria-invalid={!!error}
             autoComplete="off"
           />
-        ) : (
-          <div className="flex gap-2">
-            <Input
-              id={refInputId}
-              type="text"
-              value={uri}
-              onChange={(e) => onUriChange(e.target.value)}
-              placeholder="op://vault/item/field"
-              aria-required={required}
-              aria-describedby={error ? errorId : undefined}
-              aria-invalid={!!error}
-              autoComplete="off"
-            />
-            <Button
+          {advancedMode && (!availablePMs || visiblePMs.length > 0) && (
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleBrowseOpen}
-              aria-label={`Browse password manager for ${label}`}
+              className="w-fit text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              onClick={() => onModeChange('reference')}
             >
-              Browse
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Inline error */}
-      {error && (
-        <div
-          id={errorId}
-          role="alert"
-          className="text-xs text-[var(--color-danger)]"
-          aria-live="polite"
-        >
-          {error}
-        </div>
+              Use reference from password manager
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          {visiblePMs.length === 0 ? (
+            /* No PMs installed — show hint + fallback */
+            <p className="text-xs text-muted-foreground">
+              No password managers detected. Install op, aws-cli, or vault to enable references.{' '}
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground transition-colors"
+                onClick={() => { onModeChange('direct'); onUriChange('') }}
+              >
+                Store directly instead
+              </button>
+            </p>
+          ) : (
+            <>
+              {/* PM selector pills */}
+              <div className="flex gap-1.5 flex-wrap">
+                {visiblePMs.map((opt) => (
+                  <button
+                    key={opt.scheme}
+                    type="button"
+                    className={cn(
+                      'px-2.5 py-1 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      browseScheme === opt.scheme
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                    )}
+                    onClick={() => setBrowseScheme(opt.scheme)}
+                    aria-pressed={browseScheme === opt.scheme}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <Input
+                id={refInputId}
+                type="text"
+                value={uri}
+                onChange={(e) => onUriChange(e.target.value)}
+                placeholder={visiblePMs.find(o => o.scheme === browseScheme)?.placeholder ?? PM_OPTIONS.find(o => o.scheme === browseScheme)?.placeholder ?? 'op://vault/item/field'}
+                aria-required={required}
+                aria-describedby={error ? errorId : undefined}
+                aria-invalid={!!error}
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="w-fit text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                onClick={() => { onModeChange('direct'); onUriChange('') }}
+              >
+                Store directly instead
+              </button>
+            </>
+          )}
+        </>
       )}
 
-      {browseOpen && (
-        <PMBrowseModal
-          pm={browseScheme}
-          onSelect={handleBrowseSelect}
-          onClose={() => setBrowseOpen(false)}
-        />
+      {error && (
+        <p id={errorId} role="alert" className="text-xs text-destructive" aria-live="polite">
+          {error}
+        </p>
       )}
     </div>
   )
