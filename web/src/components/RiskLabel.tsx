@@ -8,9 +8,9 @@ interface RiskLabelProps {
 }
 
 const LABELS: Record<RiskLevel, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
+  low: 'Low risk',
+  medium: 'Medium risk',
+  high: 'High risk',
 }
 
 /**

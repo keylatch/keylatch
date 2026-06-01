@@ -197,16 +197,21 @@ export function Settings() {
     setAdvancedError(null)
     setAdvancedMode(enabled)
     setAdvancedLoading(true)
+    // If disabling advanced mode while an advanced operating mode is active,
+    // revert to standard so the radio group always has a visible selection.
+    const revertMode = !enabled && (operatingMode === 'canary' || operatingMode === 'custom')
+    if (revertMode) setOperatingMode('standard')
     try {
-      const data = await api.put<SettingsResponse>('/api/settings', {
-        advanced_mode: enabled,
-      })
+      const payload: Record<string, unknown> = { advanced_mode: enabled }
+      if (revertMode) payload.operating_mode = 'standard'
+      const data = await api.put<SettingsResponse>('/api/settings', payload)
       setAdvancedMode(data.advanced_mode)
+      if (revertMode) setOperatingMode(data.operating_mode)
       setAdvancedSaved(true)
       setTimeout(() => setAdvancedSaved(false), 2000)
     } catch (err) {
-      // Revert optimistic update on failure.
       setAdvancedMode(!enabled)
+      if (revertMode) setOperatingMode(operatingMode)
       const msg = err instanceof ApiError ? err.message : 'Failed to save advanced mode'
       setAdvancedError(msg)
     } finally {
@@ -268,12 +273,11 @@ export function Settings() {
         )}
       </section>
 
-      {/* EPIC-27: Operating mode — standard and telemetry always visible; canary and custom only in advanced mode. */}
+      {/* EPIC-27: Operating mode — all options in one section; developer options gated behind advancedMode. */}
       <section aria-label="Operating mode" className="space-y-3">
         <h3 className="text-lg font-medium text-[var(--color-text-primary)]">Operating mode</h3>
         <p className="text-sm text-[var(--color-text-secondary)]">
           Controls how Keylatch routes credentials and which features are enabled.
-          Canary and custom modes are intended for developers and early adopters.
         </p>
         <fieldset className="space-y-2">
           <legend className="sr-only">Operating mode</legend>
@@ -281,12 +285,6 @@ export function Settings() {
             [
               { value: 'standard', label: 'Standard', description: 'Stable production mode.' },
               { value: 'telemetry', label: 'Telemetry', description: 'Standard plus anonymous usage telemetry.' },
-              ...(advancedMode
-                ? [
-                    { value: 'canary', label: 'Canary (advanced)', description: 'Pre-release features — may be unstable.' },
-                    { value: 'custom', label: 'Custom (advanced)', description: 'Fully custom configuration.' },
-                  ]
-                : []),
             ] as { value: OperatingMode; label: string; description: string }[]
           ).map(({ value, label, description }) => (
             <label
@@ -308,6 +306,41 @@ export function Settings() {
               </span>
             </label>
           ))}
+
+          {advancedMode && (
+            <>
+              <div className="flex items-center gap-2 pt-1">
+                <div className="h-px flex-1 bg-[var(--color-border)]" aria-hidden="true" />
+                <span className="text-xs text-[var(--color-text-disabled)]">Developer</span>
+                <div className="h-px flex-1 bg-[var(--color-border)]" aria-hidden="true" />
+              </div>
+              {(
+                [
+                  { value: 'canary', label: 'Canary', description: 'Pre-release features — may be unstable.' },
+                  { value: 'custom', label: 'Custom', description: 'Fully custom configuration.' },
+                ] as { value: OperatingMode; label: string; description: string }[]
+              ).map(({ value, label, description }) => (
+                <label
+                  key={value}
+                  className="flex items-start gap-3 cursor-pointer"
+                >
+                  <input
+                    type="radio"
+                    name="operating-mode"
+                    value={value}
+                    checked={operatingMode === value}
+                    onChange={() => void handleSaveOperatingMode(value)}
+                    className="mt-0.5 h-4 w-4"
+                    aria-label={label}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
+                    <span className="block text-xs text-[var(--color-text-secondary)]">{description}</span>
+                  </span>
+                </label>
+              ))}
+            </>
+          )}
         </fieldset>
         {operatingModeSaved && (
           <p className="text-xs text-[var(--color-success-dark)]" role="status">Saved!</p>

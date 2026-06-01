@@ -8,7 +8,7 @@ interface StatusChipProps {
 }
 
 const LABELS: Record<ConnectionStatus, string> = {
-  ok: 'OK',
+  ok: 'Active',
   error: 'Error',
   untested: 'Untested',
   expired: 'Expired',

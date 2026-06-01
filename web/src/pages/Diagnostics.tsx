@@ -76,7 +76,7 @@ function SectionTable({
 
   return (
     <div className="space-y-1">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+      <h3 className="text-sm font-semibold text-[var(--color-text-secondary)]">
         {section}
       </h3>
       <table className="w-full border-collapse">

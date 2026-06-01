@@ -188,7 +188,7 @@ export function ProviderCard({ connection, onEdit, onDelete }: ProviderCardProps
           role="region"
           aria-label="Doctor check results"
         >
-          <h4 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Health Checks</h4>
+          <h4 className="text-xs font-semibold text-[var(--color-text-secondary)] mb-2">Health Checks</h4>
           {checks.length === 0 ? (
             <p className="text-xs text-[var(--color-text-secondary)]">No check data yet.</p>
           ) : (

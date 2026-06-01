@@ -34,7 +34,7 @@ export function ProviderBadge({ provider, logoSrc, className }: ProviderBadgePro
     <img
       src={logoSrc}
       alt={`${provider} logo`}
-      className={cn('h-8 w-8 rounded-md object-contain', className)}
+      className={cn('h-8 w-8 rounded-md object-contain dark:brightness-0 dark:invert', className)}
       onError={() => setImgError(true)}
     />
   )

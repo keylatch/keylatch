@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 // TOKEN_REGEX matches content that looks like a credential. If content matches,
@@ -82,25 +81,39 @@ export function SafeCopyButton({ content, label = 'Copy', className }: SafeCopyB
     }
   }
 
-  const buttonLabel =
-    state === 'copied' ? 'Copied!' :
-    state === 'refused' ? 'Refused (security)' :
-    label
-
   return (
-    <Button
+    <button
       type="button"
-      variant={state === 'refused' ? 'destructive' : state === 'copied' ? 'secondary' : 'outline'}
-      size="sm"
       onClick={handleCopy}
-      aria-label={state === 'copied' ? 'Copied to clipboard' : label}
-      className={cn(className)}
+      aria-label={
+        state === 'copied' ? 'Copied to clipboard' :
+        state === 'refused' ? 'Copy blocked (security)' :
+        label
+      }
+      title={state === 'copied' ? 'Copied!' : state === 'refused' ? 'Cannot copy (security)' : label}
+      className={cn(
+        'inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--color-border)] bg-transparent transition-colors',
+        'hover:bg-[var(--color-surface-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
+        state === 'refused' && 'border-[var(--color-danger)] text-[var(--color-danger)]',
+        state === 'copied' && 'border-[var(--color-success)] text-[var(--color-success-dark)]',
+        state === 'idle' && 'text-[var(--color-text-secondary)]',
+        className
+      )}
     >
-      {buttonLabel}
+      {state === 'copied' ? (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+        </svg>
+      )}
       {/* aria-live region announces state change to screen readers */}
       <span aria-live="polite" aria-atomic="true" className="sr-only">
-        {state === 'copied' ? 'Copied to clipboard' : ''}
+        {state === 'copied' ? 'Copied to clipboard' : state === 'refused' ? 'Copy blocked — credential-shaped content' : ''}
       </span>
-    </Button>
+    </button>
   )
 }

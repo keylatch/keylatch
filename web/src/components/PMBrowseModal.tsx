@@ -16,7 +16,7 @@
  * Implemented in T-14-05.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -100,6 +100,8 @@ export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
   const [manualURI, setManualURI] = useState('')
   const [manualError, setManualError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -116,8 +118,9 @@ export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
     if (!response?.hint) return
     try {
       await navigator.clipboard.writeText(response.hint)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
     } catch {
       // Clipboard API not available — silently skip.
     }
@@ -220,15 +223,19 @@ export function PMBrowseModal({ pm, onSelect, onClose }: PMBrowseModalProps) {
                       <code className="flex-1 rounded-md bg-[var(--color-neutral-100)] px-3 py-2 font-mono text-xs text-[var(--color-text-primary)]">
                         {response.hint}
                       </code>
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        size="sm"
                         onClick={handleCopyHint}
-                        aria-label="Copy authentication command"
+                        aria-label={copied ? 'Copied to clipboard' : 'Copy authentication command'}
+                        title={copied ? 'Copied!' : 'Copy'}
+                        className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-transparent text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
                       >
-                        {copied ? 'Copied!' : 'Copy'}
-                      </Button>
+                        {copied ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>
