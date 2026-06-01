@@ -255,8 +255,8 @@ export function ProviderCard({ connection, onEdit, onDelete }: ProviderCardProps
                 {checks.map((c) => (
                   <tr key={`${c.section}-${c.name}`} className={cn(
                     'border-t border-border',
-                    !c.ok && c.warn && 'bg-amber-50',
-                    !c.ok && !c.warn && 'bg-red-50',
+                    !c.ok && c.warn && 'bg-amber-50 dark:bg-amber-950/30',
+                    !c.ok && !c.warn && 'bg-red-50 dark:bg-red-950/30',
                   )}>
                     <td className="py-1 pr-3 text-muted-foreground">{c.section}</td>
                     <td className="py-1 pr-3 text-foreground">{c.name}</td>

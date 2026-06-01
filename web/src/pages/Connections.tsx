@@ -176,13 +176,20 @@ export function Connections() {
                   </div>
                 ))}
               </RadioGroup>
+              <p className="text-xs text-muted-foreground">Per-connection policy overrides coming soon.</p>
             </div>
           </div>
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-border shrink-0">
-            <Button type="button" onClick={handleEditSave} className="w-full">
-              Save
+            <Button
+              type="button"
+              onClick={handleEditSave}
+              className="w-full"
+              disabled
+              title="Coming soon — approval policy overrides require server support"
+            >
+              Save changes
             </Button>
           </div>
         </SheetContent>

@@ -7,6 +7,7 @@
 //   4. Try It     — run a command through Keylatch
 //   5. Done       — success + optional CLI install
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { safeInvoke as invoke } from "@/lib/tauri";
 import { CheckCircle2 } from "lucide-react";
@@ -233,7 +234,7 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
                 <button
                   type="button"
                   className="w-full flex items-center justify-between rounded-lg border border-border px-4 py-3.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 disabled:pointer-events-none"
-                  onClick={() => { if (b.available) bootstrap(b.name); }}
+                  onClick={() => { if (b.available) { setSelectedBackend(b.name); bootstrap(b.name); } }}
                   disabled={!b.available || bootstrapStatus === "loading"}
                 >
                   <span>
@@ -264,7 +265,7 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
       )}
       {bootstrapStatus === "error" && (
         <p
-          className="rounded-md bg-[#fee2e2] px-3 py-2 text-sm text-red-700"
+          className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 px-3 py-2 text-sm text-red-700 dark:text-red-300"
           role="alert"
         >
           {bootstrapError}
@@ -277,6 +278,8 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
 // ── Step 5: Done ─────────────────────────────────────────────────────────────
 
 function StepDone() {
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -288,9 +291,12 @@ function StepDone() {
         Your credentials are locked in the vault. Agents will request access through Keylatch — raw API keys never leave your machine.
       </p>
 
+      {/* Optional CLI install nudge */}
+      <StepInstallCLI />
+
       <div className="pt-2">
-        <Button asChild className="w-full">
-          <a href="/">Go to Dashboard</a>
+        <Button type="button" className="w-full" onClick={() => navigate('/')}>
+          Go to Dashboard
         </Button>
       </div>
     </div>

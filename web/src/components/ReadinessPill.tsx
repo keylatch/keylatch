@@ -49,19 +49,19 @@ function computePillState(
 
 const BANNER_CONFIG: Record<ReadinessPillState, { wrapper: string; dot: string; text: string }> = {
   ready: {
-    wrapper: 'bg-emerald-50 border border-emerald-200',
+    wrapper: 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50',
     dot:     'bg-emerald-500 animate-pulse',
-    text:    'text-emerald-700',
+    text:    'text-emerald-700 dark:text-emerald-300',
   },
   not_ready: {
-    wrapper: 'bg-red-50 border border-red-200',
+    wrapper: 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50',
     dot:     'bg-red-500',
-    text:    'text-red-700',
+    text:    'text-red-700 dark:text-red-300',
   },
   degraded: {
-    wrapper: 'bg-amber-50 border border-amber-200',
+    wrapper: 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50',
     dot:     'bg-amber-500',
-    text:    'text-amber-700',
+    text:    'text-amber-700 dark:text-amber-300',
   },
 }
 
