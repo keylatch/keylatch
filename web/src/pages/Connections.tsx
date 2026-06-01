@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ProviderList } from '../components/ProviderList'
 import { ProviderWizard } from '../components/ProviderWizard'
 import { useConnections } from '../stores/connections'
+import { api } from '../lib/api'
 import {
   Dialog,
   DialogContent,
@@ -35,8 +36,10 @@ export function Connections() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   // editConnection holds the connection name being edited.
   const [editConnection, setEditConnection] = useState<string | null>(null)
-  // Per-connection approval policy override (mock — real API TBD).
+  // Per-connection approval policy override.
   const [editApprovalPolicy, setEditApprovalPolicy] = useState<ApprovalPolicyOverride>('global')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
 
   useEffect(() => {
     void refresh()
@@ -62,17 +65,33 @@ export function Connections() {
   }
 
   const handleEdit = (name: string) => {
+    const conn = connections.find((c) => c.name === name)
+    const policy = (conn?.approval_policy ?? '') as ApprovalPolicyOverride
     setEditConnection(name)
-    setEditApprovalPolicy('global')
+    setEditApprovalPolicy(policy === '' ? 'global' : policy)
+    setEditError(null)
   }
 
   const handleEditClose = () => {
     setEditConnection(null)
+    setEditError(null)
   }
 
-  const handleEditSave = () => {
-    // TODO: call PATCH /api/connections/:name with { approval_policy: editApprovalPolicy } when API is ready
-    setEditConnection(null)
+  const handleEditSave = async () => {
+    if (!editConnection) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      await api.put(`/api/connections/${editConnection}`, {
+        approval_policy: editApprovalPolicy === 'global' ? '' : editApprovalPolicy,
+      })
+      await refresh()
+      setEditConnection(null)
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   if (loading) {
@@ -179,20 +198,28 @@ export function Connections() {
                   </div>
                 ))}
               </RadioGroup>
-              <p className="text-xs text-muted-foreground">Per-connection policy overrides coming soon.</p>
             </div>
+            {editError && (
+              <p role="alert" className="text-xs text-destructive">{editError}</p>
+            )}
           </div>
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-border shrink-0">
             <Button
               type="button"
-              onClick={handleEditSave}
+              onClick={() => void handleEditSave()}
               className="w-full"
-              disabled
-              title="Coming soon — approval policy overrides require server support"
+              disabled={editSaving}
             >
-              Save changes
+              {editSaving ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                  Saving…
+                </span>
+              ) : (
+                'Save changes'
+              )}
             </Button>
           </div>
         </SheetContent>

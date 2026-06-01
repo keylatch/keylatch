@@ -21,6 +21,7 @@ export const mockConnections: (Connection & {
     namespace: 'default',
     status: 'ok',
     risk: 'medium',
+    approval_policy: 'global',
     expiresAt: addDays(28),
     lastTestedAt: addMinutes(-4),
     fields: [{ name: 'api_key', mode: 'reference', uri: 'keychain://anthropic/prod' }],
@@ -35,6 +36,7 @@ export const mockConnections: (Connection & {
     namespace: 'default',
     status: 'ok',
     risk: 'medium',
+    approval_policy: 'global',
     expiresAt: addDays(19),
     lastTestedAt: addMinutes(-7),
     fields: [{ name: 'api_key', mode: 'reference', uri: 'keychain://openai/team' }],
@@ -49,6 +51,7 @@ export const mockConnections: (Connection & {
     namespace: 'default',
     status: 'ok',
     risk: 'low',
+    approval_policy: 'global',
     expiresAt: addDays(45),
     lastTestedAt: addMinutes(-14),
     fields: [{ name: 'pat', mode: 'reference', uri: 'keychain://github/engineering' }],
@@ -63,6 +66,7 @@ export const mockConnections: (Connection & {
     namespace: 'default',
     status: 'warning',
     risk: 'high',
+    approval_policy: 'global',
     expiresAt: addDays(5),
     lastTestedAt: addHours(-2),
     fields: [{ name: 'restricted_key', mode: 'reference', uri: 'keychain://stripe/billing' }],
@@ -167,6 +171,14 @@ export function mockPatch(path: string, body: unknown): unknown | undefined {
   if (path.startsWith('/api/settings') && body !== null && typeof body === 'object') {
     Object.assign(mockSettingsState, body)
     return { ...mockSettingsState }
+  }
+  if (path.startsWith('/api/connections/') && !path.includes('/clear') && body !== null && typeof body === 'object') {
+    const id = path.replace('/api/connections/', '')
+    const conn = mockConnections.find((c) => c.name === id || c.provider === id)
+    if (conn && 'approval_policy' in (body as Record<string, unknown>)) {
+      conn.approval_policy = (body as Record<string, unknown>).approval_policy as string
+    }
+    return { status: 'updated', id }
   }
   return undefined
 }
