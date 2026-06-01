@@ -5,7 +5,7 @@
  * doctor responses and verify health indicator behaviour.
  */
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProviderCard } from './ProviderCard'
 import type { ProviderConnection } from '../stores/connections'

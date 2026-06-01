@@ -66,9 +66,9 @@ export function Connections() {
 
   const handleEdit = (name: string) => {
     const conn = connections.find((c) => c.name === name)
-    const policy = (conn?.approval_policy ?? '') as ApprovalPolicyOverride
+    const rawPolicy = conn?.approval_policy ?? ''
     setEditConnection(name)
-    setEditApprovalPolicy(policy === '' ? 'global' : policy)
+    setEditApprovalPolicy(!rawPolicy ? 'global' : rawPolicy as ApprovalPolicyOverride)
     setEditError(null)
   }
 
@@ -150,8 +150,10 @@ export function Connections() {
       <Sheet open={!!editConnection} onOpenChange={(open) => { if (!open) handleEditClose() }}>
         <SheetContent side="right" hideCloseButton className="flex flex-col gap-0 p-0 w-full sm:max-w-md bg-background">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
-            <SheetTitle className="text-base font-semibold">Edit Connection</SheetTitle>
+          <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-border">
+            <div className="flex items-center gap-2">
+              <SheetTitle className="text-base font-semibold">Edit Connection</SheetTitle>
+            </div>
             <SheetClose asChild>
               <button
                 type="button"
