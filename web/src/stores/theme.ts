@@ -1,5 +1,7 @@
 export function getStoredTheme(): 'light' | 'dark' {
-  return (localStorage.getItem('kl-theme') as 'light' | 'dark') ?? 'light'
+  const stored = localStorage.getItem('kl-theme') as 'light' | 'dark' | null
+  if (stored) return stored
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 export function applyTheme(theme: 'light' | 'dark') {

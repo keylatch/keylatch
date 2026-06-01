@@ -39,8 +39,11 @@ type ConnectionField struct {
 	URI string `json:"uri,omitempty"`
 }
 
-// connectionPolicyPath returns the vault path for per-connection approval policy.
-// Canonical format: namespace/category/provider/policy (S-FIND-23).
+// connectionPolicyPath returns the vault path for per-provider approval policy.
+// NOTE: like fieldModesPath and connectionMetaPath, the account segment is not
+// included — policy is stored at the provider level, shared by all accounts of
+// that provider. This is intentional for the v1 keylatch model where a single
+// provider slug maps to one identity.
 func connectionPolicyPath(namespace, provider, _ string) string {
 	if namespace == "" {
 		namespace = defaultConnectionNamespace
@@ -564,6 +567,22 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// Validate approval_policy BEFORE any store writes so an invalid value
+	// cannot leave behind orphaned secret writes (partial-write guard).
+	if req.ApprovalPolicy != nil {
+		validPolicies := map[string]bool{
+			"":          true,
+			"global":    true,
+			"prompt":    true,
+			"first-run": true,
+			"trust":     true,
+		}
+		if !validPolicies[*req.ApprovalPolicy] {
+			http.Error(w, "invalid approval_policy value", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Resolve namespace consistently: prefer conn.Namespace, fall back to the
 	// package default.  This avoids the C-04 bug where secretFieldPath used
 	// defaultConnectionNamespace while saveFieldModes/loadFieldModes used conn.Namespace.
@@ -604,18 +623,8 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Persist approval policy override when explicitly provided.
+	// Validation already performed above before any store writes.
 	if req.ApprovalPolicy != nil {
-		validPolicies := map[string]bool{
-			"":          true,
-			"global":    true,
-			"prompt":    true,
-			"first-run": true,
-			"trust":     true,
-		}
-		if !validPolicies[*req.ApprovalPolicy] {
-			http.Error(w, "invalid approval_policy value", http.StatusBadRequest)
-			return
-		}
 		if saveErr := saveConnectionPolicy(r, h.Store, ns, conn.Provider, conn.Account, *req.ApprovalPolicy); saveErr != nil {
 			http.Error(w, "could not save approval policy", http.StatusInternalServerError)
 			return
