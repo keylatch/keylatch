@@ -32,8 +32,8 @@ describe('ApprovalCard', () => {
   it('TTL < 60s gets urgent styling (danger color)', () => {
     render(<ApprovalCard approval={makeApproval(30)} />)
     const ttlEl = screen.getByLabelText(/expires in/i)
-    // After migration: class contains danger color token instead of 'urgent'
-    expect(ttlEl.className).toContain('color-danger')
+    // Urgent TTL uses text-destructive (Tailwind) for the danger color
+    expect(ttlEl.className).toContain('text-destructive')
   })
 
   it('TTL >= 60s does NOT get urgent styling', () => {

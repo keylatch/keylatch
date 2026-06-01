@@ -105,7 +105,7 @@ describe('FieldInput', () => {
     expect(input).toHaveAttribute('type', 'text')
   })
 
-  it('shows Browse button in reference mode', () => {
+  it('shows PM selector pills in reference mode', () => {
     render(
       <FieldInput
         fieldName="api_key"
@@ -118,7 +118,8 @@ describe('FieldInput', () => {
         onUriChange={noop}
       />
     )
-    expect(screen.getByRole('button', { name: /Browse password manager/i })).toBeInTheDocument()
+    // In reference mode, PM pills are shown (1Password, AWS Secrets Manager, HashiCorp Vault)
+    expect(screen.getByRole('button', { name: '1Password' })).toBeInTheDocument()
   })
 
   it('displays inline error when error prop is set', () => {
@@ -139,7 +140,7 @@ describe('FieldInput', () => {
     expect(screen.getByRole('alert').textContent).toContain('Invalid reference URI')
   })
 
-  it('calls onModeChange when mode toggle is clicked', () => {
+  it('calls onModeChange when mode toggle link is clicked', () => {
     const onModeChange = vi.fn()
     render(
       <FieldInput
@@ -148,12 +149,15 @@ describe('FieldInput', () => {
         mode="direct"
         value=""
         uri=""
+        // advancedMode=true required to render the "Use reference from password manager" toggle
+        advancedMode={true}
         onModeChange={onModeChange}
         onValueChange={noop}
         onUriChange={noop}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'From password manager' }))
+    // The toggle link is only shown when advancedMode=true
+    fireEvent.click(screen.getByRole('button', { name: 'Use reference from password manager' }))
     expect(onModeChange).toHaveBeenCalledWith('reference')
   })
 

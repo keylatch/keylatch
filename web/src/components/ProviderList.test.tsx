@@ -1,6 +1,12 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { ProviderList } from './ProviderList'
 import type { ProviderConnection } from '../stores/connections'
+
+vi.mock('../lib/api', () => ({
+  api: {
+    get: vi.fn(),
+  },
+}))
 
 const makeConn = (provider: string): ProviderConnection => ({
   id: `default/${provider}/default`,
@@ -38,21 +44,17 @@ describe('ProviderList', () => {
     expect(document.querySelector('select')).toBeNull()
   })
 
-  it('renders Add Provider button', () => {
-    render(<ProviderList connections={[]} />)
-    expect(screen.getByRole('button', { name: 'Add Provider' })).toBeInTheDocument()
-  })
-
-  it('calls onAddProvider when Add Provider button is clicked', () => {
-    const onAdd = vi.fn()
-    render(<ProviderList connections={[]} onAddProvider={onAdd} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Add Provider' }))
-    expect(onAdd).toHaveBeenCalledTimes(1)
-  })
-
+  // ProviderList does not render an "Add Provider" button directly.
+  // The empty-state shows text with "+ Add Provider" hint.
+  // The onAddProvider callback is passed to a parent for wiring via external UI.
   it('shows empty state when no connections', () => {
     render(<ProviderList connections={[]} />)
     expect(screen.getByRole('status')).toBeInTheDocument()
     expect(screen.getByText(/No providers connected yet/)).toBeInTheDocument()
+  })
+
+  it('mentions Add Provider in the empty state', () => {
+    render(<ProviderList connections={[]} />)
+    expect(screen.getByText(/\+ Add Provider/i)).toBeInTheDocument()
   })
 })

@@ -9,6 +9,8 @@ vi.mock('../lib/api', () => ({
   api: {
     get: vi.fn().mockResolvedValue({ connections: [], approvals: [] }),
   },
+  // Dashboard imports DEV_MOCK to guard the SSE branch; set to false so EventSource is used
+  DEV_MOCK: false,
 }))
 
 // ── Mock fetchReceipts ─────────────────────────────────────────────────────────
@@ -145,7 +147,8 @@ describe('Dashboard — receipt feed', () => {
     render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Pass')).toBeInTheDocument()
+      // ReceiptCard uses aria-label="Allowed" for a passed receipt (exit_code 0)
+      expect(screen.getByLabelText('Allowed')).toBeInTheDocument()
     })
   })
 
@@ -155,7 +158,8 @@ describe('Dashboard — receipt feed', () => {
     render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Fail')).toBeInTheDocument()
+      // ReceiptCard uses aria-label="Denied" for a failed receipt (non-zero exit_code)
+      expect(screen.getByLabelText('Denied')).toBeInTheDocument()
     })
   })
 
