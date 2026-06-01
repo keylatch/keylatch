@@ -84,6 +84,27 @@ scoops:
     description: Zero-trust credential vault CLI for AI-assisted workflows
     license: Apache-2.0
 
+aurs:
+  - name: keylatch-bin
+    homepage: https://github.com/keylatch/keylatch
+    description: Zero-trust credential vault CLI for AI-assisted workflows
+    license: Apache-2.0
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: ssh://aur@aur.archlinux.org/keylatch-bin.git
+    skip_upload: auto
+    provides:
+      - keylatch
+    depends:
+      - glibc
+    optdepends:
+      - op
+      - bitwarden-cli
+    install: |
+      install -Dm755 keylatch "${pkgdir}/usr/bin/keylatch"
+      keylatch completion bash | install -Dm644 /dev/stdin "${pkgdir}/usr/share/bash-completion/completions/keylatch"
+      keylatch completion zsh | install -Dm644 /dev/stdin "${pkgdir}/usr/share/zsh/site-functions/_keylatch"
+      keylatch completion fish | install -Dm644 /dev/stdin "${pkgdir}/usr/share/fish/vendor_completions.d/keylatch.fish"
+
 dockers:
   - id: keylatch-linux-amd64
     goos: linux
