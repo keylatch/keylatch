@@ -84,14 +84,35 @@ scoops:
     description: Zero-trust credential vault CLI for AI-assisted workflows
     license: Apache-2.0
 
-# Container images — Phase 1.1.0 (requires ghcr.io docker login step in release.yml)
-# dockers:
-#   - image_templates:
-#       - ghcr.io/keylatch/keylatch:{{ .Version }}
-#       - ghcr.io/keylatch/keylatch:latest
-#     dockerfile: Dockerfile.release
-#     build_flag_templates:
-#       - --platform=linux/amd64
+dockers:
+  - id: keylatch-linux-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - ghcr.io/keylatch/keylatch:{{ .Version }}-amd64
+    dockerfile: Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+  - id: keylatch-linux-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - ghcr.io/keylatch/keylatch:{{ .Version }}-arm64
+    dockerfile: Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64
+
+docker_manifests:
+  - name_template: ghcr.io/keylatch/keylatch:{{ .Version }}
+    image_templates:
+      - ghcr.io/keylatch/keylatch:{{ .Version }}-amd64
+      - ghcr.io/keylatch/keylatch:{{ .Version }}-arm64
+  - name_template: ghcr.io/keylatch/keylatch:latest
+    image_templates:
+      - ghcr.io/keylatch/keylatch:{{ .Version }}-amd64
+      - ghcr.io/keylatch/keylatch:{{ .Version }}-arm64
 
 # FIPS build — Phase 11
 # builds:
