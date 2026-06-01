@@ -40,6 +40,22 @@ Download the latest release from the [releases page](https://github.com/keylatch
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
+Verify the release artifact with cosign (keyless signing via GitHub Actions OIDC):
+
+```bash
+cosign verify-blob \
+  --certificate-identity-regexp="github.com/keylatch" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  <artifact> \
+  --signature <artifact>.sig
+```
+
+> **Note on code-signing (1.0.0):** Desktop binaries are not code-signed in this release.
+> - **macOS:** If Gatekeeper blocks the app, run `xattr -dr com.apple.quarantine keylatch.app`
+> - **Windows:** Dismiss the SmartScreen prompt on first launch
+>
+> Code-signing will be added in a future release.
+
 ### Scoop (Windows)
 
 ```powershell
@@ -395,7 +411,7 @@ For the vulnerability disclosure policy, SBOM, and artifact verification instruc
 
 ## Desktop app
 
-The Keylatch desktop app (macOS / Windows) wraps the same trusted runtime via a `keylatchd` sidecar. It provides a tray icon, approval inbox, first-run wizard, and one-click agent profile setup — no terminal required for day-to-day use.
+The Keylatch desktop app (macOS / Windows / Linux) wraps the same trusted runtime via a `keylatchd` sidecar. It provides a tray icon, approval inbox, first-run wizard, and one-click agent profile setup — no terminal required for day-to-day use.
 
 Desktop builds are produced by goreleaser and are not part of the Docker image.
 

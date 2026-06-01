@@ -8,7 +8,7 @@ If you discover a security vulnerability in Keylatch, please report it privately
 
 ### Preferred contact
 
-- **Email**: security@keylatch.io *(GPG key: not yet published — targeted for v1.1; unencrypted reports accepted for now)*
+- **Email**: security@keylatch.dev *(GPG key: not yet published — targeted for v1.1; unencrypted reports accepted for now)*
 - **GitHub**: Open a [private security advisory](https://github.com/keylatch/keylatch/security/advisories/new) for confidential disclosure
 
 ### What to include

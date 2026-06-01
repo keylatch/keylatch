@@ -590,7 +590,7 @@ export function Settings() {
                     <DialogTitle>Switch to {target?.display_name}?</DialogTitle>
                   </DialogHeader>
                   <p className="text-sm text-muted-foreground">
-                    Your vault key will be migrated to <strong className="text-foreground">{target?.display_name}</strong>.
+                    Your vault key will be migrated locally to <strong className="text-foreground">{target?.display_name}</strong>. This operation is local-only — no data is uploaded or sent to any cloud service.
                     Keylatch will restart automatically once migration completes.
                   </p>
                   <div className="flex justify-end gap-2 pt-2">

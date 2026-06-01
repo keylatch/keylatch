@@ -205,6 +205,53 @@ func TestConnectionUpdate_ApprovalPolicy(t *testing.T) {
 	assert.Equal(t, "trust", body.Connections[0].ApprovalPolicy)
 }
 
+func TestClearConnections_DeletesAll(t *testing.T) {
+	initAPIRegistry(t)
+	t.Parallel()
+	store := newAPIMemoryStore()
+
+	// Create two connections.
+	create := &api.ConnectionsHandler{Store: store}
+	for _, body := range []string{
+		`{"provider":"openrouter","fields":{"api_key":"key-a"}}`,
+		`{"provider":"anthropic","fields":{"api_key":"key-b"}}`,
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/connections", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		create.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, "create failed for body: %s", body)
+	}
+
+	// POST /api/connections/clear.
+	clearHandler := &api.ClearConnectionsHandler{Store: store}
+	clearReq := httptest.NewRequest(http.MethodPost, "/api/connections/clear", nil)
+	clearRec := httptest.NewRecorder()
+	clearHandler.ServeHTTP(clearRec, clearReq)
+	require.Equal(t, http.StatusOK, clearRec.Code)
+
+	var clearBody struct {
+		Status string `json:"status"`
+		Count  int    `json:"count"`
+	}
+	require.NoError(t, json.NewDecoder(clearRec.Body).Decode(&clearBody))
+	assert.Equal(t, "cleared", clearBody.Status)
+	assert.Equal(t, 2, clearBody.Count)
+
+	// GET /api/connections — list must be empty.
+	list := &api.ConnectionsHandler{Store: store}
+	getReq := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
+	getRec := httptest.NewRecorder()
+	list.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var listBody struct {
+		Connections []interface{} `json:"connections"`
+	}
+	require.NoError(t, json.NewDecoder(getRec.Body).Decode(&listBody))
+	assert.Empty(t, listBody.Connections, "expected empty connections list after clear")
+}
+
 func TestConnectionUpdate_ApprovalPolicy_Invalid(t *testing.T) {
 	initAPIRegistry(t)
 	t.Parallel()

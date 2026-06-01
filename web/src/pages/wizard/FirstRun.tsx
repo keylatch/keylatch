@@ -157,6 +157,9 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         secrets stay locked — agents never see raw API keys.
       </p>
       <p className="text-muted-foreground">
+        Your credentials are encrypted and stored in your chosen backend (Keychain, 1Password, Bitwarden, or a local file). Keylatch never uploads them, never shares them with LLMs, and never includes them in MCP outputs. You stay in control.
+      </p>
+      <p className="text-muted-foreground">
         This wizard will have you up and running in about 2 minutes.
       </p>
       <Button type="button" className="mt-2" onClick={onNext}>

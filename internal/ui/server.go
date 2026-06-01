@@ -206,9 +206,9 @@ func (s *Server) registerRoutes() {
 		}
 		s.mux.HandleFunc("/api/connections", s.requireSession(csrf.Middleware(connectionsHandler).ServeHTTP))
 
-		// Clear all connections (501 stub) — registered before the /api/connections/ catch-all
+		// Clear all connections — registered before the /api/connections/ catch-all
 		// so the mux selects the more specific path first.
-		clearHandler := &api.ClearConnectionsHandler{}
+		clearHandler := &api.ClearConnectionsHandler{Store: s.opts.Store}
 		s.mux.HandleFunc("/api/connections/clear", s.requireSession(csrf.Middleware(clearHandler).ServeHTTP))
 
 		connectionDetailHandler := &api.ConnectionDetailHandler{
