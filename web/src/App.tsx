@@ -29,6 +29,9 @@ function FirstRunGuard({ children }: { children: React.ReactNode }) {
     if (DEV_MOCK) return
     // Skip if already on the first-run route to avoid redirect loops.
     if (location.pathname.startsWith('/first-run')) return
+    // Only redirect from the root path — sub-routes are accessed intentionally
+    // (e.g. bookmarked /settings or /diagnostics on a fresh install should still work).
+    if (location.pathname !== '/') return
 
     const controller = new AbortController()
 

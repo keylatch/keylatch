@@ -8,7 +8,7 @@
  * Implemented in T-14-03.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { FieldInput } from './FieldInput'
 import type { PMScheme } from './FieldInput'
 import { PMBrowseBody, PM_LABELS } from './PMBrowseModal'
@@ -102,6 +102,10 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
   // Advanced mode — fetched from /api/settings on mount.
   const [advancedMode, setAdvancedMode] = useState(false)
 
+  // Monotonic counter for field IDs — avoids duplicate keys after remove-then-add.
+  // Starts at 1 because the initial default field uses id 'f0'.
+  const fieldCounterRef = useRef(1)
+
   const { createConnection } = useConnections()
 
   // Fetch provider catalogue on mount.
@@ -163,7 +167,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
     const payload: CreateConnectionPayload = {
       provider: slug,
       account: customName.trim(),
-      fields: fields.map((f) => ({
+      fields: validated.map((f) => ({
         name: f.name,
         mode: f.mode,
         ...(f.mode === 'direct' ? { value: f.value } : { uri: f.uri }),
@@ -183,14 +187,15 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
   }
 
   const handleAddField = () => {
+    const id = `f${fieldCounterRef.current++}`
     setFields((prev) => [
       ...prev,
-      { id: `f${prev.length}`, name: `field_${prev.length + 1}`, label: `Field ${prev.length + 1}`, required: false, mode: 'direct', value: '', uri: '', error: null },
+      { id, name: `field_${id}`, label: `Field ${prev.length + 1}`, required: false, mode: 'direct', value: '', uri: '', error: null },
     ])
   }
 
-  const handleRemoveField = (name: string) => {
-    setFields((prev) => prev.filter((f) => f.name !== name))
+  const handleRemoveField = (id: string) => {
+    setFields((prev) => prev.filter((f) => f.id !== id))
   }
 
   const handleSelectProvider = async (tmpl: ProviderTemplate) => {
@@ -445,7 +450,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
                         {fields.length > 1 && (
                           <button
                             type="button"
-                            onClick={() => handleRemoveField(f.name)}
+                            onClick={() => handleRemoveField(f.id)}
                             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive transition-colors"
                             aria-label={`Remove ${f.label}`}
                           >
@@ -482,7 +487,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
               </div>
 
               {submitError && (
-                <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive dark:bg-red-950/30 dark:border-red-800/50 dark:text-red-300">
                   {submitError}
                 </div>
               )}
@@ -676,7 +681,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
                           {fields.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => handleRemoveField(f.name)}
+                              onClick={() => handleRemoveField(f.id)}
                               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive transition-colors"
                               aria-label={`Remove ${f.label}`}
                             >
@@ -717,7 +722,7 @@ export function ProviderWizard({ onSuccess, onClose }: ProviderWizardProps) {
               )}
 
               {submitError && (
-                <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive dark:bg-red-950/30 dark:border-red-800/50 dark:text-red-300">
                   {submitError}
                 </div>
               )}

@@ -181,6 +181,7 @@ export function Settings() {
       if (!result.ok) {
         setBackendError(result.error ?? 'Migration failed')
         setError()
+        reset()
         return
       }
       setActiveBackend(target)
@@ -190,6 +191,7 @@ export function Settings() {
     } catch (e) {
       setBackendError(e instanceof Error ? e.message : 'Migration failed')
       setError()
+      reset()
     } finally {
       setBackendSwitching(false)
     }
