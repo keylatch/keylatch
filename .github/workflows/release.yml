@@ -358,15 +358,23 @@ jobs:
         with:
           merge-multiple: true
           path: all-artifacts/
+      - name: collect release artifacts
+        run: |
+          mkdir -p release-files
+          find all-artifacts -type f \( \
+            -name "*.tar.gz" -o -name "*.zip" \
+            -o -name "*_checksums.txt" \
+            -o -name "*.dmg" -o -name "*.exe" \
+            -o -name "*.AppImage" -o -name "*.deb" \
+            -o -name "*.cdx.json" -o -name "*.spdx.json" \
+            -o -name "*.sig" -o -name "*.pem" \
+            -o -name "keylatch-*.json" \
+          \) -exec cp {} release-files/ \;
+          echo "--- collected ---" && ls -1 release-files/
       - name: attach artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            all-artifacts/dist/**
-            all-artifacts/src-tauri/target/release/bundle/dmg/*.dmg
-            all-artifacts/src-tauri/target/release/bundle/nsis/*.exe
-            all-artifacts/src-tauri/target/release/bundle/appimage/*.AppImage
-            all-artifacts/src-tauri/target/release/bundle/deb/*.deb
+          files: release-files/*
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
