@@ -23,7 +23,8 @@ describe('ConnectionCard', () => {
 
   it('renders risk label', () => {
     render(<ConnectionCard connection={mockConn} />)
-    expect(screen.getByLabelText('Risk level: Low')).toBeInTheDocument()
+    // RiskLabel now uses 'Low risk' label (not just 'Low')
+    expect(screen.getByLabelText('Risk level: Low risk')).toBeInTheDocument()
   })
 
   it('renders add card variant', () => {

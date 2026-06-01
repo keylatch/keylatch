@@ -61,6 +61,14 @@ beforeEach(() => {
     if (url.startsWith('/v1/providers/')) {
       return Promise.resolve(mockProviderDetail)
     }
+    if (url === '/api/settings') {
+      // Return advanced_mode=true so the mode toggle link is rendered in FieldInput
+      return Promise.resolve({ advanced_mode: true })
+    }
+    if (url === '/api/password-managers') {
+      // At least one PM must be available for the mode toggle to show in FieldInput
+      return Promise.resolve({ op: true, aws_sm: false, hashivault: false })
+    }
     return Promise.resolve(mockProviders)
   })
   mockCreateConnection.mockResolvedValue(undefined)
@@ -97,7 +105,8 @@ describe('ProviderWizard', () => {
       expect(screen.getByRole('button', { name: /Select OpenRouter/i })).toBeInTheDocument()
     })
     fireEvent.click(screen.getByRole('button', { name: /Select OpenRouter/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    // Back button is an icon-only button with aria-label="Go back"
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
     expect(screen.getByTestId('wizard-step-pick')).toBeInTheDocument()
   })
 
@@ -144,7 +153,14 @@ describe('ProviderWizard', () => {
     })
 
     // Switch api_key from direct to reference and set a URI.
-    fireEvent.click(screen.getByRole('button', { name: 'From password manager' }))
+    // The mode toggle link is shown when advancedMode=true (mocked via /api/settings).
+    // The link text is 'Use reference from password manager'.
+    // Wait for fields AND settings (advancedMode) to load before looking for the toggle.
+    await waitFor(() => {
+      const toggleBtn = screen.queryByRole('button', { name: 'Use reference from password manager' })
+      expect(toggleBtn).toBeInTheDocument()
+    }, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Use reference from password manager' }))
     const uriInput = screen.getByPlaceholderText('op://vault/item/field')
     fireEvent.change(uriInput, { target: { value: 'op://Personal/OpenRouter/api_key' } })
 

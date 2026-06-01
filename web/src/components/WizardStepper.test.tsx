@@ -26,24 +26,25 @@ describe('WizardStepper', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', String(steps.length))
   })
 
-  it('completed steps show checkmarks', () => {
+  // WizardStepper was refactored to a minimal <p> tag with no per-step indicators.
+  // It shows "Step N of M" text and the current step label — no checkmarks or
+  // per-step data-testid attributes. Tests below verify the new minimal output.
+
+  it('shows current step number in text', () => {
     render(<WizardStepper steps={steps} currentStep={2} />)
-    const indicators = screen.getAllByTestId('wizard-step-indicator')
-    // Steps 0 and 1 should be completed (before currentStep=2)
-    expect(indicators[0].textContent).toBe('✓')
-    expect(indicators[1].textContent).toBe('✓')
+    expect(screen.getByText(/Step 3 of 6/)).toBeInTheDocument()
   })
 
-  it('active step shows current number', () => {
+  it('shows active step label', () => {
     render(<WizardStepper steps={steps} currentStep={2} />)
-    const indicators = screen.getAllByTestId('wizard-step-indicator')
-    expect(indicators[2].textContent).toBe('3')
+    // The active step label is rendered as a <span> with font-medium class
+    expect(screen.getByText('Verify')).toBeInTheDocument()
   })
 
-  it('active step label is shown for mobile', () => {
-    render(<WizardStepper steps={steps} currentStep={1} />)
-    const mobileLabels = screen.getAllByTestId('wizard-step-label-mobile')
-    expect(mobileLabels).toHaveLength(1)
-    expect(mobileLabels[0].textContent).toBe('Connection')
+  it('renders for any valid currentStep without throwing', () => {
+    steps.forEach((_, idx) => {
+      const { unmount } = render(<WizardStepper steps={steps} currentStep={idx} />)
+      unmount()
+    })
   })
 })

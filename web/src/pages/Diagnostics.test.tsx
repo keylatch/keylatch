@@ -63,7 +63,8 @@ describe('Diagnostics_RendersChecks', () => {
     render(<MemoryRouter><Diagnostics /></MemoryRouter>)
 
     await waitFor(() => {
-      expect(screen.getByText('environment')).toBeInTheDocument()
+      // SectionTable capitalises the section name: 'environment' → 'Environment'
+      expect(screen.getByText('Environment')).toBeInTheDocument()
     })
   })
 
@@ -173,7 +174,8 @@ describe('Diagnostics_QuietMode', () => {
     })
 
     // Enable quiet mode.
-    const toggle = screen.getByLabelText('Quiet mode — hide OK rows')
+    // The Checkbox has id="quiet-mode" and the Label has htmlFor="quiet-mode" with text "Hide OK rows"
+    const toggle = screen.getByLabelText('Hide OK rows')
     await userEvent.click(toggle)
 
     // OK row should be hidden; failed row should remain.
