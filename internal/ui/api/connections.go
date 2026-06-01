@@ -661,16 +661,46 @@ func (h *ConnectionDetailHandler) rotateField(w http.ResponseWriter, r *http.Req
 }
 
 // ClearConnectionsHandler handles POST /api/connections/clear.
-// Phase 10 stub: returns 501 until a full implementation is wired.
-type ClearConnectionsHandler struct{}
+// Deletes every connection in the default namespace and returns the count.
+type ClearConnectionsHandler struct {
+	Store connections.Store
+}
 
 func (h *ClearConnectionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	w.WriteHeader(http.StatusNotImplemented)
-	writeJSON(w, map[string]string{"error": "not_implemented"})
+
+	if h.Store == nil {
+		writeJSON(w, map[string]interface{}{"status": "cleared", "count": 0})
+		return
+	}
+
+	statuses, err := connections.Status(r.Context(), connections.StatusOptions{Namespace: defaultConnectionNamespace}, h.Store)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	for _, status := range statuses {
+		conn := status.Connection
+		ns := conn.Namespace
+		if ns == "" {
+			ns = defaultConnectionNamespace
+		}
+		if delErr := connections.Delete(r.Context(), conn.Provider, conn.Account, ns, h.Store); delErr != nil {
+			slog.Error("connections: clear: failed to delete connection",
+				"provider", conn.Provider,
+				"account", conn.Account,
+				"error", delErr,
+			)
+			http.Error(w, "failed to delete connection: "+conn.Provider, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]interface{}{"status": "cleared", "count": len(statuses)})
 }
 
 // writeJSON writes v as JSON to w, setting Content-Type.
