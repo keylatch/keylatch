@@ -161,7 +161,7 @@ export function ApprovalInbox() {
       {autoDenyBanners.map((banner) => (
         <div
           key={banner.id}
-          className="flex items-start justify-between gap-4 rounded-md border border-warning bg-[#fef9c3] p-3 text-sm text-amber-700"
+          className="flex items-start justify-between gap-4 rounded-md border border-warning bg-amber-100 dark:bg-amber-950/40 p-3 text-sm text-amber-700 dark:text-amber-300"
           role="alert"
           aria-live="assertive"
         >

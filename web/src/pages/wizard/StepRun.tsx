@@ -90,7 +90,7 @@ export function StepRun({
       )}
 
       {status === "ok" && (
-        <p className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-700" role="status">
+        <p className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300" role="status">
           Credential injected successfully. A receipt was logged to your dashboard.
         </p>
       )}
