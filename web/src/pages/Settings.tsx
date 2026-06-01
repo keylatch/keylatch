@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
 import { ApiError } from '../lib/api'
+import { safeInvoke } from '../lib/tauri'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +15,22 @@ interface SettingsResponse {
   telemetry_disable: boolean
   experimental: boolean
   approval_policy: 'trust' | 'first-run' | 'prompt'
+  active_backend?: string
+}
+
+/** Shape returned by GET /v1/backends. */
+interface BackendItem {
+  name: string
+  display_name: string
+  available: boolean
+  install_hint?: string
+}
+
+const BACKEND_DESCRIPTIONS: Record<string, string> = {
+  keychain: 'macOS Keychain — hardware-backed, recommended on macOS.',
+  op: '1Password — stores the vault key in your 1Password account.',
+  bw: 'Bitwarden — stores the vault key in your Bitwarden vault.',
+  file: 'Encrypted file — passphrase-protected file on disk.',
 }
 
 type OperatingMode = SettingsResponse['operating_mode']
@@ -68,6 +85,35 @@ export function Settings() {
   const [approvalPolicySaved, setApprovalPolicySaved] = useState(false)
   const [approvalPolicyError, setApprovalPolicyError] = useState<string | null>(null)
 
+  // Credential backend.
+  const [backends, setBackends] = useState<BackendItem[]>([])
+  const [backendsLoading, setBackendsLoading] = useState(true)
+  const [backendsError, setBackendsError] = useState<string | null>(null)
+  const [activeBackend, setActiveBackend] = useState<string>('')
+  const [backendSwitching, setBackendSwitching] = useState(false)
+  const [backendSaved, setBackendSaved] = useState(false)
+  const [backendError, setBackendError] = useState<string | null>(null)
+  const retryControllerRef = useRef<AbortController | null>(null)
+
+  const fetchBackends = useCallback((signal?: AbortSignal) => {
+    setBackendsLoading(true)
+    setBackendsError(null)
+    fetch('/v1/backends', { signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json() as Promise<BackendItem[]>
+      })
+      .then((data) => {
+        setBackends(data)
+        setBackendsLoading(false)
+      })
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.name === 'AbortError') return
+        setBackendsError('Could not load backends. Check your connection and try again.')
+        setBackendsLoading(false)
+      })
+  }, [])
+
   // Load current settings from server on mount.
   useEffect(() => {
     let cancelled = false
@@ -81,6 +127,9 @@ export function Settings() {
           setTelemetryDisable(data.telemetry_disable ?? false)
           setExperimental(data.experimental ?? false)
           setApprovalPolicy(data.approval_policy ?? 'prompt')
+          if (data.active_backend) {
+            setActiveBackend(data.active_backend)
+          }
           setTtlLoading(false)
         }
       })
@@ -92,6 +141,24 @@ export function Settings() {
       })
     return () => { cancelled = true }
   }, [])
+
+  // Load backends list on mount.
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchBackends(controller.signal)
+    return () => { controller.abort() }
+  }, [fetchBackends])
+
+  // Once backends load, set activeBackend to first available if not already set from settings,
+  // or if the value from settings is a name no longer present in the backends list (stale/renamed).
+  useEffect(() => {
+    if (backendsLoading || backends.length === 0) return
+    const isValid = backends.some((b) => b.name === activeBackend)
+    if (!isValid) {
+      const firstAvailable = backends.find((b) => b.available)
+      if (firstAvailable) setActiveBackend(firstAvailable.name)
+    }
+  }, [backendsLoading, backends, activeBackend])
 
   const handleClearConnections = async () => {
     if (!canClear) return
@@ -216,6 +283,28 @@ export function Settings() {
       setAdvancedError(msg)
     } finally {
       setAdvancedLoading(false)
+    }
+  }
+
+  const handleSwitchBackend = async (newBackend: string) => {
+    const previous = activeBackend
+    setBackendError(null)
+    setActiveBackend(newBackend)  // optimistic update
+    setBackendSwitching(true)
+    try {
+      const result = await safeInvoke<{ ok: boolean; error?: string }>('bootstrap', { backend: newBackend })
+      if (!result.ok) {
+        setActiveBackend(previous)  // revert on failure
+        setBackendError(result.error ?? 'Backend switch failed')
+        return
+      }
+      setBackendSaved(true)
+      setTimeout(() => setBackendSaved(false), 2000)
+    } catch (e) {
+      setActiveBackend(previous)  // revert on failure
+      setBackendError(e instanceof Error ? e.message : 'Backend switch failed')
+    } finally {
+      setBackendSwitching(false)
     }
   }
 
@@ -529,6 +618,94 @@ export function Settings() {
           <p className="text-sm text-[var(--color-success-dark)]" role="status">
             Approval TTL updated.
           </p>
+        )}
+      </section>
+
+      {/* Credential backend — switch vault storage backend from the UI. */}
+      <section aria-label="Credential backend" className="space-y-3">
+        <h3 className="text-lg font-medium text-[var(--color-text-primary)]">Credential backend</h3>
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          Choose where Keylatch stores your vault key.
+        </p>
+
+        {backendsLoading && (
+          <p role="status" aria-live="polite" className="text-sm text-[var(--color-text-secondary)]">
+            Loading backends…
+          </p>
+        )}
+
+        {backendsError && !backendsLoading && (
+          <div className="space-y-2">
+            <p className="text-sm text-[var(--color-danger)]" role="alert">{backendsError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                retryControllerRef.current?.abort()
+                const c = new AbortController()
+                retryControllerRef.current = c
+                fetchBackends(c.signal)
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {!backendsLoading && !backendsError && backends.length > 0 && (
+          <fieldset className="space-y-2" disabled={backendSwitching}>
+            <legend className="sr-only">Credential backend</legend>
+            {backends.map((b) => (
+              <label
+                key={b.name}
+                className={[
+                  'flex items-start gap-3',
+                  b.available ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+                ].join(' ')}
+              >
+                <input
+                  type="radio"
+                  name="credential-backend"
+                  value={b.name}
+                  checked={activeBackend === b.name}
+                  disabled={!b.available || backendSwitching}
+                  onChange={() => void handleSwitchBackend(b.name)}
+                  className="mt-0.5 h-4 w-4"
+                  aria-label={b.display_name}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                    {b.display_name}
+                    {!b.available && ' (not available)'}
+                  </span>
+                  <span className="block text-xs text-[var(--color-text-secondary)]">
+                    {BACKEND_DESCRIPTIONS[b.name] ?? b.display_name}
+                  </span>
+                  {!b.available && b.install_hint && (
+                    <span className="block text-xs text-[var(--color-text-secondary)]">
+                      {b.install_hint}
+                    </span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        <p className="text-xs text-[var(--color-warning,#b45309)]" role="note">
+          Switching migrates your vault key and restarts Keylatch.
+        </p>
+
+        {backendSwitching && (
+          <p role="status" aria-live="polite" className="text-xs text-[var(--color-text-secondary)]">
+            Switching backend…
+          </p>
+        )}
+        {backendSaved && !backendSwitching && (
+          <p className="text-xs text-[var(--color-success-dark)]" role="status">Backend updated</p>
+        )}
+        {backendError && (
+          <p className="text-sm text-[var(--color-danger)]" role="alert">{backendError}</p>
         )}
       </section>
 
