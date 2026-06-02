@@ -567,7 +567,14 @@ func setupStep3SpawnDaemon(c *cobra.Command) {
 }
 
 // setupSpawnDaemonDarwin handles daemon launch on macOS via launchd.
+// If Keylatch.app is already running it manages keylatchd as a child
+// process — in that case we skip launchd to avoid port 7890 conflicts.
 func setupSpawnDaemonDarwin(c *cobra.Command) {
+	if desktopAppRunning() {
+		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: managed by Keylatch.app (skipping launchd)")
+		return
+	}
+
 	plistPath := launchdPlistPath()
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
 		if installErr := installLaunchdPlist(plistPath); installErr != nil {

@@ -8,7 +8,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
+
+// desktopAppRunning returns true when Keylatch.app is the process managing
+// keylatchd. In that case the launchd service must NOT be started — the app
+// owns the daemon lifecycle and both would compete for port 7890.
+func desktopAppRunning() bool {
+	// pgrep for a keylatchd process whose executable path is inside Keylatch.app
+	out, err := exec.Command("pgrep", "-fl", "keylatchd").Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "Keylatch.app")
+}
 
 const launchdPlistContentTpl = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
