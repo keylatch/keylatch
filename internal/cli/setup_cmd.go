@@ -844,6 +844,7 @@ func printSetupSuccess(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout())
 	fmt.Fprintln(c.OutOrStdout(), "Next steps:")
 	fmt.Fprintln(c.OutOrStdout(), "  keylatch connect <provider>                  connect a provider")
+	fmt.Fprintln(c.OutOrStdout(), "  keylatch install-guard <agent>               protect credentials from AI agents")
 	fmt.Fprintln(c.OutOrStdout(), "  keylatch run <provider> -- <command>         run a command with credentials injected")
 	fmt.Fprintln(c.OutOrStdout(), "  keylatch doctor                              health check anytime")
 	fmt.Fprintln(c.OutOrStdout())

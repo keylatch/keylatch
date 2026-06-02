@@ -14,6 +14,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/guard"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 )
@@ -540,6 +541,35 @@ func checkBootstrapConfig(env llmcontext.Lookup) Check {
 	}
 }
 
+// checkAgentGuard checks whether the exfiltration guard is installed for at
+// least one supported agent. If no agent has the guard installed it emits a
+// warning with a remediation hint.
+func checkAgentGuard() Check {
+	return func(_ context.Context) Status {
+		for _, agent := range guard.SupportedAgents {
+			ok, err := guard.IsInstalled(agent, guard.InstallOpts{})
+			if err == nil && ok {
+				return Status{
+					Name:    "agent guard",
+					Section: "environment",
+					OK:      true,
+					Detail:  fmt.Sprintf("exfiltration guard installed for agent %q", agent),
+					Tags:    []string{"guard"},
+				}
+			}
+		}
+		return Status{
+			Name:    "agent guard",
+			Section: "environment",
+			OK:      true,
+			Warn:    true,
+			Detail:  "No agent exfiltration guard installed — run: keylatch install-guard <agent>",
+			Fix:     "keylatch install-guard <agent>",
+			Tags:    []string{"guard"},
+		}
+	}
+}
+
 // namedCheck pairs a section label with its check function so that category
 // filtering can skip checks before they are executed (W5).
 type namedCheck struct {
@@ -589,5 +619,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"daemon", checkPlaintextRetention(env)},
 		// EPIC-33: I3 — integration markers.
 		{"environment", checkIntegrationMarkers()},
+		// agent guard — warn if no exfiltration guard is installed for any agent.
+		{"environment", checkAgentGuard()},
 	}
 }
