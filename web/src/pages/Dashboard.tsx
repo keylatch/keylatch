@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConnectionCard } from '../components/ConnectionCard'
 import { ReceiptCard } from '../components/ReceiptCard'
-import { ReadinessPillWidget } from '../components/ReadinessPill'
 import { ProviderWizard } from '../components/ProviderWizard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -197,9 +196,6 @@ export function Dashboard() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold tracking-tight text-foreground mb-0">Dashboard</h1>
-
-      {/* Readiness status pill — above-fold system health indicator */}
-      <ReadinessPillWidget connections={connections} onNavigate={(to) => navigate(to)} />
 
       {/* Pending approvals banner */}
       {approvals.length > 0 && (
