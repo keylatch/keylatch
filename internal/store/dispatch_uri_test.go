@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 
 	internalexec "github.com/keylatch/keylatch/internal/exec"
@@ -28,31 +29,36 @@ const opCanary = "op-canary-value-xk9z"
 const awssmCanary = "awssm-canary-value-qr7p"
 const vaultCanary = "vault-canary-value-ms4n"
 
-// writeMockBin writes a shell script at dir/name that executes body, makes it
-// executable, and returns its path.
+// writeMockBin writes a shell script at dir/name, makes it executable, and
+// returns its path.
 //
-// On Linux, os.WriteFile can leave dirty page-cache state that causes the
-// kernel to return ETXTBSY when the file is immediately exec'd. Explicit
-// Sync() + Close() flushes the pages before we hand the path to execve.
+// Uses raw syscalls (not os.File) to avoid Go 1.22+ io_uring-backed I/O on
+// Linux. When os.File submits writes via io_uring, the kernel may keep the
+// inode's i_writecount > 0 through IORING_OP_CLOSE even after f.Close()
+// returns, which causes execve to return ETXTBSY. Direct syscall.Open /
+// syscall.Write / syscall.Fsync / syscall.Close uses the traditional VFS path
+// and ensures i_writecount reaches 0 before we return the path.
 func writeMockBin(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
 	}
 	p := filepath.Join(dir, name)
-	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755) //nolint:gosec // test helper
+	content := []byte("#!/bin/sh\n" + body + "\n")
+
+	fd, err := syscall.Open(p, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC, 0o755) //nolint:gosec // test helper
 	if err != nil {
 		t.Fatalf("writeMockBin %s: open: %v", name, err)
 	}
-	if _, err := f.WriteString("#!/bin/sh\n" + body + "\n"); err != nil {
-		_ = f.Close()
+	if _, err := syscall.Write(fd, content); err != nil {
+		_ = syscall.Close(fd)
 		t.Fatalf("writeMockBin %s: write: %v", name, err)
 	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		t.Fatalf("writeMockBin %s: sync: %v", name, err)
+	if err := syscall.Fsync(fd); err != nil {
+		_ = syscall.Close(fd)
+		t.Fatalf("writeMockBin %s: fsync: %v", name, err)
 	}
-	if err := f.Close(); err != nil {
+	if err := syscall.Close(fd); err != nil {
 		t.Fatalf("writeMockBin %s: close: %v", name, err)
 	}
 	return p
