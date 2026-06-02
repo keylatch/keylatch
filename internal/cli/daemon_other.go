@@ -20,3 +20,8 @@ func findKeylatchd() (string, error) {
 func installLaunchdPlist(_ string) error {
 	return errNotSupported
 }
+
+// desktopAppRunning is a stub on non-Darwin platforms — always false.
+func desktopAppRunning() bool {
+	return false
+}
