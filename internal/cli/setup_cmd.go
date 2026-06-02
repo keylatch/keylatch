@@ -693,7 +693,6 @@ func setupStep4ConnectProvider(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout())
 }
 
-
 // detectDesktopApp returns true if a Keylatch desktop application is found.
 func detectDesktopApp() bool {
 	switch runtime.GOOS {
