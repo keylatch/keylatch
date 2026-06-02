@@ -3,65 +3,107 @@ package store_test
 // dispatch_uri_test.go — EPIC-10 dispatch URI tests using real mock binaries on PATH.
 //
 // Unlike resolver_test.go (which uses in-process mockRunner), these tests inject
-// actual shell scripts on PATH via t.Setenv. This validates that the full
+// actual shell scripts via WithBinOverride. This validates that the full
 // shelling-out pipeline works end-to-end with real os/exec calls.
 //
-// Test coverage:
-//   - TestDispatchURI_OpResolves       — op:// shells out to `op read --no-newline`
-//   - TestDispatchURI_AWSSMResolves    — aws-sm:// shells out to `aws secretsmanager get-secret-value`
-//   - TestDispatchURI_HashiVaultResolves — hashivault:// shells out to `vault kv get -field=...`
-//   - TestDispatchURI_LLMSessionBlocks — LLM context check at the store layer
-//   - TestDispatchURI_DoesNotCacheResolvedValue — resolver returns fresh value on every call
+// ETXTBSY note (Linux / GitHub Actions):
+//   On Linux, freshly-written shell scripts can yield ETXTBSY from execve even
+//   after explicit close+fsync. The root cause is a race in the kernel's VFS
+//   write-count bookkeeping when files are created and executed in rapid
+//   succession. To sidestep this entirely, the three "resolver" tests use the
+//   pre-existing scripts in tests/mocks/ (already on disk, never freshly
+//   written). The two custom-behaviour mocks (sleep, counter) are created once
+//   in TestMain before any test runs, giving the kernel time to settle.
 
 import (
 	"context"
 	"os"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"testing"
 
 	internalexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/store"
 )
 
-const opCanary = "op-canary-value-xk9z"
-const awssmCanary = "awssm-canary-value-qr7p"
-const vaultCanary = "vault-canary-value-ms4n"
+// Canary values must match tests/mocks/*-mock.sh.
+const opCanary = "OP_MOCK_CANARY_VALUE_TEST"
+const awssmCanary = "AWSSM_MOCK_CANARY_VALUE_TEST"
+const vaultCanary = "VAULT_MOCK_CANARY_VALUE_TEST"
 
-// writeMockBin writes a shell script at dir/name, makes it executable, and
-// returns its path.
-//
-// Uses raw syscalls (not os.File) to avoid Go 1.22+ io_uring-backed I/O on
-// Linux. When os.File submits writes via io_uring, the kernel may keep the
-// inode's i_writecount > 0 through IORING_OP_CLOSE even after f.Close()
-// returns, which causes execve to return ETXTBSY. Direct syscall.Open /
-// syscall.Write / syscall.Fsync / syscall.Close uses the traditional VFS path
-// and ensures i_writecount reaches 0 before we return the path.
-func writeMockBin(t *testing.T, dir, name, body string) string {
-	t.Helper()
+// Package-level paths to mock binaries created in TestMain.
+var (
+	mockOpBin      string // tests/mocks/op-mock.sh
+	mockAwsBin     string // tests/mocks/aws-sm-mock.sh
+	mockVaultBin   string // tests/mocks/vault-mock.sh
+	mockSleepOpBin string // sleep 10 mock for LLMSessionBlocks
+	mockCountOpBin string // counter mock for DoesNotCacheResolvedValue
+)
+
+func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
-		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
+		// Shell-script mocks require a POSIX shell; skip setup on Windows.
+		os.Exit(m.Run())
 	}
-	p := filepath.Join(dir, name)
-	content := []byte("#!/bin/sh\n" + body + "\n")
 
-	fd, err := syscall.Open(p, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC, 0o755) //nolint:gosec // test helper
+	// Locate the repo root from the package directory (internal/store → ../..).
+	wd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("writeMockBin %s: open: %v", name, err)
+		panic("TestMain: getwd: " + err.Error())
 	}
-	if _, err := syscall.Write(fd, content); err != nil {
-		_ = syscall.Close(fd)
-		t.Fatalf("writeMockBin %s: write: %v", name, err)
+	repoRoot := findRepoRoot(wd)
+
+	mockOpBin = filepath.Join(repoRoot, "tests/mocks/op-mock.sh")
+	mockAwsBin = filepath.Join(repoRoot, "tests/mocks/aws-sm-mock.sh")
+	mockVaultBin = filepath.Join(repoRoot, "tests/mocks/vault-mock.sh")
+
+	// Create custom mocks ONCE before any test runs.
+	// Writing before m.Run() means these files are "old" by the time a test
+	// calls execve, eliminating the kernel ETXTBSY race.
+	tmpDir, err := os.MkdirTemp("", "keylatch-store-mocks-*")
+	if err != nil {
+		panic("TestMain: mkdirtemp: " + err.Error())
 	}
-	if err := syscall.Fsync(fd); err != nil {
-		_ = syscall.Close(fd)
-		t.Fatalf("writeMockBin %s: fsync: %v", name, err)
-	}
-	if err := syscall.Close(fd); err != nil {
-		t.Fatalf("writeMockBin %s: close: %v", name, err)
+	defer os.RemoveAll(tmpDir)
+
+	mockSleepOpBin = writeMockBinGlobal(filepath.Join(tmpDir, "op-sleep"), "sleep 10")
+	mockCountOpBin = writeMockBinGlobal(filepath.Join(tmpDir, "op-counter"), `
+count=0
+if [ -n "$MOCK_COUNTER_FILE" ] && [ -f "$MOCK_COUNTER_FILE" ]; then
+  count=$(cat "$MOCK_COUNTER_FILE")
+fi
+count=$((count+1))
+if [ -n "$MOCK_COUNTER_FILE" ]; then
+  printf '%s' "$count" > "$MOCK_COUNTER_FILE"
+fi
+printf '%s' '`+opCanary+`'
+`)
+
+	os.Exit(m.Run())
+}
+
+// writeMockBinGlobal writes a shell script at path p and returns p.
+// Called from TestMain only — panic on error since we have no *testing.T.
+func writeMockBinGlobal(p, body string) string {
+	content := []byte("#!/bin/sh\n" + body + "\n")
+	if err := os.WriteFile(p, content, 0o755); err != nil { //nolint:gosec // test helper
+		panic("writeMockBinGlobal " + p + ": " + err.Error())
 	}
 	return p
+}
+
+// findRepoRoot walks up from dir until it finds a go.mod file.
+func findRepoRoot(dir string) string {
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			panic("findRepoRoot: could not locate go.mod from " + dir)
+		}
+		dir = parent
+	}
 }
 
 // realRunner returns the real exec.DefaultRunner so tests exercise the actual
@@ -74,13 +116,11 @@ func realRunner() internalexec.CommandRunner {
 // executed when the URI scheme is `op://`, and that the canary value is returned.
 func TestDispatchURI_OpResolves(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
+	}
 
-	dir := t.TempDir()
-	// Mock `op` binary: echo canary when invoked as `op read --no-newline <ref>`.
-	// Use printf to avoid echo -n portability issues on macOS /bin/sh.
-	writeMockBin(t, dir, "op", `printf '%s' '`+opCanary+`'`)
-
-	r := store.NewResolver(realRunner()).WithBinOverride("op", filepath.Join(dir, "op"))
+	r := store.NewResolver(realRunner()).WithBinOverride("op", mockOpBin)
 	got, err := r.Resolve(context.Background(), "op://Private/Anthropic/api_key")
 	if err != nil {
 		t.Fatalf("Resolve op://: %v", err)
@@ -94,12 +134,11 @@ func TestDispatchURI_OpResolves(t *testing.T) {
 // is executed for aws-sm:// URIs and that the canary is extracted correctly.
 func TestDispatchURI_AWSSMResolves(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
+	}
 
-	dir := t.TempDir()
-	// Mock `aws` binary: output raw SecretString (--output text strips the JSON envelope).
-	writeMockBin(t, dir, "aws", `echo '`+awssmCanary+`'`)
-
-	r := store.NewResolver(realRunner()).WithBinOverride("aws-sm", filepath.Join(dir, "aws"))
+	r := store.NewResolver(realRunner()).WithBinOverride("aws-sm", mockAwsBin)
 	got, err := r.Resolve(context.Background(), "aws-sm://us-east-1/my-secret")
 	if err != nil {
 		t.Fatalf("Resolve aws-sm://: %v", err)
@@ -113,12 +152,11 @@ func TestDispatchURI_AWSSMResolves(t *testing.T) {
 // is executed for hashivault:// URIs and that the canary value is returned.
 func TestDispatchURI_HashiVaultResolves(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
+	}
 
-	dir := t.TempDir()
-	// Mock `vault` binary: echo canary for any kv get invocation.
-	writeMockBin(t, dir, "vault", `echo '`+vaultCanary+`'`)
-
-	r := store.NewResolver(realRunner()).WithBinOverride("hashivault", filepath.Join(dir, "vault"))
+	r := store.NewResolver(realRunner()).WithBinOverride("hashivault", mockVaultBin)
 	got, err := r.Resolve(context.Background(), "hashivault://secret/myapp/config#api_key")
 	if err != nil {
 		t.Fatalf("Resolve hashivault://: %v", err)
@@ -136,15 +174,14 @@ func TestDispatchURI_HashiVaultResolves(t *testing.T) {
 // not inside the Resolver. This test validates context cancellation propagation.
 func TestDispatchURI_LLMSessionBlocks(t *testing.T) {
 	t.Parallel()
-
-	dir := t.TempDir()
-	// Mock `op` binary that sleeps briefly — should be interrupted by context cancel.
-	writeMockBin(t, dir, "op", `sleep 10`)
+	if runtime.GOOS == "windows" {
+		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately to simulate a blocked/cancelled session
 
-	r := store.NewResolver(realRunner()).WithBinOverride("op", filepath.Join(dir, "op"))
+	r := store.NewResolver(realRunner()).WithBinOverride("op", mockSleepOpBin)
 	_, err := r.Resolve(ctx, "op://Vault/Item/field")
 	if err == nil {
 		t.Error("expected error when context is already cancelled, got nil")
@@ -156,22 +193,16 @@ func TestDispatchURI_LLMSessionBlocks(t *testing.T) {
 // This is a security invariant: cached values would survive process lifetime and
 // could leak across requests.
 func TestDispatchURI_DoesNotCacheResolvedValue(t *testing.T) {
-	t.Parallel()
+	// Not parallel: uses t.Setenv which is incompatible with t.Parallel().
+	if runtime.GOOS == "windows" {
+		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
+	}
 
-	dir := t.TempDir()
-	// Counter file incremented on each call.
-	counterFile := filepath.Join(dir, "count")
-	// Mock `op` binary that increments a counter and always returns the canary.
-	// Use printf to avoid echo -n portability issues on macOS /bin/sh.
-	writeMockBin(t, dir, "op", `
-count=0
-if [ -f '`+counterFile+`' ]; then count=$(cat '`+counterFile+`'); fi
-count=$((count+1))
-printf '%s' "$count" > '`+counterFile+`'
-printf '%s' '`+opCanary+`'
-`)
+	// Counter file: each exec of mockCountOpBin increments it via $MOCK_COUNTER_FILE.
+	counterFile := filepath.Join(t.TempDir(), "count")
+	t.Setenv("MOCK_COUNTER_FILE", counterFile)
 
-	r := store.NewResolver(realRunner()).WithBinOverride("op", filepath.Join(dir, "op"))
+	r := store.NewResolver(realRunner()).WithBinOverride("op", mockCountOpBin)
 	ctx := context.Background()
 
 	for i := 1; i <= 3; i++ {
