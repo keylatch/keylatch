@@ -29,7 +29,8 @@ describe('SafeCopyButton', () => {
   it('shows Copied! state after successful copy', async () => {
     render(<SafeCopyButton content="snippet code" />)
     await act(async () => { fireEvent.click(screen.getByRole('button')) })
-    expect(screen.getByRole('button').textContent).toContain('Copied!')
+    // The button is now icon-only; after copy the aria-label changes to 'Copied to clipboard'
+    expect(screen.getByRole('button', { name: 'Copied to clipboard' })).toBeInTheDocument()
   })
 
   it('has aria-live region for screen reader announcement', () => {
@@ -62,7 +63,8 @@ describe('SafeCopyButton', () => {
     render(<SafeCopyButton content="text" />)
     await act(async () => { fireEvent.click(screen.getByRole('button')) })
     await act(async () => { vi.advanceTimersByTime(1600) })
-    expect(screen.getByRole('button').textContent).toContain('Copy')
+    // After reset, aria-label returns to the label prop ('Copy')
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -167,6 +169,7 @@ describe('SafeCopyButton', () => {
   it('shows Refused state when credential-shaped content is clicked', async () => {
     render(<SafeCopyButton content="sk-abcdefghijklmnopqrstuvwxyz123456" />)
     await act(async () => { fireEvent.click(screen.getByRole('button')) })
-    expect(screen.getByRole('button').textContent).toContain('Refused')
+    // After refusal the aria-label changes to 'Copy blocked (security)'
+    expect(screen.getByRole('button', { name: 'Copy blocked (security)' })).toBeInTheDocument()
   })
 })

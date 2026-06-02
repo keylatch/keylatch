@@ -7,12 +7,16 @@
 //   4. Try It     — run a command through Keylatch
 //   5. Done       — success + optional CLI install
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
+import { safeInvoke as invoke } from "@/lib/tauri";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { KeylatchLogo } from "@/components/KeylatchLogo";
 import { StepConnect } from "./StepConnect";
 import { StepRun } from "./StepRun";
 import { StepInstallCLI } from "./StepInstallCLI";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const TOTAL_STEPS = 5;
 
@@ -33,13 +37,13 @@ const STEP_ALT: Record<number, string> = {
   5: "Setup complete",
 };
 
-/** Side-panel illustration that changes with each wizard step. */
+/** Side-panel illustration — full-height, 50% width, image covers the panel. */
 function OnboardingVisual({ step }: { step: number }) {
   return (
-    <div className="hidden lg:flex lg:flex-1 lg:items-center lg:justify-center" aria-hidden="true">
+    <div className="hidden lg:block lg:w-1/2 lg:shrink-0 relative overflow-hidden" style={{ maxWidth: 592 }} aria-hidden="true">
       <img
         key={step}
-        className="max-h-[480px] w-full max-w-sm rounded-xl object-cover"
+        className="absolute inset-0 h-full w-full object-cover"
         src={STEP_IMAGES[step]}
         alt={STEP_ALT[step]}
         draggable={false}
@@ -51,65 +55,89 @@ function OnboardingVisual({ step }: { step: number }) {
 /** FirstRun — zero-terminal onboarding wizard. */
 export function FirstRun() {
   const [currentStep, setCurrentStep] = useState(1);
-  // Track the selected provider so StepRun can use it.
-  const [selectedProvider] = useState("openai");
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   // Track the backend chosen in step 2 so StepConnect can pass it to IPC.
   const [selectedBackend, setSelectedBackend] = useState("keychain");
 
   const advance = () =>
     setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS));
+  const goBack = () =>
+    setCurrentStep((s) => Math.max(s - 1, 1));
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--color-neutral-50)] p-4">
-      <div className="flex w-full max-w-4xl gap-12">
-        {/* Main wizard panel */}
-        <div className="flex flex-1 flex-col gap-6">
-          <div
-            className="text-center text-sm font-medium text-[var(--color-text-secondary)]"
-            aria-label="Wizard progress"
-          >
-            Step {currentStep} of {TOTAL_STEPS}
-          </div>
+    <div className="flex h-[100dvh] bg-background overflow-hidden flex-col">
+      {/* Topbar */}
+      <header className="h-14 shrink-0 border-b border-border relative flex items-center px-6 z-10">
+        {/* Left — back + logo */}
+        <div className="flex items-center gap-3 flex-1">
+          {currentStep > 1 && (
+            <button
+              type="button"
+              onClick={goBack}
+              aria-label="Go back"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+          <KeylatchLogo className="h-7 w-auto" />
+        </div>
 
-          <div className="rounded-xl bg-[var(--color-surface)] p-8 shadow-sm ring-1 ring-[var(--color-neutral-200)]">
-            {currentStep === 1 && <StepWelcome onNext={advance} />}
-            {currentStep === 2 && (
-              <StepBackend
-                onNext={(backend) => {
-                  setSelectedBackend(backend);
-                  advance();
-                }}
-              />
-            )}
-            {currentStep === 3 && (
-              <StepConnect
-                backend={selectedBackend}
-                onSuccess={() => {
-                  advance();
-                }}
-              />
-            )}
-            {currentStep === 4 && (
-              <StepRun provider={selectedProvider} onSuccess={advance} />
-            )}
-            {currentStep === 5 && <StepDone />}
-          </div>
+        {/* Center — progress dots, truly centered */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2" aria-label="Wizard progress">
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+            <span
+              key={i}
+              className={
+                i + 1 === currentStep
+                  ? "h-1.5 w-6 rounded-full bg-primary"
+                  : i + 1 < currentStep
+                  ? "h-1.5 w-1.5 rounded-full bg-primary/40"
+                  : "h-1.5 w-1.5 rounded-full bg-border"
+              }
+            />
+          ))}
+        </div>
 
-          {/* Step dots */}
-          <div className="flex justify-center gap-2" aria-hidden="true">
-            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-              <span
-                key={i}
-                className={
-                  i + 1 === currentStep
-                    ? "h-2 w-5 rounded-full bg-[var(--color-accent)]"
-                    : "h-2 w-2 rounded-full bg-[var(--color-neutral-300)]"
-                }
-              />
-            ))}
+        {/* Right — theme toggle */}
+        <div className="flex items-center flex-1 justify-end">
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Body: left content + right image */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: step content — top-aligned, max 480px centred */}
+        <div className="flex-1 overflow-y-auto pt-16 pb-16">
+          <div className="mx-auto w-full px-8" style={{ maxWidth: 480 }}>
+          {currentStep === 1 && <StepWelcome onNext={advance} />}
+          {currentStep === 2 && (
+            <StepBackend
+              onNext={(backend) => {
+                setSelectedBackend(backend);
+                advance();
+              }}
+            />
+          )}
+          {currentStep === 3 && (
+            <StepConnect
+              backend={selectedBackend}
+              onSuccess={(providerSlug) => {
+                setSelectedProvider(providerSlug);
+                advance();
+              }}
+            />
+          )}
+          {currentStep === 4 && (
+            <StepRun provider={selectedProvider} onSuccess={advance} />
+          )}
+          {currentStep === 5 && <StepDone />}
           </div>
         </div>
 
+        {/* Right: illustration — full height, 50% width */}
         <OnboardingVisual step={currentStep} />
       </div>
     </div>
@@ -121,14 +149,17 @@ export function FirstRun() {
 function StepWelcome({ onNext }: { onNext: () => void }) {
   return (
     <div className="space-y-4 text-center">
-      <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
+      <h1 className="text-2xl font-bold text-foreground">
         Welcome to Keylatch
       </h1>
-      <p className="text-[var(--color-text-secondary)]">
+      <p className="text-muted-foreground">
         Keylatch is your zero-trust credential broker for AI agents. Your
         secrets stay locked — agents never see raw API keys.
       </p>
-      <p className="text-[var(--color-text-secondary)]">
+      <p className="text-muted-foreground">
+        Your credentials are encrypted and stored in your chosen backend (Keychain, 1Password, Bitwarden, or a local file). Keylatch never uploads them, never shares them with LLMs, and never includes them in MCP outputs. You stay in control.
+      </p>
+      <p className="text-muted-foreground">
         This wizard will have you up and running in about 2 minutes.
       </p>
       <Button type="button" className="mt-2" onClick={onNext}>
@@ -151,40 +182,28 @@ interface BackendItem {
 // forward it to StepConnect (fix #3).
 function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
   const [backends, setBackends] = useState<BackendItem[]>([]);
-  const [fetchError, setFetchError] = useState("");
   const [isFetchingBackends, setIsFetchingBackends] = useState(true);
   const [bootstrapStatus, setBootstrapStatus] = useState<"idle" | "loading" | "error">("idle");
   const [bootstrapError, setBootstrapError] = useState("");
   const [selectedBackend, setSelectedBackend] = useState("");
 
   useEffect(() => {
-    // Fix #4: abort fetch on unmount to prevent state updates on unmounted component.
-    const controller = new AbortController();
-    setIsFetchingBackends(true);
-    fetch("/v1/backends", { signal: controller.signal })
-      // Fix #5: treat non-2xx responses as errors.
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data: BackendItem[]) => {
+    let cancelled = false;
+    api.get<BackendItem[]>("/v1/backends")
+      .then((data) => {
+        if (cancelled) return;
         setBackends(data);
-        const firstAvailable = data.find((b) => b.available);
-        if (firstAvailable) {
-          setSelectedBackend(firstAvailable.name);
-        }
+        const first = data.find((b) => b.available);
+        if (first) setSelectedBackend(first.name);
         setIsFetchingBackends(false);
       })
-      .catch((e: unknown) => {
-        // Fix #4: suppress AbortError — it means the component unmounted.
-        if (e instanceof Error && e.name === "AbortError") return;
-        setFetchError(String(e));
-        // Fall back to keychain so the wizard is not completely blocked.
+      .catch(() => {
+        if (cancelled) return;
         setBackends([{ name: "keychain", display_name: "macOS Keychain", available: true }]);
         setSelectedBackend("keychain");
         setIsFetchingBackends(false);
       });
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, []);
 
   const bootstrap = async (backendName: string) => {
@@ -207,22 +226,18 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
+      <h2 className="text-xl font-semibold text-foreground">
         Choose a Credential Backend
       </h2>
-      <p className="text-[var(--color-text-secondary)]">
+      <p className="text-muted-foreground">
         Where should Keylatch store your secrets?
       </p>
 
-      {fetchError && (
-        <p className="text-sm text-[var(--color-text-secondary)]" role="status">
-          Could not load backends — showing defaults.
-        </p>
-      )}
+
 
       {/* Fix #10: show a loading indicator while fetching backends. */}
       {isFetchingBackends ? (
-        <p role="status" aria-live="polite" className="text-sm text-[var(--color-text-secondary)]">
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
           Loading backends…
         </p>
       ) : (
@@ -230,51 +245,41 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
           <div className="space-y-2">
             {backends.map((b) => (
               <div key={b.name} className="space-y-1">
-                <Button
+                <button
                   type="button"
-                  className="w-full"
-                  variant={selectedBackend === b.name ? "default" : "outline"}
-                  onClick={() => {
-                    if (b.available) {
-                      setSelectedBackend(b.name);
-                    }
-                  }}
+                  className="w-full flex items-center justify-between rounded-lg border border-border px-4 py-3.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 disabled:pointer-events-none"
+                  onClick={() => { if (b.available) { setSelectedBackend(b.name); bootstrap(b.name); } }}
                   disabled={!b.available || bootstrapStatus === "loading"}
-                  aria-pressed={selectedBackend === b.name}
                 >
-                  {b.display_name}
-                  {!b.available && " (not installed)"}
-                </Button>
+                  <span>
+                    {b.display_name}
+                    {!b.available && <span className="ml-1.5 text-xs font-normal text-muted-foreground">(not installed)</span>}
+                  </span>
+                  {bootstrapStatus === "loading" && selectedBackend === b.name ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" />
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground shrink-0" aria-hidden="true">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  )}
+                </button>
                 {!b.available && b.install_hint && (
-                  <p className="pl-1 text-xs text-[var(--color-text-secondary)]">
-                    {b.install_hint}
-                  </p>
+                  <p className="pl-1 text-xs text-muted-foreground">{b.install_hint}</p>
                 )}
               </div>
             ))}
           </div>
-
-          {backends.length > 0 && (
-            <Button
-              type="button"
-              className="w-full"
-              onClick={() => bootstrap(selectedBackend)}
-              disabled={!selectedBackend || bootstrapStatus === "loading"}
-            >
-              {bootstrapStatus === "loading" ? "Setting up..." : "Continue"}
-            </Button>
-          )}
         </>
       )}
 
       {bootstrapStatus === "loading" && (
-        <p role="status" aria-live="polite" className="text-sm text-[var(--color-text-secondary)]">
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
           Setting up...
         </p>
       )}
       {bootstrapStatus === "error" && (
         <p
-          className="rounded-md bg-[var(--color-danger-light)] px-3 py-2 text-sm text-[var(--color-danger-dark)]"
+          className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 px-3 py-2 text-sm text-red-700 dark:text-red-300"
           role="alert"
         >
           {bootstrapError}
@@ -287,32 +292,25 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
 // ── Step 5: Done ─────────────────────────────────────────────────────────────
 
 function StepDone() {
+  const navigate = useNavigate();
+
   return (
-    <div className="flex flex-col items-center gap-4 text-center">
-      <div className="flex items-center justify-center mb-2" aria-hidden="true">
-        <CheckCircle2
-          size={56}
-          strokeWidth={1.5}
-          className="text-[var(--color-success)]"
-        />
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <CheckCircle2 size={28} strokeWidth={1.5} className="text-emerald-500 shrink-0" aria-hidden="true" />
+        <h2 className="text-xl font-semibold text-foreground">You're all set!</h2>
       </div>
 
-      <h2 className="m-0 text-xl font-semibold text-[var(--color-text-primary)]">
-        You're all set!
-      </h2>
-      <p className="m-0 max-w-[32ch] text-[var(--color-text-secondary)]">
-        Your credentials are secure. Agents request access through Keylatch —
-        raw API keys never leave the vault.
+      <p className="text-sm text-muted-foreground">
+        Your credentials are locked in the vault. Agents will request access through Keylatch — raw API keys never leave your machine.
       </p>
 
+      {/* Optional CLI install nudge */}
       <StepInstallCLI />
 
-      <div className="pt-2 w-full space-y-2">
-        <Button asChild className="w-full">
-          <a href="/">Go to Dashboard</a>
-        </Button>
-        <Button asChild variant="outline" className="w-full">
-          <a href="/diagnostics">Run Diagnostics</a>
+      <div className="pt-2">
+        <Button type="button" className="w-full" onClick={() => navigate('/')}>
+          Go to Dashboard
         </Button>
       </div>
     </div>

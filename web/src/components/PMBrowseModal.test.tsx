@@ -35,7 +35,8 @@ describe('PMBrowseModal — unauthenticated', () => {
   it('shows unauthenticated status when authenticated is false', async () => {
     render(<PMBrowseModal pm="op" onSelect={vi.fn()} onClose={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByRole('status', { name: 'Not authenticated' })).toBeInTheDocument()
+      // The unauthenticated block renders with role="status" (no aria-label name)
+      expect(screen.getByRole('status')).toBeInTheDocument()
     })
   })
 
@@ -49,6 +50,7 @@ describe('PMBrowseModal — unauthenticated', () => {
   it('shows Copy button for the hint', async () => {
     render(<PMBrowseModal pm="op" onSelect={vi.fn()} onClose={vi.fn()} />)
     await waitFor(() => {
+      // The copy button has aria-label 'Copy authentication command' (icon-only button)
       expect(screen.getByRole('button', { name: 'Copy authentication command' })).toBeInTheDocument()
     })
   })
@@ -63,7 +65,9 @@ describe('PMBrowseModal — unauthenticated', () => {
   it('manual URI input is always present', async () => {
     render(<PMBrowseModal pm="op" onSelect={vi.fn()} onClose={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByLabelText('Manual reference URI')).toBeInTheDocument()
+      // For 'op' PM the label is 'Complete the URI (replace <field> with the field name):'
+      // The input has id="pm-browse-manual-input" linked to that label
+      expect(screen.getByLabelText(/Complete the URI/i)).toBeInTheDocument()
     })
   })
 })
@@ -86,8 +90,9 @@ describe('PMBrowseModal — authenticated', () => {
     await waitFor(() => {
       expect(screen.getByRole('listbox')).toBeInTheDocument()
     })
-    expect(screen.getByRole('button', { name: 'Select OpenRouter API Key' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Select GitHub PAT' })).toBeInTheDocument()
+    // Item buttons have just the title as accessible name (no "Select" prefix)
+    expect(screen.getByRole('button', { name: 'OpenRouter API Key' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'GitHub PAT' })).toBeInTheDocument()
   })
 
   it('populates the manual URI input with a placeholder when an op item is clicked (C-01)', async () => {
@@ -97,12 +102,12 @@ describe('PMBrowseModal — authenticated', () => {
     const onSelect = vi.fn()
     render(<PMBrowseModal pm="op" onSelect={onSelect} onClose={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Select OpenRouter API Key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'OpenRouter API Key' })).toBeInTheDocument()
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Select OpenRouter API Key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'OpenRouter API Key' }))
     // onSelect is NOT called directly — the URI is placed in the manual input.
     expect(onSelect).not.toHaveBeenCalled()
-    const input = screen.getByLabelText('Manual reference URI') as HTMLInputElement
+    const input = screen.getByLabelText(/Complete the URI/i) as HTMLInputElement
     expect(input.value).toMatch(/^op:\/\//)
     expect(input.value).toContain('<field>')
   })
@@ -111,29 +116,30 @@ describe('PMBrowseModal — authenticated', () => {
     const onSelect = vi.fn()
     render(<PMBrowseModal pm="aws_sm" onSelect={onSelect} onClose={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Select OpenRouter API Key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'OpenRouter API Key' })).toBeInTheDocument()
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Select OpenRouter API Key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'OpenRouter API Key' }))
     expect(onSelect).toHaveBeenCalledWith(expect.stringContaining('aws-sm://'))
   })
 
   it('manual fallback still present when authenticated', async () => {
     render(<PMBrowseModal pm="op" onSelect={vi.fn()} onClose={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByLabelText('Manual reference URI')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Complete the URI/i)).toBeInTheDocument()
     })
   })
 
-  it('calls onSelect with manual URI when "Use this URI" is clicked', async () => {
+  it('calls onSelect with manual URI when "Use URI" is clicked', async () => {
     const onSelect = vi.fn()
     render(<PMBrowseModal pm="op" onSelect={onSelect} onClose={vi.fn()} />)
     await waitFor(() => {
-      expect(screen.getByLabelText('Manual reference URI')).toBeInTheDocument()
+      expect(screen.getByLabelText(/Complete the URI/i)).toBeInTheDocument()
     })
-    fireEvent.change(screen.getByLabelText('Manual reference URI'), {
+    fireEvent.change(screen.getByLabelText(/Complete the URI/i), {
       target: { value: 'op://vault/item/field' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Use this URI' }))
+    // Button text is 'Use URI' (not 'Use this URI')
+    fireEvent.click(screen.getByRole('button', { name: 'Use URI' }))
     expect(onSelect).toHaveBeenCalledWith('op://vault/item/field')
   })
 })

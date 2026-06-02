@@ -10,8 +10,9 @@ fi
 
 FAILED=0
 
-# 1. Canary strings
-if grep -r "KEYLATCH_CANARY_" "$ARTIFACT_DIR" 2>/dev/null; then
+# 1. Canary strings — skip binary files; sentinels are intentionally compiled into
+#    the binary and must not appear in text artifacts (manifests, SBOMs, READMEs, etc.)
+if grep -rI "KEYLATCH_CANARY_" "$ARTIFACT_DIR" 2>/dev/null; then
   echo "[CANARY LEAK] canary strings found in $ARTIFACT_DIR" >&2
   FAILED=1
 fi

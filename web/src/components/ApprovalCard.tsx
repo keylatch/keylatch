@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { Approval } from '../lib/types'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 interface ApprovalCardProps {
@@ -56,24 +57,24 @@ export function ApprovalCard({ approval, onApprove, onDeny, className }: Approva
   const isExpiringSoon = ttlSeconds < 60
 
   return (
-    <div
+    <Card
       role="region"
       aria-label={`Approval request for ${approval.connection}`}
       className={cn(
-        'rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4 transition-opacity',
-        state === 'approved' && 'border-[var(--color-success)] bg-[var(--color-success-light)]',
+        'p-4 transition-opacity',
+        state === 'approved' && 'border-success bg-[#dcfce7]',
         state === 'denied' && 'opacity-50',
         className
       )}
     >
       <div className="flex items-center justify-between gap-4">
-        <span className="font-medium text-[var(--color-text-primary)]">
+        <span className="font-medium text-foreground">
           {approval.connection}
         </span>
         <span
           className={cn(
             'text-sm font-semibold tabular-nums',
-            isExpiringSoon ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-secondary)]'
+            isExpiringSoon ? 'text-destructive' : 'text-muted-foreground'
           )}
           aria-label={`Expires in ${ttlSeconds} seconds`}
         >
@@ -81,7 +82,7 @@ export function ApprovalCard({ approval, onApprove, onDeny, className }: Approva
         </span>
       </div>
 
-      <div className="mt-1.5 text-sm text-[var(--color-text-secondary)]">
+      <div className="mt-1.5 text-sm text-muted-foreground">
         Actor: {approval.actorHmac.slice(0, 8)}…
       </div>
 
@@ -107,6 +108,6 @@ export function ApprovalCard({ approval, onApprove, onDeny, className }: Approva
           {state === 'denying' ? 'Denying…' : 'Deny'}
         </Button>
       </div>
-    </div>
+    </Card>
   )
 }

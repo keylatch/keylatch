@@ -1,4 +1,4 @@
-name: Sandbox Linux (EPIC-24)
+name: Sandbox Linux
 
 # Runs bwrap-backed direct_classic_sandboxed tests on ubuntu-latest.
 # These tests require bubblewrap which is not available on macOS runners.

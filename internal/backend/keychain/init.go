@@ -65,7 +65,7 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 	}
 
 	// Step 3: store unlock password in LOGIN keychain (no -k flag) with -T {binaryPath}.
-	_, _, _, err = k.opts.Runner.Run(ctx, k.opts.SecurityBin,
+	_, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"add-generic-password",
 			"-U",
 			"-s", "keylatch-keychain",
@@ -76,6 +76,9 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		nil)
 	if err != nil {
 		return fmt.Errorf("keychain Init: store unlock password: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("keychain Init: store unlock password: security exited %d: %s", exitCode, strings.TrimSpace(string(stderr)))
 	}
 
 	// Step 4: set keychain to never auto-lock.

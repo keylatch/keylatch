@@ -163,3 +163,114 @@ func TestConnectionDetailHandler_RotateField(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestConnectionUpdate_ApprovalPolicy(t *testing.T) {
+	initAPIRegistry(t)
+	t.Parallel()
+	store := newAPIMemoryStore()
+
+	// Create the connection first.
+	create := &api.ConnectionsHandler{Store: store}
+	create.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodPost, "/api/connections",
+			bytes.NewBufferString(`{"provider":"openrouter","fields":{"api_key":"test-key"}}`)),
+	)
+
+	// PUT with approval_policy "trust".
+	detail := &api.ConnectionDetailHandler{Store: store}
+	putReq := httptest.NewRequest(http.MethodPut, "/api/connections/openrouter",
+		bytes.NewBufferString(`{"fields":[],"approval_policy":"trust"}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	detail.ServeHTTP(putRec, putReq)
+	require.Equal(t, http.StatusOK, putRec.Code)
+
+	// GET /api/connections and verify approval_policy is "trust".
+	list := &api.ConnectionsHandler{Store: store}
+	getReq := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
+	getRec := httptest.NewRecorder()
+	list.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var body struct {
+		Connections []struct {
+			Provider       string `json:"provider"`
+			ApprovalPolicy string `json:"approval_policy"`
+		} `json:"connections"`
+	}
+	require.NoError(t, json.NewDecoder(getRec.Body).Decode(&body))
+	require.Len(t, body.Connections, 1)
+	assert.Equal(t, "openrouter", body.Connections[0].Provider)
+	assert.Equal(t, "trust", body.Connections[0].ApprovalPolicy)
+}
+
+func TestClearConnections_DeletesAll(t *testing.T) {
+	initAPIRegistry(t)
+	t.Parallel()
+	store := newAPIMemoryStore()
+
+	// Create two connections.
+	create := &api.ConnectionsHandler{Store: store}
+	for _, body := range []string{
+		`{"provider":"openrouter","fields":{"api_key":"key-a"}}`,
+		`{"provider":"anthropic","fields":{"api_key":"key-b"}}`,
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/connections", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		create.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, "create failed for body: %s", body)
+	}
+
+	// POST /api/connections/clear.
+	clearHandler := &api.ClearConnectionsHandler{Store: store}
+	clearReq := httptest.NewRequest(http.MethodPost, "/api/connections/clear", nil)
+	clearRec := httptest.NewRecorder()
+	clearHandler.ServeHTTP(clearRec, clearReq)
+	require.Equal(t, http.StatusOK, clearRec.Code)
+
+	var clearBody struct {
+		Status string `json:"status"`
+		Count  int    `json:"count"`
+	}
+	require.NoError(t, json.NewDecoder(clearRec.Body).Decode(&clearBody))
+	assert.Equal(t, "cleared", clearBody.Status)
+	assert.Equal(t, 2, clearBody.Count)
+
+	// GET /api/connections — list must be empty.
+	list := &api.ConnectionsHandler{Store: store}
+	getReq := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
+	getRec := httptest.NewRecorder()
+	list.ServeHTTP(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var listBody struct {
+		Connections []interface{} `json:"connections"`
+	}
+	require.NoError(t, json.NewDecoder(getRec.Body).Decode(&listBody))
+	assert.Empty(t, listBody.Connections, "expected empty connections list after clear")
+}
+
+func TestConnectionUpdate_ApprovalPolicy_Invalid(t *testing.T) {
+	initAPIRegistry(t)
+	t.Parallel()
+	store := newAPIMemoryStore()
+
+	// Create the connection first.
+	create := &api.ConnectionsHandler{Store: store}
+	create.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodPost, "/api/connections",
+			bytes.NewBufferString(`{"provider":"openrouter","fields":{"api_key":"test-key"}}`)),
+	)
+
+	// PUT with an invalid approval_policy value.
+	detail := &api.ConnectionDetailHandler{Store: store}
+	putReq := httptest.NewRequest(http.MethodPut, "/api/connections/openrouter",
+		bytes.NewBufferString(`{"fields":[],"approval_policy":"always"}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	detail.ServeHTTP(putRec, putReq)
+	assert.Equal(t, http.StatusBadRequest, putRec.Code)
+}

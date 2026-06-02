@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/registry"
 	klruntime "github.com/keylatch/keylatch/internal/runtime"
 	"github.com/keylatch/keylatch/internal/store"
 	"github.com/spf13/cobra"
@@ -602,41 +604,60 @@ func setupSpawnDaemonLinux(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "  Or start directly: keylatchd &")
 }
 
-// setupStep4ConnectProvider handles [4/5] — hint about connecting the first provider.
+// setupStep4ConnectProvider handles [4/5] — interactive provider picker.
+// Shows a numbered list from the registry; user picks by number or name.
 func setupStep4ConnectProvider(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[4/5] Connect your first provider...")
 	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintln(c.OutOrStdout(), "  Connect your first provider with:")
-	fmt.Fprintln(c.OutOrStdout(), "    keylatch connect <provider>")
-	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintln(c.OutOrStdout(), "  Available providers: openrouter, anthropic, openai, sentry")
-	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintf(c.OutOrStdout(), "  Run `keylatch connect` now? (y/N): ")
 
-	ans := readLine()
-	ans = strings.ToLower(strings.TrimSpace(ans))
-	if ans == "y" || ans == "yes" {
-		fmt.Fprintf(c.OutOrStdout(), "  Provider name: ")
-		provider := strings.TrimSpace(readLine())
-		if provider == "" {
-			fmt.Fprintln(c.OutOrStdout(), "  No provider entered — skipping.")
-			fmt.Fprintln(c.OutOrStdout())
-			return
-		}
-		fmt.Fprintf(c.OutOrStdout(), "  Running: keylatch connect %s\n\n", provider)
-		self, err := os.Executable()
-		if err != nil {
-			self = "keylatch" // fallback to PATH
-		}
-		connectCmd := exec.Command(self, "connect", provider) //nolint:gosec // provider is user-supplied input, not a shell command
-		connectCmd.Stdin = os.Stdin
-		connectCmd.Stdout = c.OutOrStdout()
-		connectCmd.Stderr = c.ErrOrStderr()
-		if err := connectCmd.Run(); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  keylatch connect: %v\n", err)
+	templates := registry.List()
+
+	// Fall back to a minimal default list when the registry is empty.
+	type providerEntry struct{ slug, display, category string }
+	var entries []providerEntry
+	if len(templates) > 0 {
+		for _, t := range templates {
+			entries = append(entries, providerEntry{t.Provider, t.DisplayName, t.Category})
 		}
 	} else {
+		entries = []providerEntry{
+			{"anthropic", "Anthropic", "ai"},
+			{"openai", "OpenAI", "ai"},
+			{"openrouter", "OpenRouter", "ai"},
+			{"sentry", "Sentry", "observability"},
+		}
+	}
+
+	// Print numbered list.
+	for i, e := range entries {
+		fmt.Fprintf(c.OutOrStdout(), "  %3d)  %-22s  %s\n", i+1, e.display, e.category)
+	}
+	fmt.Fprintln(c.OutOrStdout())
+	fmt.Fprintf(c.OutOrStdout(), "  Choose [1-%d, name, or Enter to skip]: ", len(entries))
+
+	ans := strings.TrimSpace(readLine())
+	if ans == "" || strings.ToLower(ans) == "n" || strings.ToLower(ans) == "no" {
 		fmt.Fprintln(c.OutOrStdout(), "  Skipping — run `keylatch connect <provider>` when ready.")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
+
+	provider := ans
+	if n, err := strconv.Atoi(ans); err == nil && n >= 1 && n <= len(entries) {
+		provider = entries[n-1].slug
+	}
+
+	fmt.Fprintf(c.OutOrStdout(), "  Running: keylatch connect %s\n\n", provider)
+	self, err := os.Executable()
+	if err != nil {
+		self = "keylatch"
+	}
+	connectCmd := exec.Command(self, "connect", provider) //nolint:gosec // provider is user-supplied input, not a shell command
+	connectCmd.Stdin = os.Stdin
+	connectCmd.Stdout = c.OutOrStdout()
+	connectCmd.Stderr = c.ErrOrStderr()
+	if err := connectCmd.Run(); err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  keylatch connect: %v\n", err)
 	}
 
 	fmt.Fprintln(c.OutOrStdout())

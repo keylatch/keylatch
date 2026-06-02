@@ -39,6 +39,52 @@ type ConnectionField struct {
 	URI string `json:"uri,omitempty"`
 }
 
+// connectionPolicyPath returns the vault path for per-provider approval policy.
+// NOTE: like fieldModesPath and connectionMetaPath, the account segment is not
+// included — policy is stored at the provider level, shared by all accounts of
+// that provider. This is intentional for the v1 keylatch model where a single
+// provider slug maps to one identity.
+func connectionPolicyPath(namespace, provider, _ string) string {
+	if namespace == "" {
+		namespace = defaultConnectionNamespace
+	}
+	cat := providerCategory(provider)
+	return fmt.Sprintf("%s/%s/%s/policy", namespace, cat, provider)
+}
+
+// connectionPolicy holds the persisted approval policy override for a connection.
+type connectionPolicy struct {
+	ApprovalPolicy string `json:"approval_policy"`
+}
+
+// loadConnectionPolicy reads the stored approval policy for a connection.
+// Returns "" (meaning "use global default") when no override has been stored.
+func loadConnectionPolicy(r *http.Request, store connections.Store, namespace, provider, account string) string {
+	data, _, err := store.Get(r.Context(), connectionPolicyPath(namespace, provider, account))
+	if err != nil {
+		return ""
+	}
+	var p connectionPolicy
+	if err := json.Unmarshal(data, &p); err != nil {
+		return ""
+	}
+	return p.ApprovalPolicy
+}
+
+// saveConnectionPolicy persists the approval policy override for a connection.
+func saveConnectionPolicy(r *http.Request, store connections.Store, namespace, provider, account, policy string) error {
+	path := connectionPolicyPath(namespace, provider, account)
+	data, err := json.Marshal(connectionPolicy{ApprovalPolicy: policy})
+	if err != nil {
+		return err
+	}
+	return store.Set(r.Context(), path, data, backend.Meta{
+		Path:    path,
+		Backend: "vault",
+		Version: 1,
+	})
+}
+
 // fieldModesPath returns the vault path for per-field mode metadata.
 // Canonical format: namespace/category/provider/fieldmodes (S-FIND-23),
 // matching connectionMetaPath and secretFieldPath.
@@ -104,15 +150,16 @@ func (h *ConnectionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Value-free: no credential values are ever included (S10-V).
 type connListItem struct {
 	// ID is a stable identifier derived from namespace/provider/account.
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Provider  string            `json:"provider"`
-	Account   string            `json:"account"`
-	Namespace string            `json:"namespace"`
-	Status    string            `json:"status"`
-	Fields    []ConnectionField `json:"fields"`
-	CreatedAt string            `json:"created_at,omitempty"`
-	UpdatedAt string            `json:"updated_at,omitempty"`
+	ID             string            `json:"id"`
+	Name           string            `json:"name"`
+	Provider       string            `json:"provider"`
+	Account        string            `json:"account"`
+	Namespace      string            `json:"namespace"`
+	Status         string            `json:"status"`
+	Fields         []ConnectionField `json:"fields"`
+	CreatedAt      string            `json:"created_at,omitempty"`
+	UpdatedAt      string            `json:"updated_at,omitempty"`
+	ApprovalPolicy string            `json:"approval_policy,omitempty"` // "" = global default
 }
 
 // list returns all connections (value-free) with per-field storage mode metadata.
@@ -156,16 +203,20 @@ func (h *ConnectionsHandler) list(w http.ResponseWriter, r *http.Request) {
 			updatedAt = conn.UpdatedAt.Format("2006-01-02T15:04:05Z")
 		}
 
+		// Load per-connection approval policy override (never errors — returns "" on miss).
+		approvalPolicy := loadConnectionPolicy(r, h.Store, conn.Namespace, conn.Provider, conn.Account)
+
 		items = append(items, connListItem{
-			ID:        connectionID(conn.Namespace, conn.Provider, conn.Account),
-			Name:      connectionName(conn.Provider, conn.Account),
-			Provider:  conn.Provider,
-			Account:   conn.Account,
-			Namespace: conn.Namespace,
-			Status:    conn.Status,
-			Fields:    fields,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
+			ID:             connectionID(conn.Namespace, conn.Provider, conn.Account),
+			Name:           connectionName(conn.Provider, conn.Account),
+			Provider:       conn.Provider,
+			Account:        conn.Account,
+			Namespace:      conn.Namespace,
+			Status:         conn.Status,
+			Fields:         fields,
+			CreatedAt:      createdAt,
+			UpdatedAt:      updatedAt,
+			ApprovalPolicy: approvalPolicy,
 		})
 	}
 	writeJSON(w, map[string]interface{}{"connections": items})
@@ -492,7 +543,8 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 	}
 
 	var req struct {
-		Fields []createFieldReq `json:"fields"`
+		Fields         []createFieldReq `json:"fields"`
+		ApprovalPolicy *string          `json:"approval_policy"` // nil = not changing
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -513,6 +565,22 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"errors": validationErrors})
 		return
+	}
+
+	// Validate approval_policy BEFORE any store writes so an invalid value
+	// cannot leave behind orphaned secret writes (partial-write guard).
+	if req.ApprovalPolicy != nil {
+		validPolicies := map[string]bool{
+			"":          true,
+			"global":    true,
+			"prompt":    true,
+			"first-run": true,
+			"trust":     true,
+		}
+		if !validPolicies[*req.ApprovalPolicy] {
+			http.Error(w, "invalid approval_policy value", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Resolve namespace consistently: prefer conn.Namespace, fall back to the
@@ -554,6 +622,15 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	// Persist approval policy override when explicitly provided.
+	// Validation already performed above before any store writes.
+	if req.ApprovalPolicy != nil {
+		if saveErr := saveConnectionPolicy(r, h.Store, ns, conn.Provider, conn.Account, *req.ApprovalPolicy); saveErr != nil {
+			http.Error(w, "could not save approval policy", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	writeJSON(w, map[string]string{"status": "updated", "id": connectionID(ns, conn.Provider, conn.Account)})
 }
 
@@ -584,16 +661,46 @@ func (h *ConnectionDetailHandler) rotateField(w http.ResponseWriter, r *http.Req
 }
 
 // ClearConnectionsHandler handles POST /api/connections/clear.
-// Phase 10 stub: returns 501 until a full implementation is wired.
-type ClearConnectionsHandler struct{}
+// Deletes every connection in the default namespace and returns the count.
+type ClearConnectionsHandler struct {
+	Store connections.Store
+}
 
 func (h *ClearConnectionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	w.WriteHeader(http.StatusNotImplemented)
-	writeJSON(w, map[string]string{"error": "not_implemented"})
+
+	if h.Store == nil {
+		writeJSON(w, map[string]interface{}{"status": "cleared", "count": 0})
+		return
+	}
+
+	statuses, err := connections.Status(r.Context(), connections.StatusOptions{Namespace: defaultConnectionNamespace}, h.Store)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	for _, status := range statuses {
+		conn := status.Connection
+		ns := conn.Namespace
+		if ns == "" {
+			ns = defaultConnectionNamespace
+		}
+		if delErr := connections.Delete(r.Context(), conn.Provider, conn.Account, ns, h.Store); delErr != nil {
+			slog.Error("connections: clear: failed to delete connection",
+				"provider", conn.Provider,
+				"account", conn.Account,
+				"error", delErr,
+			)
+			http.Error(w, "failed to delete connection: "+conn.Provider, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]interface{}{"status": "cleared", "count": len(statuses)})
 }
 
 // writeJSON writes v as JSON to w, setting Content-Type.

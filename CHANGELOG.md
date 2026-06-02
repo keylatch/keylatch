@@ -7,28 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- SBOM generation (syft, CycloneDX + SPDX) added to the release workflow.
-- Dependabot configuration covering gomod, npm, cargo, and github-actions ecosystems on a weekly cadence with conventional-commit prefixed PRs.
-- CI `go-mod-tidy` job — catches dependency-graph drift on every push and PR instead of only at release time.
-- CI `desktop-lint` job — wires the three Phase 14 lint scripts (S14-6 notification fields, S14-8 IPC method allow-list, S14-14 no-secret-in-storage) into the test workflow.
-- `.golangci.yml` with errcheck/govet/ineffassign/staticcheck/unused/gosec in new-issues-only mode (`--new-from-rev=origin/main`).
-- `Formula/keylatch.rb` — stub Homebrew formula for manual taps (release tarballs are still produced by the goreleaser `brews` stanza).
-- `.github/scoop/keylatch.json` — stub Scoop manifest.
-- `Dockerfile` upgraded to a multi-stage build (`golang:1.25-alpine` builder, `gcr.io/distroless/static` runtime).
-- UI server: `GET /health` (value-free liveness probe) and `GET /metrics` (Prometheus placeholder).
-- Structured logging via `log/slog` in `internal/trust/pkcs11` (replaces the last remaining `log.Printf` call).
-- Tests for `internal/gateway/approval` — coverage raised from 0% to 90.9%.
+## [1.0.0] - 2026-06-01
 
-### Changed
-- `internal/broker/cache.go` — token cache is now bounded (default 1000 entries, FIFO eviction on overflow). Closes the unbounded-map memory growth path.
-- `tests/e2e/receipt_card.spec.ts` — CSP assertion now matches the strict policy emitted by `internal/ui/middleware.go` (no `'unsafe-inline'` in script-src, no `http://127.0.0.1:*` wildcard in connect-src).
-- `go.mod` cleaned: `fxamacker/cbor/v2`, `golang-jwt/jwt/v5`, `golang.org/x/crypto`, `golang.org/x/sys`, and `gopkg.in/yaml.v3` promoted from indirect to direct dependencies after `go mod tidy`.
+> **Note on code-signing (1.0.0):** Desktop binaries are not code-signed in this release. On macOS, run `xattr -dr com.apple.quarantine keylatch.app` if Gatekeeper blocks the app. On Windows, dismiss the SmartScreen prompt. Code-signing will be added in a future release.
 
-### Security
-- Gateway HTTP server now wires `authBlockerMiddleware`, `hostOverrideBlockerMiddleware`, and `SSRFGate` into the proxy route. Previously the three middlewares were implemented but never invoked at runtime — agent-supplied `api_key` query params, `X-Forwarded-Host` headers, and SSRF-class upstream hosts could bypass the gateway's credential isolation. See `internal/gateway/server.go` and `internal/gateway/handler.go`.
-- `authBlockerMiddleware` no longer blocks the `Authorization` header (the gateway consumes it as the keylatch session JWT and strips it before forwarding upstream). Upstream-credential isolation is enforced by the handler's strip-and-inject logic; `Authorization` blocking would have prevented all gateway authentication.
-- `hostOverrideBlockerMiddleware` is configured with an empty allowed-hosts list, enforcing only the strong subset of its rules: blocking `X-Forwarded-Host`, `X-Original-URL`, and `X-Rewrite-URL` headers. The inbound `Host` header always points at the loopback gateway address, not the upstream destination.
+### Zero-trust credential vault
+
+Keylatch 1.0.0 is the first stable release. It is designed for security-conscious developers who run AI coding agents and need to keep API keys out of model context, MCP tool outputs, and agent logs.
+
+### What you get
+
+- **LLM session blocking** — Claude Code, Codex, Cursor, Aider, Gemini CLI, and OpenCode are auto-detected. Direct credential reads (`keylatch get`) are blocked with exit code 2 inside any detected session.
+- **4 credential backends** — macOS Keychain (hardware-backed), 1Password CLI, Bitwarden CLI, and an encrypted file (XChaCha20-Poly1305 / AES-256-GCM). Backend can be switched at runtime with live key migration.
+- **Desktop app** — macOS, Windows, and Linux. Includes a first-run wizard, tray icon, approval inbox, and agent profile setup — no terminal required for day-to-day use.
+- **Full web UI** — connections list, per-connection approval policy override, diagnostics, settings, and a live receipt stream.
+- **Per-connection approval policy override** — set Trust, Prompt, or First-run per provider without touching the global default.
+- **Credential backend switcher** — switch between Keychain, 1Password, Bitwarden, and encrypted file in Settings (Advanced mode). Vault key is migrated automatically; app restarts on completion.
+- **Gateway middlewares enforced** — `authBlockerMiddleware`, `hostOverrideBlockerMiddleware`, and `SSRFGate` are now active at runtime. Agent-supplied `api_key` query params, `X-Forwarded-Host` headers, and SSRF-class upstream hosts are blocked.
+- **MCP server** — 5 tools for AI agent integration via the MCP protocol.
+
+### Security fixes (wired for the first time in 1.0.0)
+
+- Gateway middlewares (`authBlockerMiddleware`, `hostOverrideBlockerMiddleware`, `SSRFGate`) were implemented in earlier alpha phases but never invoked at runtime. They are now wired. Upgrading from 0.1.0-alpha is strongly recommended.
+- Token cache is now bounded (1000 entries, FIFO eviction) — eliminates unbounded-map memory growth under sustained load.
+- Strict Content-Security-Policy with no `'unsafe-inline'` in `script-src` and no wildcard in `connect-src`.
+
+### Release pipeline
+
+- SBOM published in CycloneDX and SPDX formats for every release.
+- Release artifacts signed with cosign via GitHub Actions OIDC (keyless).
+- Dependabot enabled for Go modules, npm, Cargo, and GitHub Actions (weekly, conventional-commit prefix).
 
 ## [0.1.0-alpha] - 2026-05-13
 
