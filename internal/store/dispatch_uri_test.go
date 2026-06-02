@@ -30,14 +30,30 @@ const vaultCanary = "vault-canary-value-ms4n"
 
 // writeMockBin writes a shell script at dir/name that executes body, makes it
 // executable, and returns its path.
+//
+// On Linux, os.WriteFile can leave dirty page-cache state that causes the
+// kernel to return ETXTBSY when the file is immediately exec'd. Explicit
+// Sync() + Close() flushes the pages before we hand the path to execve.
 func writeMockBin(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
 	}
 	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil { //nolint:gosec // test helper
-		t.Fatalf("writeMockBin %s: %v", name, err)
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755) //nolint:gosec // test helper
+	if err != nil {
+		t.Fatalf("writeMockBin %s: open: %v", name, err)
+	}
+	if _, err := f.WriteString("#!/bin/sh\n" + body + "\n"); err != nil {
+		_ = f.Close()
+		t.Fatalf("writeMockBin %s: write: %v", name, err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		t.Fatalf("writeMockBin %s: sync: %v", name, err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("writeMockBin %s: close: %v", name, err)
 	}
 	return p
 }
