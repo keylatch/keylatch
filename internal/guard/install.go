@@ -42,7 +42,7 @@ var AgentHookMechanism = map[Agent]string{
 	AgentAider:       "pre-tool-use-hook (.aider.conf.yml)",
 	AgentWindsurf:    "not supported — gateway mode recommended",
 	AgentCodex:       "PreToolUse (hooks.json)",
-	AgentCopilot:     "shell wrapper (native hook path unconfirmed)",
+	AgentCopilot:     "shell wrapper (patches shell rc)",
 	AgentGemini:      "BeforeTool (settings.json)",
 	AgentOpenCode:    "tool.execute.before (TypeScript plugin)",
 	AgentAntigravity: "not supported — gateway mode recommended",

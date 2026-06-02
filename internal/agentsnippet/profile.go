@@ -9,9 +9,8 @@ import (
 
 // agentPreset describes the target files and merge strategy for a specific AI agent.
 type agentPreset struct {
-	name           string
-	files          []ProfileFile
-	conflictPolicy string //nolint:unused // planned: used by merge logic in Phase 8 profile conflict resolution
+	name  string
+	files []ProfileFile
 }
 
 // agentPresets maps agent names to their target file configurations.

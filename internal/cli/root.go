@@ -1137,54 +1137,6 @@ func loadConnectionBackend(ctx context.Context, connectionName string) (backend.
 	return b, tmpl, storagePath, nil
 }
 
-// newCallCmd returns the `call` subcommand with runtime guards.
-// S0-5: NOT value-bearing.
-//
-//nolint:unused // planned: wired to root command when call/describe/validate are promoted from Phase 9
-func newCallCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "call <connection> <endpoint>",
-		Short: "Call an endpoint via a credential connection",
-		RunE: func(c *cobra.Command, args []string) error {
-			mode := runtime.RuntimeMode(c.Flag("runtime").Value.String())
-			approvalJWT := c.Flag("approval-jwt").Value.String()
-			if block, code := GuardRuntime(mode, approvalJWT, llmcontext.DefaultLookup, nil); block {
-				WriteGuardRuntimeError(c.ErrOrStderr(), mode)
-				os.Exit(code)
-			}
-			os.Exit(exitcode.OperationFailed)
-			return nil
-		},
-	}
-	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped), "runtime mode")
-	cmd.Flags().String("approval-jwt", "", "approval JWT for direct_classic_sandboxed mode")
-	return cmd
-}
-
-// newDescribeCmd returns the `describe` subcommand — NOT guarded.
-// S0-5: describe is a safe path.
-//
-//nolint:unused // planned: wired to root command when call/describe/validate are promoted from Phase 9
-func newDescribeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "describe <service>",
-		Short: "Describe a credential (no values)",
-		RunE:  notImplementedRunE(exitcode.OperationFailed),
-	}
-}
-
-// newValidateCmd returns the `validate` subcommand — NOT guarded.
-// S0-5: validate is a safe path.
-//
-//nolint:unused // planned: wired to root command when call/describe/validate are promoted from Phase 9
-func newValidateCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "validate <service>",
-		Short: "Validate a credential without returning its value",
-		RunE:  notImplementedRunE(exitcode.OperationFailed),
-	}
-}
-
 // newListCmd is replaced by newListCmdImpl in list_cmd.go (Phase 1).
 // Kept as a reference for Phase 0 behavior: the original stub exited with
 // exitcode.OperationFailed.
@@ -1200,14 +1152,6 @@ func newConnectionsCmd() *cobra.Command {
 			os.Exit(exitcode.OperationFailed)
 			return nil
 		},
-	}
-}
-
-//nolint:unused // used by newDescribeCmd and newValidateCmd (Phase 9 stubs)
-func notImplementedRunE(code int) func(*cobra.Command, []string) error {
-	return func(_ *cobra.Command, _ []string) error {
-		os.Exit(code)
-		return nil // unreachable
 	}
 }
 

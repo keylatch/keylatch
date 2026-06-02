@@ -477,7 +477,7 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	// Backends in the menu that are planned for a future release are not yet wired.
 	supported := map[string]bool{"file": true, "keychain": true, "op": true, "bw": true, "secret-service": true}
 	if !supported[chosen] {
-		fmt.Fprintf(c.ErrOrStderr(), "  Error: backend %q is planned for a future release and not yet available — use one of: file, keychain, op, bw, secret-service\n", chosen)
+		fmt.Fprintf(c.ErrOrStderr(), "  Error: backend %q is not yet available in this build — supported: file, keychain, op, bw, secret-service\n", chosen)
 		fmt.Fprintf(c.OutOrStdout(), "  Using recommended backend %q.\n", recommended)
 		return recommended, chosenTelemetry
 	}

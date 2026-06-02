@@ -34,16 +34,6 @@ func valuePath(root, canonical string, version int) string {
 	return filepath.Join(root, "values", filepath.FromSlash(canonical), strconv.Itoa(version))
 }
 
-// receiptDir returns the directory path for runtime delivery receipts for a
-// given canonical path.
-//
-// Example: root="~/.keylatch/vault", canonical="default/ai/openrouter/api_key"
-//
-//	→ "~/.keylatch/vault/receipts/default/ai/openrouter/api_key"
-func receiptDir(root, canonical string) string { //nolint:unused // planned: delivery-receipt storage for Phase 6
-	return filepath.Join(root, "receipts", filepath.FromSlash(canonical))
-}
-
 // ensureDir creates all parent directories of the given file path with mode
 // 0700. Returns nil if the directories already exist.
 func ensureDir(path string) error {

@@ -193,7 +193,7 @@ func Load(path string) (Policy, error) {
 			}
 		}
 		if rule.RateLimit != nil {
-			return Policy{}, fmt.Errorf("policy: rule %d has rate_limit configured, but rate limiting is not yet enforced; remove rate_limit until a future release adds enforcement", i)
+			return Policy{}, fmt.Errorf("policy: rule %d has rate_limit configured, but rate limiting is not supported in this version", i)
 		}
 	}
 	return p, nil

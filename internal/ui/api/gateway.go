@@ -53,7 +53,9 @@ type BrokerHandler struct{}
 
 func (h *BrokerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/broker/dry-run" && r.Method == http.MethodPost {
-		http.Error(w, "not implemented", http.StatusNotImplemented)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		_, _ = w.Write([]byte(`{"error":"broker dry-run not yet available","code":"not_implemented"}`))
 		return
 	}
 	http.NotFound(w, r)
