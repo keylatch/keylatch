@@ -196,23 +196,21 @@ func checkHookPreToolUse(env llmcontext.Lookup) Check {
 func checkNoConnections(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		vaultDir := paths.Vault(env)
-		// Check if any connections exist by probing the connections prefix.
-		connDir := filepath.Join(vaultDir, "default", "connections")
-		info, err := os.Stat(connDir)
-		if err != nil || !info.IsDir() {
-			return Status{
-				Name:    "connections.configured",
-				Section: "providers",
-				OK:      true,
-				Warn:    true,
-				Detail:  "no connections configured yet",
-				Fix:     "Run `keylatch setup` or `keylatch connect <provider>` to add your first connection.",
-				Tags:    []string{"connections"},
+		// Connections are stored at vault/default/<category>/<provider>/meta/.
+		// Walk the default namespace looking for any "meta" directory — that
+		// signals at least one configured connection.
+		defaultDir := filepath.Join(vaultDir, "default")
+		found := false
+		_ = filepath.WalkDir(defaultDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || found {
+				return nil
 			}
-		}
-		// Check if directory has any subdirectories (providers).
-		entries, err := os.ReadDir(connDir)
-		if err != nil || len(entries) == 0 {
+			if d.IsDir() && d.Name() == "meta" {
+				found = true
+			}
+			return nil
+		})
+		if !found {
 			return Status{
 				Name:    "connections.configured",
 				Section: "providers",
@@ -227,7 +225,7 @@ func checkNoConnections(env llmcontext.Lookup) Check {
 			Name:    "connections.configured",
 			Section: "providers",
 			OK:      true,
-			Detail:  fmt.Sprintf("connections directory exists at %s", connDir),
+			Detail:  fmt.Sprintf("connections present in vault at %s", defaultDir),
 			Tags:    []string{"connections"},
 		}
 	}
@@ -451,6 +449,22 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 // been bootstrapped.
 func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
+		// Keychain and other platform backends don't create keyring.json —
+		// they store keys in the OS credential store. Skip the file check.
+		cfgPath := paths.Config(env)
+		if cfg, err := config.Load(cfgPath); err == nil {
+			switch cfg.Backend {
+			case "keychain", "op", "bw", "secret-service", "wincred":
+				return Status{
+					Name:    "F1 bootstrap.keyring",
+					Section: "environment",
+					OK:      true,
+					Detail:  fmt.Sprintf("keyring managed by %s backend (no keyring.json needed)", cfg.Backend),
+					Tags:    []string{"bootstrap", "keyring"},
+				}
+			}
+		}
+
 		p := paths.KeyringPath(env)
 		info, err := os.Stat(p)
 		if err != nil {

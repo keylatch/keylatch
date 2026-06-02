@@ -386,24 +386,54 @@ func newPhase3ConnectCmd() *cobra.Command {
 				field = "api_key"
 			}
 
-			// Prompt hidden value.
-			value, err := promptHidden(fmt.Sprintf("Enter value for %s", field))
-			if err != nil {
-				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				os.Exit(exitcode.UserError)
-				return nil
+			// Prompt for the value — hidden when TTY, plain readline when piped.
+			var value []byte
+			if stdinIsTTY() {
+				v, err := promptHidden(fmt.Sprintf("Enter value for %s", field))
+				if err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+					os.Exit(exitcode.UserError)
+					return nil
+				}
+				value = v
+			} else {
+				data, err := readFieldFromStdin(c.InOrStdin())
+				if err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: reading %s from stdin: %v\n", field, err)
+					os.Exit(exitcode.UserError)
+					return nil
+				}
+				value = data
 			}
 
-			path := fmt.Sprintf("default/custom/%s/%s", name, field)
-			meta := backend.Meta{
-				Path:    path,
+			// Write secret value.
+			fieldPath := fmt.Sprintf("default/custom/%s/%s", name, field)
+			if setErr := st.Set(ctx, fieldPath, value, backend.Meta{
+				Path:    fieldPath,
 				Backend: cfg.Backend,
 				Version: 1,
-			}
-			if setErr := st.Set(ctx, path, value, meta); setErr != nil {
+			}); setErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", setErr)
 				os.Exit(exitcode.OperationFailed)
 				return nil
+			}
+
+			// Write connection metadata so `keylatch doctor` and list commands
+			// recognise this as a configured connection.
+			metaPath := fmt.Sprintf("default/custom/%s/meta", name)
+			conn := connections.Connection{
+				Provider:  name,
+				Namespace: "default",
+				Fields:    []string{field},
+				Status:    "untested",
+			}
+			connBytes, marshalErr := json.Marshal(conn)
+			if marshalErr == nil {
+				_ = st.Set(ctx, metaPath, connBytes, backend.Meta{
+					Path:    metaPath,
+					Backend: cfg.Backend,
+					Version: 1,
+				})
 			}
 
 			fmt.Fprintf(c.OutOrStdout(), "  Connected: custom/%s (%s saved)\n", name, field)

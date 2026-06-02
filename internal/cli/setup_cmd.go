@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
@@ -370,22 +369,12 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	if chosen == "keychain" && runtime.GOOS == "darwin" {
 		fmt.Fprintf(c.OutOrStdout(), "  Initialising keychain backend...\n")
 
-		// Load the freshly-written config so dispatch.Select picks up the new backend.
-		cfgForKeychain, cfgLoadErr := config.Load(paths.Config(llmcontext.DefaultLookup))
-		if cfgLoadErr != nil {
-			cfgForKeychain = config.Default()
-			cfgForKeychain.Backend = "keychain"
-		}
-		dispatch.ClearCached()
-		b, dispErr := dispatch.Select(ctx, cfgForKeychain, llmcontext.DefaultLookup)
-		if dispErr != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain dispatch: %v\n", dispErr)
-			return "", fmt.Errorf("keychain dispatch: %w", dispErr)
-		}
-		kb, ok := b.(*keychain.KeychainBackend)
-		if !ok {
-			fmt.Fprintf(c.ErrOrStderr(), "  Error: backend is not a KeychainBackend\n")
-			return "", fmt.Errorf("keychain init: backend is not a KeychainBackend")
+		// Open directly with defaults — avoids dispatch caching issues since
+		// Open() fills KeychainPath/LockPath/SecurityBin/Runner/Env from defaults.
+		kb, kbErr := keychain.Open(keychain.Options{})
+		if kbErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain open: %v\n", kbErr)
+			return "", fmt.Errorf("keychain open: %w", kbErr)
 		}
 		if initErr := kb.Init(ctx, "default"); initErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain-init: %v\n", initErr)
