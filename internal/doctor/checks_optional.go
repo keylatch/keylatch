@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/guard"
@@ -101,16 +103,59 @@ func checkExternalSOPS(probe kexec.Probe) Check {
 	}
 }
 
-// checkACLKeychainUnlock is a placeholder for Phase 1.
-func checkACLKeychainUnlock() Check {
-	return func(_ context.Context) Status {
+// checkACLKeychainUnlock verifies the keychain ACL is correctly configured.
+func checkACLKeychainUnlock(env llmcontext.Lookup) Check {
+	return func(ctx context.Context) Status {
+		if runtime.GOOS != "darwin" {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Detail:  "keychain ACL check: skipped (not macOS)",
+				Tags:    []string{"acl"},
+			}
+		}
+
+		keychainDB := filepath.Join(os.Getenv("HOME"), ".keylatch", "keylatch.keychain-db")
+		if _, err := os.Stat(keychainDB); err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Detail:  "keychain ACL check: skipped (keychain not initialised)",
+				Tags:    []string{"acl"},
+			}
+		}
+
+		kb, err := keychain.Open(keychain.Options{})
+		if err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Warn:    true,
+				Detail:  fmt.Sprintf("keychain ACL: could not open keychain backend: %v", err),
+				Fix:     "Run `keylatch keychain-init --verify-acl` to repair the ACL.",
+				Tags:    []string{"acl"},
+			}
+		}
+
+		if err := kb.VerifyACL(ctx); err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Warn:    true,
+				Detail:  fmt.Sprintf("keychain ACL: %v", err),
+				Fix:     "Run `keylatch keychain-init --verify-acl` to repair the ACL.",
+				Tags:    []string{"acl"},
+			}
+		}
 		return Status{
 			Name:    "acl.keychain_unlock",
 			Section: "providers",
 			OK:      true,
-			Warn:    true,
-			Detail:  "keychain ACL unlock policy: not yet configured (Phase 1 placeholder)",
-			Fix:     "Run `keylatch backend init` after Phase 1 ships.",
+			Detail:  "keychain ACL: ok",
 			Tags:    []string{"acl"},
 		}
 	}
@@ -351,6 +396,40 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 	return func(ctx context.Context) Status {
 		const checkName = "F3 plaintext_retention"
 		const section = "daemon"
+
+		// Early-return if the gateway is not running (no PID file or stale process).
+		pidPath := paths.GatewayPID(env)
+		pidData, pidErr := os.ReadFile(pidPath)
+		if pidErr != nil {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  "F3 plaintext retention: skipped (keylatchd not running)",
+				Tags:    []string{"daemon", "retention"},
+			}
+		}
+		pidStr := strings.TrimSpace(string(pidData))
+		pid, parseErr := strconv.Atoi(pidStr)
+		if parseErr != nil || pidStr == "" {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  "F3 plaintext retention: skipped (keylatchd not running)",
+				Tags:    []string{"daemon", "retention"},
+			}
+		}
+		proc, findErr := os.FindProcess(pid)
+		if findErr != nil || proc.Signal(syscall.Signal(0)) != nil {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  "F3 plaintext retention: skipped (keylatchd not running)",
+				Tags:    []string{"daemon", "retention"},
+			}
+		}
 
 		// Resolve keylatchd address.
 		addr := "127.0.0.1:7890"
@@ -609,7 +688,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"external", checkExternalOP(env, probe)},
 		{"external", checkExternalAWSSM(env, probe)},
 		{"external", checkExternalHashiVault(env, probe)},
-		{"providers", checkACLKeychainUnlock()},
+		{"providers", checkACLKeychainUnlock(env)},
 		{"environment", checkHookPreToolUse(env)},
 		{"environment", checkCosignInstalled(probe)},
 		// P1.8: soft checks.
