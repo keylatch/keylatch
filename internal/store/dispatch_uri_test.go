@@ -36,8 +36,16 @@ func writeMockBin(t *testing.T, dir, name, body string) string {
 		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
 	}
 	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil { //nolint:gosec // test helper
-		t.Fatalf("writeMockBin %s: %v", name, err)
+	// Write to a staging path then rename to p to avoid ETXTBSY on Linux.
+	// The kernel marks an inode write-busy while any write-fd is open; exec()
+	// on that path fails with ETXTBSY even after Close(). Rename is atomic and
+	// the destination inode is never write-opened under the execution path.
+	staging := p + ".tmp"
+	if err := os.WriteFile(staging, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil { //nolint:gosec // test helper
+		t.Fatalf("writeMockBin %s: write: %v", name, err)
+	}
+	if err := os.Rename(staging, p); err != nil {
+		t.Fatalf("writeMockBin %s: rename: %v", name, err)
 	}
 	return p
 }
