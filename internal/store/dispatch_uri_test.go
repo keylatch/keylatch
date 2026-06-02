@@ -15,7 +15,6 @@ package store_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,23 +36,16 @@ func writeMockBin(t *testing.T, dir, name, body string) string {
 		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
 	}
 	p := filepath.Join(dir, name)
-	// Use explicit open/write/sync/close instead of os.WriteFile to avoid
-	// ETXTBSY on Linux: the kernel marks the inode write-busy until the fd is
-	// fully flushed, and exec() on an unflushed file fails with ETXTBSY.
-	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755) //nolint:gosec // test helper
-	if err != nil {
-		t.Fatalf("writeMockBin %s: open: %v", name, err)
-	}
-	if _, err := fmt.Fprintf(f, "#!/bin/sh\n%s\n", body); err != nil {
-		_ = f.Close()
+	// Write to a staging path then rename to p to avoid ETXTBSY on Linux.
+	// The kernel marks an inode write-busy while any write-fd is open; exec()
+	// on that path fails with ETXTBSY even after Close(). Rename is atomic and
+	// the destination inode is never write-opened under the execution path.
+	staging := p + ".tmp"
+	if err := os.WriteFile(staging, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil { //nolint:gosec // test helper
 		t.Fatalf("writeMockBin %s: write: %v", name, err)
 	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		t.Fatalf("writeMockBin %s: sync: %v", name, err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatalf("writeMockBin %s: close: %v", name, err)
+	if err := os.Rename(staging, p); err != nil {
+		t.Fatalf("writeMockBin %s: rename: %v", name, err)
 	}
 	return p
 }
