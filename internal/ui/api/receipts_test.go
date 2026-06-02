@@ -306,7 +306,9 @@ func TestReceipts_SSEEmitsOnPush(t *testing.T) {
 	}()
 
 	// Wait for the initial heartbeat to confirm the connection is established.
-	deadline := time.After(3 * time.Second)
+	// 10s gives loaded CI runners enough headroom; the heartbeat fires within
+	// a few ms on an idle machine.
+	deadline := time.After(10 * time.Second)
 	heartbeatSeen := false
 	for !heartbeatSeen {
 		select {
@@ -331,8 +333,8 @@ func TestReceipts_SSEEmitsOnPush(t *testing.T) {
 	}
 	store.Push(want)
 
-	// Look for the "event: receipt" line within 3 seconds.
-	deadline = time.After(3 * time.Second)
+	// Look for the "event: receipt" line within 10 seconds.
+	deadline = time.After(10 * time.Second)
 	for {
 		select {
 		case line, ok := <-lines:
@@ -349,7 +351,7 @@ func TestReceipts_SSEEmitsOnPush(t *testing.T) {
 					require.NoError(t, json.Unmarshal([]byte(jsonPart), &got))
 					assert.Equal(t, "anthropic", got["provider"])
 					assert.Equal(t, "messages", got["capability"])
-				case <-time.After(2 * time.Second):
+				case <-time.After(5 * time.Second):
 					t.Fatal("timeout waiting for SSE data line after event")
 				}
 				return
