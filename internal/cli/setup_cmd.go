@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/registry"
 	klruntime "github.com/keylatch/keylatch/internal/runtime"
 	"github.com/keylatch/keylatch/internal/store"
 	"github.com/spf13/cobra"
@@ -566,11 +568,14 @@ func setupStep3SpawnDaemon(c *cobra.Command) {
 
 // setupSpawnDaemonDarwin handles daemon launch on macOS via launchd.
 func setupSpawnDaemonDarwin(c *cobra.Command) {
-	plistPath := os.ExpandEnv("$HOME/Library/LaunchAgents/" + launchdPlistName)
+	plistPath := launchdPlistPath()
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
-		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: not installed (launchd plist missing)")
-		fmt.Fprintln(c.OutOrStdout(), "  To install: keylatch gateway install")
-		return
+		if installErr := installLaunchdPlist(plistPath); installErr != nil {
+			fmt.Fprintf(c.OutOrStdout(), "  Daemon state: could not install launchd plist (%v)\n", installErr)
+			fmt.Fprintln(c.OutOrStdout(), "  Install manually: keylatch gateway install")
+			return
+		}
+		fmt.Fprintln(c.OutOrStdout(), "  Installed launchd plist.")
 	}
 
 	// Try to load/start via launchctl.
@@ -596,7 +601,14 @@ func setupSpawnDaemonLinux(c *cobra.Command) {
 		return
 	}
 
-	// Print the systemd enable command — do not run automatically.
+	// Attempt to start the service if it is already installed.
+	startCmd := exec.Command("systemctl", "--user", "start", "keylatchd")
+	if err := startCmd.Run(); err == nil {
+		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: running (via systemd)")
+		return
+	}
+
+	// Service not installed — print enable instructions.
 	fmt.Fprintln(c.OutOrStdout(), "  To enable keylatchd via systemd:")
 	fmt.Fprintln(c.OutOrStdout(), "    systemctl --user enable --now keylatchd")
 	fmt.Fprintln(c.OutOrStdout(), "  Or start directly: keylatchd &")
@@ -609,84 +621,210 @@ func setupStep4ConnectProvider(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "  Connect your first provider with:")
 	fmt.Fprintln(c.OutOrStdout(), "    keylatch connect <provider>")
 	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintln(c.OutOrStdout(), "  Available providers: openrouter, anthropic, openai, sentry")
-	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintf(c.OutOrStdout(), "  Run `keylatch connect` now? (y/N): ")
 
-	ans := readLine()
-	ans = strings.ToLower(strings.TrimSpace(ans))
-	if ans == "y" || ans == "yes" {
-		fmt.Fprintf(c.OutOrStdout(), "  Provider name: ")
-		provider := strings.TrimSpace(readLine())
-		if provider == "" {
-			fmt.Fprintln(c.OutOrStdout(), "  No provider entered — skipping.")
-			fmt.Fprintln(c.OutOrStdout())
-			return
+	// Build provider hint from registry.
+	templates := registry.List()
+	if len(templates) > 0 {
+		const maxSlugs = 12
+		slugs := make([]string, 0, len(templates))
+		for _, t := range templates {
+			slugs = append(slugs, t.Provider)
 		}
-		fmt.Fprintf(c.OutOrStdout(), "  Running: keylatch connect %s\n\n", provider)
-		self, err := os.Executable()
-		if err != nil {
-			self = "keylatch" // fallback to PATH
+		end := len(slugs)
+		if end > maxSlugs {
+			end = maxSlugs
 		}
-		connectCmd := exec.Command(self, "connect", provider) //nolint:gosec // provider is user-supplied input, not a shell command
-		connectCmd.Stdin = os.Stdin
-		connectCmd.Stdout = c.OutOrStdout()
-		connectCmd.Stderr = c.ErrOrStderr()
-		if err := connectCmd.Run(); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  keylatch connect: %v\n", err)
+		hint := strings.Join(slugs[:end], ", ")
+		if len(slugs) > maxSlugs {
+			hint += ", ..."
 		}
-	} else {
+		fmt.Fprintf(c.OutOrStdout(), "  Available providers: %s\n", hint)
+		fmt.Fprintln(c.OutOrStdout())
+	}
+
+	fmt.Fprintf(c.OutOrStdout(), "  Connect a provider now? [y/<name>/N]: ")
+
+	ans := strings.TrimSpace(readLine())
+	ansLower := strings.ToLower(ans)
+
+	var provider string
+	switch {
+	case ans == "" || ansLower == "n" || ansLower == "no":
 		fmt.Fprintln(c.OutOrStdout(), "  Skipping — run `keylatch connect <provider>` when ready.")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	case ansLower == "y" || ansLower == "yes":
+		fmt.Fprintf(c.OutOrStdout(), "  Provider name: ")
+		provider = strings.TrimSpace(readLine())
+	case strings.HasPrefix(ansLower, "y ") || strings.HasPrefix(ansLower, "yes "):
+		parts := strings.SplitN(ans, " ", 2)
+		provider = strings.TrimSpace(parts[1])
+	default:
+		// User typed the provider name directly (e.g. "anthropic").
+		provider = ans
+	}
+
+	if provider == "" {
+		fmt.Fprintln(c.OutOrStdout(), "  No provider entered — skipping.")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
+
+	fmt.Fprintf(c.OutOrStdout(), "  Running: keylatch connect %s\n\n", provider)
+	self, err := os.Executable()
+	if err != nil {
+		self = "keylatch" // fallback to PATH
+	}
+	connectCmd := exec.Command(self, "connect", provider) //nolint:gosec // provider is user-supplied input, not a shell command
+	connectCmd.Stdin = os.Stdin
+	connectCmd.Stdout = c.OutOrStdout()
+	connectCmd.Stderr = c.ErrOrStderr()
+	if err := connectCmd.Run(); err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  keylatch connect: %v\n", err)
 	}
 
 	fmt.Fprintln(c.OutOrStdout())
 }
 
-// setupStep5OpenApp handles [5/5] — offer to open the desktop app (optional, default N).
+
+// detectDesktopApp returns true if a Keylatch desktop application is found.
+func detectDesktopApp() bool {
+	switch runtime.GOOS {
+	case "darwin":
+		_, err := os.Stat("/Applications/Keylatch.app")
+		return err == nil
+	case "linux":
+		if _, err := exec.LookPath("keylatch-app"); err == nil {
+			return true
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		_, err = os.Stat(filepath.Join(home, ".local/share/applications/keylatch.desktop"))
+		return err == nil
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			return false
+		}
+		_, err := os.Stat(filepath.Join(localAppData, "Programs", "Keylatch", "Keylatch.exe"))
+		return err == nil
+	default:
+		return false
+	}
+}
+
+// detectDocker returns true if the docker binary is available in PATH.
+func detectDocker() bool {
+	_, err := exec.LookPath("docker")
+	return err == nil
+}
+
+// setupStep5OpenApp handles [5/5] — offer to open the desktop app or use Docker (optional).
 func setupStep5OpenApp(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[5/5] Open Keylatch app (optional)...")
 	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintf(c.OutOrStdout(), "  Open Keylatch.app? (y/N): ")
 
-	ans := readLine()
-	ans = strings.ToLower(strings.TrimSpace(ans))
-	if ans != "y" && ans != "yes" {
-		fmt.Fprintln(c.OutOrStdout(), "  Skipping.")
+	hasDesktop := detectDesktopApp()
+	hasDocker := detectDocker()
+
+	if !hasDesktop && !hasDocker {
+		fmt.Fprintln(c.OutOrStdout(), "  No desktop app or Docker installation detected.")
+		fmt.Fprintln(c.OutOrStdout(), "  Download the app from https://keylatch.io/download or run via Docker:")
+		fmt.Fprintln(c.OutOrStdout(), "    docker run -d -p 7890:7890 ghcr.io/keylatch/keylatch:latest")
 		fmt.Fprintln(c.OutOrStdout())
 		printSetupSuccess(c)
 		return
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
-		cmd := exec.Command("open", "/Applications/Keylatch.app")
-		if err := cmd.Start(); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  Could not open Keylatch.app: %v\n", err)
-			fmt.Fprintln(c.OutOrStdout(), "  Open manually from /Applications/Keylatch.app")
-		} else {
-			fmt.Fprintln(c.OutOrStdout(), "  Keylatch.app opened.")
+	// Build numbered menu.
+	type menuItem struct {
+		num     int
+		keyword string
+		label   string
+	}
+	var items []menuItem
+	n := 1
+	if hasDesktop {
+		items = append(items, menuItem{n, "desktop", "Desktop app  — open Keylatch.app"})
+		n++
+	}
+	if hasDocker {
+		items = append(items, menuItem{n, "docker", "Docker       — docker run -p 7890:7890 -d ghcr.io/keylatch/keylatch:latest"})
+		n++
+	}
+	items = append(items, menuItem{n, "skip", "Skip"})
+
+	for _, item := range items {
+		fmt.Fprintf(c.OutOrStdout(), "  %d) %s\n", item.num, item.label)
+	}
+	fmt.Fprintln(c.OutOrStdout())
+	fmt.Fprintf(c.OutOrStdout(), "  Choose [%d]: ", items[0].num)
+
+	ans := strings.TrimSpace(readLine())
+	if ans == "" {
+		ans = fmt.Sprintf("%d", items[0].num)
+	}
+	ansLower := strings.ToLower(ans)
+
+	// Resolve choice to keyword.
+	chosen := ""
+	for _, item := range items {
+		if ans == fmt.Sprintf("%d", item.num) || ansLower == item.keyword {
+			chosen = item.keyword
+			break
 		}
-	case "linux":
-		// Try xdg-open for Linux desktop launchers.
-		if path, err := exec.LookPath("xdg-open"); err == nil {
-			cmd := exec.Command(path, "keylatch://open")
+	}
+	if chosen == "" {
+		chosen = items[0].keyword
+	}
+
+	switch chosen {
+	case "skip":
+		fmt.Fprintln(c.OutOrStdout(), "  Skipping.")
+	case "desktop":
+		switch runtime.GOOS {
+		case "darwin":
+			cmd := exec.Command("open", "/Applications/Keylatch.app")
 			if err := cmd.Start(); err != nil {
-				fmt.Fprintln(c.OutOrStdout(), "  Could not open app via xdg-open.")
+				fmt.Fprintf(c.ErrOrStderr(), "  could not open Keylatch.app: %v\n", err)
+				fmt.Fprintln(c.OutOrStdout(), "  Open manually from /Applications/Keylatch.app")
+			} else {
+				fmt.Fprintln(c.OutOrStdout(), "  Keylatch.app opened.")
+			}
+		case "linux":
+			if path, err := exec.LookPath("xdg-open"); err == nil {
+				cmd := exec.Command(path, "keylatch://open")
+				if err := cmd.Start(); err != nil {
+					fmt.Fprintln(c.OutOrStdout(), "  could not open app via xdg-open.")
+				} else {
+					fmt.Fprintln(c.OutOrStdout(), "  App launch requested.")
+				}
+			} else {
+				fmt.Fprintln(c.OutOrStdout(), "  Desktop app not available on this Linux setup.")
+			}
+		case "windows":
+			cmd := exec.Command("cmd", "/c", "start", "keylatch:")
+			if err := cmd.Start(); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "  could not open app: %v\n", err)
 			} else {
 				fmt.Fprintln(c.OutOrStdout(), "  App launch requested.")
 			}
-		} else {
-			fmt.Fprintln(c.OutOrStdout(), "  Desktop app not available on this Linux setup.")
+		default:
+			fmt.Fprintln(c.OutOrStdout(), "  App launch not supported on this platform.")
 		}
-	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", "keylatch:")
-		if err := cmd.Start(); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  Could not open app: %v\n", err)
+	case "docker":
+		dockerCmd := exec.Command("docker", "run", "-d", "--name", "keylatch", "-p", "7890:7890", "ghcr.io/keylatch/keylatch:latest") //nolint:gosec // static arguments only
+		out, err := dockerCmd.CombinedOutput()
+		if err != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  docker run failed: %v\n", err)
+			if len(out) > 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "  %s\n", strings.TrimSpace(string(out)))
+			}
 		} else {
-			fmt.Fprintln(c.OutOrStdout(), "  App launch requested.")
+			fmt.Fprintf(c.OutOrStdout(), "  Keylatch container started: %s\n", strings.TrimSpace(string(out)))
 		}
-	default:
-		fmt.Fprintln(c.OutOrStdout(), "  App launch not supported on this platform.")
 	}
 
 	fmt.Fprintln(c.OutOrStdout())
