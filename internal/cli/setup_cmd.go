@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend/dispatch"
+	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -362,6 +364,35 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		return "", fmt.Errorf("bootstrap failed: %w", err)
 	}
 
+	// On macOS with keychain backend, initialize the keychain so the unlock
+	// password is stored in the login keychain. Without this, every subsequent
+	// `keylatch connect` fails with "keychain: read unlock password: security exited 44".
+	if chosen == "keychain" && runtime.GOOS == "darwin" {
+		fmt.Fprintf(c.OutOrStdout(), "  Initialising keychain backend...\n")
+
+		// Load the freshly-written config so dispatch.Select picks up the new backend.
+		cfgForKeychain, cfgLoadErr := config.Load(paths.Config(llmcontext.DefaultLookup))
+		if cfgLoadErr != nil {
+			cfgForKeychain = config.Default()
+			cfgForKeychain.Backend = "keychain"
+		}
+		dispatch.ClearCached()
+		b, dispErr := dispatch.Select(ctx, cfgForKeychain, llmcontext.DefaultLookup)
+		if dispErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain dispatch: %v\n", dispErr)
+			return "", fmt.Errorf("keychain dispatch: %w", dispErr)
+		}
+		kb, ok := b.(*keychain.KeychainBackend)
+		if !ok {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: backend is not a KeychainBackend\n")
+			return "", fmt.Errorf("keychain init: backend is not a KeychainBackend")
+		}
+		if initErr := kb.Init(ctx, "default"); initErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain-init: %v\n", initErr)
+			return "", fmt.Errorf("keychain init: %w", initErr)
+		}
+	}
+
 	// Persist telemetry setting to config when the user explicitly opted in or out.
 	if telemetrySetting != "" {
 		cfgPath := paths.Config(llmcontext.DefaultLookup)
@@ -583,6 +614,7 @@ func setupSpawnDaemonDarwin(c *cobra.Command) {
 		if startErr := startCmd.Run(); startErr != nil {
 			fmt.Fprintf(c.OutOrStdout(), "  Daemon state: could not start (%v)\n", startErr)
 			fmt.Fprintf(c.OutOrStdout(), "  To start manually: launchctl start %s\n", launchdLabel)
+			fmt.Fprintln(c.OutOrStdout(), "  Note: gateway features (AI agent credential injection) will not work until keylatchd is running.")
 			return
 		}
 	}
@@ -602,6 +634,7 @@ func setupSpawnDaemonLinux(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "  To enable keylatchd via systemd:")
 	fmt.Fprintln(c.OutOrStdout(), "    systemctl --user enable --now keylatchd")
 	fmt.Fprintln(c.OutOrStdout(), "  Or start directly: keylatchd &")
+	fmt.Fprintln(c.OutOrStdout(), "  Note: gateway features (AI agent credential injection) will not work until keylatchd is running.")
 }
 
 // setupStep4ConnectProvider handles [4/5] — interactive provider picker.
@@ -609,6 +642,15 @@ func setupSpawnDaemonLinux(c *cobra.Command) {
 func setupStep4ConnectProvider(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[4/5] Connect your first provider...")
 	fmt.Fprintln(c.OutOrStdout())
+
+	// Verify backend was initialized before attempting to connect.
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	if _, err := config.Load(cfgPath); err != nil {
+		fmt.Fprintln(c.ErrOrStderr(), "  Warning: backend config not found — skipping provider connection.")
+		fmt.Fprintln(c.ErrOrStderr(), "  Run `keylatch setup` to initialise the backend first.")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
 
 	templates := registry.List()
 

@@ -14,10 +14,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/registry"
 )
@@ -153,6 +155,32 @@ func (h *WizardHandlers) BackendsHandler(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	writeJSON(w, items)
+}
+
+// BootstrapHandler handles POST /v1/bootstrap.
+// Accepts {"backend": "keychain"|"file"|"op"|"bw"} and runs bootstrap.Run().
+func (h *WizardHandlers) BootstrapHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Backend string `json:"backend"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Backend == "" {
+		writeJSON(w, map[string]interface{}{"ok": false, "error": "backend is required"})
+		return
+	}
+	ctx := r.Context()
+	_, err := bootstrap.Run(ctx, bootstrap.Options{
+		Backend: req.Backend,
+		Env:     os.Getenv,
+	})
+	if err != nil {
+		writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"ok": true, "backend": req.Backend})
 }
 
 // isBackendAvailable checks whether a backend binary dependency is present.

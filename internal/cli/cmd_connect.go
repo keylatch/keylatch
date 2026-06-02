@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -360,14 +361,52 @@ func newPhase3ConnectCmd() *cobra.Command {
 		"resolve a field from an external store URI: --provider-ref field=op://vault/item/field\n"+
 			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]")
 
-	// Subcommand: connect custom (hidden stub).
+	// Subcommand: connect custom — interactive flow for non-registry providers.
 	customCmd := &cobra.Command{
-		Use:    "custom",
-		Short:  "Connect a custom credential provider",
-		Hidden: true,
+		Use:   "custom",
+		Short: "Connect a custom credential provider",
 		RunE: func(c *cobra.Command, args []string) error {
-			fmt.Fprintln(c.OutOrStdout(), "Custom provider connection: interactive setup not yet implemented.")
-			os.Exit(exitcode.OperationFailed)
+			ctx := c.Context()
+			cfg := loadCLIConfig(c)
+			st := newDispatchedStore(cfg, llmcontext.DefaultLookup)
+
+			// Prompt for provider name.
+			fmt.Fprintf(c.OutOrStdout(), "  Custom provider name (e.g. my-service): ")
+			name := strings.TrimSpace(readLine())
+			if name == "" {
+				fmt.Fprintln(c.ErrOrStderr(), "Error: provider name is required")
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+
+			// Prompt for field name (default: api_key).
+			fmt.Fprintf(c.OutOrStdout(), "  Field name [api_key]: ")
+			field := strings.TrimSpace(readLine())
+			if field == "" {
+				field = "api_key"
+			}
+
+			// Prompt hidden value.
+			value, err := promptHidden(fmt.Sprintf("Enter value for %s", field))
+			if err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+
+			path := fmt.Sprintf("default/custom/%s/%s", name, field)
+			meta := backend.Meta{
+				Path:    path,
+				Backend: cfg.Backend,
+				Version: 1,
+			}
+			if setErr := st.Set(ctx, path, value, meta); setErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", setErr)
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+
+			fmt.Fprintf(c.OutOrStdout(), "  Connected: custom/%s (%s saved)\n", name, field)
 			return nil
 		},
 	}

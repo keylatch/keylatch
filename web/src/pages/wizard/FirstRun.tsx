@@ -20,6 +20,15 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 const TOTAL_STEPS = 5;
 
+/** Races a promise against a timeout. Rejects with an Error if the timeout fires first. */
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out")), ms)
+    ),
+  ]);
+
 // img01–img04 map to steps 1–4; step 5 (Done) reuses img04.
 const STEP_IMAGES: Record<number, string> = {
   1: "/onboarding/img01.png",
@@ -211,7 +220,10 @@ function StepBackend({ onNext }: { onNext: (backend: string) => void }) {
     setBootstrapError("");
     try {
       // Fix #2: check the result and only advance on success.
-      const result = await invoke<{ ok: boolean; error?: string }>("bootstrap", { backend: backendName });
+      const result = await withTimeout(
+        invoke<{ ok: boolean; error?: string }>("bootstrap", { backend: backendName }),
+        10000
+      );
       if (!result.ok) {
         setBootstrapStatus("error");
         setBootstrapError(result.error ?? "Backend setup failed");
