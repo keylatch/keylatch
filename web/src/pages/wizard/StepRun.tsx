@@ -24,7 +24,11 @@ export function StepRun({
     replicate: "REPLICATE_API_TOKEN",
   };
   const envVar = ENV_VAR[provider] ?? `${provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
-  const exampleCommand = `keylatch run ${provider} -- claude "summarise this repo"`;
+  // innerCommand is the sub-command passed to run_agent; Rust wraps it as:
+  //   keylatch run <provider> -- sh -c <innerCommand>
+  // Do NOT pass the full "keylatch run ..." string here — that causes double-wrapping.
+  const innerCommand = `claude "summarise this repo"`;
+  const exampleCommand = `keylatch run ${provider} -- ${innerCommand}`;
 
   const run = async () => {
     setStatus("running");
@@ -32,7 +36,7 @@ export function StepRun({
     try {
       const result = await invoke<{ exit_code: number; stdout: string }>(
         "run_agent",
-        { provider, command: exampleCommand }
+        { provider, command: innerCommand }
       );
       setOutput(result.stdout);
       setStatus(result.exit_code === 0 ? "ok" : "error");

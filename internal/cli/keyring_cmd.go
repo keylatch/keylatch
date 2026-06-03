@@ -410,20 +410,49 @@ func readPassphrase() ([]byte, error) {
 	return pass, nil
 }
 
-// openKeyringFromEnv opens the keyring from the default path.
-// The passphrase is read from TTY or stdin pipe (S-FIND-12: env var path deleted).
+// openKeyringFromEnv opens the audit keyring from the default path.
+// Tries the bootstrap age identity (no user interaction) first, so that audit
+// logging works automatically after `keylatch setup`. Falls back to passphrase
+// for manually-initialized keyrings that require user input.
 func openKeyringFromEnv() (*keyring.Keyring, filebe.KEK, string, error) {
 	vaultDir := paths.Vault(os.Getenv)
 	krPath := filepath.Join(vaultDir, "keyring", "keyring.json")
 
+	// Read the salt from the existing keyring file so we can derive the right key.
+	data, err := os.ReadFile(krPath)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("open keyring %q: %w", krPath, err)
+	}
+	var kf keyringFileForSalt
+	if jsonErr := json.Unmarshal(data, &kf); jsonErr != nil || len(kf.Salt) == 0 {
+		// No salt: fall through to passphrase.
+		kf.Salt = nil
+	}
+
+	// Try age identity KEK (non-interactive: uses bootstrap identity file).
+	identityPath := paths.KeyringIdentityPath(os.Getenv)
+	if len(kf.Salt) > 0 {
+		if k, kekErr := filebe.AgeIdentityKEKFromPath(identityPath, kf.Salt); kekErr == nil {
+			if kr, openErr := keyring.Open(krPath, k); openErr == nil {
+				return kr, k, krPath, nil
+			}
+		}
+	}
+
+	// Fall back to passphrase (manually initialized keyrings).
 	k, err := buildKEK(context.Background(), "passphrase")
 	if err != nil {
 		return nil, nil, "", err
 	}
-
 	kr, err := keyring.Open(krPath, k)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("open keyring %q: %w", krPath, err)
 	}
 	return kr, k, krPath, nil
+}
+
+// keyringFileForSalt is a minimal struct for reading just the Salt field
+// from a keyring.json without importing the full keyring package.
+type keyringFileForSalt struct {
+	Salt []byte `json:"salt"`
 }
