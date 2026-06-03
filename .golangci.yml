@@ -49,6 +49,18 @@ linters:
         # G204 (variable subprocess): keylatch launches its own binary and
         # platform tools from validated paths as part of daemon/UI setup.
         - G204
+        # G703 (path traversal via taint): flagged on /proc/<pid>/status
+        # which is derived from our own PID file, not user input.
+        - G703
+        # G704 (SSRF via taint): outbound requests use allowlisted
+        # provider base-URLs from the registry, not arbitrary user URLs.
+        - G704
+        # G118 (goroutine context leak): background goroutines in the
+        # gateway and session server intentionally use context.Background.
+        - G118
+        # G122 (WalkDir TOCTOU): registry loader and doctor walk
+        # operator-controlled directories without symlink risk.
+        - G122
 
     staticcheck:
       checks:
