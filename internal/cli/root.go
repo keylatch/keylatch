@@ -64,9 +64,9 @@ func IsDoctorHintSuppressed(c *cobra.Command) bool {
 // NewRootCommand returns the root Cobra command for the keylatch CLI.
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:     "keylatch",
-		Short:   "Keylatch — zero-trust credential vault CLI",
-		Long:    "Keylatch manages credentials with LLM-session blocking and gateway-aware runtime modes.",
+		Use:   "keylatch",
+		Short: "Keylatch — zero-trust credential vault CLI",
+		Long:  "Keylatch manages credentials with LLM-session blocking and gateway-aware runtime modes.",
 		// Version is used by cobra to respond to --version; the template below
 		// formats the output as a short one-liner (e.g. "keylatch v1.0.0-dev").
 		Version: version.String(),
