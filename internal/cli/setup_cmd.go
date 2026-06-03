@@ -3,10 +3,12 @@ package cli
 import (
 	"bufio"
 	"context"
+	cryptoRand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -14,8 +16,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/crypto/envelope"
+	"github.com/keylatch/keylatch/internal/crypto/kek"
+	"github.com/keylatch/keylatch/internal/crypto/keyring"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -283,8 +289,37 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 		return nil
 	}
 
+	// Initialize the audit keyring for the file backend (best-effort, non-blocking).
+	if backend == "file" {
+		initAuditKeyring()
+	}
+
 	writeHeadlessResult(true, backend, "")
 	return nil
+}
+
+// initAuditKeyring creates the audit keyring at $VAULT/keyring/keyring.json
+// using the age-env identity from bootstrap. Idempotent and best-effort.
+func initAuditKeyring() {
+	vaultDir := paths.Vault(llmcontext.DefaultLookup)
+	auditKrDir := filepath.Join(vaultDir, "keyring")
+	auditKrPath := filepath.Join(auditKrDir, "keyring.json")
+	if _, err := os.Stat(auditKrPath); err == nil {
+		return // already exists
+	}
+	if err := os.MkdirAll(auditKrDir, 0o700); err != nil {
+		return
+	}
+	identityPath := paths.KeyringIdentityPath(llmcontext.DefaultLookup)
+	auditSalt := make([]byte, 32)
+	if _, err := cryptoRand.Read(auditSalt); err != nil {
+		return
+	}
+	auditKEK, err := kek.AgeIdentityKEKFromPath(identityPath, auditSalt)
+	if err != nil {
+		return
+	}
+	_ = keyring.NewWithSalt(auditKrPath, auditKEK, envelope.XChaCha20Poly1305, 0, auditSalt)
 }
 
 // ResolveStdinFields parses --stdin-field key=value flags into a map.
@@ -360,6 +395,30 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	if err != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "  bootstrap: %v\n", err)
 		return "", fmt.Errorf("bootstrap failed: %w", err)
+	}
+
+	// On macOS with keychain backend, initialize the keychain so the unlock
+	// password is stored in the login keychain. Without this, every subsequent
+	// `keylatch connect` fails with "keychain: read unlock password: security exited 44".
+	if chosen == "keychain" && runtime.GOOS == "darwin" {
+		fmt.Fprintf(c.OutOrStdout(), "  Initialising keychain backend...\n")
+
+		// Open directly with defaults — avoids dispatch caching issues since
+		// Open() fills KeychainPath/LockPath/SecurityBin/Runner/Env from defaults.
+		kb, kbErr := keychain.Open(keychain.Options{})
+		if kbErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain open: %v\n", kbErr)
+			return "", fmt.Errorf("keychain open: %w", kbErr)
+		}
+		if initErr := kb.Init(ctx, "default"); initErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain-init: %v\n", initErr)
+			return "", fmt.Errorf("keychain init: %w", initErr)
+		}
+	}
+
+	// For the file backend, also initialize the audit keyring (best-effort).
+	if chosen == "file" {
+		initAuditKeyring()
 	}
 
 	// Persist telemetry setting to config when the user explicitly opted in or out.
@@ -583,6 +642,7 @@ func setupSpawnDaemonDarwin(c *cobra.Command) {
 		if startErr := startCmd.Run(); startErr != nil {
 			fmt.Fprintf(c.OutOrStdout(), "  Daemon state: could not start (%v)\n", startErr)
 			fmt.Fprintf(c.OutOrStdout(), "  To start manually: launchctl start %s\n", launchdLabel)
+			fmt.Fprintln(c.OutOrStdout(), "  Note: gateway features (AI agent credential injection) will not work until keylatchd is running.")
 			return
 		}
 	}
@@ -602,6 +662,7 @@ func setupSpawnDaemonLinux(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "  To enable keylatchd via systemd:")
 	fmt.Fprintln(c.OutOrStdout(), "    systemctl --user enable --now keylatchd")
 	fmt.Fprintln(c.OutOrStdout(), "  Or start directly: keylatchd &")
+	fmt.Fprintln(c.OutOrStdout(), "  Note: gateway features (AI agent credential injection) will not work until keylatchd is running.")
 }
 
 // setupStep4ConnectProvider handles [4/5] — interactive provider picker.
@@ -609,6 +670,15 @@ func setupSpawnDaemonLinux(c *cobra.Command) {
 func setupStep4ConnectProvider(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[4/5] Connect your first provider...")
 	fmt.Fprintln(c.OutOrStdout())
+
+	// Verify backend was initialized before attempting to connect.
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	if _, err := config.Load(cfgPath); err != nil {
+		fmt.Fprintln(c.ErrOrStderr(), "  Warning: backend config not found — skipping provider connection.")
+		fmt.Fprintln(c.ErrOrStderr(), "  Run `keylatch setup` to initialise the backend first.")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
 
 	templates := registry.List()
 

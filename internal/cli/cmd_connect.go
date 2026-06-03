@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -360,14 +361,82 @@ func newPhase3ConnectCmd() *cobra.Command {
 		"resolve a field from an external store URI: --provider-ref field=op://vault/item/field\n"+
 			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]")
 
-	// Subcommand: connect custom (hidden stub).
+	// Subcommand: connect custom — interactive flow for non-registry providers.
 	customCmd := &cobra.Command{
-		Use:    "custom",
-		Short:  "Connect a custom credential provider",
-		Hidden: true,
+		Use:   "custom",
+		Short: "Connect a custom credential provider",
 		RunE: func(c *cobra.Command, args []string) error {
-			fmt.Fprintln(c.OutOrStdout(), "Custom provider connection: interactive setup not yet implemented.")
-			os.Exit(exitcode.OperationFailed)
+			ctx := c.Context()
+			cfg := loadCLIConfig(c)
+			st := newDispatchedStore(cfg, llmcontext.DefaultLookup)
+
+			// Prompt for provider name.
+			fmt.Fprintf(c.OutOrStdout(), "  Custom provider name (e.g. my-service): ")
+			name := strings.TrimSpace(readLine())
+			if name == "" {
+				fmt.Fprintln(c.ErrOrStderr(), "Error: provider name is required")
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+
+			// Prompt for field name (default: api_key).
+			fmt.Fprintf(c.OutOrStdout(), "  Field name [api_key]: ")
+			field := strings.TrimSpace(readLine())
+			if field == "" {
+				field = "api_key"
+			}
+
+			// Prompt for the value — hidden when TTY, plain readline when piped.
+			var value []byte
+			if stdinIsTTY() {
+				v, err := promptHidden(fmt.Sprintf("Enter value for %s", field))
+				if err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+					os.Exit(exitcode.UserError)
+					return nil
+				}
+				value = v
+			} else {
+				data, err := readFieldFromStdin(c.InOrStdin())
+				if err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: reading %s from stdin: %v\n", field, err)
+					os.Exit(exitcode.UserError)
+					return nil
+				}
+				value = data
+			}
+
+			// Write secret value.
+			fieldPath := fmt.Sprintf("default/custom/%s/%s", name, field)
+			if setErr := st.Set(ctx, fieldPath, value, backend.Meta{
+				Path:    fieldPath,
+				Backend: cfg.Backend,
+				Version: 1,
+			}); setErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", setErr)
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+
+			// Write connection metadata so `keylatch doctor` and list commands
+			// recognise this as a configured connection.
+			metaPath := fmt.Sprintf("default/custom/%s/meta", name)
+			conn := connections.Connection{
+				Provider:  name,
+				Namespace: "default",
+				Fields:    []string{field},
+				Status:    "untested",
+			}
+			connBytes, marshalErr := json.Marshal(conn)
+			if marshalErr == nil {
+				_ = st.Set(ctx, metaPath, connBytes, backend.Meta{
+					Path:    metaPath,
+					Backend: cfg.Backend,
+					Version: 1,
+				})
+			}
+
+			fmt.Fprintf(c.OutOrStdout(), "  Connected: custom/%s (%s saved)\n", name, field)
 			return nil
 		},
 	}

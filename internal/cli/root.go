@@ -67,6 +67,9 @@ func NewRootCommand() *cobra.Command {
 		Use:   "keylatch",
 		Short: "Keylatch — zero-trust credential vault CLI",
 		Long:  "Keylatch manages credentials with LLM-session blocking and gateway-aware runtime modes.",
+		// Version is used by cobra to respond to --version; the template below
+		// formats the output as a short one-liner (e.g. "keylatch v1.0.0-dev").
+		Version: version.String(),
 		// PersistentPreRunE handles --version and registry initialisation before
 		// any subcommand runs.
 		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
@@ -120,6 +123,9 @@ func NewRootCommand() *cobra.Command {
 	// the full usage block from printing on every flag-parse error.
 	root.SilenceErrors = true
 	root.SilenceUsage = true
+	// Override cobra's default "{{.Name}} version {{.Version}}" template so that
+	// --version prints the full version string (which already includes "keylatch").
+	root.SetVersionTemplate("{{.Version}}\n")
 
 	root.Flags().Bool("version", false, "print version information and exit")
 	root.PersistentFlags().Bool("json", false, "output in JSON format")
@@ -166,6 +172,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newRunCmd(), "daily")
 	addCmd(root, newShareCmd(), "daily")
 	addCmd(root, newAllowCmd(), "daily")
+	addCmd(root, newDisconnectCmd(), "daily")
 	// keylatch inject was removed in v1.0.0. Running it returns cobra's "unknown command" error.
 	addCmd(root, newPhase3TestCmd(), "daily")
 	addCmd(root, newPhase3DescribeCmd(), "daily")
@@ -1191,16 +1198,24 @@ func newValidateCmd() *cobra.Command {
 
 // newConnectionsCmd returns the `connections` subcommand — NOT guarded.
 // S0-5: connections is a safe path.
+// Delegates to the same list implementation used by `keylatch list` so that
+// `keylatch connections` and `keylatch connections list` both work.
 func newConnectionsCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "connections",
 		Short: "List credential connections",
-		RunE: func(c *cobra.Command, _ []string) error {
-			fmt.Fprintln(c.ErrOrStderr(), "keylatch connections: use 'keylatch list' to list all connections.")
-			os.Exit(exitcode.OperationFailed)
-			return nil
+		// Default: delegate to the list implementation so `keylatch connections`
+		// produces the same output as `keylatch list` (exit 0).
+		RunE: func(c *cobra.Command, args []string) error {
+			return newListCmdImpl().RunE(c, args)
 		},
 	}
+	// Add `list` as a subcommand so `keylatch connections list` also works.
+	listSub := newListCmdImpl()
+	listSub.Use = "list"
+	listSub.Short = "List credential connections"
+	cmd.AddCommand(listSub)
+	return cmd
 }
 
 //nolint:unused // used by newDescribeCmd and newValidateCmd (Phase 9 stubs)

@@ -55,4 +55,16 @@ class Keylatch < Formula
     output = shell_output("#{bin}/keylatch --version")
     assert_match version.to_s, output
   end
+
+  def caveats
+    <<~EOS
+      To complete installation, run:
+        keylatch setup
+
+      This will configure your credential backend, connect your first provider,
+      and optionally start the Keylatch gateway daemon.
+
+      Documentation: https://docs.keylatch.io
+    EOS
+  end
 end

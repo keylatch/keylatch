@@ -37,11 +37,39 @@ func Status(ctx context.Context, opts StatusOptions, store Store) ([]ConnectionS
 		}
 	}
 
+	// Also discover custom connections stored under namespace/custom/<name>/meta.
+	// These are not in the registry so the template scan above misses them.
+	customPrefix := ns + "/custom/"
+	if entries, listErr := store.List(ctx, customPrefix); listErr == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Path, "/meta") {
+				// Extract provider name: default/custom/<name>/meta → <name>
+				parts := strings.Split(strings.TrimPrefix(e.Path, customPrefix), "/")
+				if len(parts) >= 2 && parts[len(parts)-1] == "meta" {
+					providerName := parts[0]
+					seen[connKey{category: "custom", provider: providerName}] = struct{}{}
+				}
+			}
+		}
+	}
+
 	var results []ConnectionStatus
 
 	for k := range seen {
 		// v1.0.0 uses a single "default" account per provider; multi-account is not supported.
-		conn, err := loadConnection(ctx, ns, k.provider, "default", store)
+		// For custom connections, use the category from the key directly so the path is correct.
+		var conn *Connection
+		var err error
+		if k.category == "custom" {
+			metaPath := connectionMetaPath(ns, k.category, k.provider)
+			data, _, getErr := store.Get(ctx, metaPath)
+			if getErr != nil {
+				continue
+			}
+			conn, err = unmarshalConnection(data)
+		} else {
+			conn, err = loadConnection(ctx, ns, k.provider, "default", store)
+		}
 		if err != nil {
 			continue
 		}

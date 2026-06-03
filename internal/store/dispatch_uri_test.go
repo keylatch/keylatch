@@ -16,8 +16,10 @@ package store_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	internalexec "github.com/keylatch/keylatch/internal/exec"
@@ -36,16 +38,19 @@ func writeMockBin(t *testing.T, dir, name, body string) string {
 		t.Skip("mock shell binaries require a POSIX shell; skipping on Windows")
 	}
 	p := filepath.Join(dir, name)
-	// Write to a staging path then rename to p to avoid ETXTBSY on Linux.
-	// The kernel marks an inode write-busy while any write-fd is open; exec()
-	// on that path fails with ETXTBSY even after Close(). Rename is atomic and
-	// the destination inode is never write-opened under the execution path.
-	staging := p + ".tmp"
-	if err := os.WriteFile(staging, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil { //nolint:gosec // test helper
-		t.Fatalf("writeMockBin %s: write: %v", name, err)
-	}
-	if err := os.Rename(staging, p); err != nil {
-		t.Fatalf("writeMockBin %s: rename: %v", name, err)
+	content := "#!/bin/sh\n" + body + "\n"
+	// Write via a subprocess so our process never holds a write-fd to the
+	// inode. On Linux tmpfs the kernel can keep an inode write-busy until the
+	// writing process fully releases its fd; when the writer is our own
+	// process, a subsequent exec() in the same process fails with ETXTBSY even
+	// after explicit Close(). Using a child process (tee) as the writer means
+	// the inode's write-count drops to zero when the child exits — before our
+	// process ever calls exec().
+	//nolint:gosec // test helper, content is not user-controlled
+	cmd := exec.Command("sh", "-c", "cat > "+p+" && chmod +x "+p)
+	cmd.Stdin = strings.NewReader(content)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("writeMockBin %s: %v: %s", name, err, out)
 	}
 	return p
 }

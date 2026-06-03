@@ -286,6 +286,7 @@ func (s *Server) registerRoutes() {
 		if receiptStore == nil {
 			receiptStore = api.NewReceiptStore(100)
 		}
+		s.mux.HandleFunc("/v1/bootstrap", s.requireSession(csrf.Middleware(http.HandlerFunc(wizardHandlers.BootstrapHandler)).ServeHTTP))
 		s.mux.HandleFunc("/v1/backends", s.requireSession(wizardHandlers.BackendsHandler))
 		s.mux.HandleFunc("/v1/providers", s.requireSession(wizardHandlers.ProvidersHandler))
 		s.mux.HandleFunc("/v1/providers/", s.requireSession(wizardHandlers.ProviderDetailHandler))

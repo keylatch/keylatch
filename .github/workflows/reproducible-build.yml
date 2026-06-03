@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build-1:
+  reproducible:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -18,46 +18,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-1 ./cmd/keylatch
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-1-${{ matrix.os }}
-          path: keylatch-1
-
-  build-2:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-2 ./cmd/keylatch
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-2-${{ matrix.os }}
-          path: keylatch-2
-
-  compare:
-    needs: [build-1, build-2]
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-1-${{ matrix.os }}
-          path: b1/
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-2-${{ matrix.os }}
-          path: b2/
-      - name: compare ${{ matrix.os }} builds
+          cache: true
+      - name: build-1
+        run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-1 ./cmd/keylatch
+      - name: build-2
+        run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-2 ./cmd/keylatch
+      - name: compare (${{ matrix.os }})
         run: |
-          sha256sum b1/keylatch-1 b2/keylatch-2
-          diff b1/keylatch-1 b2/keylatch-2 \
+          sha256sum keylatch-1 keylatch-2
+          diff keylatch-1 keylatch-2 \
             && echo "builds are identical (${{ matrix.os }})" \
             || { echo "FAIL: builds differ on ${{ matrix.os }}"; exit 1; }

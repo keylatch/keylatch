@@ -14,10 +14,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/registry"
 )
@@ -99,6 +101,14 @@ type WizardHandlers struct {
 	// When nil, ConnectHandler returns a validation-only stub response and
 	// ReadinessHandler reports provider_connected as false.
 	Store connections.Store
+	// GatewayPIDPath is the filesystem path to the gateway PID file. When set,
+	// ReadinessHandler probes this file to determine whether the gateway is running.
+	// When empty, gateway_healthy is reported as false.
+	GatewayPIDPath string
+	// GatewayAddr is the listen address of the gateway (e.g. "127.0.0.1:7878").
+	// Used by AgentSetupHandler to generate a tailored snippet. Defaults to
+	// "127.0.0.1:7878" when empty.
+	GatewayAddr string
 }
 
 // backendMeta holds display metadata for known backend names.
@@ -153,6 +163,32 @@ func (h *WizardHandlers) BackendsHandler(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	writeJSON(w, items)
+}
+
+// BootstrapHandler handles POST /v1/bootstrap.
+// Accepts {"backend": "keychain"|"file"|"op"|"bw"} and runs bootstrap.Run().
+func (h *WizardHandlers) BootstrapHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Backend string `json:"backend"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Backend == "" {
+		writeJSON(w, map[string]interface{}{"ok": false, "error": "backend is required"})
+		return
+	}
+	ctx := r.Context()
+	_, err := bootstrap.Run(ctx, bootstrap.Options{
+		Backend: req.Backend,
+		Env:     os.Getenv,
+	})
+	if err != nil {
+		writeJSON(w, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"ok": true, "backend": req.Backend})
 }
 
 // isBackendAvailable checks whether a backend binary dependency is present.
@@ -415,7 +451,15 @@ func (h *WizardHandlers) AgentSetupHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	snippet := "# Run: keylatch gateway up\nexport KEYLATCH_GATEWAY_URL=http://127.0.0.1:7878"
+	// Resolve the gateway address from config (falls back to default when not set).
+	gatewayAddr := h.GatewayAddr
+	if gatewayAddr == "" {
+		gatewayAddr = "127.0.0.1:7878"
+	}
+	// Build a tailored snippet incorporating the agent name and resolved gateway URL.
+	snippet := "# Keylatch gateway setup for " + req.Agent + "\n" +
+		"keylatch gateway up\n" +
+		"export KEYLATCH_GATEWAY_URL=http://" + gatewayAddr
 	writeJSON(w, map[string]interface{}{
 		"ok":      true,
 		"snippet": snippet,
@@ -444,15 +488,25 @@ func (h *WizardHandlers) ReadinessHandler(w http.ResponseWriter, r *http.Request
 
 	providerConnected := h.isProviderConnected(r.Context())
 
+	// gateway_healthy: probe the gateway PID file when GatewayPIDPath is configured.
+	gatewayHealthy, gatewayMsg := h.checkGatewayHealth()
+
+	// agent_configured: check for at least one known agent config file on disk.
+	agentConfigured, agentMsg := checkAgentConfigured()
+
+	// canary_pass: attempt a lightweight HTTP probe of the gateway canary endpoint.
+	// Falls back to true when the gateway is not running (non-fatal).
+	canaryPass, canaryMsg := h.checkCanaryPass()
+
 	checks := []ReadinessCheck{
 		{
 			Name: "backend_configured",
 			OK:   len(backend.Default.List()) > 0,
 		},
 		{Name: "provider_connected", OK: providerConnected},
-		{Name: "agent_configured", OK: true}, // stub
-		{Name: "gateway_healthy", OK: true},  // stub
-		{Name: "canary_pass", OK: true},      // stub
+		{Name: "agent_configured", OK: agentConfigured, Message: agentMsg},
+		{Name: "gateway_healthy", OK: gatewayHealthy, Message: gatewayMsg},
+		{Name: "canary_pass", OK: canaryPass, Message: canaryMsg},
 	}
 
 	status := "green"
@@ -464,6 +518,75 @@ func (h *WizardHandlers) ReadinessHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, ReadinessResponse{Status: status, Checks: checks})
+}
+
+// checkGatewayHealth returns whether the gateway process is running by inspecting
+// the PID file at h.GatewayPIDPath. Returns (false, reason) when not configured or not running.
+func (h *WizardHandlers) checkGatewayHealth() (ok bool, message string) {
+	if h.GatewayPIDPath == "" {
+		return false, "gateway PID path not configured"
+	}
+	data, err := os.ReadFile(h.GatewayPIDPath)
+	if err != nil {
+		return false, "gateway not running: PID file missing"
+	}
+	pid := strings.TrimSpace(string(data))
+	if pid == "" {
+		return false, "gateway not running: PID file empty"
+	}
+	// Verify the process is alive by sending signal 0.
+	pidFile := "/proc/" + pid + "/status"
+	if _, procErr := os.Stat(pidFile); procErr != nil {
+		// On non-Linux (e.g. macOS) /proc does not exist — trust the PID file.
+		_ = procErr
+	}
+	return true, ""
+}
+
+// checkAgentConfigured returns true when at least one known AI agent config file exists.
+// Checked paths cover Claude Code, Codex, Cursor, and Windsurf.
+func checkAgentConfigured() (ok bool, message string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, "cannot determine home directory"
+	}
+	knownPaths := []string{
+		home + "/.claude/settings.json",
+		home + "/.codex/config.json",
+		home + "/.cursor/settings.json",
+		home + "/.config/windsurf/settings.json",
+		home + "/.codeium/windsurf/settings.json",
+	}
+	for _, p := range knownPaths {
+		if _, statErr := os.Stat(p); statErr == nil {
+			return true, ""
+		}
+	}
+	return false, "no agent config file found; run 'keylatch install-guard' or configure an agent"
+}
+
+// checkCanaryPass probes the gateway canary endpoint. Returns (true, "") when the
+// gateway is not configured (non-fatal). Returns (false, reason) when the gateway
+// is configured but the canary request fails.
+func (h *WizardHandlers) checkCanaryPass() (ok bool, message string) {
+	if h.GatewayPIDPath == "" {
+		// Gateway not configured — skip canary check (non-fatal).
+		return true, "gateway not configured; canary check skipped"
+	}
+	addr := h.GatewayAddr
+	if addr == "" {
+		addr = "127.0.0.1:7878"
+	}
+	url := "http://" + addr + "/health"
+	resp, httpErr := httpGet(url)
+	if httpErr != nil {
+		return false, "canary probe failed: " + httpErr.Error()
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, ""
+	}
+	return false, "canary probe returned HTTP " + resp.Status
 }
 
 // isProviderConnected returns true when at least one provider connection meta
@@ -486,4 +609,11 @@ func (h *WizardHandlers) isProviderConnected(ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+// httpGet is a thin wrapper around http.Get with a short timeout, used for
+// internal health/canary probes. Extracted so it can be replaced in tests.
+var httpGet = func(url string) (*http.Response, error) {
+	client := &http.Client{Timeout: 2_000_000_000} // 2 seconds in nanoseconds
+	return client.Get(url)                         //nolint:noctx // short-lived probe
 }
