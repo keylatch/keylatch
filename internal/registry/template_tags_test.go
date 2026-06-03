@@ -20,7 +20,7 @@ func TestFieldTagsAreConsistent(t *testing.T) {
 // checkType walks all exported fields of a struct type recursively.
 func checkType(t *testing.T, typ reflect.Type, visited map[reflect.Type]bool) {
 	t.Helper()
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Struct {
@@ -58,7 +58,7 @@ func checkType(t *testing.T, typ reflect.Type, visited map[reflect.Type]bool) {
 
 		// Recurse into nested struct types.
 		ft := field.Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Struct {
@@ -67,7 +67,7 @@ func checkType(t *testing.T, typ reflect.Type, visited map[reflect.Type]bool) {
 		// Also check slice element types.
 		if ft.Kind() == reflect.Slice {
 			et := ft.Elem()
-			if et.Kind() == reflect.Ptr {
+			if et.Kind() == reflect.Pointer {
 				et = et.Elem()
 			}
 			if et.Kind() == reflect.Struct {
