@@ -627,6 +627,12 @@ func setupStep3SpawnDaemon(c *cobra.Command) {
 
 // setupSpawnDaemonDarwin handles daemon launch on macOS via launchd.
 func setupSpawnDaemonDarwin(c *cobra.Command) {
+	// When Keylatch.app is running it owns the keylatchd lifecycle; starting
+	// the launchd service too would make both compete for port 7890.
+	if desktopAppRunning() {
+		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: managed by Keylatch.app (skipping launchd)")
+		return
+	}
 	plistPath := os.ExpandEnv("$HOME/Library/LaunchAgents/" + launchdPlistName)
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
 		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: not installed (launchd plist missing)")
