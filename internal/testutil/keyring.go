@@ -15,6 +15,24 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
 )
 
+// SetupHermeticConfig redirects the keylatch configuration directory to a
+// fresh temporary directory for the duration of the test.
+//
+// It calls t.Setenv("KEYLATCH_CONFIG_DIR", t.TempDir()) so that
+// loadCLIConfig / paths.ConfigDir / paths.Config never read the real
+// ~/.keylatch/config.json that may exist on the developer's machine. Any
+// code that goes through paths.ConfigDir(llmcontext.DefaultLookup) will
+// see the isolated directory instead.
+//
+// All env changes are restored automatically by t.Cleanup. Returns the
+// temporary directory path for tests that need to write fixtures into it.
+func SetupHermeticConfig(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
+	return dir
+}
+
 // SetupTestKeyring creates a temporary age-env keyring for use in tests that
 // exercise dispatch.Select or any path that goes through the file backend factory.
 //
