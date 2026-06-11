@@ -283,7 +283,15 @@ jobs:
       - name: build Tauri bundle (macOS — signed)
         id: build_macos
         if: runner.os == 'macOS'
-        run: cd src-tauri && cargo tauri build
+        run: |
+          # Unset signing env vars when the cert is not provisioned so that
+          # Tauri skips `security import` entirely rather than failing on an
+          # empty value — this still produces an unsigned .dmg.
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            unset APPLE_CERTIFICATE
+            unset APPLE_CERTIFICATE_PASSWORD
+          fi
+          cd src-tauri && cargo tauri build
         continue-on-error: true  # non-fatal until APPLE_CERTIFICATE is provisioned
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -386,14 +394,26 @@ jobs:
         with:
           merge-multiple: true
           path: all-artifacts/
+      - name: collect release artifacts
+        run: |
+          mkdir -p release-files
+          find all-artifacts -type f \( \
+            -name "keylatch_*.tar.gz" \
+            -o -name "keylatch_*.zip" \
+            -o -name "*_checksums.txt" \
+            -o -name "*.dmg" \
+            -o -name "*-setup.exe" \
+            -o -name "*.AppImage" -o -name "*.deb" \
+            -o -name "*.cdx.json" -o -name "*.spdx.json" \
+            -o -name "*.sig" -o -name "*.pem" \
+            -o -name "*.intoto.jsonl" \
+            -o -name "keylatch-*.json" \
+          \) -exec cp {} release-files/ \;
+          echo "--- collected ---" && ls -1 release-files/
       - name: attach artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            all-artifacts/dist/**
-            all-artifacts/dist/sbom/**
-            all-artifacts/dist/release-manifest/**
-            all-artifacts/keylatch-${{ github.ref_name }}-provenance.intoto.jsonl
+          files: release-files/*
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
