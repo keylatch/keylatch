@@ -48,17 +48,18 @@ After installation, the settings file contains:
 
 ```json
 {
-  "hooks": [
-    {
-      "event": "PreToolUse",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "$HOME/.keylatch/hooks/block-keylatch-exfiltration.sh"
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.keylatch/hooks/block-keylatch-exfiltration.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
