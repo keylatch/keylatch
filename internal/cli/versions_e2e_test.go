@@ -42,6 +42,7 @@ func newTestEnv(t *testing.T, dir string) func(string) string {
 }
 
 func TestVersionsCmd_ThreeRotations(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_DATA_DIR", dir)
 	t.Setenv("KEYLATCH_BACKEND", "file")
@@ -81,6 +82,7 @@ func TestVersionsCmd_ThreeRotations(t *testing.T) {
 }
 
 func TestVersionsCmd_DestroyedVersionState(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	dir := t.TempDir()
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
@@ -121,6 +123,7 @@ func TestVersionsCmd_DestroyedVersionState(t *testing.T) {
 }
 
 func TestVersionsCmd_RollbackShowsNewVersion(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	dir := t.TempDir()
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
@@ -169,6 +172,7 @@ func TestVersionsCmd_RollbackShowsNewVersion(t *testing.T) {
 
 func TestGetVersion_DestroyedReturnsError(t *testing.T) {
 	dir := t.TempDir()
+	testutil.SetupHermeticConfig(t)
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
@@ -197,6 +201,7 @@ func TestGetVersion_DestroyedReturnsError(t *testing.T) {
 // TestVersionsCmd_CanaryAbsent verifies that the canary value in the encrypted
 // blob never appears in `versions` stdout.
 func TestVersionsCmd_CanaryAbsent(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	dir := t.TempDir()
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)

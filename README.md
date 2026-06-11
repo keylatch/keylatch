@@ -50,7 +50,7 @@ cosign verify-blob \
   --signature <artifact>.sig
 ```
 
-> **Note on code-signing (1.0.0):** Desktop binaries are not code-signed in this release.
+> **Note on code-signing (0.9.2):** Desktop binaries are not code-signed in this release.
 > - **macOS:** If Gatekeeper blocks the app, run `xattr -dr com.apple.quarantine keylatch.app`
 > - **Windows:** Dismiss the SmartScreen prompt on first launch
 >

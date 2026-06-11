@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  reproducible:
+  build-1:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -19,13 +19,48 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: build-1
-        run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-1 ./cmd/keylatch
-      - name: build-2
-        run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-2 ./cmd/keylatch
+      - run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-${{ matrix.os }} ./cmd/keylatch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keylatch-build-1-${{ matrix.os }}
+          path: keylatch-${{ matrix.os }}
+
+  build-2:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: SOURCE_DATE_EPOCH=0 go build -trimpath -ldflags="-s -w" -o keylatch-${{ matrix.os }} ./cmd/keylatch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keylatch-build-2-${{ matrix.os }}
+          path: keylatch-${{ matrix.os }}
+
+  compare:
+    needs: [build-1, build-2]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: keylatch-build-1-${{ matrix.os }}
+          path: build-1/
+      - uses: actions/download-artifact@v4
+        with:
+          name: keylatch-build-2-${{ matrix.os }}
+          path: build-2/
       - name: compare (${{ matrix.os }})
         run: |
-          sha256sum keylatch-1 keylatch-2
-          diff keylatch-1 keylatch-2 \
+          chmod +x build-1/keylatch-${{ matrix.os }} build-2/keylatch-${{ matrix.os }}
+          sha256sum build-1/keylatch-${{ matrix.os }} build-2/keylatch-${{ matrix.os }}
+          diff build-1/keylatch-${{ matrix.os }} build-2/keylatch-${{ matrix.os }} \
             && echo "builds are identical (${{ matrix.os }})" \
             || { echo "FAIL: builds differ on ${{ matrix.os }}"; exit 1; }

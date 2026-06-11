@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-06-01
+## [0.9.2] - 2026-06-11
 
-> **Note on code-signing (1.0.0):** Desktop binaries are not code-signed in this release. On macOS, run `xattr -dr com.apple.quarantine keylatch.app` if Gatekeeper blocks the app. On Windows, dismiss the SmartScreen prompt. Code-signing will be added in a future release.
+*Originally drafted as 1.0.0; re-versioned — 1.0.0 ships after the alpha cycle.*
+
+> **Note on code-signing (0.9.2):** Desktop binaries are not code-signed in this release. On macOS, run `xattr -dr com.apple.quarantine keylatch.app` if Gatekeeper blocks the app. On Windows, dismiss the SmartScreen prompt. Code-signing will be added in a future release.
 
 ### Zero-trust credential vault
 
-Keylatch 1.0.0 is the first stable release. It is designed for security-conscious developers who run AI coding agents and need to keep API keys out of model context, MCP tool outputs, and agent logs.
+Keylatch 0.9.2 is the stabilization release before the v1.0.0-alpha cycle. It is designed for security-conscious developers who run AI coding agents and need to keep API keys out of model context, MCP tool outputs, and agent logs.
 
 ### What you get
 
@@ -26,7 +28,7 @@ Keylatch 1.0.0 is the first stable release. It is designed for security-consciou
 - **Gateway middlewares enforced** — `authBlockerMiddleware`, `hostOverrideBlockerMiddleware`, and `SSRFGate` are now active at runtime. Agent-supplied `api_key` query params, `X-Forwarded-Host` headers, and SSRF-class upstream hosts are blocked.
 - **MCP server** — 5 tools for AI agent integration via the MCP protocol.
 
-### Security fixes (wired for the first time in 1.0.0)
+### Security fixes (wired for the first time in 0.9.2)
 
 - Gateway middlewares (`authBlockerMiddleware`, `hostOverrideBlockerMiddleware`, `SSRFGate`) were implemented in earlier alpha phases but never invoked at runtime. They are now wired. Upgrading from 0.1.0-alpha is strongly recommended.
 - Token cache is now bounded (1000 entries, FIFO eviction) — eliminates unbounded-map memory growth under sustained load.

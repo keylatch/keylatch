@@ -35,7 +35,7 @@
     {
       "name": "Release Notes",
       "icon": "tag",
-      "url": "release-notes/1.0.0"
+      "url": "release-notes/0.9.2"
     }
   ],
   "navigation": [
@@ -62,7 +62,7 @@
     },
     {
       "group": "Release Notes",
-      "pages": ["release-notes/1.0.0"]
+      "pages": ["release-notes/0.9.2"]
     }
   ],
   "footerSocials": {

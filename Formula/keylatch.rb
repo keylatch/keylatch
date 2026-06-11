@@ -15,7 +15,7 @@ class Keylatch < Formula
   desc "Zero-trust credential vault CLI for AI-assisted workflows"
   homepage "https://github.com/keylatch/keylatch"
   license "Apache-2.0"
-  version "1.0.0"
+  version "0.9.2"
 
   # Release tarball URLs. The goreleaser archive name template is
   # `{{.ProjectName}}_{{.Os}}_{{.Arch}}.tar.gz` by default; sha256 hashes

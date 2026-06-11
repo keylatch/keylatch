@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,6 +139,7 @@ func setupCheckExpiryFixture(t *testing.T) (dir string, cfgForTest config.Config
 }
 
 func TestCheckExpiry_Days30(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	resetDispatchForTest(t)
 	dir, _ := setupCheckExpiryFixture(t)
 
@@ -153,7 +155,12 @@ func TestCheckExpiry_Days30(t *testing.T) {
 	t.Setenv("KEYLATCH_BACKEND", "file")
 	testutil.SetupTestKeyring(t) // sets KEYLATCH_AGE_IDENTITY + KEYLATCH_KEYRING_PATH
 
-	root.Execute()
+	// Fixture includes an expired entry (A); check-expiry returns ErrExpiredCredentials
+	// when any entry is expired. That is the correct production behaviour — accept it.
+	err := root.Execute()
+	if err != nil && !errors.Is(err, cli.ErrExpiredCredentials) {
+		t.Fatalf("unexpected error from root.Execute(): %v", err)
+	}
 	out := outBuf.String()
 
 	// A (expired) must be listed.
@@ -167,6 +174,7 @@ func TestCheckExpiry_Days30(t *testing.T) {
 }
 
 func TestCheckExpiry_Days90(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	resetDispatchForTest(t)
 	dir, _ := setupCheckExpiryFixture(t)
 
@@ -179,7 +187,12 @@ func TestCheckExpiry_Days90(t *testing.T) {
 	root.SetOut(&outBuf)
 	root.SetErr(bytes.NewBuffer(nil))
 	root.SetArgs([]string{"check-expiry", "--days", "90"})
-	root.Execute()
+
+	// Fixture includes expired entry A; ErrExpiredCredentials is the correct
+	// production behaviour for a window that includes expired entries.
+	if err := root.Execute(); err != nil && !errors.Is(err, cli.ErrExpiredCredentials) {
+		t.Fatalf("unexpected error from root.Execute(): %v", err)
+	}
 
 	out := outBuf.String()
 	// Both A and B should appear.
@@ -192,6 +205,7 @@ func TestCheckExpiry_Days90(t *testing.T) {
 }
 
 func TestCheckExpiry_JSONOutput(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	resetDispatchForTest(t)
 	dir, _ := setupCheckExpiryFixture(t)
 
@@ -204,7 +218,11 @@ func TestCheckExpiry_JSONOutput(t *testing.T) {
 	root.SetOut(&outBuf)
 	root.SetErr(bytes.NewBuffer(nil))
 	root.SetArgs([]string{"check-expiry", "--json", "--days", "30"})
-	root.Execute()
+
+	// --days 30 includes the expired entry A; ErrExpiredCredentials is expected.
+	if err := root.Execute(); err != nil && !errors.Is(err, cli.ErrExpiredCredentials) {
+		t.Fatalf("unexpected error from root.Execute(): %v", err)
+	}
 
 	out := outBuf.String()
 
@@ -228,6 +246,7 @@ func TestCheckExpiry_JSONOutput(t *testing.T) {
 
 // TestCheckExpiry_CanaryAbsent verifies S4-1: the canary value is never in output.
 func TestCheckExpiry_CanaryAbsent(t *testing.T) {
+	testutil.SetupHermeticConfig(t)
 	resetDispatchForTest(t)
 	dir, _ := setupCheckExpiryFixture(t)
 
@@ -240,7 +259,11 @@ func TestCheckExpiry_CanaryAbsent(t *testing.T) {
 	root.SetOut(&outBuf)
 	root.SetErr(&errBuf)
 	root.SetArgs([]string{"check-expiry", "--days", "90"})
-	root.Execute()
+
+	// Fixture includes expired entry A; ErrExpiredCredentials is expected.
+	if err := root.Execute(); err != nil && !errors.Is(err, cli.ErrExpiredCredentials) {
+		t.Fatalf("unexpected error from root.Execute(): %v", err)
+	}
 
 	if strings.Contains(outBuf.String(), "KEYLATCH_CANARY_PHASE4_EXPIRY_0xDEADBEEF") {
 		t.Error("canary value appeared in check-expiry stdout — S4-1 violated")
@@ -254,6 +277,7 @@ func TestCheckExpiry_CanaryAbsent(t *testing.T) {
 // invalid metadata with ErrExpiresBeforeIssued.
 func TestSetMeta_ValidatesExpiresBeforeIssued(t *testing.T) {
 	dir := t.TempDir()
+	testutil.SetupHermeticConfig(t)
 	ctx := context.Background()
 	cfg := config.Config{Backend: "file", DataDir: dir}
 	krPath := testutil.SetupTestKeyring(t)
