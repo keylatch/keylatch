@@ -34,13 +34,21 @@ func TestInstall_ClaudeCode_CreatesSettingsAndScript(t *testing.T) {
 	var settings map[string]any
 	require.NoError(t, json.Unmarshal(data, &settings))
 
-	hooks, ok := settings["hooks"].([]any)
-	require.True(t, ok, "hooks must be an array")
-	require.Len(t, hooks, 1)
+	hooks, ok := settings["hooks"].(map[string]any)
+	require.True(t, ok, "hooks must be an object keyed by event name")
+	preToolUse, ok := hooks["PreToolUse"].([]any)
+	require.True(t, ok, "hooks.PreToolUse must be an array")
+	require.Len(t, preToolUse, 1)
 
-	entry, ok := hooks[0].(map[string]any)
+	group, ok := preToolUse[0].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "PreToolUse", entry["event"])
+	inner, ok := group["hooks"].([]any)
+	require.True(t, ok, "matcher group must contain a nested hooks array")
+	require.Len(t, inner, 1)
+	cmd, ok := inner[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "command", cmd["type"])
+	assert.Equal(t, scriptPath, cmd["command"])
 }
 
 func TestInstall_ClaudeCode_Idempotent(t *testing.T) {
@@ -60,9 +68,11 @@ func TestInstall_ClaudeCode_Idempotent(t *testing.T) {
 	var settings map[string]any
 	require.NoError(t, json.Unmarshal(data, &settings))
 
-	hooks, ok := settings["hooks"].([]any)
+	hooks, ok := settings["hooks"].(map[string]any)
 	require.True(t, ok)
-	assert.Len(t, hooks, 1, "hook must appear exactly once after two install calls")
+	preToolUse, ok := hooks["PreToolUse"].([]any)
+	require.True(t, ok)
+	assert.Len(t, preToolUse, 1, "hook must appear exactly once after two install calls")
 }
 
 func TestInstall_ClaudeCode_IdempotentWithExistingSettings(t *testing.T) {
@@ -97,10 +107,55 @@ func TestInstall_ClaudeCode_IdempotentWithExistingSettings(t *testing.T) {
 	// Original theme preserved.
 	assert.Equal(t, "dark", settings["theme"])
 
-	// Should have 2 hook entries: the original PostToolUse + the new PreToolUse.
-	hooks, ok := settings["hooks"].([]any)
+	// Legacy array must be migrated to the object format, preserving the
+	// original PostToolUse entry alongside the new PreToolUse entry.
+	hooks, ok := settings["hooks"].(map[string]any)
+	require.True(t, ok, "legacy array-format hooks must be migrated to object format")
+	postToolUse, ok := hooks["PostToolUse"].([]any)
+	require.True(t, ok, "pre-existing PostToolUse hook must survive migration")
+	assert.Len(t, postToolUse, 1)
+	preToolUse, ok := hooks["PreToolUse"].([]any)
 	require.True(t, ok)
-	assert.Len(t, hooks, 2)
+	assert.Len(t, preToolUse, 1)
+}
+
+func TestInstall_ClaudeCode_MigratesLegacyKeylatchHook(t *testing.T) {
+	dir := t.TempDir()
+	opts := guard.InstallOpts{ProjectDir: dir}
+
+	// First install writes the hook; rewrite settings into the legacy
+	// array format an older keylatch would have produced.
+	settingsPath, err := guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+	scriptPath := filepath.Join(dir, ".keylatch", "hooks", "block-keylatch-exfiltration.sh")
+	legacy := map[string]any{
+		"hooks": []any{
+			map[string]any{
+				"event": "PreToolUse",
+				"hooks": []any{
+					map[string]any{"type": "command", "command": scriptPath},
+				},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(legacy, "", "  ")
+	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
+
+	// Re-install must repair the broken legacy format in place, without
+	// duplicating the hook.
+	_, err = guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+
+	data, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	var settings map[string]any
+	require.NoError(t, json.Unmarshal(data, &settings))
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	require.True(t, ok, "legacy keylatch hook must be migrated to object format")
+	preToolUse, ok := hooks["PreToolUse"].([]any)
+	require.True(t, ok)
+	require.Len(t, preToolUse, 1, "migration must not duplicate the keylatch hook")
 }
 
 func TestIsInstalled_ReturnsFalseWhenNotInstalled(t *testing.T) {
@@ -132,4 +187,62 @@ func TestInstall_UnsupportedAgent_ReturnsError(t *testing.T) {
 	_, err := guard.Install("nonexistent-agent-xyz", opts)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported agent")
+}
+
+func TestInstall_ClaudeCode_EmptyLegacyHooksArray(t *testing.T) {
+	dir := t.TempDir()
+	opts := guard.InstallOpts{ProjectDir: dir}
+
+	// Settings with an empty legacy hooks array must migrate cleanly and
+	// receive the new hook in object format.
+	settingsDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
+	data, _ := json.MarshalIndent(map[string]any{"hooks": []any{}}, "", "  ")
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
+
+	_, err := guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+
+	data, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	var settings map[string]any
+	require.NoError(t, json.Unmarshal(data, &settings))
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	require.True(t, ok, "empty legacy array must migrate to object format")
+	preToolUse, ok := hooks["PreToolUse"].([]any)
+	require.True(t, ok)
+	assert.Len(t, preToolUse, 1)
+}
+
+func TestInstall_ClaudeCode_NonMigratableLegacyHooksPreserved(t *testing.T) {
+	dir := t.TempDir()
+	opts := guard.InstallOpts{ProjectDir: dir}
+
+	// A legacy array whose entries lack an "event" field cannot be migrated
+	// into the object format; install must park them under "hooksLegacy"
+	// rather than silently dropping them.
+	settingsDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
+	initial := map[string]any{
+		"hooks": []any{
+			map[string]any{"command": "/usr/local/bin/eventless-hook.sh"},
+		},
+	}
+	data, _ := json.MarshalIndent(initial, "", "  ")
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
+
+	_, err := guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+
+	data, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	var settings map[string]any
+	require.NoError(t, json.Unmarshal(data, &settings))
+
+	// The eventless entry must still be present in whatever format resulted.
+	assert.Contains(t, string(data), "eventless-hook.sh",
+		"non-migratable legacy hook must not be wiped")
 }
