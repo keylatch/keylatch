@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -147,6 +148,9 @@ func TestServeBearerLegacyConnectAndCancel(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeUnixPeerCredCancelledThenUnblock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: unix peer-cred sockets and /tmp are unix-only")
+	}
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
 		ConnectionAuth: AuthUnixPeerCred,
@@ -206,6 +210,9 @@ func TestServeUnixPeerCredCancelledThenUnblock(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeUnixPeerCredSameUIDConnection(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: unix sockets / peer-cred are unix-only")
+	}
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
 		ConnectionAuth: AuthUnixPeerCred,
@@ -273,6 +280,9 @@ func TestServeUnixPeerCredSameUIDConnection(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleUnixConnContextCancellation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: unix sockets / peer-cred are unix-only")
+	}
 	// Create a connected Unix socket pair.
 	server, client, err := unixConnPair(t)
 	if err != nil {
@@ -304,6 +314,9 @@ func TestHandleUnixConnContextCancellation(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleUnixConnIdleTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: unix sockets / peer-cred are unix-only")
+	}
 	// We can't easily override idleTimeout (it's a package-level const).
 	// This test verifies the goroutine behaves correctly when the context
 	// is done (which we can control). The idle timeout path requires waiting
@@ -317,6 +330,9 @@ func TestHandleUnixConnIdleTimeout(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestValidatePeerUIDUnixConnSameUID(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: unix sockets / peer-cred are unix-only")
+	}
 	server, client, err := unixConnPair(t)
 	if err != nil {
 		t.Skipf("could not create unix conn pair: %v", err)
@@ -389,6 +405,9 @@ func unixConnPair(t *testing.T) (*net.UnixConn, *net.UnixConn, error) {
 // ---------------------------------------------------------------------------
 
 func TestServeTCPUnixPeerCredPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: unix sockets / peer-cred are unix-only")
+	}
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
 		ConnectionAuth: AuthUnixPeerCred,
