@@ -141,13 +141,23 @@ func installClaudeCode(opts InstallOpts) (string, error) {
 		return "", err
 	}
 
-	// Check for idempotency before mutating.
+	// Repair the legacy array-format "hooks" field first (written by older
+	// keylatch versions; silently ignored by current Claude Code), so an
+	// already-present-but-broken hook gets fixed instead of skipped.
+	settings, migrated := migrateLegacyClaudeCodeHooks(settings)
+
+	// Check for idempotency before mutating further.
 	if hookAlreadyInstalled(settings, scriptPath) {
+		if migrated {
+			if err := saveSettings(settingsPath, settings); err != nil {
+				return "", err
+			}
+		}
 		return settingsPath, nil
 	}
 
 	// Append the PreToolUse hook.
-	settings = appendPreToolUseHook(settings, scriptPath)
+	settings = appendClaudeCodePreToolUseHook(settings, scriptPath)
 
 	// Persist the modified settings.
 	if err := saveSettings(settingsPath, settings); err != nil {
@@ -567,8 +577,73 @@ func matchesHookEntry(entry map[string]any, scriptPath string) bool {
 	return false
 }
 
+// migrateLegacyClaudeCodeHooks converts a legacy array-format "hooks" field
+// (written by older keylatch versions; silently ignored by current Claude
+// Code) into the object format keyed by each entry's "event" field. Returns
+// the settings and whether a migration took place. Settings without a legacy
+// array are returned unchanged.
+func migrateLegacyClaudeCodeHooks(settings map[string]any) (map[string]any, bool) {
+	legacy, isArr := settings["hooks"].([]any)
+	if !isArr {
+		return settings, false
+	}
+	hooksObj := map[string]any{}
+	var leftovers []any
+	for _, raw := range legacy {
+		entry, isMap := raw.(map[string]any)
+		if !isMap {
+			leftovers = append(leftovers, raw)
+			continue
+		}
+		event, _ := entry["event"].(string)
+		if event == "" {
+			leftovers = append(leftovers, raw)
+			continue
+		}
+		migrated := map[string]any{}
+		for k, v := range entry {
+			if k != "event" {
+				migrated[k] = v
+			}
+		}
+		arr, _ := hooksObj[event].([]any)
+		hooksObj[event] = append(arr, migrated)
+	}
+	if len(leftovers) > 0 {
+		// Entries with no "event" field have no slot in the object format.
+		// Park them under a backup key instead of silently dropping them.
+		settings["hooksLegacy"] = leftovers
+	}
+	settings["hooks"] = hooksObj
+	return settings, true
+}
+
+// appendClaudeCodePreToolUseHook adds a PreToolUse hook entry for scriptPath
+// using the Claude Code settings schema, where "hooks" is an object mapping
+// event names to matcher groups:
+//
+//	"hooks": { "PreToolUse": [{ "hooks": [{ "type": "command", "command": "<script>" }] }] }
+func appendClaudeCodePreToolUseHook(settings map[string]any, scriptPath string) map[string]any {
+	hooksObj, ok := settings["hooks"].(map[string]any)
+	if !ok {
+		hooksObj = map[string]any{}
+	}
+
+	arr, _ := hooksObj["PreToolUse"].([]any)
+	hooksObj["PreToolUse"] = append(arr, map[string]any{
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": scriptPath,
+			},
+		},
+	})
+	settings["hooks"] = hooksObj
+	return settings
+}
+
 // appendPreToolUseHook adds a PreToolUse hook entry for scriptPath.
-// Claude Code / Cursor settings format: hooks is an array of objects like:
+// Cursor / Codex settings format: hooks is an array of objects like:
 //
 //	{ "event": "PreToolUse", "hooks": [{ "type": "command", "command": "<script>" }] }
 func appendPreToolUseHook(settings map[string]any, scriptPath string) map[string]any {
