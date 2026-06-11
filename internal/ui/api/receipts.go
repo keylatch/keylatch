@@ -46,18 +46,19 @@ func (s *ReceiptStore) Push(r runner.RuntimeReceipt) {
 		s.entries = s.entries[:len(s.entries)-1]
 	}
 	s.entries = append(s.entries, r)
-	// Snapshot subscribers under the write lock so we don't hold it while sending.
-	subs := make([]chan runner.RuntimeReceipt, len(s.subs))
-	copy(subs, s.subs)
-	s.mu.Unlock()
-
-	for _, ch := range subs {
+	// Send while holding the lock: unsubscribe closes channels under this
+	// same lock, so sending after unlocking races with close — and a send on
+	// a closed channel panics even inside select. Sends are non-blocking
+	// (buffered channel + default), so holding the lock across the loop is
+	// cheap and makes the close ordering safe.
+	for _, ch := range s.subs {
 		select {
 		case ch <- r:
 		default:
 			// subscriber buffer full — drop (non-blocking).
 		}
 	}
+	s.mu.Unlock()
 }
 
 // Last returns the last n receipts in insertion order (newest last).
