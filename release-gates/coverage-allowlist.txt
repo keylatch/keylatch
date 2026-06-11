@@ -72,18 +72,14 @@ github.com/keylatch/keylatch/packaging/release-manifest
 # They are allowlisted against the EPIC-28 gate to keep CI green while
 # targeted improvement work continues in Phase 5+.
 # Remove each entry once the package crosses 85% and CI confirms it.
-github.com/keylatch/keylatch/internal/paths
-github.com/keylatch/keylatch/internal/allow
 github.com/keylatch/keylatch/internal/telemetry
 github.com/keylatch/keylatch/internal/cli
 github.com/keylatch/keylatch/internal/backend
 github.com/keylatch/keylatch/internal/mcp
 github.com/keylatch/keylatch/internal/crypto/kek
-github.com/keylatch/keylatch/internal/exec
 github.com/keylatch/keylatch/internal/agent
 github.com/keylatch/keylatch/internal/crypto/jcs
 github.com/keylatch/keylatch/internal/backend/dispatch
-github.com/keylatch/keylatch/internal/budget
 github.com/keylatch/keylatch/internal/trust/sshagent
 github.com/keylatch/keylatch/internal/gateway/broker
 github.com/keylatch/keylatch/internal/crypto/keyring
