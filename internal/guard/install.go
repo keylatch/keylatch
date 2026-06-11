@@ -588,13 +588,16 @@ func migrateLegacyClaudeCodeHooks(settings map[string]any) (map[string]any, bool
 		return settings, false
 	}
 	hooksObj := map[string]any{}
+	var leftovers []any
 	for _, raw := range legacy {
 		entry, isMap := raw.(map[string]any)
 		if !isMap {
+			leftovers = append(leftovers, raw)
 			continue
 		}
 		event, _ := entry["event"].(string)
 		if event == "" {
+			leftovers = append(leftovers, raw)
 			continue
 		}
 		migrated := map[string]any{}
@@ -605,6 +608,11 @@ func migrateLegacyClaudeCodeHooks(settings map[string]any) (map[string]any, bool
 		}
 		arr, _ := hooksObj[event].([]any)
 		hooksObj[event] = append(arr, migrated)
+	}
+	if len(leftovers) > 0 {
+		// Entries with no "event" field have no slot in the object format.
+		// Park them under a backup key instead of silently dropping them.
+		settings["hooksLegacy"] = leftovers
 	}
 	settings["hooks"] = hooksObj
 	return settings, true

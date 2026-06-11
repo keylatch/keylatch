@@ -188,3 +188,61 @@ func TestInstall_UnsupportedAgent_ReturnsError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported agent")
 }
+
+func TestInstall_ClaudeCode_EmptyLegacyHooksArray(t *testing.T) {
+	dir := t.TempDir()
+	opts := guard.InstallOpts{ProjectDir: dir}
+
+	// Settings with an empty legacy hooks array must migrate cleanly and
+	// receive the new hook in object format.
+	settingsDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
+	data, _ := json.MarshalIndent(map[string]any{"hooks": []any{}}, "", "  ")
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
+
+	_, err := guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+
+	data, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	var settings map[string]any
+	require.NoError(t, json.Unmarshal(data, &settings))
+
+	hooks, ok := settings["hooks"].(map[string]any)
+	require.True(t, ok, "empty legacy array must migrate to object format")
+	preToolUse, ok := hooks["PreToolUse"].([]any)
+	require.True(t, ok)
+	assert.Len(t, preToolUse, 1)
+}
+
+func TestInstall_ClaudeCode_NonMigratableLegacyHooksPreserved(t *testing.T) {
+	dir := t.TempDir()
+	opts := guard.InstallOpts{ProjectDir: dir}
+
+	// A legacy array whose entries lack an "event" field cannot be migrated
+	// into the object format; install must park them under "hooksLegacy"
+	// rather than silently dropping them.
+	settingsDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
+	initial := map[string]any{
+		"hooks": []any{
+			map[string]any{"command": "/usr/local/bin/eventless-hook.sh"},
+		},
+	}
+	data, _ := json.MarshalIndent(initial, "", "  ")
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
+
+	_, err := guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+
+	data, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	var settings map[string]any
+	require.NoError(t, json.Unmarshal(data, &settings))
+
+	// The eventless entry must still be present in whatever format resulted.
+	assert.Contains(t, string(data), "eventless-hook.sh",
+		"non-migratable legacy hook must not be wiped")
+}
