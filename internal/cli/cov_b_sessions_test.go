@@ -321,11 +321,11 @@ func TestSaveSessions_NilSavesEmptyArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSessions after nil save: %v", err)
 	}
-	if loaded == nil {
-		// The file exists but has "[]" — loadSessions decodes to empty slice.
-		// Both nil and []sessionEntry{} are acceptable.
+	// The file exists but has "[]" — loadSessions decodes to an empty slice.
+	// Both nil and []sessionEntry{} are acceptable.
+	if len(loaded) != 0 {
+		t.Errorf("expected no sessions after nil save, got %d", len(loaded))
 	}
-	_ = loaded
 }
 
 func TestSessionsStart_DefaultTTL(t *testing.T) {

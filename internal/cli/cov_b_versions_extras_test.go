@@ -118,12 +118,9 @@ func TestPrintVersionsTable_ExpiresAt(t *testing.T) {
 	printVersionsTable(root, meta)
 
 	// ExpiresAt should appear (not "—").
+	// Some columns may still show "—" for nil expiresAt on other versions;
+	// this only verifies the set expiry is included.
 	output := out.String()
-	if strings.Count(output, "—") != 0 {
-		// If expiry is set, the column should not show "—".
-		// Some columns may still show "—" for nil expiresAt on other versions.
-		// This just verifies the set expiry is included.
-	}
 	if !strings.Contains(output, expiry.Format("2006")) {
 		t.Errorf("expected expiry year in output, got:\n%s", output)
 	}
