@@ -29,6 +29,12 @@ func NewBudgetMiddleware(counter BudgetCounter, capability string, amountPerRequ
 }
 
 // Handler wraps next with budget enforcement.
+//
+// WARNING: this HTTP-middleware form resolves the actor from the
+// X-Keylatch-Actor header, which is client-controlled. It exists for tests
+// and reference only — do NOT mount it on a production chain. The live
+// gateway enforces budgets inline in gatewayHandler using the verified JWT
+// actor claim.
 // Uses CheckAndRecord atomically before dispatching to avoid TOCTOU (C-4).
 // All attempts are counted; failed handlers do not decrement (pragmatic safe approach).
 func (m *BudgetMiddleware) Handler(next http.Handler) http.Handler {
@@ -66,8 +72,25 @@ func actorFromRequest(r *http.Request) string {
 
 // hashActorID returns an HMAC-SHA256 hex digest of actorID.
 func hashActorID(actorID string) string {
-	h := hmac.New(sha256.New, budgetMiddlewareHMACKey)
-	h.Write([]byte(actorID))
+	return HashActor(budgetMiddlewareHMACKey, actorID)
+}
+
+// DeriveActorHashKey derives a domain-separated sub-key from a signing key
+// for actor hashing, so denial receipts are never HMAC'd under the raw JWT
+// signing key (key-reuse hygiene).
+func DeriveActorHashKey(signingKey []byte) []byte {
+	h := hmac.New(sha256.New, signingKey)
+	h.Write([]byte("keylatch-actor-hmac-v1"))
+	return h.Sum(nil)
+}
+
+// HashActor returns a truncated HMAC-SHA256 hex digest of actor under key.
+// Callers with a real signing key (e.g. the gateway) should pass a key from
+// DeriveActorHashKey instead of the package-level fallback key so receipts
+// are keyed per deployment and domain-separated from JWT signing.
+func HashActor(key []byte, actor string) string {
+	h := hmac.New(sha256.New, key)
+	h.Write([]byte(actor))
 	return hex.EncodeToString(h.Sum(nil)[:16])
 }
 

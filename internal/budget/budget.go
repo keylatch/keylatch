@@ -38,6 +38,6 @@ type BudgetDenialReceipt struct {
 	ActorHMAC    string  `json:"actor_hmac"`
 	Capability   string  `json:"capability"`
 	LimitType    string  `json:"limit_type"`
-	LimitValue   float64 `json:"limit_value"`
-	CurrentValue float64 `json:"current_value"`
+	LimitValue   float64 `json:"limit_value,omitempty"`
+	CurrentValue float64 `json:"current_value,omitempty"`
 }
