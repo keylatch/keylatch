@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/audit"
-	"github.com/keylatch/keylatch/internal/auditverify"
 	audithmac "github.com/keylatch/keylatch/internal/audit/hmac"
+	"github.com/keylatch/keylatch/internal/auditverify"
 )
 
 // testSalt returns a deterministic 32-byte salt for tests.

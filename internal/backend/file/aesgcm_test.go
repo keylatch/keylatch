@@ -137,10 +137,10 @@ func TestAESGCM_MultipleValues(t *testing.T) {
 
 	ctx := context.Background()
 	entries := map[string][]byte{
-		"default/ai/openrouter/api_key":  []byte("sk-openrouter-aesgcm"),
-		"default/ai/anthropic/api_key":   []byte("sk-anthropic-aesgcm"),
-		"default/storage/dropbox/token":  []byte("token-dropbox-aesgcm"),
-		"default/devtools/github/pat":    []byte("ghp-aesgcm"),
+		"default/ai/openrouter/api_key":    []byte("sk-openrouter-aesgcm"),
+		"default/ai/anthropic/api_key":     []byte("sk-anthropic-aesgcm"),
+		"default/storage/dropbox/token":    []byte("token-dropbox-aesgcm"),
+		"default/devtools/github/pat":      []byte("ghp-aesgcm"),
 		"default/observability/sentry/dsn": []byte("https://sentry.io/aesgcm"),
 	}
 

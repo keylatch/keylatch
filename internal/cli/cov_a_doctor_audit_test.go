@@ -1,7 +1,8 @@
 // Package cli — coverage agent A: doctor and audit helper tests (a–l files).
 // File: cov_a_doctor_audit_test.go
 // Tests for: doctor_cmd.go (buildDoctorJSONV1, printStatusLine, printDoctorReport),
-//            audit_hook.go (SecurityBlockHook type), audit_cmd.go (openAuditLogger path).
+//
+//	audit_hook.go (SecurityBlockHook type), audit_cmd.go (openAuditLogger path).
 package cli
 
 import (

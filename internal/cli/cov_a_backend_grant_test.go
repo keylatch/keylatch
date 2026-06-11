@@ -1,9 +1,10 @@
 // Package cli — coverage agent A: backend and grant helper tests (a–l files).
 // File: cov_a_backend_grant_test.go
 // Tests for: backend_upgrade_trust_cmd.go (printUpgradeResult),
-//            grant_cmd.go (newGrantCreateCmd/newGrantListCmd flag registration),
-//            completion_cmd.go (newCompletionCmd structure),
-//            audit_hook.go (SecurityBlockHook), cmd_call.go (callMetaFilteredFields).
+//
+//	grant_cmd.go (newGrantCreateCmd/newGrantListCmd flag registration),
+//	completion_cmd.go (newCompletionCmd structure),
+//	audit_hook.go (SecurityBlockHook), cmd_call.go (callMetaFilteredFields).
 package cli
 
 import (

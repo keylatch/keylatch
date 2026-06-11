@@ -94,7 +94,8 @@ func TestMigrateIfFlat_ReadFlatFileFails(t *testing.T) {
 // We simulate this by removing the flat file before migration, then run migration,
 // and verify the function doesn't return an error for the remove failure.
 // (The remove failure path at migrate.go:116-119 is non-fatal — we can't directly
-//  trigger it from outside without blocking fs, so this test is informational.)
+//
+//	trigger it from outside without blocking fs, so this test is informational.)
 func TestMigrateIfFlat_AlreadyMigratedVersionedExists(t *testing.T) {
 	dir := t.TempDir()
 	canonical := "default/ai/already-migrated/api_key"

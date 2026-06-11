@@ -372,10 +372,10 @@ type mockKEK struct {
 	kekType string
 }
 
-func (m *mockKEK) Wrap(dek []byte) ([]byte, error)   { return dek, nil }
+func (m *mockKEK) Wrap(dek []byte) ([]byte, error)       { return dek, nil }
 func (m *mockKEK) Unwrap(wrapped []byte) ([]byte, error) { return wrapped, nil }
-func (m *mockKEK) ID() string                         { return m.id }
-func (m *mockKEK) Type() string                       { return m.kekType }
+func (m *mockKEK) ID() string                            { return m.id }
+func (m *mockKEK) Type() string                          { return m.kekType }
 
 func TestKEKAdapter_TypeMapping(t *testing.T) {
 	t.Parallel()

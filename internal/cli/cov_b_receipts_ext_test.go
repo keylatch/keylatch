@@ -26,13 +26,13 @@ func setupReceiptsDir(t *testing.T) string {
 // makeReceipt returns a minimal valid runner.Receipt for testing.
 func makeReceipt(actor, connection, capability string) runner.Receipt {
 	return runner.Receipt{
-		Timestamp:     time.Now().UTC(),
-		Actor:         actor,
-		Connection:    connection,
-		Capability:    capability,
+		Timestamp:      time.Now().UTC(),
+		Actor:          actor,
+		Connection:     connection,
+		Capability:     capability,
 		PolicyDecision: "allow",
-		ExitCode:      0,
-		AuditAccessor: "acc_" + actor,
+		ExitCode:       0,
+		AuditAccessor:  "acc_" + actor,
 	}
 }
 

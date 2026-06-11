@@ -78,8 +78,8 @@ func TestStripNonStringSettings(t *testing.T) {
 		"data_dir":    "/tmp/vault",
 		"env":         fn, // non-string: should be stripped
 		"nil_val":     nil,
-		"some_number": 42,           // non-string: should be stripped
-		"some_bool":   true,         // non-string: should be stripped
+		"some_number": 42,            // non-string: should be stripped
+		"some_bool":   true,          // non-string: should be stripped
 		"slice_val":   []string{"a"}, // non-string: should be stripped
 	}
 

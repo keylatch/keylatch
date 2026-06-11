@@ -1,8 +1,9 @@
 // Package cli — coverage agent A: usableReason and command-level tests (a–l files).
 // File: cov_a_usable_cmd_test.go
 // Tests for: list_cmd.go (usableReason), install_guard_cmd.go (runInstallGuardList),
-//            completion_cmd.go, config_cmd.go (command execution),
-//            destroy_version_cmd.go (argument parsing), init_integration_cmd.go helpers.
+//
+//	completion_cmd.go, config_cmd.go (command execution),
+//	destroy_version_cmd.go (argument parsing), init_integration_cmd.go helpers.
 package cli
 
 import (

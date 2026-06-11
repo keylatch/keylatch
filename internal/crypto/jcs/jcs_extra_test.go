@@ -256,9 +256,9 @@ func TestMarshal_UTF16KeyOrder(t *testing.T) {
 	t.Parallel()
 	// Keys with high code points — sorting must be by UTF-16 code units.
 	input := map[string]any{
-		"é":     1, // é  U+00E9
-		"à":     2, // à  U+00E0
-		"a":          3,
+		"é": 1, // é  U+00E9
+		"à": 2, // à  U+00E0
+		"a": 3,
 	}
 	got, err := jcs.Marshal(input)
 	if err != nil {

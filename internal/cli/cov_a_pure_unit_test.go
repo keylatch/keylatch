@@ -1,10 +1,11 @@
 // Package cli — coverage agent A: pure/utility unit tests (a–l files).
 // File: cov_a_pure_unit_test.go
 // Scope: unexported functions accessed via internal package tests.
-//        Covers: guard_runtime.go, audit_tail_cmd.go, approve_cmd.go,
-//                cmd_backup.go, cmd_call.go, cmd_status.go, grant_cmd.go,
-//                json_output.go, config_cmd.go, errors.go, check_expiry_cmd.go,
-//                init_integration_cmd.go, bootstrap_cmd.go.
+//
+//	Covers: guard_runtime.go, audit_tail_cmd.go, approve_cmd.go,
+//	        cmd_backup.go, cmd_call.go, cmd_status.go, grant_cmd.go,
+//	        json_output.go, config_cmd.go, errors.go, check_expiry_cmd.go,
+//	        init_integration_cmd.go, bootstrap_cmd.go.
 package cli
 
 import (
