@@ -172,6 +172,7 @@ func TestVersionsCmd_RollbackShowsNewVersion(t *testing.T) {
 
 func TestGetVersion_DestroyedReturnsError(t *testing.T) {
 	dir := t.TempDir()
+	testutil.SetupHermeticConfig(t)
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 

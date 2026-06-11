@@ -277,6 +277,7 @@ func TestCheckExpiry_CanaryAbsent(t *testing.T) {
 // invalid metadata with ErrExpiresBeforeIssued.
 func TestSetMeta_ValidatesExpiresBeforeIssued(t *testing.T) {
 	dir := t.TempDir()
+	testutil.SetupHermeticConfig(t)
 	ctx := context.Background()
 	cfg := config.Config{Backend: "file", DataDir: dir}
 	krPath := testutil.SetupTestKeyring(t)
