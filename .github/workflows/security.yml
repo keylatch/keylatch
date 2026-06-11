@@ -73,10 +73,6 @@ jobs:
       - name: install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: govulncheck
-        # GO-2026-5039 and GO-2026-5037 are stdlib vulnerabilities fixed in a
-        # Go toolchain release after 1.25.10 — tracked in the upgrade backlog.
-        # Continue-on-error prevents blocking PRs for stdlib-only findings.
-        continue-on-error: true
         run: govulncheck ./...
 
   integration-keychain:

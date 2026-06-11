@@ -114,6 +114,17 @@ docker_manifests:
       - ghcr.io/keylatch/keylatch:{{ .Version }}-amd64
       - ghcr.io/keylatch/keylatch:{{ .Version }}-arm64
 
+aurs:
+  - name: keylatch-bin
+    homepage: https://github.com/keylatch/keylatch
+    description: Zero-trust credential vault CLI for AI-assisted workflows
+    license: Apache-2.0
+    maintainers:
+      - Patrik Michalicka <yay@patrikmichalicka.com>
+    git_url: ssh://aur@aur.archlinux.org/keylatch-bin.git
+    private_key: '{{ .Env.AUR_KEY }}'
+    skip_upload: '{{ if index .Env "AUR_KEY" }}false{{ else }}true{{ end }}'
+
 # FIPS build — Phase 11
 # builds:
 #   - id: keylatch-fips
