@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -90,8 +91,13 @@ func checkBackendKeychain(probe kexec.Probe) Check {
 				Tags:    []string{"backend", "keychain"},
 			}
 		}
-		keychainDB := filepath.Join(os.Getenv("HOME"), ".keylatch", "keylatch.keychain-db")
-		if _, err := os.Stat(keychainDB); err == nil {
+		keychainDB, kerr := keychain.DefaultDBPath()
+		if kerr != nil {
+			keychainDB = ""
+		} else if _, err := os.Stat(keychainDB); err != nil {
+			keychainDB = ""
+		}
+		if keychainDB != "" {
 			return Status{
 				Name:    "backend.keychain",
 				Section: "backends",

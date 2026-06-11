@@ -116,7 +116,17 @@ func checkACLKeychainUnlock() Check {
 			}
 		}
 
-		keychainDB := filepath.Join(os.Getenv("HOME"), ".keylatch", "keylatch.keychain-db")
+		keychainDB, err := keychain.DefaultDBPath()
+		if err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Warn:    true,
+				Detail:  fmt.Sprintf("keychain ACL check: cannot resolve home: %v", err),
+				Tags:    []string{"acl"},
+			}
+		}
 		if _, err := os.Stat(keychainDB); err != nil {
 			return Status{
 				Name:    "acl.keychain_unlock",
@@ -165,15 +175,19 @@ func checkACLKeychainUnlock() Check {
 // any supported agent.
 func checkAgentGuard() Check {
 	return func(_ context.Context) Status {
+		cwd, _ := os.Getwd()
 		for _, agent := range guard.SupportedAgents {
-			ok, err := guard.IsInstalled(agent, guard.InstallOpts{})
-			if err == nil && ok {
-				return Status{
-					Name:    "agent.guard",
-					Section: "environment",
-					OK:      true,
-					Detail:  fmt.Sprintf("exfiltration guard installed for agent %q", agent),
-					Tags:    []string{"guard"},
+			// Probe both the global settings and the current project dir.
+			for _, opts := range []guard.InstallOpts{{}, {ProjectDir: cwd}} {
+				ok, err := guard.IsInstalled(agent, opts)
+				if err == nil && ok {
+					return Status{
+						Name:    "agent.guard",
+						Section: "environment",
+						OK:      true,
+						Detail:  fmt.Sprintf("exfiltration guard installed for agent %q", agent),
+						Tags:    []string{"guard"},
+					}
 				}
 			}
 		}
@@ -182,7 +196,7 @@ func checkAgentGuard() Check {
 			Section: "environment",
 			OK:      true,
 			Warn:    true,
-			Detail:  "no agent exfiltration guard installed",
+			Detail:  "no agent exfiltration guard detected (detection currently covers claude-code)",
 			Fix:     "keylatch install-guard <agent>",
 			Tags:    []string{"guard"},
 		}
