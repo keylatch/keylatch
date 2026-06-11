@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -89,12 +90,28 @@ func checkBackendKeychain(probe kexec.Probe) Check {
 				Tags:    []string{"backend", "keychain"},
 			}
 		}
+		keychainDB, kerr := keychain.DefaultDBPath()
+		if kerr != nil {
+			keychainDB = ""
+		} else if _, err := os.Stat(keychainDB); err != nil {
+			keychainDB = ""
+		}
+		if keychainDB != "" {
+			return Status{
+				Name:    "backend.keychain",
+				Section: "backends",
+				OK:      true,
+				Detail:  fmt.Sprintf("security_bin=%s keychain_initialized=true path=%s", p, keychainDB),
+				Tags:    []string{"backend", "keychain"},
+			}
+		}
 		return Status{
 			Name:    "backend.keychain",
 			Section: "backends",
 			OK:      true,
 			Warn:    true,
-			Detail:  fmt.Sprintf("security_bin=%s keychain_initialized=unknown (run `keylatch backend init` after bootstrap)", p),
+			Detail:  fmt.Sprintf("security_bin=%s keychain_initialized=false", p),
+			Fix:     "Run `keylatch keychain-init` to initialise the dedicated keychain.",
 			Tags:    []string{"backend", "keychain"},
 		}
 	}
