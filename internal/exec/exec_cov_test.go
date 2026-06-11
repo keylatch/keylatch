@@ -83,3 +83,36 @@ func TestArgSignature(t *testing.T) {
 		t.Errorf("argSignature = %q", got)
 	}
 }
+
+func TestResolve(t *testing.T) {
+	t.Parallel()
+	if p := Resolve("go"); p == "" {
+		t.Error("Resolve(go) returned empty")
+	}
+	if p := Resolve("keylatch-definitely-not-a-binary-xyz"); p != "" {
+		t.Errorf("Resolve(nonexistent) = %q, want empty", p)
+	}
+}
+
+func TestMustResolve(t *testing.T) {
+	t.Parallel()
+	if p := MustResolve("go"); p == "" {
+		t.Error("MustResolve(go) returned empty")
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("MustResolve(nonexistent) did not panic")
+		}
+	}()
+	_ = MustResolve("keylatch-definitely-not-a-binary-xyz")
+}
+
+// TestDefaultRunner_RejectsRelativePath covers the S1-8 guard, which is the
+// only Run branch reachable on every platform.
+func TestDefaultRunner_RejectsRelativePath(t *testing.T) {
+	t.Parallel()
+	_, _, _, err := DefaultRunner.Run(context.Background(), "relative-name", nil, nil)
+	if err == nil {
+		t.Fatal("expected rejection of relative path")
+	}
+}
