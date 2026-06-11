@@ -36,9 +36,8 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "preToolUse": [
+    "PreToolUse": [
       {
-        "matcher": ".*",
         "hooks": [
           {
             "type": "command",
@@ -51,6 +50,8 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
+Event names are case-sensitive (`PreToolUse`, not `preToolUse`). Omitting `matcher` runs the hook for every tool, which is what this guard wants — the script itself filters on `Bash` and `Read`.
+
 ### Per-project
 
 Add to `.claude/settings.json` in your project root (same structure as above).
@@ -61,7 +62,7 @@ Run `keylatch doctor` — it checks for the hook version comment and validates t
 
 ## Hook version
 
-The comment `# keylatch-hook-version: 1` at the top of the script is read by `keylatch doctor` to verify you have a compatible version. If a new hook version is released with additional block patterns, `keylatch doctor` will warn you to update.
+The comment `# keylatch-hook-version: 2` at the top of the script is read by `keylatch doctor` to verify you have a compatible version. If a new hook version is released with additional block patterns, `keylatch doctor` will warn you to update.
 
 ## Note
 
