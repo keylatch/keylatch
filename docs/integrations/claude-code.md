@@ -72,17 +72,18 @@ Look for `[ok  ] hook.preToolUse: keylatch preToolUse hook detected`.
 
    ```json
    {
-     "hooks": [
-       {
-         "event": "PreToolUse",
-         "hooks": [
-           {
-             "type": "command",
-            "command": "$HOME/.keylatch/hooks/block-keylatch-exfiltration.sh"
-           }
-         ]
-       }
-     ]
+     "hooks": {
+       "PreToolUse": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "$HOME/.keylatch/hooks/block-keylatch-exfiltration.sh"
+             }
+           ]
+         }
+       ]
+     }
    }
    ```
 

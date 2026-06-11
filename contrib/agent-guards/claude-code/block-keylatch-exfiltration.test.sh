@@ -15,7 +15,26 @@ run_case() {
 	local expected_code="$4"
 
 	actual_code=0
-	CLAUDE_TOOL_NAME="$tool_name" CLAUDE_TOOL_INPUT="$tool_input" bash "$HOOK" 2>/dev/null || actual_code=$?
+	CLAUDE_TOOL_NAME="$tool_name" CLAUDE_TOOL_INPUT="$tool_input" bash "$HOOK" </dev/null 2>/dev/null || actual_code=$?
+
+	if [ "$actual_code" -eq "$expected_code" ]; then
+		echo "PASS: $label"
+		PASS=$((PASS + 1))
+	else
+		echo "FAIL: $label (expected=$expected_code, got=$actual_code)"
+		FAIL=$((FAIL + 1))
+	fi
+}
+
+# run_case_stdin exercises the current Claude Code contract: tool call JSON on
+# stdin, no CLAUDE_TOOL_* env vars set.
+run_case_stdin() {
+	local label="$1"
+	local json="$2"
+	local expected_code="$3"
+
+	actual_code=0
+	printf '%s' "$json" | env -u CLAUDE_TOOL_NAME -u CLAUDE_TOOL_INPUT bash "$HOOK" 2>/dev/null || actual_code=$?
 
 	if [ "$actual_code" -eq "$expected_code" ]; then
 		echo "PASS: $label"
@@ -52,6 +71,16 @@ run_case "keylatch run -- env with args blocked" Bash "keylatch run openrouter -
 run_case "keylatch get-masked allowed"          Bash  "keylatch get-masked svc key"                      0
 run_case "unrelated command allowed"            Bash  "echo hello"                                       0
 run_case "node script allowed"                  Bash  "node index.js"                                    0
+
+# Current Claude Code contract — tool call JSON delivered on stdin
+run_case_stdin "stdin: plain get blocked"        '{"tool_name":"Bash","tool_input":{"command":"keylatch get clockify api_key"}}'         2
+run_case_stdin "stdin: get --masked allowed"     '{"tool_name":"Bash","tool_input":{"command":"keylatch get --masked clockify api_key"}}' 0
+run_case_stdin "stdin: tilde .keylatch Read blocked"    '{"tool_name":"Read","tool_input":{"file_path":"~/.keylatch/vault/imports/plaintext.env"}}' 2
+run_case_stdin "stdin: absolute .keylatch Read blocked" '{"tool_name":"Read","tool_input":{"file_path":"/Users/u/.keylatch/vault/imports/plaintext.env"}}' 2
+run_case_stdin "stdin: env dump blocked"         '{"tool_name":"Bash","tool_input":{"command":"printenv"}}'                               2
+run_case_stdin "stdin: unrelated command allowed" '{"tool_name":"Bash","tool_input":{"command":"echo hello"}}'                            0
+run_case_stdin "stdin: unrelated Read allowed"   '{"tool_name":"Read","tool_input":{"file_path":"/tmp/notes.md"}}'                        0
+run_case_stdin "stdin: empty payload allowed"    '{}'                                                                                     0
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

@@ -21,6 +21,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/budget"
 	"github.com/keylatch/keylatch/internal/gateway/route"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -83,6 +84,10 @@ type ServerOptions struct {
 	TelemetrySink telemetry.Sink
 
 	Metrics *ui.MetricsCollector
+
+	// Budget enforces per-actor budget limits on gateway requests (Phase 13
+	// wiring). When nil, no budget enforcement is applied.
+	Budget budget.BudgetCounter
 }
 
 // Server is the local gateway HTTP server.
@@ -101,6 +106,11 @@ type Server struct {
 	defaultHTTPClient *http.Client
 	// telemetrySink receives anonymised usage events. nil → NoopSink.
 	telemetrySink telemetry.Sink
+	// budget enforces per-actor limits; nil → no enforcement.
+	budget budget.BudgetCounter
+	// actorHashKey is the domain-separated key for HMAC'ing actor IDs in
+	// budget denial receipts (derived from SigningKey, never the raw key).
+	actorHashKey []byte
 }
 
 // RuntimeDecision describes the routing + credential decision for a request.
@@ -204,6 +214,8 @@ func New(opts ServerOptions) (*Server, error) {
 		httpClients:       httpClients,
 		defaultHTTPClient: defaultClient,
 		telemetrySink:     opts.TelemetrySink,
+		budget:            opts.Budget,
+		actorHashKey:      budget.DeriveActorHashKey(opts.SigningKey),
 	}
 
 	// hostOverrideBlockerMiddleware is configured with an empty allowedHosts
