@@ -66,8 +66,15 @@ func actorFromRequest(r *http.Request) string {
 
 // hashActorID returns an HMAC-SHA256 hex digest of actorID.
 func hashActorID(actorID string) string {
-	h := hmac.New(sha256.New, budgetMiddlewareHMACKey)
-	h.Write([]byte(actorID))
+	return HashActor(budgetMiddlewareHMACKey, actorID)
+}
+
+// HashActor returns a truncated HMAC-SHA256 hex digest of actor under key.
+// Callers with a real signing key (e.g. the gateway) should use this instead
+// of the package-level fallback key so receipts are keyed per deployment.
+func HashActor(key []byte, actor string) string {
+	h := hmac.New(sha256.New, key)
+	h.Write([]byte(actor))
 	return hex.EncodeToString(h.Sum(nil)[:16])
 }
 
