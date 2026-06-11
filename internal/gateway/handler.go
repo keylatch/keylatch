@@ -12,6 +12,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/budget"
 	"github.com/keylatch/keylatch/internal/gateway/approval"
 	"github.com/keylatch/keylatch/internal/gateway/redact"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
@@ -46,6 +47,7 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 //  5. Check t.Capabilities ⊇ {rt.Capability} | 403
 //     5b. LLM-session gate (from JWT claim, NOT from server env)
 //  6. policy check (Phase 9: always allow via CheckPolicy stub)
+//     6-budget. per-actor budget CheckAndRecord | 429 with value-free denial receipt
 //     6a. substitution.CheckRequest | 400
 //  7. vault.Get (canonical path for provider) → rootCredential
 //  8. broker.Exchange → accessToken | 503 on ErrVaultLocked / ErrExchangeUnsupported
@@ -169,6 +171,30 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 6: Policy check (Phase 9: pass-through; full policy enforcement in later phase).
 	// Placeholder — no policy evaluation yet.
+
+	// Step 6-budget: per-actor budget enforcement. CheckAndRecord is atomic
+	// (no TOCTOU between check and record, C-4); the actor identity comes from
+	// the verified JWT claim, never from a client-controlled header. Denials
+	// return a value-free receipt with an HMAC'd actor ID.
+	if s.budget != nil {
+		if budgetErr := s.budget.CheckAndRecord(ctx, t.Actor, rt.Capability, 1); budgetErr != nil {
+			receipt := budget.BudgetDenialReceipt{
+				ActorHMAC:  budget.HashActor(s.actorHashKey, t.Actor),
+				Capability: rt.Capability,
+				LimitType:  "request_budget",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			rb, _ := json.Marshal(receipt)
+			_, _ = w.Write(rb)
+			s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
+				"error":      "budget_exceeded",
+				"capability": rt.Capability,
+			})
+			outcome = audit.OutcomeDenied
+			return
+		}
+	}
 
 	// Step 6-SSRF: SSRF gate (FIND2-017). Validate the route-resolved upstream
 	// host against the provider allowlist and IP deny-ranges before any
