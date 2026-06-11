@@ -2,7 +2,7 @@
 #
 # Keylatch CLI container image — multi-stage build from source.
 #
-# Stage 1 (builder): golang:1.25-alpine compiles the CLI binary.
+# Stage 1 (builder): golang:1.26-alpine compiles the CLI binary.
 # Stage 2 (runtime): distroless/static, non-root user, /keylatch ENTRYPOINT.
 #
 # The image ships ONLY the `keylatch` CLI. The Tauri desktop shell is
@@ -22,7 +22,7 @@
 # -----------------------------------------------------------------------
 # Stage 1: builder.
 # -----------------------------------------------------------------------
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
