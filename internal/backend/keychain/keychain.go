@@ -55,16 +55,6 @@ type KeychainBackend struct {
 	initACLOnce sync.Once //nolint:unused // planned: deferred ACL initialization gate for Phase 6
 }
 
-// DefaultDBPath returns the canonical path of the dedicated keychain DB
-// (~/.keylatch/keylatch.keychain-db), matching Open's default resolution.
-func DefaultDBPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("keychain: resolve home: %w", err)
-	}
-	return home + "/.keylatch/keylatch.keychain-db", nil
-}
-
 // Open validates options and returns an initialized KeychainBackend.
 // Does NOT unlock the keychain (S1-9). Unlock is lazy, per-operation.
 func Open(opts Options) (*KeychainBackend, error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 
 	"github.com/keylatch/keylatch/internal/backend/keychain"
