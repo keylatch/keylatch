@@ -7,13 +7,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/guard"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 )
@@ -100,17 +103,88 @@ func checkExternalSOPS(probe kexec.Probe) Check {
 	}
 }
 
-// checkACLKeychainUnlock is a placeholder for Phase 1.
+// checkACLKeychainUnlock verifies the keychain ACL is correctly configured.
 func checkACLKeychainUnlock() Check {
-	return func(_ context.Context) Status {
+	return func(ctx context.Context) Status {
+		if runtime.GOOS != "darwin" {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Detail:  "keychain ACL check: skipped (not macOS)",
+				Tags:    []string{"acl"},
+			}
+		}
+
+		keychainDB := filepath.Join(os.Getenv("HOME"), ".keylatch", "keylatch.keychain-db")
+		if _, err := os.Stat(keychainDB); err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Detail:  "keychain ACL check: skipped (keychain not initialised)",
+				Tags:    []string{"acl"},
+			}
+		}
+
+		kb, err := keychain.Open(keychain.Options{})
+		if err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Warn:    true,
+				Detail:  fmt.Sprintf("keychain ACL: could not open keychain backend: %v", err),
+				Fix:     "Run `keylatch keychain-init --verify-acl` to repair the ACL.",
+				Tags:    []string{"acl"},
+			}
+		}
+
+		if err := kb.VerifyACL(ctx); err != nil {
+			return Status{
+				Name:    "acl.keychain_unlock",
+				Section: "providers",
+				OK:      true,
+				Warn:    true,
+				Detail:  fmt.Sprintf("keychain ACL: %v", err),
+				Fix:     "Run `keylatch keychain-init --verify-acl` to repair the ACL.",
+				Tags:    []string{"acl"},
+			}
+		}
 		return Status{
 			Name:    "acl.keychain_unlock",
 			Section: "providers",
 			OK:      true,
-			Warn:    true,
-			Detail:  "keychain ACL unlock policy: not yet configured (Phase 1 placeholder)",
-			Fix:     "Run `keylatch backend init` after Phase 1 ships.",
+			Detail:  "keychain ACL: ok",
 			Tags:    []string{"acl"},
+		}
+	}
+}
+
+// checkAgentGuard warns when no agent exfiltration guard is installed for
+// any supported agent.
+func checkAgentGuard() Check {
+	return func(_ context.Context) Status {
+		for _, agent := range guard.SupportedAgents {
+			ok, err := guard.IsInstalled(agent, guard.InstallOpts{})
+			if err == nil && ok {
+				return Status{
+					Name:    "agent.guard",
+					Section: "environment",
+					OK:      true,
+					Detail:  fmt.Sprintf("exfiltration guard installed for agent %q", agent),
+					Tags:    []string{"guard"},
+				}
+			}
+		}
+		return Status{
+			Name:    "agent.guard",
+			Section: "environment",
+			OK:      true,
+			Warn:    true,
+			Detail:  "no agent exfiltration guard installed",
+			Fix:     "keylatch install-guard <agent>",
+			Tags:    []string{"guard"},
 		}
 	}
 }
@@ -571,6 +645,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"environment", checkVersionBinary()},
 		{"environment", checkPlatform()},
 		{"environment", checkLLMSession(env)},
+		{"environment", checkAgentGuard()},
 		{"environment", checkPathsConfig(env)},
 		{"environment", checkPathsVault(env)},
 		{"environment", checkPathsAudit(env)},
