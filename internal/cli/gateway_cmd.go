@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/budget"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/gateway/docker"
@@ -116,6 +117,8 @@ func newGatewayUpCmd() *cobra.Command {
 		unsafeBindAll bool
 		withProxy     bool
 		proxyPort     int
+		budgetPerHour float64
+		budgetPerDay  float64
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -150,6 +153,12 @@ func newGatewayUpCmd() *cobra.Command {
 				childArgs := []string{"gateway", "up", fmt.Sprintf("--port=%d", port)}
 				if unsafeBindAll {
 					childArgs = append(childArgs, "--unsafe-bind-all")
+				}
+				if budgetPerHour > 0 {
+					childArgs = append(childArgs, fmt.Sprintf("--budget-per-hour=%g", budgetPerHour))
+				}
+				if budgetPerDay > 0 {
+					childArgs = append(childArgs, fmt.Sprintf("--budget-per-day=%g", budgetPerDay))
 				}
 				if err := startDetached(childArgs, pidPath); err != nil {
 					return err
@@ -189,6 +198,19 @@ func newGatewayUpCmd() *cobra.Command {
 				fmt.Fprintf(c.ErrOrStderr(), "warning: audit logger unavailable (%v) — vault operations will not be audited\n", auditErr)
 			}
 
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+			defer cancel()
+
+			// Per-actor budget enforcement: requests count 1 against the
+			// hourly/daily windows when configured (0 = disabled).
+			var budgetCounter budget.BudgetCounter
+			if budgetPerHour > 0 || budgetPerDay > 0 {
+				budgetCounter = budget.NewInMemoryBudgetCounter(ctx, budget.BudgetPolicy{
+					SpendPerHour: budgetPerHour,
+					SpendPerDay:  budgetPerDay,
+				})
+			}
+
 			opts := gateway.ServerOptions{
 				Bind:              bind,
 				SigningKey:        signingKey,
@@ -198,6 +220,7 @@ func newGatewayUpCmd() *cobra.Command {
 				TokenStorePath:    paths.GatewayTokens(env),
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
+				Budget:            budgetCounter,
 			}
 
 			srv, err := gateway.New(opts)
@@ -213,9 +236,6 @@ func newGatewayUpCmd() *cobra.Command {
 			defer func() { _ = os.Remove(pidPath) }() //nolint:errcheck // PID cleanup on exit; error non-actionable in defer
 
 			fmt.Fprintf(c.OutOrStdout(), "gateway: listening on %s\n", bind)
-
-			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-			defer cancel()
 
 			// --with-proxy: start the proxy alongside the gateway.
 			// W5: check both PID liveness AND stored port to determine whether the
@@ -252,6 +272,8 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "allow non-loopback bind (non-LLM sessions only)")
 	cmd.Flags().BoolVar(&withProxy, "with-proxy", false, "also start the CONNECT proxy alongside the gateway")
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
+	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
+	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
 	return cmd
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -205,22 +207,57 @@ func (l *Logger) Prune(cutoff time.Time) (int, error) {
 		return 0, nil
 	}
 
-	// Rewrite: truncate + re-append kept lines.
-	if err := l.file.Truncate(0); err != nil {
+	// Rewrite kept lines to a temp file and atomically swap it in, then
+	// reopen the logger handle. Truncating the logger's own handle fails on
+	// Windows: O_APPEND handles carry FILE_APPEND_DATA without
+	// FILE_WRITE_DATA, so SetEndOfFile is denied.
+	dir := filepath.Dir(l.path)
+	tmp, err := os.CreateTemp(dir, ".audit-prune-*")
+	if err != nil {
 		_, _ = l.file.Seek(0, 2)
 		return 0, err
 	}
-	if _, err := l.file.Seek(0, 0); err != nil {
+	tmpName := tmp.Name()
+	cleanup := func() { _ = tmp.Close(); _ = os.Remove(tmpName) }
+	if err := tmp.Chmod(0o600); err != nil {
+		cleanup()
+		_, _ = l.file.Seek(0, 2)
 		return 0, err
 	}
 	for _, line := range kept {
-		if _, err := l.file.WriteString(line + "\n"); err != nil {
+		if _, err := tmp.WriteString(line + "\n"); err != nil {
+			cleanup()
 			_, _ = l.file.Seek(0, 2)
 			return 0, err
 		}
 	}
-	_ = l.file.Sync()
-	_, _ = l.file.Seek(0, 2)
+	if err := tmp.Sync(); err != nil {
+		cleanup()
+		_, _ = l.file.Seek(0, 2)
+		return 0, err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		_, _ = l.file.Seek(0, 2)
+		return 0, err
+	}
+	if err := l.file.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return 0, err
+	}
+	if err := os.Rename(tmpName, l.path); err != nil {
+		_ = os.Remove(tmpName)
+		// Reopen the original log so the logger stays usable.
+		if f, oerr := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600); oerr == nil {
+			l.file = f
+		}
+		return 0, err
+	}
+	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	if err != nil {
+		return 0, err
+	}
+	l.file = f
 
 	// Reset chain state to match the last kept line.
 	l.seq = 0
