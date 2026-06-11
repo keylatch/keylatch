@@ -179,7 +179,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	if s.budget != nil {
 		if budgetErr := s.budget.CheckAndRecord(ctx, t.Actor, rt.Capability, 1); budgetErr != nil {
 			receipt := budget.BudgetDenialReceipt{
-				ActorHMAC:  budget.HashActor(s.opts.SigningKey, t.Actor),
+				ActorHMAC:  budget.HashActor(s.actorHashKey, t.Actor),
 				Capability: rt.Capability,
 				LimitType:  "request_budget",
 			}

@@ -108,6 +108,9 @@ type Server struct {
 	telemetrySink telemetry.Sink
 	// budget enforces per-actor limits; nil → no enforcement.
 	budget budget.BudgetCounter
+	// actorHashKey is the domain-separated key for HMAC'ing actor IDs in
+	// budget denial receipts (derived from SigningKey, never the raw key).
+	actorHashKey []byte
 }
 
 // RuntimeDecision describes the routing + credential decision for a request.
@@ -212,6 +215,7 @@ func New(opts ServerOptions) (*Server, error) {
 		defaultHTTPClient: defaultClient,
 		telemetrySink:     opts.TelemetrySink,
 		budget:            opts.Budget,
+		actorHashKey:      budget.DeriveActorHashKey(opts.SigningKey),
 	}
 
 	// hostOverrideBlockerMiddleware is configured with an empty allowedHosts
