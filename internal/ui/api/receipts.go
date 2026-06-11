@@ -192,6 +192,15 @@ func (h *receiptsStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
+	// Subscribe before writing the initial heartbeat so that any Push that
+	// races with the client reading the heartbeat is not lost. If the store is
+	// nil we skip subscription and fall through to the heartbeat-only loop.
+	var ch chan runner.RuntimeReceipt
+	if h.store != nil {
+		ch = h.store.subscribe()
+		defer h.store.unsubscribe(ch)
+	}
+
 	// Initial heartbeat.
 	fmt.Fprintf(w, "event: heartbeat\ndata: {\"time\":\"%s\"}\n\n", time.Now().UTC().Format(time.RFC3339))
 	flusher.Flush()
@@ -210,9 +219,6 @@ func (h *receiptsStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 			}
 		}
 	}
-
-	ch := h.store.subscribe()
-	defer h.store.unsubscribe(ch)
 
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
