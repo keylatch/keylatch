@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-06-01
+## [0.9.2] - 2026-06-11
 
-> **Note on code-signing (1.0.0):** Desktop binaries are not code-signed in this release. On macOS, run `xattr -dr com.apple.quarantine keylatch.app` if Gatekeeper blocks the app. On Windows, dismiss the SmartScreen prompt. Code-signing will be added in a future release.
+*Originally drafted as 1.0.0; re-versioned — 1.0.0 ships after the alpha cycle.*
+
+> **Note on code-signing (0.9.2):** Desktop binaries are not code-signed in this release. On macOS, run `xattr -dr com.apple.quarantine keylatch.app` if Gatekeeper blocks the app. On Windows, dismiss the SmartScreen prompt. Code-signing will be added in a future release.
 
 ### Zero-trust credential vault
 
