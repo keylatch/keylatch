@@ -77,7 +77,6 @@ github.com/keylatch/keylatch/internal/cli
 github.com/keylatch/keylatch/internal/backend
 github.com/keylatch/keylatch/internal/mcp
 github.com/keylatch/keylatch/internal/crypto/kek
-github.com/keylatch/keylatch/internal/agent
 github.com/keylatch/keylatch/internal/exec
 github.com/keylatch/keylatch/internal/crypto/jcs
 github.com/keylatch/keylatch/internal/backend/dispatch
