@@ -43,7 +43,7 @@ fi
 
 echo "==> Verifying cosign signature for $version"
 cosign verify-blob \
-  --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
+  --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --certificate "$cert_file" \
   --signature "$sig_file" \
