@@ -51,7 +51,6 @@ github.com/keylatch/keylatch/internal/backend/keychain
 # internal/backend/lastpass — LastPass CLI wrapper
 github.com/keylatch/keylatch/internal/backend/lastpass
 # internal/backend/nordpass — NordPass CLI wrapper
-github.com/keylatch/keylatch/internal/backend/nordpass
 # internal/backend/op — 1Password CLI wrapper
 github.com/keylatch/keylatch/internal/backend/op
 # internal/backend/protonpass — ProtonPass CLI wrapper
@@ -61,7 +60,6 @@ github.com/keylatch/keylatch/internal/backend/protonpass
 # internal/daemon — OS process/signal management; platform-specific notify and process code
 github.com/keylatch/keylatch/internal/daemon
 # internal/sidecar/ipc — Tauri/Go IPC over Unix domain sockets; requires live sidecar process
-github.com/keylatch/keylatch/internal/sidecar/ipc
 
 # --- Build-time tooling ---
 # packaging/release-manifest — standalone go:generate tool; invoked by goreleaser, not unit-tested
