@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
+	"path/filepath"
 )
 
 // CommandRunner is the interface for invoking external binaries. All calls to
@@ -30,7 +30,9 @@ type defaultRunner struct{}
 // S1-8: rejects relative paths before any exec call.
 func (defaultRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
 	// S1-8: reject relative paths — only absolute paths are accepted.
-	if !strings.HasPrefix(name, "/") {
+	// filepath.IsAbs handles platform semantics: a "/"-prefix check rejected
+	// every Windows path (C:\...), breaking external CLI exec on Windows.
+	if !filepath.IsAbs(name) {
 		return nil, nil, 0, fmt.Errorf("exec: relative path rejected: %s", name)
 	}
 
