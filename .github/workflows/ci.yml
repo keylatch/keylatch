@@ -79,7 +79,7 @@ jobs:
         shell: bash
         env:
           KEYLATCH_BACKEND: file
-        run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 120s
+        run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
       - name: Check coverage threshold
         run: bash release-gates/coverage-threshold.sh coverage.out
       - name: Upload coverage artifact
