@@ -423,6 +423,39 @@ jobs:
             -o -name "keylatch-*.json" \
           \) -exec cp {} release-files/ \;
           echo "--- collected ---" && ls -1 release-files/
+      - uses: sigstore/cosign-installer@v3
+      - name: cosign-sign desktop installers
+        # The CLI archives are cosigned in the cosign-sign job, but the desktop
+        # bundles are built in a separate job and never pass through it. Sign
+        # them here — keyless OIDC, no secrets — so every shipped artifact has a
+        # verifiable Sigstore signature. (Native code-signing still pending certs.)
+        run: |
+          shopt -s nullglob
+          signed=0
+          for f in release-files/*.dmg release-files/*-setup.exe release-files/*.AppImage release-files/*.deb; do
+            [ -e "$f" ] || continue
+            echo "Signing $f"
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "$f"
+            signed=$((signed + 1))
+          done
+          echo "Cosigned $signed desktop installer(s)."
+      - name: verify desktop installer signatures
+        run: |
+          shopt -s nullglob
+          for f in release-files/*.dmg release-files/*-setup.exe release-files/*.AppImage release-files/*.deb; do
+            [ -e "$f" ] || continue
+            echo "Verifying $f"
+            cosign verify-blob \
+              --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              --certificate "${f}.pem" \
+              --signature "${f}.sig" \
+              "$f"
+          done
+          echo "All desktop installer signatures verified."
       - name: attach artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
