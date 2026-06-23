@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-06-23
+
+Maintenance release on the 0.9.x public-alpha line. No behavioural changes to the vault, gateway, or guard — this release fixes how the installers are versioned and how the release is published so external testers get a correct, unambiguous build.
+
+> **Note on code-signing (0.9.3):** Unchanged from 0.9.2 — desktop binaries are not code-signed. On macOS, run `xattr -dr com.apple.quarantine keylatch.app` if Gatekeeper blocks the app. On Windows, dismiss the SmartScreen prompt.
+
+### Fixed
+
+- **Desktop installers now carry the release version.** Previously the `.dmg`, `.exe`, `.AppImage`, and `.deb` were stamped with the static manifest version rather than the release tag (e.g. an `0.9.3` release shipping `0.9.2`-labelled installers). The release pipeline now stamps the desktop bundle version from the git tag, matching the CLI artifacts.
+- **Pre-release tags are no longer published as "Latest".** Hyphenated tags (`-alpha`/`-beta`/`-rc`) are now flagged as GitHub pre-releases, so a clean `0.9.x` tag is the default download for testers and internal alphas no longer shadow it.
+
+### Changed
+
+- Substantial test-coverage hardening across credential backends (1Password, Bitwarden, Infisical, NordPass, GCP SM, Azure KV), IPC, exec, and agent presets — `internal/exec` now enforced at the 85% coverage gate.
+- CI hygiene: longer `go-test` timeout, untracked the stray `release-manifest` binary, and cosign identity verification now accepts pre-release tags.
+
 ## [0.9.2] - 2026-06-11
 
 *Originally drafted as 1.0.0; re-versioned — 1.0.0 ships after the alpha cycle.*
