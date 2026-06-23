@@ -82,7 +82,7 @@ A Claude Code hook script (`contrib/agent-guards/claude-code/block-keylatch-exfi
 
 ## Artifact signing
 
-All release artifacts are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) via GitHub Actions OIDC (keyless signing). No long-lived signing keys are stored.
+All release artifacts — CLI archives, the checksums file, the SBOM, and the desktop installers (`.dmg`/`.exe`/`.AppImage`/`.deb`) — are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) via GitHub Actions OIDC (keyless signing). No long-lived signing keys are stored. See [How Keylatch signing works](architecture/signing.md) for the full model, the keyless mechanism, and the cosign-vs-OS-code-signing trust boundary.
 
 To verify a release artifact:
 
