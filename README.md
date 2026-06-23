@@ -50,11 +50,15 @@ cosign verify-blob \
   --signature <artifact>.sig
 ```
 
-> **Note on code-signing:** Desktop binaries are not yet code-signed.
+> **Note on code-signing:** Desktop installers are not yet **OS code-signed**
+> (no Apple notarization or Windows Authenticode certificate), so Gatekeeper and
+> SmartScreen will warn on first launch. Release artifacts are cosign-signed for
+> integrity and origin verification — see [Verifying releases](docs/verifying-releases.md)
+> and [How signing works](docs/architecture/signing.md).
 > - **macOS:** If Gatekeeper blocks the app, run `xattr -dr com.apple.quarantine keylatch.app`
 > - **Windows:** Dismiss the SmartScreen prompt on first launch
 >
-> Code-signing will be added in a future release.
+> OS code-signing (to remove these warnings) will be added in a future release.
 
 ### Scoop (Windows)
 
