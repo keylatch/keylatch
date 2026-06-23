@@ -240,7 +240,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-latest, windows-latest]
+        # MVP ships the Linux desktop bundle only (AppImage/.deb — no paid
+        # signing certificate required). The macOS .dmg and Windows .exe desktop
+        # apps are deferred to keep release costs down; their Tauri build code
+        # stays in the repo. To re-enable them post-MVP, set the repo variable
+        # DESKTOP_OS_MATRIX to '["macos-14","ubuntu-latest","windows-latest"]'
+        # in repo settings — no code change required.
+        os: ${{ fromJSON(vars.DESKTOP_OS_MATRIX || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     outputs:
       windows_failed: ${{ steps.set_windows_failed.outputs.windows_failed }}
