@@ -89,6 +89,25 @@ cosign verify-blob \
 cat keylatch-v<VERSION>.cdx.json | jq '.components[].name' | head -20
 ```
 
+### Step 4: Verify a desktop installer
+
+The desktop installers (`.dmg`, `.exe`, `.AppImage`, `.deb`) are cosign-signed too — each ships
+with an adjacent `.sig` and `.pem`. This is independent of native Apple/Windows code-signing (which
+makes Gatekeeper/SmartScreen happy and is still pending certificates); cosign gives you origin and
+integrity assurance today.
+
+```bash
+# Download an installer and its signature (adjust the filename for your platform)
+curl -LO https://github.com/keylatch/keylatch/releases/download/v<VERSION>/Keylatch_<VERSION>_aarch64.dmg
+curl -LO https://github.com/keylatch/keylatch/releases/download/v<VERSION>/Keylatch_<VERSION>_aarch64.dmg.sig
+
+cosign verify-blob \
+  --certificate-identity-regexp '^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --signature Keylatch_<VERSION>_aarch64.dmg.sig \
+  Keylatch_<VERSION>_aarch64.dmg
+```
+
 ## Release pipeline overview
 
 The Keylatch release pipeline (`.github/workflows/release.yml`) performs these steps in order:
@@ -99,7 +118,8 @@ The Keylatch release pipeline (`.github/workflows/release.yml`) performs these s
 4. **Release gates** — docs scan, provider template validation, artifact scan, binary smoke test
 5. **cosign signing** — all archives, the checksums file, and the SBOM are signed with `cosign sign-blob --yes` (keyless, GitHub OIDC)
 6. **Release manifest** — a JSON manifest of all artifacts is generated and signed
-7. **GitHub Release** — all artifacts, SBOMs, signatures, and the manifest are attached
+7. **Desktop installer signing** — in the publish job the `.dmg`/`.exe`/`.AppImage`/`.deb` bundles are cosign-signed and the signatures verified before upload
+8. **GitHub Release** — all artifacts, SBOMs, signatures, and the manifest are attached
 
 ## Transparency log
 
