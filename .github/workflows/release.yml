@@ -268,6 +268,19 @@ jobs:
       - name: install tauri-cli
         run: cargo binstall tauri-cli --version "^2" --no-confirm --locked
 
+      - name: stamp desktop bundle version from release tag
+        shell: bash
+        run: |
+          # Single source of truth = the git tag. Tauri reads the bundle
+          # version from tauri.conf.json, which is otherwise a dev placeholder
+          # and would mislabel every installer (e.g. a 0.9.3 release shipping
+          # 0.9.2 .dmg/.exe/.AppImage). Mirror the goreleaser `--version` flag.
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Stamping desktop bundles with version: $VERSION"
+          tmp=$(mktemp)
+          jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > "$tmp" && mv "$tmp" src-tauri/tauri.conf.json
+          echo "tauri.conf.json version is now: $(jq -r '.version' src-tauri/tauri.conf.json)"
+
       - name: stage keylatchd sidecar (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -415,6 +428,10 @@ jobs:
         with:
           files: release-files/*
           fail_on_unmatched_files: false
+          # Hyphenated tags (alpha/beta/rc) are prereleases and must not become
+          # the "Latest" download. A clean tag (v0.9.3) ships as Latest — the
+          # default grab for external testers.
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: windows bundle status
