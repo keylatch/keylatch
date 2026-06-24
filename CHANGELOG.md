@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Documentation: the README "Desktop app" section and `docs/` no longer describe the desktop app as macOS/Windows/Linux. Corrected to match the MVP — the desktop app ships for Linux; macOS/Windows are deferred (use the CLI's `keylatch ui`).
+
 ## [0.9.4] - 2026-06-24
 
 First MVP-scoped release: ships the self-contained CLI (macOS/Windows/Linux), the Docker image, and the Linux desktop app (AppImage/.deb). macOS and Windows desktop apps are deferred to a post-MVP release — use the CLI on those platforms (`keylatch ui` provides the browser GUI).

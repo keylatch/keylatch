@@ -2,6 +2,8 @@
 
 The KeyLatch desktop app (Tauri) bundles the Go backend and a React SPA into a single native window. All API routes are served locally on `127.0.0.1:7890`.
 
+> **Availability:** Currently shipped for **Linux** (AppImage/.deb). macOS and Windows desktop builds are deferred to a post-MVP release — on those platforms, use the CLI; `keylatch ui` serves the same UI in your browser.
+
 ## Connections page
 
 The **Connections** page (`/connections`) replaces the old single-provider `<select>` with a multi-provider card grid.
