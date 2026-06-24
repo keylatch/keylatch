@@ -26,6 +26,8 @@ This wires a `PreToolUse` hook into Claude Code that blocks credential access pa
 
 ## Install
 
+Keylatch ships as a **self-contained CLI** (macOS, Windows, Linux), a **Docker image**, and a **Linux desktop app**. The CLI is the complete product — `keylatch ui` opens the full browser GUI, so no separate desktop app is required. Native macOS/Windows desktop apps are planned for a post-MVP release; on those platforms, use the CLI.
+
 ### Homebrew (macOS / Linux)
 
 ```bash
@@ -50,15 +52,13 @@ cosign verify-blob \
   --signature <artifact>.sig
 ```
 
-> **Note on code-signing:** Desktop installers are not yet **OS code-signed**
-> (no Apple notarization or Windows Authenticode certificate), so Gatekeeper and
-> SmartScreen will warn on first launch. Release artifacts are cosign-signed for
-> integrity and origin verification — see [Verifying releases](docs/verifying-releases.md)
-> and [How signing works](docs/architecture/signing.md).
-> - **macOS:** If Gatekeeper blocks the app, run `xattr -dr com.apple.quarantine keylatch.app`
-> - **Windows:** Dismiss the SmartScreen prompt on first launch
->
-> OS code-signing (to remove these warnings) will be added in a future release.
+> **Note on signing:** All release artifacts — CLI archives, checksums, the SBOM, and the
+> Linux desktop bundle — are cosign-signed; see [Verifying releases](docs/verifying-releases.md)
+> and [How signing works](docs/architecture/signing.md). The CLI is **not** OS code-signed:
+> install via **Homebrew or Scoop** to avoid any Gatekeeper/SmartScreen friction, or if you
+> download the raw macOS binary directly, run `xattr -dr com.apple.quarantine ./keylatch`.
+> Native macOS/Windows **desktop apps** (with Apple notarization / Windows Authenticode) are
+> planned for a post-MVP release.
 
 ### Scoop (Windows)
 
@@ -73,6 +73,10 @@ scoop install keylatch
 docker pull ghcr.io/keylatch/keylatch:latest
 docker run --rm ghcr.io/keylatch/keylatch:latest --help
 ```
+
+### Desktop app (Linux)
+
+Download `Keylatch_<version>_amd64.AppImage` or `Keylatch_<version>_amd64.deb` from the [releases page](https://github.com/keylatch/keylatch/releases). macOS and Windows desktop apps are coming in a later release — on those platforms, use the CLI (`keylatch ui` provides the same browser GUI).
 
 ### Build from source
 

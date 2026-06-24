@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **MVP distribution scope.** Release builds ship the **Linux desktop bundle (AppImage/.deb) only**; the macOS `.dmg` and Windows `.exe` desktop apps are deferred to a post-MVP release to avoid code-signing certificate costs. The Tauri code stays in the repo — re-enable macOS/Windows desktop builds by setting the `DESKTOP_OS_MATRIX` repo variable (no code change). On macOS/Windows, use the self-contained CLI; `keylatch ui` provides the same browser GUI.
+
+### Added
+
+- Linux desktop bundle is now **cosign-signed** alongside the CLI archives, checksums, and SBOM.
+- `docs/architecture/signing.md` — explains the three signing systems and how keyless cosign works.
+
 ## [0.9.3] - 2026-06-23
 
 Maintenance release on the 0.9.x public-alpha line. No behavioural changes to the vault, gateway, or guard — this release fixes how the installers are versioned and how the release is published so external testers get a correct, unambiguous build.
