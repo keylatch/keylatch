@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-06-24
+
+First MVP-scoped release: ships the self-contained CLI (macOS/Windows/Linux), the Docker image, and the Linux desktop app (AppImage/.deb). macOS and Windows desktop apps are deferred to a post-MVP release — use the CLI on those platforms (`keylatch ui` provides the browser GUI).
+
 ### Changed
 
 - **MVP distribution scope.** Release builds ship the **Linux desktop bundle (AppImage/.deb) only**; the macOS `.dmg` and Windows `.exe` desktop apps are deferred to a post-MVP release to avoid code-signing certificate costs. The Tauri code stays in the repo — re-enable macOS/Windows desktop builds by setting the `DESKTOP_OS_MATRIX` repo variable (no code change). On macOS/Windows, use the self-contained CLI; `keylatch ui` provides the same browser GUI.
