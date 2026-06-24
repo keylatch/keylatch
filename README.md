@@ -419,9 +419,9 @@ For the vulnerability disclosure policy, SBOM, and artifact verification instruc
 
 ## Desktop app
 
-The Keylatch desktop app (macOS / Windows / Linux) wraps the same trusted runtime via a `keylatchd` sidecar. It provides a tray icon, approval inbox, first-run wizard, and one-click agent profile setup — no terminal required for day-to-day use.
+The Keylatch desktop app (Tauri) wraps the same trusted runtime via a `keylatchd` sidecar. It provides a tray icon, approval inbox, first-run wizard, and one-click agent profile setup — no terminal required for day-to-day use.
 
-Desktop builds are produced by goreleaser and are not part of the Docker image.
+The desktop app currently ships for **Linux** (AppImage/.deb); macOS and Windows desktop builds are deferred to a post-MVP release. On those platforms the CLI delivers the same GUI via `keylatch ui`. Desktop bundles are built with Tauri and are not part of the Docker image.
 
 ## Docker
 

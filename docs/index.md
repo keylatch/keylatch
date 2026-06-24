@@ -100,7 +100,7 @@ How to integrate Keylatch with agents, languages, and CI systems. Start at the [
 
 | Page | Description |
 |------|-------------|
-| [Desktop App](./desktop-app.md) | macOS / Windows desktop app — tray icon, approval inbox, first-run wizard |
+| [Desktop App](./desktop-app.md) | Desktop app (Tauri) — tray icon, approval inbox, first-run wizard. Ships for Linux; macOS/Windows deferred post-MVP (use the CLI's `keylatch ui`) |
 | [Desktop Parity](./desktop-parity.md) | Feature parity matrix between CLI and desktop app |
 | [Telemetry](./telemetry.md) | What is collected, opt-in/opt-out, and data policy |
 | [Experimental Features](./experimental.md) | Features behind the experimental gate |
