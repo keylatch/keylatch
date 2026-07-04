@@ -1,7 +1,7 @@
 //go:build !windows
 
 // Package grant — Unix flock-based consumption log implementation.
-// FIND3-009: inter-process atomic use counting via append-only log + flock.
+// inter-process atomic use counting via append-only log + flock.
 package grant
 
 import (
@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// consumeUseLog implements FIND3-009 on Unix using flock.
+// consumeUseLog implements on Unix using flock.
 // It flocks the <id>.lock file, counts lines in the consumption log, and
 // appends a record if count < MaxUses.
 // Returns true if a use was successfully recorded, false if uses are exhausted.

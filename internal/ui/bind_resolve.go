@@ -20,9 +20,9 @@ const EnvListenKey = "KEYLATCH_UI_LISTEN"
 // non-loopback bind should be explicitly permitted (ServerOptions.AllowExternalBind).
 //
 // Precedence (highest first):
-//  1. listenFlag (--listen)
-//  2. KEYLATCH_UI_LISTEN env var
-//  3. existing behaviour: --unsafe-bind-all -> "0.0.0.0:<port>", else "127.0.0.1:<port>"
+// 1. listenFlag (--listen)
+// 2. KEYLATCH_UI_LISTEN env var
+// 3. existing behaviour: --unsafe-bind-all -> "0.0.0.0:<port>", else "127.0.0.1:<port>"
 //
 // Callers MUST still pass the result through New(), which enforces the
 // fail-closed rule: any non-loopback bind is rejected outright when

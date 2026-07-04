@@ -16,12 +16,12 @@ import (
 )
 
 // tokenShapeRE matches high-entropy token-shaped substrings that must not
-// appear in test result markers (S3-9).
+// appear in test result markers.
 var tokenShapeRE = regexp.MustCompile(`[A-Za-z0-9\-_\.]{32,}`)
 
 // Test verifies that a stored connection is healthy by executing its provider's
 // TestStrategy. Returns a TestResult with a fixed-enum status; free-form
-// upstream error text is NEVER propagated (S3-9).
+// upstream error text is NEVER propagated.
 func Test(ctx context.Context, provider, account, namespace string, store Store, httpClient *http.Client) (TestResult, error) {
 	if namespace == "" {
 		namespace = "default"
@@ -60,7 +60,7 @@ func Test(ctx context.Context, provider, account, namespace string, store Store,
 	result.Connection = fmt.Sprintf("%s/%s/%s", namespace, provider, account)
 
 	if err != nil {
-		// Map error to NetworkError — never expose raw error message (S3-9).
+		// Map error to NetworkError — never expose raw error message.
 		result.Status = TestStatusNetworkError
 		return result, nil
 	}
@@ -86,7 +86,7 @@ func executeTestStrategy(
 	case "http_post":
 		return runHTTPStrategy(ctx, "POST", strategy, provider, account, namespace, store, httpClient)
 	case "sdk_call":
-		// SDK call is provider-specific; Phase 3 maps it to an HTTP GET for now.
+		// SDK call is provider-specific; maps it to an HTTP GET for now.
 		return runHTTPStrategy(ctx, "GET", strategy, provider, account, namespace, store, httpClient)
 	default:
 		return TestResult{Status: TestStatusNetworkError}, nil
@@ -95,7 +95,7 @@ func executeTestStrategy(
 
 // runHTTPStrategy executes an HTTP-based test strategy.
 // Auth credentials are read from vault and injected into the request.
-// Status codes are mapped to a fixed enum (S3-9).
+// Status codes are mapped to a fixed enum.
 func runHTTPStrategy(
 	ctx context.Context,
 	method string,
@@ -150,10 +150,10 @@ func runHTTPStrategy(
 	// Read body, limited to 4KB to prevent memory exhaustion.
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 
-	// Map status code to fixed enum (S3-9).
+	// Map status code to fixed enum.
 	status := mapHTTPStatusToEnum(resp.StatusCode)
 
-	// Extract allowed markers from body (S3-9: no free-form text, no token-shaped strings).
+	// Extract allowed markers from body (no free-form text, no token-shaped strings).
 	var markers []string
 	if len(strategy.Expect.Markers) > 0 {
 		for _, marker := range strategy.Expect.Markers {
@@ -174,7 +174,7 @@ func runHTTPStrategy(
 }
 
 // mapHTTPStatusToEnum maps an HTTP status code to a fixed TestResult.Status enum.
-// S3-9: no free-form text; fixed enum only.
+// no free-form text; fixed enum only.
 func mapHTTPStatusToEnum(code int) string {
 	switch {
 	case code == 200 || code == 201 || code == 204:

@@ -10,7 +10,7 @@ import (
 )
 
 // listenSocket creates a Unix domain socket at path with mode 0600.
-// M7: a restrictive umask is applied before net.Listen so the socket file
+// A restrictive umask is applied before net.Listen so the socket file
 // is never world-accessible even briefly.
 func listenSocket(path string) (net.Listener, error) {
 	old := syscall.Umask(0o177)

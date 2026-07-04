@@ -9,8 +9,8 @@ type Signal struct {
 
 // Signals is the canonical ordered list of all detection signals.
 // IsLLMSession and Reasons both derive from this slice.
-// S0-2: original three signals (Claude Code, Codex, generic session flag).
-// S3-6: additional agent signals (Cursor, Aider, Gemini CLI, OpenCode).
+// Original three signals (Claude Code, Codex, generic session flag), plus
+// additional agent signals (Cursor, Aider, Gemini CLI, OpenCode).
 var Signals = []Signal{
 	{EnvKey: "CLAUDE_CODE", MatchRule: "non-empty", Label: "CLAUDE_CODE"},
 	{EnvKey: "CODEX_ENV", MatchRule: "non-empty", Label: "CODEX_ENV"},

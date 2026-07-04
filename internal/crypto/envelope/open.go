@@ -10,7 +10,7 @@ import (
 
 // Open decrypts and authenticates ciphertext using the specified algorithm.
 //
-// Security invariant S5-4: ALL authentication failure modes return the single
+// Security invariant: ALL authentication failure modes return the single
 // sentinel ErrAEADAuthFailed — wrong AAD, wrong DEK, wrong nonce, tampered
 // ciphertext, truncated ciphertext. No distinguishing information is included
 // in the error message beyond the sentinel itself.
@@ -58,7 +58,7 @@ func openXChaCha20(dek, ciphertext, nonce, aad []byte) ([]byte, error) {
 
 	plaintext, err := aead.Open(nil, nonce, ciphertext, aad)
 	if err != nil {
-		// Do not wrap — uniform oracle (S5-4).
+		// Do not wrap — uniform oracle.
 		return nil, ErrAEADAuthFailed
 	}
 	return plaintext, nil

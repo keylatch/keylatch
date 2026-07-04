@@ -127,7 +127,7 @@ func newGatewayUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 
-			// P1.3: check if gateway is already running.
+			// Check if gateway is already running.
 			pidPath := paths.GatewayPID(env)
 			if pid, running := gateway.IsRunning(pidPath); running {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: Gateway is already running (pid: %d).\n\n", pid)
@@ -137,7 +137,7 @@ func newGatewayUpCmd() *cobra.Command {
 			}
 
 			if detach {
-				// T-13-08: refuse --detach when running via `go run`.
+				// Refuse --detach when running via `go run`.
 				// `go run` compiles to a temp binary; re-exec'ing it would
 				// either fail (binary deleted) or start a dangling process
 				// tied to the go run session. Detect this condition early.
@@ -555,7 +555,7 @@ func newGatewayTokenRevokeCmd() *cobra.Command {
 // in a system temp directory; its path contains the OS temp dir prefix and
 // typically a "go-build" or "go-run" segment.
 //
-// T-13-08: used to block `gateway --detach` when running via `go run`, where
+// Used to block `gateway --detach` when running via `go run`, where
 // re-exec of a temp binary is unsafe (the binary may already be deleted or
 // the session tied to the go run invocation).
 func isGoRunArtifact() bool {

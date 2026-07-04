@@ -18,13 +18,13 @@ import (
 // RunSandboxed executes m.Executable inside an Apple sandbox-exec(1) sandbox.
 //
 // Security properties:
-//   - Executable hash is verified before exec.
-//   - ~/.keylatch is denied in the generated .sb profile.
-//   - Only explicit EnvInject vars are passed via env(1); inherit is false.
-//   - No shell string construction — argv is a slice.
-//   - KEYLATCH_* vars are never exposed in sandbox-exec's environment (cmd.Env is set explicitly).
-//   - A deprecation warning is emitted: sandbox-exec is undocumented and may
-//     be removed in a future macOS release.
+// - Executable hash is verified before exec.
+// - ~/.keylatch is denied in the generated .sb profile.
+// - Only explicit EnvInject vars are passed via env(1); inherit is false.
+// - No shell string construction — argv is a slice.
+// - KEYLATCH_* vars are never exposed in sandbox-exec's environment (cmd.Env is set explicitly).
+// - A deprecation warning is emitted: sandbox-exec is undocumented and may
+// be removed in a future macOS release.
 //
 // If featureEnabled is false, ErrFeatureFlagRequired is returned.
 func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, extraEnv []string, emitter audit.Emitter) error {
@@ -110,10 +110,10 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 }
 
 // generateSbProfile returns a TinyScheme sandbox profile that:
-//   - Denies all operations by default (deny default).
-//   - Denies file-read* and file-write* for ~/.keylatch.
-//   - Allows file-read* for system paths (/usr, /bin, /lib, /etc) and the bind mounts.
-//   - Allows process-exec for the executable.
+// - Denies all operations by default (deny default).
+// - Denies file-read* and file-write* for ~/.keylatch.
+// - Allows file-read* for system paths (/usr, /bin, /lib, /etc) and the bind mounts.
+// - Allows process-exec for the executable.
 func generateSbProfile(m *SandboxManifest) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

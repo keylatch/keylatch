@@ -1,12 +1,13 @@
 // Package lastpass implements the Backend interface using the LastPass CLI (`lpass`).
-// It shells out via internal/exec.CommandRunner and satisfies all Phase 2 security invariants.
+// It shells out via internal/exec.CommandRunner and satisfies the following
+// security invariants.
 //
 // Security invariants:
-//   - S2-1: Never print secret values to stdout/stderr.
-//   - S2-3: List zero-fills field values before returning.
-//   - S2-5: Fail-closed on binary unavailability (ErrUnavailable).
-//   - S2-9: Raw subprocess stderr never propagated; auth-failure hints only.
-//   - S2-10: Single-flight collapse for concurrent Get calls.
+//   - Never print secret values to stdout/stderr.
+//   - List zero-fills field values before returning.
+//   - Fail-closed on binary unavailability (ErrUnavailable).
+//   - Raw subprocess stderr never propagated; auth-failure hints only.
+//   - Single-flight collapse for concurrent Get calls.
 //
 // Security note: LastPass has had significant breach history. WarningMessage()
 // returns a notice that is displayed in doctor checks and describe output.
@@ -81,7 +82,7 @@ func (b *LastPassBackend) WarningMessage() string {
 }
 
 // Get returns the plaintext bytes for a canonical path via `lpass show --json`.
-// Uses single-flight collapse for concurrent identical calls (S2-10).
+// Uses single-flight collapse for concurrent identical calls.
 func (b *LastPassBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	name := lpassName(path)
 
@@ -173,7 +174,7 @@ func (b *LastPassBackend) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-// List returns metadata-only entries (S2-3) via `lpass ls --json`.
+// List returns metadata-only entries via `lpass ls --json`.
 func (b *LastPassBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	args := []string{"ls", "--json", "--sync=no"}
 	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.opts.Bin, args, nil)
@@ -202,7 +203,7 @@ func (b *LastPassBackend) List(ctx context.Context, prefix string) ([]backend.En
 		if prefix != "" && !strings.HasPrefix(path, prefix) {
 			continue
 		}
-		// S2-3: never include value fields in list output.
+		// Never include value fields in list output.
 		entries = append(entries, backend.Entry{
 			Meta: backend.Meta{
 				Path:     path,
@@ -225,7 +226,7 @@ func lpassName(path string) string {
 	return "keylatch/" + path
 }
 
-// mapGetError maps lpass stderr to typed backend errors (S2-9).
+// mapGetError maps lpass stderr to typed backend errors.
 func (b *LastPassBackend) mapGetError(errStr string) error {
 	if isLpassNotFound(errStr) {
 		return fmt.Errorf("%w: lastpass item not found", backend.ErrNotFound)

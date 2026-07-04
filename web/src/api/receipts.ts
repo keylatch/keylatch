@@ -1,16 +1,16 @@
 /**
  * receipts.ts — typed client for GET /v1/receipts.
  *
- * Security invariants (S-RM-9):
- *   - Receipt interface never exposes a credential value field.
- *   - credential_shape is metadata only (shape name, not the secret).
+ * Security invariants:
+ * - Receipt interface never exposes a credential value field.
+ * - credential_shape is metadata only (shape name, not the secret).
  */
 
 import { api, type RequestOptions } from '../lib/api'
 
 /**
  * Receipt mirrors the Go runner.RuntimeReceipt JSON shape.
- * No credential values — only metadata (S-RM-9).
+ * No credential values — only metadata.
  */
 export interface Receipt {
   /**

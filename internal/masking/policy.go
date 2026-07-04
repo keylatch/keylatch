@@ -1,5 +1,5 @@
 // Package masking implements response body masking, DLP controls,
-// and prompt-injection labeling for Phase 13.
+// and prompt-injection labeling for .
 package masking
 
 import "regexp"

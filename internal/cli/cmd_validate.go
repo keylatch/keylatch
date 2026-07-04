@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPhase3ValidateCmd returns the Phase 3 `validate` command.
-func newPhase3ValidateCmd() *cobra.Command {
+// newValidateCmd returns the `validate` command.
+func newValidateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate all connections against their provider schemas",

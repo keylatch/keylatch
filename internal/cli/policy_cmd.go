@@ -1,4 +1,4 @@
-// Package cli — Phase 8 policy subcommands.
+// Package cli — policy subcommands.
 package cli
 
 import (
@@ -91,9 +91,9 @@ func newPolicyAllowCmd() *cobra.Command {
 			actor := args[0]
 			connection := args[1]
 
-			// S8-17: refuse --runtime direct_classic_sandboxed inside LLM session.
+			// Refuse --runtime direct_classic_sandboxed inside LLM session.
 			if runtime == "direct_classic_sandboxed" && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "error: --runtime direct_classic_sandboxed is not permitted inside an LLM session (S8-17)")
+				fmt.Fprintln(c.ErrOrStderr(), "error: --runtime direct_classic_sandboxed is not permitted inside an LLM session")
 				os.Exit(exitcode.SecurityBlock)
 				return nil
 			}

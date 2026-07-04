@@ -10,7 +10,7 @@ import (
 
 // acquireFlock opens the lock file and acquires an exclusive flock.
 // Returns a release function that MUST be deferred by the caller.
-// S1-2: serializes all keychain operations across processes.
+// Serializes all keychain operations across processes.
 func acquireFlock(lockPath string) (release func(), err error) {
 	// Create the lock file if it doesn't exist.
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)

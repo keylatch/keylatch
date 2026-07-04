@@ -185,10 +185,10 @@ export function Connections() {
               >
                 {(
                   [
-                    { value: 'global',    label: 'Global default (use setting)', description: 'Inherits the approval policy set in Settings.' },
-                    { value: 'prompt',    label: 'Prompt',                        description: 'Always ask before approving.' },
-                    { value: 'first-run', label: 'First-run',                     description: 'Auto-approve once per session; deny subsequent requests.' },
-                    { value: 'trust',     label: 'Trust',                         description: 'Auto-approve all requests from this connection.' },
+                    { value: 'global', label: 'Global default (use setting)', description: 'Inherits the approval policy set in Settings.' },
+                    { value: 'prompt', label: 'Prompt', description: 'Always ask before approving.' },
+                    { value: 'first-run', label: 'First-run', description: 'Auto-approve once per session; deny subsequent requests.' },
+                    { value: 'trust', label: 'Trust', description: 'Auto-approve all requests from this connection.' },
                   ] as { value: ApprovalPolicyOverride; label: string; description: string }[]
                 ).map(({ value, label, description }) => (
                   <div key={value} className="flex items-center gap-3 py-1">

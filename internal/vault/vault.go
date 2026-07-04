@@ -1,6 +1,6 @@
 // Package vault is the top layer that maps canonical secret paths to backend
-// reads and writes via the dispatcher. It integrates the audit pipeline (Phase 5)
-// and will integrate policy (Phase 8).
+// reads and writes via the dispatcher. It integrates the audit pipeline
+// and will integrate policy.
 package vault
 
 import (

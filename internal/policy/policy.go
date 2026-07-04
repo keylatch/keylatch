@@ -2,9 +2,9 @@
 // It provides a schema for policy rules, a decision engine, and persistence.
 //
 // Import constraints:
-//   - This package MUST NOT import internal/grant to avoid circular imports.
-//     Decision.MatchedGrantID carries only the grant ID string; callers look
-//     up the full grant when needed.
+// - This package MUST NOT import internal/grant to avoid circular imports.
+// Decision.MatchedGrantID carries only the grant ID string; callers look
+// up the full grant when needed.
 package policy
 
 import (
@@ -33,7 +33,7 @@ const (
 	ModeDryRun     Mode = "dry_run"
 )
 
-// OrgComposeHook is a Phase 12 forward-compat registration point.
+// OrgComposeHook is a forward-compat registration point.
 // When non-nil, it is invoked first in Check; if it returns Allow=false, that
 // decision is returned immediately without consulting local rules.
 // Default nil.
@@ -45,7 +45,7 @@ var managementCaps = map[string]bool{
 	"list":   true,
 }
 
-// readClassCaps are denied in LLM sessions (S8-9).
+// readClassCaps are denied in LLM sessions.
 var readClassCaps = map[string]bool{
 	"read":   true,
 	"export": true,
@@ -73,7 +73,7 @@ type Policy struct {
 }
 
 // RootRequirement describes the trust root constraint attached to a policy rule.
-// It is used by the Phase 11 approval-root wiring (FIND2-003).
+// It is used by the approval-root wiring.
 type RootRequirement struct {
 	// Type is "any" (first matching from AnyOf) or "all" (all from AllOf required).
 	Type string `json:"type,omitempty"`
@@ -105,11 +105,11 @@ type Rule struct {
 	CreatedBy     string    `json:"created_by,omitempty"`
 	Project       string    `json:"project,omitempty"`
 
-	// Phase 11: structured approval root requirement.
+	// structured approval root requirement.
 	// When non-nil, the matched decision requires a hardware-signed approval.
 	ApprovalRootReq *RootRequirement `json:"approval_root_req,omitempty"`
 
-	// Phase 11/12/13 forward-compat — round-trip unchanged.
+	// forward-compat — round-trip unchanged.
 	ApprovalRoot json.RawMessage `json:"approval_root,omitempty"`
 	MemberID     string          `json:"member_id,omitempty"`
 	Team         string          `json:"team,omitempty"`
@@ -158,7 +158,7 @@ type Decision struct {
 	SafeFix          string
 	ApprovalRequired bool
 	ApprovalToken    string
-	// Phase 11: when ApprovalRequired=true and the rule has an ApprovalRootReq,
+	// when ApprovalRequired=true and the rule has an ApprovalRootReq,
 	// ApprovalRootReq holds the resolved requirement for the caller to satisfy.
 	ApprovalRootReq *RootRequirement
 }
@@ -183,7 +183,7 @@ func Load(path string) (Policy, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return Policy{}, fmt.Errorf("policy: parse %q: %w", path, err)
 	}
-	// C-2/FIND2-023: validate runtime mode on every rule that specifies one.
+	// C-2/validate runtime mode on every rule that specifies one.
 	// Also reject rate_limit fields: the RateSpec is parsed but never enforced.
 	// Accepting silently would create false security expectations.
 	for i, rule := range p.Rules {
@@ -202,7 +202,7 @@ func Load(path string) (Policy, error) {
 // Save marshals p as JSON to path with mode 0o600 and updates UpdatedAt.
 func Save(path string, p Policy) error {
 	p.UpdatedAt = time.Now().UTC()
-	data, err := json.MarshalIndent(p, "", "  ")
+	data, err := json.MarshalIndent(p, "", " ")
 	if err != nil {
 		return fmt.Errorf("policy: marshal: %w", err)
 	}
@@ -220,7 +220,7 @@ func Save(path string, p Policy) error {
 }
 
 // Check evaluates req against p and returns a Decision.
-// See Phase 8 spec for the full algorithm.
+// See spec for the full algorithm.
 func (p Policy) Check(req Request) Decision {
 	// M-4: Preflight — reject removed runtime strings immediately.
 	if req.Runtime != "" {
@@ -246,7 +246,7 @@ func (p Policy) Check(req Request) Decision {
 		return Decision{Allow: true, Reason: "management capability implicitly allowed"}
 	}
 
-	// Step 3: categorical read-class LLM deny (S8-9).
+	// Step 3: categorical read-class LLM deny.
 	if req.LLMSession && isReadClassCap(req.Capability) {
 		return Decision{
 			Allow:   false,
@@ -271,7 +271,7 @@ func (p Policy) Check(req Request) Decision {
 
 		// Step 6: approval flag.
 		if rule.Approval {
-			// Phase 11: if a presence proof was supplied, validate its age against MaxAgeSec.
+			// if a presence proof was supplied, validate its age against MaxAgeSec.
 			if d, done := validatePresenceProof(req, rule); done {
 				return d
 			}
@@ -281,13 +281,13 @@ func (p Policy) Check(req Request) Decision {
 				ApprovalRequired: true,
 				ApprovalToken:    randomToken(),
 			}
-			// Phase 11: propagate ApprovalRootReq if the rule has one.
+			// propagate ApprovalRootReq if the rule has one.
 			if rule.ApprovalRootReq != nil {
 				d.ApprovalRootReq = rule.ApprovalRootReq
 			}
 			return d
 		}
-		// Phase 11: rule has ApprovalRootReq even without Approval=true.
+		// rule has ApprovalRootReq even without Approval=true.
 		if rule.ApprovalRootReq != nil {
 			// Validate presence proof age if supplied.
 			if d, done := validatePresenceProof(req, rule); done {

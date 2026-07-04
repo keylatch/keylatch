@@ -10,7 +10,7 @@ import (
 )
 
 // MatchActor performs glob match (path.Match semantics) of pattern against
-// actual actor name.  "*" matches any sequence; "claude-*" matches
+// actual actor name. "*" matches any sequence; "claude-*" matches
 // "claude-code".
 func MatchActor(pattern, actual string) bool {
 	if pattern == "" {
@@ -52,8 +52,8 @@ func MatchCapability(pattern, cap string) bool {
 }
 
 // MatchCommand performs a glob match against strings.Join(argv, " ") anchored
-// at the start.  The pattern is matched against the full joined string with
-// path.Match, which anchors at start and end.  To allow trailing arguments
+// at the start. The pattern is matched against the full joined string with
+// path.Match, which anchors at start and end. To allow trailing arguments
 // use a trailing "*" in the pattern.
 //
 // "tsx scripts/openrouter/*" matches ["tsx","scripts/openrouter/foo.ts","arg"]

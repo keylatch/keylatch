@@ -1,6 +1,6 @@
 // Package llmcontext detects whether the current process is running inside an
 // LLM-driven session. It is a leaf package — it imports only stdlib.
-// S0-7: no imports from github.com/keylatch/keylatch/internal/*.
+// No imports from github.com/keylatch/keylatch/internal/*.
 package llmcontext
 
 import "os"
@@ -11,8 +11,9 @@ type Lookup func(string) string
 // DefaultLookup resolves from the process environment.
 var DefaultLookup Lookup = func(k string) string { return os.Getenv(k) }
 
-// EnvAllowUnverifiedSession is the explicit escape hatch for M2 (default
-// signed-ticket enforcement, docker-server-security hardening pass).
+// EnvAllowUnverifiedSession is the explicit escape hatch for the
+// raw-credential session gate (default signed-ticket enforcement,
+// docker-server-security hardening pass).
 //
 // By default, `keylatch get`/`keylatch run` fail closed when a session is
 // classified as SignalHeuristic (see ClassifySession) — i.e. the ONLY reason
@@ -21,7 +22,7 @@ var DefaultLookup Lookup = func(k string) string { return os.Getenv(k) }
 // unset it to look human; a script can set it to look like an agent) and is
 // not corroborated by a signed ticket or a live keylatchd.
 //
-// Setting KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 restores the pre-M2 behavior:
+// Setting KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 restores the pre-gate behavior:
 // the heuristic alone is trusted, matching the original IsLLMSession
 // contract. llmcontext itself never fails closed on this — it only exposes
 // the classification; internal/cli's session-enforcement helper is what
@@ -29,9 +30,9 @@ var DefaultLookup Lookup = func(k string) string { return os.Getenv(k) }
 const EnvAllowUnverifiedSession = "KEYLATCH_ALLOW_UNVERIFIED_SESSION"
 
 // SessionSignal classifies *how* IsLLMSession reached its verdict, so callers
-// that need stronger assurance than a plain bool (M2: default signed-ticket
-// enforcement) can distinguish a verified/corroborated detection from a bare,
-// spoofable heuristic match.
+// that need stronger assurance than a plain bool (the raw-credential session
+// gate's default signed-ticket enforcement) can distinguish a
+// verified/corroborated detection from a bare, spoofable heuristic match.
 type SessionSignal int
 
 const (
@@ -49,7 +50,7 @@ const (
 	// (network error, timeout, bad schema). IsLLMSession fails closed here
 	// (treats as true) just like SignalDaemonActive, but this is NOT an
 	// actual daemon-corroborated verdict — it is distinguished so callers
-	// doing stronger verification (M2) can tell the two apart.
+	// doing stronger verification (the raw-credential session gate) can tell the two apart.
 	SignalDaemonError
 	// SignalHeuristic: none of the above fired conclusively — IsLLMSession's
 	// "true" verdict (if any) came entirely from the legacy env-var signals
@@ -91,7 +92,7 @@ func ClassifySession(env Lookup) SessionSignal {
 
 // IsLLMSession returns true if the current process is running inside an LLM-driven session.
 //
-// Detection runs in three priority tiers (EPIC-05):
+// Detection runs in three priority tiers:
 //
 //  1. KEYLATCH_LLM_TICKET env var — if set and non-empty, a signed session
 //     ticket has been issued by keylatchd. Its presence alone is sufficient
@@ -113,7 +114,7 @@ func ClassifySession(env Lookup) SessionSignal {
 //   - keylatchd IPC is either not configured or cleanly reports active=false
 //   - no env-var signal fires
 //
-// S0-3: CREDENTIALS_LLM_SESSION=0 is the only explicit false value for the
+// CREDENTIALS_LLM_SESSION=0 is the only explicit false value for the
 // generic manual flag. Other non-empty values are treated as active sessions.
 func IsLLMSession(env Lookup) bool {
 	return ClassifySession(env) != SignalNone

@@ -2,11 +2,11 @@
 // for the keylatch UI server.
 //
 // Security invariants:
-//   - FIND-011: bootstrap token appears in URL only once (/__bootstrap?b=...),
-//     then is exchanged for an HttpOnly cookie; the token never appears in any
-//     subsequent URL.
-//   - FIND3-004: bootstrap HMAC uses crypto/hmac; replayed tokens are rejected.
-//   - Session state is not persisted to disk; it lives only in memory.
+// - bootstrap token appears in URL only once (/__bootstrap?b=...),
+// then is exchanged for an HttpOnly cookie; the token never appears in any
+// subsequent URL.
+// - bootstrap HMAC uses crypto/hmac; replayed tokens are rejected.
+// - Session state is not persisted to disk; it lives only in memory.
 package session
 
 import (
@@ -78,7 +78,7 @@ func New(signingKey []byte) (*Session, error) {
 
 // URL returns the bootstrap URL for the given base address. The token appears
 // exactly once — in this URL — and is consumed on first exchange.
-// FIND-011: after exchange the token must never appear in any URL again.
+// after exchange the token must never appear in any URL again.
 func (s *Session) URL(base string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

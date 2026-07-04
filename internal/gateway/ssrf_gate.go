@@ -25,7 +25,7 @@ func NewSSRFGate() *SSRFGate {
 	}
 }
 
-// Validate checks the upstream host at request time (FIND2-017):
+// Validate checks the upstream host at request time:
 //  1. Verifies provider is in the allowlist (fail-closed — unknown providers are denied).
 //  2. Verifies host is in the provider's allowlist (if non-empty).
 //  3. Resolves DNS.
@@ -34,7 +34,7 @@ func (g *SSRFGate) Validate(providerID, host string) error {
 	// Step 1: fail-closed for unknown providers.
 	allowed, ok := g.allowedBaseURLs[providerID]
 	if !ok {
-		return fmt.Errorf("%w: provider %q has no allowlist entry (FIND2-017)", ErrSSRFTargetForbidden, providerID)
+		return fmt.Errorf("%w: provider %q has no allowlist entry", ErrSSRFTargetForbidden, providerID)
 	}
 
 	// Step 2: allowlist check (len==0 means operator-configured, any host allowed but DNS check still applies).

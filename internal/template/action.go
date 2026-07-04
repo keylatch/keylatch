@@ -1,6 +1,6 @@
 // Package template defines the schema types for provider template actions.
 // These types extend the registry's GatewayAction with a richer parameter model
-// that supports typed, located parameters for direct HTTP dispatch (EPIC-20).
+// that supports typed, located parameters for direct HTTP dispatch.
 package template
 
 import (

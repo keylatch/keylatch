@@ -11,7 +11,7 @@ import (
 type agentPreset struct {
 	name           string
 	files          []ProfileFile
-	conflictPolicy string //nolint:unused // planned: used by merge logic in Phase 8 profile conflict resolution
+	conflictPolicy string //nolint:unused // planned: used by merge logic in profile conflict resolution
 }
 
 // agentPresets maps agent names to their target file configurations.
@@ -142,8 +142,8 @@ var agentPresets = map[string]agentPreset{
 // GenerateProfile generates a per-agent profile for the given agent and mode.
 //
 // Security invariants:
-//   - S3-8: profile files contain placeholder values only — no actual secret bytes
-//   - S3-16(a): no KEYLATCH_MCP_TOKEN in any written config file for stdio mode
+// - profile files contain placeholder values only — no actual secret bytes
+// - no KEYLATCH_MCP_TOKEN in any written config file for stdio mode
 func GenerateProfile(ctx context.Context, agent string, mode ProfileMode, store connections.Store) (Profile, error) {
 	preset, ok := agentPresets[agent]
 	if !ok {
@@ -184,7 +184,7 @@ func GenerateProfile(ctx context.Context, agent string, mode ProfileMode, store 
 // assertProfileFileNoSecrets verifies that a ProfileFile.Content contains only
 // placeholder values, not actual secret bytes.
 //
-// S3-8: profile files must contain placeholders (${KEYLATCH_*} or <REPLACE_ME>),
+// profile files must contain placeholders (${KEYLATCH_*} or <REPLACE_ME>),
 // never actual secret values.
 func assertProfileFileNoSecrets(f ProfileFile) error {
 	// Forbidden patterns.

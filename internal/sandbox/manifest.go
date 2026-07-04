@@ -2,11 +2,11 @@
 // On Linux it uses bwrap; on macOS it uses sandbox-exec.
 //
 // Security invariants:
-//   - Executable hash is verified before execution.
-//   - ~/.keylatch is never accessible inside the sandbox.
-//   - Child env only receives explicit inject vars (inherit: false).
-//   - No shell string construction — all subprocess calls use argv slices.
-//   - Feature flag "direct_classic_sandboxed" must be true in ExecRequest.
+// - Executable hash is verified before execution.
+// - ~/.keylatch is never accessible inside the sandbox.
+// - Child env only receives explicit inject vars (inherit: false).
+// - No shell string construction — all subprocess calls use argv slices.
+// - Feature flag "direct_classic_sandboxed" must be true in ExecRequest.
 package sandbox
 
 import (

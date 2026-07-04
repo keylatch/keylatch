@@ -1,11 +1,11 @@
-// Package api — admin route group for Phase 12 team governance UI.
+// Package api — admin route group for team governance UI.
 //
 // Security invariants:
-//   - S12-15: Role enforcement at package layer.
-//   - All admin routes require admin role (extracted from JWT).
-//   - All admin POST/PUT/DELETE require CSRF token (HMAC double-submit, S-INV-5).
-//   - All output is value-free (member data HMACd).
-//   - JWT signature is verified via HMAC-SHA256 before any claims are trusted (S-INV-5).
+// - Role enforcement at package layer.
+// - All admin routes require admin role (extracted from JWT).
+// - All admin POST/PUT/DELETE require CSRF token (HMAC double-submit).
+// - All output is value-free (member data HMACd).
+// - JWT signature is verified via HMAC-SHA256 before any claims are trusted.
 package api
 
 import (
@@ -34,7 +34,7 @@ type AdminHandler struct {
 func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/admin")
 
-	// Role gate: extract JWT and require admin (S12-15).
+	// Role gate: extract JWT and require admin.
 	if !h.requireAdmin(w, r) {
 		return
 	}
@@ -63,7 +63,7 @@ func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // requireAdmin checks the request carries a valid admin-role JWT.
-// S-INV-5: bearer token must have a valid HS256 signature before any claims are trusted.
+// bearer token must have a valid HS256 signature before any claims are trusted.
 func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	// Check X-Keylatch-Role header (set by gateway after JWT validation).
 	role := r.Header.Get("X-Keylatch-Role")
@@ -81,7 +81,7 @@ func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) bool
 		}
 	}
 
-	// S12-15: role enforcement at package layer.
+	// role enforcement at package layer.
 	member := team.Member{Role: team.Role(role)}
 	if err := team.RequireRole(member, team.RoleAdmin); err != nil {
 		writeAdminError(w, http.StatusForbidden, "insufficient role")
@@ -91,7 +91,7 @@ func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) bool
 }
 
 // extractRoleFromJWT verifies the HS256 JWT signature then parses role from claims.
-// S-INV-5: an unverified or forged JWT returns "" so requireAdmin denies the request.
+// an unverified or forged JWT returns "" so requireAdmin denies the request.
 func (h *AdminHandler) extractRoleFromJWT(tokenStr string) string {
 	parts := strings.Split(tokenStr, ".")
 	if len(parts) != 3 {
@@ -131,7 +131,7 @@ func (h *AdminHandler) extractRoleFromJWT(tokenStr string) string {
 }
 
 // checkCSRF validates the CSRF double-submit token on mutation requests.
-// S-INV-5: the X-CSRF-Token must be HMAC-SHA256(CSRFSecret, Authorization-header).
+// the X-CSRF-Token must be HMAC-SHA256(CSRFSecret, Authorization-header).
 // A missing or incorrect token results in 403 — no state mutation proceeds.
 func (h *AdminHandler) checkCSRF(w http.ResponseWriter, r *http.Request) bool {
 	token := r.Header.Get("X-CSRF-Token")

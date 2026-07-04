@@ -1,12 +1,12 @@
 // Package keeper implements the Backend interface using the Keeper Commander CLI (`keeper`).
-// It shells out via internal/exec.CommandRunner and satisfies all Phase 2 security invariants.
+// It shells out via internal/exec.CommandRunner and satisfies the following security invariants.
 //
 // Security invariants:
-//   - S2-1: Never print secret values to stdout/stderr.
-//   - S2-3: List zero-fills field values before returning.
-//   - S2-5: Fail-closed on binary unavailability (ErrUnavailable).
-//   - S2-9: Raw subprocess stderr never propagated; auth-failure hints only.
-//   - S2-10: Single-flight collapse for concurrent Get calls.
+//   - Never print secret values to stdout/stderr.
+//   - List zero-fills field values before returning.
+//   - Fail-closed on binary unavailability (ErrUnavailable).
+//   - Raw subprocess stderr never propagated; auth-failure hints only.
+//   - Single-flight collapse for concurrent Get calls.
 package keeper
 
 import (
@@ -91,7 +91,7 @@ func (b *KeeperBackend) Capabilities() []backend.Capability {
 }
 
 // Get returns the plaintext bytes for a canonical path via `keeper get --format=json`.
-// Uses a 60-second TTL cache and single-flight collapse for concurrent calls (S2-10).
+// Uses a 60-second TTL cache and single-flight collapse for concurrent calls.
 func (b *KeeperBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	title := keeperTitle(path)
 	const ttl = 60 * time.Second
@@ -200,7 +200,7 @@ func (b *KeeperBackend) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-// List returns metadata-only entries (S2-3) via `keeper ls --format=json`.
+// List returns metadata-only entries via `keeper ls --format=json`.
 func (b *KeeperBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	args := []string{"ls", "--format=json"}
 	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.opts.Bin, args, nil)
@@ -229,7 +229,7 @@ func (b *KeeperBackend) List(ctx context.Context, prefix string) ([]backend.Entr
 		if prefix != "" && !strings.HasPrefix(path, prefix) {
 			continue
 		}
-		// S2-3: never include value fields in list output.
+		// Never include value fields in list output.
 		entries = append(entries, backend.Entry{
 			Meta: backend.Meta{
 				Path:     path,
@@ -261,7 +261,7 @@ func keeperTitle(path string) string {
 	return "keylatch/" + path
 }
 
-// mapGetError maps keeper stderr to typed backend errors (S2-9).
+// mapGetError maps keeper stderr to typed backend errors.
 func (b *KeeperBackend) mapGetError(errStr string) error {
 	if isKeeperNotFound(errStr) {
 		return fmt.Errorf("%w: keeper record not found", backend.ErrNotFound)

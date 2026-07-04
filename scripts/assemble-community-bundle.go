@@ -55,7 +55,7 @@ func main() {
 
 	// parseBundleData in internal/registry/verify.go expects a bare JSON array,
 	// not a wrapper object — marshal templates directly.
-	out, err := json.MarshalIndent(templates, "", "  ")
+	out, err := json.MarshalIndent(templates, "", " ")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "marshal bundle: %v\n", err)
 		os.Exit(1)

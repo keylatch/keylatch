@@ -1,4 +1,4 @@
-// Package runner extensions for Phase 8 policy gating.
+// Package runner extensions for policy gating.
 package runner
 
 import (
@@ -38,7 +38,7 @@ type PolicyOptions struct {
 	GrantPath   string // "" → default path
 }
 
-// Receipt describes the outcome of a policy-gated run call (Phase 8 extended).
+// Receipt describes the outcome of a policy-gated run call.
 // All hash fields are value-free.
 type Receipt struct {
 	Actor          string        `json:"actor"`
@@ -150,7 +150,7 @@ func CheckPolicy(conn string, command []string, opts PolicyOptions) (policy.Deci
 
 // hashValue returns a truncated SHA-256 hex of s (value-free).
 //
-//nolint:unused // planned: used by Receipt construction in Phase 8 command/cwd hash fields
+//nolint:unused // planned: used by Receipt construction command/cwd hash fields
 func hashValue(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])[:16]
@@ -202,7 +202,7 @@ func CheckPolicyWithAudit(
 			RuntimeMode: opts.Runtime,
 			Extra: map[string]any{
 				// Only "policy_id" and "result" are in the SafeLogFields
-				// allowlist for policy_check (S5-2). Other keys will have
+				// allowlist for policy_check. Other keys will have
 				// their values HMAC'd by the Redact filter.
 				"result": policyDecision,
 			},

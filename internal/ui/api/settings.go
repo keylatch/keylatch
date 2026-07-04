@@ -1,11 +1,11 @@
 package api
 
-// T-13-05: Server-validated approval-ttl endpoint.
-// EPIC-27: Extended with operating mode, telemetry kill-switch, experimental
-//          opt-in, and approval policy default.
+// Server-validated approval-ttl endpoint.
+// Extended with operating mode, telemetry kill-switch, experimental
+// opt-in, and approval policy default.
 //
-// GET  /api/settings → full settings response
-// PUT  /api/settings → partial update (any subset of fields)
+// GET /api/settings → full settings response
+// PUT /api/settings → partial update (any subset of fields)
 //
 // Security invariant: the client cannot set a TTL above approval_ttl_max_seconds.
 // A client submitting 999999 receives back the clamped value (≤ max).
@@ -48,9 +48,9 @@ var validOperatingModes = map[OperatingModeValue]bool{
 }
 
 // ApprovalPolicyValue enumerates the valid approval policy defaults.
-// trust     — auto-approve all agent requests
+// trust — auto-approve all agent requests
 // first-run — approve once per session; deny subsequent requests
-// prompt    — always prompt the user (default)
+// prompt — always prompt the user (default)
 type ApprovalPolicyValue string
 
 const (

@@ -245,7 +245,7 @@ func newHelpTopicWizardCmd() *cobra.Command {
 			fmt.Fprintln(c.OutOrStdout(), "  - Runtime receipts (value-free audit of recent run invocations)")
 			fmt.Fprintln(c.OutOrStdout())
 			fmt.Fprintln(c.OutOrStdout(), "Options:")
-			fmt.Fprintln(c.OutOrStdout(), "  keylatch ui --demo      # Explore with stub data (no real credentials)")
+			fmt.Fprintln(c.OutOrStdout(), "  keylatch ui --demo      # Explore with sample data (no real credentials)")
 			fmt.Fprintln(c.OutOrStdout(), "  keylatch ui --no-open   # Print URL without opening the browser")
 			return nil
 		},

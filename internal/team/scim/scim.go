@@ -1,9 +1,9 @@
 // Package scim implements a SCIM v2 server for team provisioning.
 //
 // Security invariants:
-//   - FIND2-022: SCIM server binds to loopback-only by default.
-//   - All endpoints require authentication (bearer or mTLS).
-//   - List responses are value-free (emails HMACd).
+// - SCIM server binds to loopback-only by default.
+// - All endpoints require authentication (bearer or mTLS).
+// - List responses are value-free (emails HMACd).
 package scim
 
 import (
@@ -22,7 +22,7 @@ import (
 // ServerOpts configures the SCIM server.
 type ServerOpts struct {
 	// Addr is the bind address. Default: 127.0.0.1:8763.
-	// FIND2-022: must be loopback.
+	// must be loopback.
 	Addr string
 	// BearerToken is the expected bearer token for auth.
 	BearerToken string
@@ -35,7 +35,7 @@ type Server struct {
 	authFn func(r *http.Request) bool
 }
 
-// NewServer creates a SCIM v2 server bound to loopback (FIND2-022).
+// NewServer creates a SCIM v2 server bound to loopback.
 func NewServer(t *team.Team, opts ServerOpts) *Server {
 	addr := opts.Addr
 	if addr == "" {
@@ -57,7 +57,7 @@ func NewServer(t *team.Team, opts ServerOpts) *Server {
 	}
 }
 
-// Serve starts the SCIM server. Returns error if addr is not loopback (FIND2-022).
+// Serve starts the SCIM server. Returns error if addr is not loopback.
 func (s *Server) Serve(ctx context.Context) error {
 	if err := assertLoopback(s.addr); err != nil {
 		return err
@@ -90,7 +90,7 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 // assertLoopback returns an error if addr is not a loopback address.
-// C-8 (FIND2-022): "localhost" is NOT accepted — only numeric loopback IPs (127.x or ::1).
+// C-8: "localhost" is NOT accepted — only numeric loopback IPs (127.x or ::1).
 func assertLoopback(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -98,7 +98,7 @@ func assertLoopback(addr string) error {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("scim: FIND2-022: refusing non-loopback bind address %q (use 127.0.0.1 or ::1)", addr)
+		return fmt.Errorf("scim: refusing non-loopback bind address %q (use 127.0.0.1 or ::1)", addr)
 	}
 	return nil
 }
@@ -243,7 +243,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, userID strin
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, userID string) {
-	// N-6 (FIND3-006): use team.RemoveMember to trigger shared-secret rotation callback.
+	// N-6: use team.RemoveMember to trigger shared-secret rotation callback.
 	if err := team.RemoveMember(r.Context(), s.t, userID); err != nil {
 		if err == team.ErrMemberNotFound {
 			writeError(w, http.StatusNotFound, "user not found")

@@ -1,6 +1,6 @@
 // Package runner — errors.go defines structured runtime error types.
 //
-// T-09-02 (EPIC-09): every runtime error in the runner layer uses the
+// Every runtime error in the runner layer uses the
 // structured format: "<class>: <provider> + <mode>: <reason>. <fix-hint>"
 // so operators and agent-harness authors receive actionable feedback.
 package runner

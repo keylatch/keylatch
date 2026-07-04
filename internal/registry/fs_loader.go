@@ -18,7 +18,7 @@ import (
 //
 // Built-in templates in the fs_loader are shipped with the binary and do not
 // require cosign verification. Only community bundles (LoadBundle) are subject
-// to FIND-008 signature verification.
+// to signature verification.
 func (f *FSLoader) LoadAll(_ context.Context) ([]LoadedTemplate, error) {
 	info, err := os.Stat(f.Dir)
 	if err != nil {
@@ -47,7 +47,7 @@ func (f *FSLoader) LoadAll(_ context.Context) ([]LoadedTemplate, error) {
 		if f.RequireSig {
 			sigPath := p + ".sig"
 			if _, serr := os.Stat(sigPath); os.IsNotExist(serr) {
-				// Community bundles require a .sig file (FIND-008). Skip unsigned templates.
+				// Community bundles require a .sig file. Skip unsigned templates.
 				slog.Warn("registry: skipping unsigned community template", "path", p)
 				return nil
 			}

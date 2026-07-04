@@ -1,6 +1,6 @@
 //go:build darwin && dev
 
-// Package keychain — dev build ACL behaviour (T-13-03).
+// Package keychain — dev build ACL behaviour.
 //
 // In dev builds (go build -tags dev), an unsigned keychain ACL emits a warning
 // log but does NOT return an error. This permits development without a signed binary.

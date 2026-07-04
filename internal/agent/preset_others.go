@@ -24,7 +24,7 @@ func init() {
 
 // genericPreset is a helper that implements the common preset pattern.
 type genericPreset struct {
-	name string //nolint:unused // planned: used by preset display name in Phase 8 agent listing
+	name string //nolint:unused // planned: used by preset display name in agent listing
 }
 
 func (g *genericPreset) setupAgent(ctx context.Context, agentName string, opts SetupOptions, store connections.Store) (Receipt, error) {
@@ -215,7 +215,7 @@ func (p *DifyPreset) HealthCheck(_ context.Context) Status {
 }
 
 // CustomPreset accepts --config-path at setup time and validates it.
-// S3-11: target path must be under $HOME and not in a denylist.
+// target path must be under $HOME and not in a denylist.
 type CustomPreset struct {
 	genericPreset
 	configPath string

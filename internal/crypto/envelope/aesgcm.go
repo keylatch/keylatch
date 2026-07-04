@@ -10,7 +10,7 @@ import (
 //
 // The nonce MUST be supplied by the caller via np.Next(AES256GCM, term).
 // This function NEVER generates a random nonce — for AES-GCM nonce uniqueness
-// is enforced by the monotonic counter in the keyring (S5-FIND3-002).
+// is enforced by the monotonic counter in the keyring.
 //
 // dek must be exactly 32 bytes; the nonce returned by np must be exactly 12 bytes.
 func SealAESGCM(dek, plaintext, aad []byte, np NonceProvider, term int) (ciphertext, nonce []byte, err error) {

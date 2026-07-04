@@ -1,7 +1,7 @@
 // Package route compiles registry GatewayActions into a gateway route table.
 //
-// Phase 9 implements a simple map-based router (not a full trie library).
-// S9-5: SDK facade routes are explicit-only; unknown paths → 404.
+// Implements a simple map-based router (not a full trie library).
+// SDK facade routes are explicit-only; unknown paths → 404.
 package route
 
 import (
@@ -226,7 +226,7 @@ func Compile(templates []registry.ConnectionTemplate) (*Router, error) {
 
 // Match returns the Route matching the given method and path.
 // Returns (nil, false) if no route exists.
-// S9-5: only explicitly-compiled routes match; unknown paths → (nil, false).
+// Only explicitly-compiled routes match; unknown paths → (nil, false).
 func (r *Router) Match(method, path string) (*Route, bool) {
 	key := method + " " + path
 	if rt, ok := r.routes[key]; ok {
@@ -275,7 +275,7 @@ func isSDKSupported(tmpl registry.ConnectionTemplate) bool {
 
 // vaultSecretRef returns the vault lookup path for the template's primary credential.
 //
-// S-FIND-23 (T-03-01): uses the canonical four-segment path format
+// Uses the canonical four-segment path format
 // "default/<category>/<provider>/<field>" (e.g. "default/ai/openrouter/api_key").
 // No backward-compat read from "default/connections/..." — v1.0.0 has no existing users.
 // Falls back to an empty string when the template has no injection rules.

@@ -1,4 +1,4 @@
-// Package cli — Epic 21: approve subcommand (production).
+// Package cli — approve subcommand (production).
 package cli
 
 import (

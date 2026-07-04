@@ -1,8 +1,8 @@
 // Package envelope provides the AEAD Seal/Open primitives used by the keylatch
 // credential store. It supports XChaCha20-Poly1305 and AES-256-GCM.
 //
-// Security invariants (Phase 5):
-//   - S5-4: Open returns ErrAEADAuthFailed for ALL authentication failures —
+// Security invariants:
+//   - Open returns ErrAEADAuthFailed for ALL authentication failures —
 //     uniform oracle, no distinguishing information in the error string.
 //   - XChaCha20 nonces are always random (24 bytes from crypto/rand).
 //   - AES-GCM nonces are always provided by the caller via NonceProvider (never
@@ -53,7 +53,7 @@ type NonceProvider interface {
 var (
 	// ErrAEADAuthFailed is returned by Open for all authentication failure
 	// modes: wrong AAD, wrong DEK, wrong nonce, tampered ciphertext, truncated
-	// ciphertext. No distinguishing information is included (S5-4).
+	// ciphertext. No distinguishing information is included.
 	ErrAEADAuthFailed = errors.New("envelope: AEAD authentication failed")
 
 	// ErrAlgorithmUnknown is returned when the Algorithm value is not one of

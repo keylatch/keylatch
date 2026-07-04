@@ -1,8 +1,8 @@
-// Package broker implements the Phase 13 token broker for namespaced,
+// Package broker implements the token broker for namespaced,
 // short-lived credential exchange with in-memory caching.
 //
 // Security invariants:
-//   - FIND2-004: OnVaultLock flushes cache synchronously before returning.
+//   - OnVaultLock flushes cache synchronously before returning.
 //   - Token bytes are carried in unexported fields and never appear in metadata.
 //   - Audit events contain only HMAC-hashed actor/session IDs.
 package broker
@@ -120,7 +120,7 @@ func NewBroker(ctx context.Context, strategies map[string]ExchangeStrategy, audi
 
 // Exchange returns a short-lived access token for the given actor/session/provider/capability/namespace.
 // Cache hits are returned without calling the provider.
-// FIND2-004: returns ErrVaultLocked when the vault is locked.
+// Returns ErrVaultLocked when the vault is locked.
 func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, capability, namespace string) (ExchangeResult, error) {
 	// 1. Check locked flag.
 	if b.locked.Load() {

@@ -37,7 +37,7 @@ type gatewayTypedDriver struct {
 	server         GatewayServerStarter
 	signingKey     []byte
 	tokenStorePath string
-	// settings holds the resolved operating-mode effective settings (EPIC-17).
+	// settings holds the resolved operating-mode effective settings.
 	// A zero-value settings struct disables all optional subsystems.
 	settings runtime.EffectiveSettings
 	// auditEmitter is optional; when non-nil canary events are emitted via it.
@@ -58,7 +58,7 @@ func NewGatewayTypedDriver(server GatewayServerStarter, signingKey []byte, token
 
 // NewGatewayTypedDriverWithSettings returns a gatewayTypedDriver with operating-mode
 // effective settings and an optional audit emitter (may be nil).
-// EPIC-17: used when operating mode is resolved at run time.
+// Used when operating mode is resolved at run time.
 func NewGatewayTypedDriverWithSettings(
 	server GatewayServerStarter,
 	signingKey []byte,
@@ -136,7 +136,7 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 
 	childEnv := gatewayTypedChildEnv(tmpl, gatewayURL, jwtStr, req.CleanEnv, req.ExtraEnvVars)
 
-	// EPIC-17: canary injection — when enabled, mint a canary token and inject it
+	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.
 	if d.settings.CanaryInjectionEnabled {
 		canaryToken, canaryErr := canary.BuildCanary(tmpl.Provider)
@@ -150,7 +150,7 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 					Outcome: audit.OutcomeOK,
 					Extra: map[string]any{
 						"provider": tmpl.Provider,
-						// Use HMAC'd form — never log raw actor IDs (S5-2 / FIND2-012).
+						// Use HMAC'd form — never log raw actor IDs.
 						"session_id_hmac": fmt.Sprintf("%x", sha256.Sum256([]byte(actor)))[:16],
 					},
 				})
@@ -202,12 +202,12 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 
 // gatewayTypedChildEnv builds the child environment for gateway_typed mode.
 //
-// Rules (T-08-01, §15.1):
+// Rules:
 //  1. Strip every provider API key env var declared in tmpl.InjectionRules.
 //  2. Strip every KEYLATCH_* configuration var (FilterChildEnv).
 //  3. Re-inject only KEYLATCH_GATEWAY_URL, KEYLATCH_GATEWAY_TOKEN, KEYLATCH_RUNTIME.
 //
-// When cleanEnv is true (T-08-02), step 2 is replaced by CleanBaseEnv which
+// When cleanEnv is true, step 2 is replaced by CleanBaseEnv which
 // starts from a minimal set (PATH, HOME, USER, …, LC_*) rather than the full
 // parent env. extra lists additional var names to preserve in that case.
 //
@@ -235,7 +235,7 @@ func gatewayTypedChildEnv(tmpl registry.ConnectionTemplate, gatewayURL, jwtStr s
 
 	var childEnv []string
 	if cleanEnv {
-		// T-08-02: start from a minimal base env, then append gateway vars.
+		// Start from a minimal base env, then append gateway vars.
 		childEnv = runtime.CleanBaseEnv(stripped, extra...)
 	} else {
 		// Then strip all remaining KEYLATCH_* vars; re-inject only the gateway vars.

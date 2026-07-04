@@ -2,7 +2,7 @@ package cli
 
 import "github.com/spf13/cobra"
 
-// newBrokerCmd returns the top-level `broker` subcommand group (Epic 20).
+// newBrokerCmd returns the top-level `broker` subcommand group.
 // Exposes broker status, dry-run, and revoke subcommands.
 func newBrokerCmd() *cobra.Command {
 	cmd := &cobra.Command{

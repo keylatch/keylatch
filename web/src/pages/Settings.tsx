@@ -11,7 +11,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-/** Shape returned by GET /api/settings and PUT /api/settings (EPIC-27). */
+/** Shape returned by GET /api/settings and PUT /api/settings. */
 interface SettingsResponse {
   approval_ttl_seconds: number
   approval_ttl_max_seconds: number
@@ -47,7 +47,7 @@ export const DEFAULT_APPROVAL_TTL_S = 60
 /**
  * Settings page.
  * - "Clear all connections" requires typing "delete all".
- * - "Approval TTL" — configurable timeout for auto-deny (server-validated, T-13-05).
+ * - "Approval TTL" — configurable timeout for auto-deny (server-validated).
  */
 export function Settings() {
   const { setSaving, setSaved, setError, reset } = useSaveStatus()
@@ -57,7 +57,7 @@ export function Settings() {
   const [clearStatus, setClearStatus] = useState<'idle' | 'pending' | 'done'>('idle')
   const canClear = clearInput === 'delete all'
 
-  // Approval TTL: loaded from and saved to /api/settings (T-13-05).
+  // Approval TTL: loaded from and saved to /api/settings.
   const [approvalTtl, setApprovalTtl] = useState<number>(DEFAULT_APPROVAL_TTL_S)
   const [approvalTtlMax, setApprovalTtlMax] = useState<number>(3600)
   const [ttlLoading, setTtlLoading] = useState(true)
@@ -68,21 +68,21 @@ export function Settings() {
   const [advancedLoading, setAdvancedLoading] = useState(false)
   const [advancedError, setAdvancedError] = useState<string | null>(null)
 
-  // EPIC-27: Operating mode.
+  // Operating mode.
   const [operatingMode, setOperatingMode] = useState<OperatingMode>('standard')
   const [operatingModeError, setOperatingModeError] = useState<string | null>(null)
 
-  // EPIC-27: Telemetry kill-switch.
+  // Telemetry kill-switch.
   const [telemetryDisable, setTelemetryDisable] = useState(false)
   const [telemetryLoading, setTelemetryLoading] = useState(false)
   const [telemetryError, setTelemetryError] = useState<string | null>(null)
 
-  // EPIC-27: Experimental opt-in.
+  // Experimental opt-in.
   const [experimental, setExperimental] = useState(false)
   const [experimentalLoading, setExperimentalLoading] = useState(false)
   const [experimentalError, setExperimentalError] = useState<string | null>(null)
 
-  // EPIC-27: Approval policy default.
+  // Approval policy default.
   const [approvalPolicy, setApprovalPolicy] = useState<ApprovalPolicy>('prompt')
   const [approvalPolicyError, setApprovalPolicyError] = useState<string | null>(null)
 
@@ -356,7 +356,7 @@ export function Settings() {
           >
             {(
               [
-                { value: 'standard',  label: 'Standard',  description: 'Stable production mode.' },
+                { value: 'standard', label: 'Standard', description: 'Stable production mode.' },
                 { value: 'telemetry', label: 'Telemetry', description: 'Standard plus anonymous usage telemetry.' },
               ] as { value: OperatingMode; label: string; description: string }[]
             ).map(({ value, label, description }) => (
@@ -415,9 +415,9 @@ export function Settings() {
           >
             {(
               [
-                { value: 'prompt',    label: 'Prompt',    description: 'Always ask before approving (default).' },
+                { value: 'prompt', label: 'Prompt', description: 'Always ask before approving (default).' },
                 { value: 'first-run', label: 'First run', description: 'Auto-approve once per session; deny subsequent requests.' },
-                { value: 'trust',     label: 'Trust',     description: 'Auto-approve all requests from all connections.' },
+                { value: 'trust', label: 'Trust', description: 'Auto-approve all requests from all connections.' },
               ] as { value: ApprovalPolicy; label: string; description: string }[]
             ).map(({ value, label, description }) => (
               <div key={value} className="flex items-center gap-3 py-1">
@@ -616,9 +616,9 @@ export function Settings() {
           <CardContent className="pb-4 pt-0">
             <div className="divide-y divide-border">
               {[
-                { key: 'op' as const,        label: '1Password',           hint: 'brew install 1password-cli', scheme: 'op://' },
-                { key: 'aws_sm' as const,     label: 'AWS Secrets Manager', hint: 'brew install awscli',        scheme: 'aws-sm://' },
-                { key: 'hashivault' as const, label: 'HashiCorp Vault',     hint: 'brew install vault',         scheme: 'hashivault://' },
+                { key: 'op' as const, label: '1Password', hint: 'brew install 1password-cli', scheme: 'op://' },
+                { key: 'aws_sm' as const, label: 'AWS Secrets Manager', hint: 'brew install awscli', scheme: 'aws-sm://' },
+                { key: 'hashivault' as const, label: 'HashiCorp Vault', hint: 'brew install vault', scheme: 'hashivault://' },
               ].map(({ key, label, hint, scheme }) => (
                 <div key={key} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                   <div className="flex items-center gap-2">

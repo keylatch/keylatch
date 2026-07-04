@@ -17,21 +17,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPhase3TestCmd returns the Phase 3 `test` command.
+// newTestCmd returns the `test` command.
 //
-// T-04-01 audit: `test` reads a root credential via connections.Test →
+// `test` reads a root credential via connections.Test →
 // connections.RunTestStrategy → store.Get. This is a value-bearing path.
 // LLM session guard: IsLLMSession check at the top of RunE blocks the command
 // in LLM sessions with SecurityBlock exit code (exit 2).
-func newPhase3TestCmd() *cobra.Command {
+func newTestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "test <connection>",
 		Short: "Test a connection's health",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			// T-04-01: value-bearing path — block in LLM sessions.
+			// value-bearing path — block in LLM sessions.
 			// connections.Test reads the root credential to make an HTTP connectivity
-			// probe. This must not run in LLM sessions (S-INV-2).
+			// probe. This must not run in LLM sessions.
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: 'test' reads a credential — blocked in LLM session (exit 2)\n")
 				os.Exit(exitcode.SecurityBlock)
@@ -58,9 +58,9 @@ func newPhase3TestCmd() *cobra.Command {
 	}
 }
 
-// newPhase3StatusCmd returns the Phase 3 `status` command — now a system dashboard.
-// P1.5: replaces one-line-per-connection output with a rich dashboard.
-func newPhase3StatusCmd() *cobra.Command {
+// newStatusCmd returns the `status` command — a system dashboard.
+// Replaces one-line-per-connection output with a rich dashboard.
+func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show system dashboard: vault, gateway, LLM session, connections",
@@ -212,8 +212,8 @@ func printStatusDashboard(c *cobra.Command, backend string, statuses []connectio
 	fmt.Fprintln(c.OutOrStdout(), "Run 'keylatch doctor' for deep diagnostics.")
 }
 
-// newPhase3DescribeCmd returns the Phase 3 `describe` command.
-func newPhase3DescribeCmd() *cobra.Command {
+// newDescribeCmd returns the `describe` command.
+func newDescribeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "describe <connection-or-provider>",
 		Short: "Describe a connection or provider template (no values)",

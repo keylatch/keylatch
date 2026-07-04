@@ -1,4 +1,4 @@
-// Package cli — Phase 10 UI subcommand.
+// Package cli — UI subcommand.
 package cli
 
 import (
@@ -101,7 +101,7 @@ Security notes:
 				return fmt.Errorf("ui: generate signing key: %w", err)
 			}
 
-			// Generate IPC secret for POST /v1/receipts (S-INV-12).
+			// Generate IPC secret for POST /v1/receipts.
 			ipcSecretRaw := make([]byte, 32)
 			if _, err := rand.Read(ipcSecretRaw); err != nil {
 				return fmt.Errorf("ui: generate IPC secret: %w", err)
@@ -132,7 +132,7 @@ Security notes:
 			}
 
 			if demo {
-				fmt.Fprintln(c.OutOrStdout(), "keylatch ui: demo mode — using stub data")
+				fmt.Fprintln(c.OutOrStdout(), "keylatch ui: demo mode — using sample data")
 			}
 			if isLLM {
 				fmt.Fprintln(c.OutOrStdout(), "keylatch ui: scope=status-only (LLM session)")
@@ -147,7 +147,7 @@ Security notes:
 	}
 
 	cmd.Flags().IntVar(&port, "port", 7890, "port to listen on")
-	cmd.Flags().BoolVar(&demo, "demo", false, "run in demo mode with stub data")
+	cmd.Flags().BoolVar(&demo, "demo", false, "run in demo mode with sample data")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "do not attempt to open browser automatically")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "bind to 0.0.0.0 (non-LLM sessions only)")
 	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7890 (Docker; non-LLM sessions only; overrides KEYLATCH_UI_LISTEN)")
@@ -197,9 +197,9 @@ func openBrowser(url string) error {
 func newUIRecipesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "recipes",
-		Short: "Show common keylatch usage recipes (Phase 10 stub)",
+		Short: "Show common keylatch usage recipes",
 		RunE: func(c *cobra.Command, _ []string) error {
-			fmt.Fprintln(c.OutOrStdout(), "recipes: coming soon in a future phase")
+			fmt.Fprintln(c.OutOrStdout(), "recipes: coming soon")
 			return nil
 		},
 	}

@@ -1,6 +1,6 @@
-// Package vault implements the keylatch secret vault with Phase 4 metadata
+// Package vault implements the keylatch secret vault with versioned metadata
 // and version management. All functions are value-free — MUST NEVER call
-// backend.Get (security invariant S4-1).
+// backend.Get.
 package vault
 
 import (
@@ -28,18 +28,18 @@ var (
 	ErrDestroyCurrentVersion = errors.New("vault: cannot destroy the current version (rotate first)")
 )
 
-// defaultCategoryResolver wraps the Phase 3 registry's Get function.
+// defaultCategoryResolver wraps the registry's Get function.
 func defaultCategoryResolver(provider string) (string, error) {
 	// Import here is intentional: avoid circular import by importing only
 	// the registry at the vault layer, not at the meta/path layer.
 	// registry.Get returns (ConnectionTemplate, error); we extract Category.
-	// This is wired at phase 4 — if provider not found, return ErrUnknownProvider.
+	// If provider not found, return ErrUnknownProvider.
 	return resolveCategory(provider)
 }
 
-// GetMeta returns value-free Phase 4 metadata for a canonical path.
+// GetMeta returns value-free metadata for a canonical path.
 //
-// Security invariant S4-1: MUST NOT call backend.Get.
+// Security invariant: MUST NOT call backend.Get.
 func GetMeta(ctx context.Context, path string, cfg config.Config, env llmcontext.Lookup) (vmeta.Meta, error) {
 	canonical, err := canonicalizePath(path, cfg, env)
 	if err != nil {
@@ -54,10 +54,10 @@ func GetMeta(ctx context.Context, path string, cfg config.Config, env llmcontext
 	return b.GetMeta(ctx, canonical)
 }
 
-// SetMeta validates and writes Phase 4 metadata for a path.
+// SetMeta validates and writes value-free metadata for a path.
 // Updates UpdatedAt to time.Now() before writing.
 //
-// Security invariant S4-1: MUST NOT call backend.Get.
+// Security invariant: MUST NOT call backend.Get.
 func SetMeta(ctx context.Context, path string, m vmeta.Meta, cfg config.Config, env llmcontext.Lookup) error {
 	canonical, err := canonicalizePath(path, cfg, env)
 	if err != nil {
@@ -82,7 +82,7 @@ func SetMeta(ctx context.Context, path string, m vmeta.Meta, cfg config.Config, 
 // ListMeta returns value-free metadata for all paths matching the given prefix.
 // Empty prefix returns all metadata. Results are sorted by Meta.Path.
 //
-// Security invariant S4-1: MUST NOT call backend.Get.
+// Security invariant: MUST NOT call backend.Get.
 // Canary invariant: output must never contain KEYLATCH_CANARY_PHASE4_LIST_0xDEADBEEF.
 func ListMeta(ctx context.Context, prefix string, cfg config.Config, env llmcontext.Lookup) ([]vmeta.Meta, error) {
 	b, err := dispatch.Select(ctx, cfg, env)
@@ -102,7 +102,7 @@ func ListMeta(ctx context.Context, prefix string, cfg config.Config, env llmcont
 }
 
 // RotateValue writes a new encrypted value version and updates metadata.
-// This is the canonical write path for Phase 4. It atomically:
+// This is the canonical write path for versioned values. It atomically:
 //  1. Loads existing metadata (or initializes if new)
 //  2. Increments version counter
 //  3. Builds an AADBinding
@@ -113,7 +113,7 @@ func ListMeta(ctx context.Context, prefix string, cfg config.Config, env llmcont
 //
 // Returns the new version number.
 //
-// Security invariant S4-1: does NOT call backend.Get.
+// Security invariant: does NOT call backend.Get.
 func RotateValue(
 	ctx context.Context,
 	path string,
@@ -161,7 +161,7 @@ func RotateValue(
 		return 0, fmt.Errorf("vault: RotateValue Parts: %w", err)
 	}
 
-	// Attempt to obtain the active key term from the backend (S5-1).
+	// Attempt to obtain the active key term from the backend.
 	// Backends that do not support key terms return 0 (plaintext mode).
 	activeKeyTerm := 0
 	if ktp, ok := b.(interface{ ActiveKeyTerm() (int, error) }); ok {
@@ -195,7 +195,7 @@ func RotateValue(
 		AAD:       aad,
 	}
 
-	// Merge caller-supplied fields (Phase 4 round-trip fields).
+	// Merge caller-supplied fields (metadata round-trip fields).
 	if m.Owner != "" {
 		existing.Owner = m.Owner
 	}
@@ -279,7 +279,7 @@ func RotateValue(
 // GetVersion returns the raw bytes and version metadata for a specific version.
 // Returns ErrVersionNotFound, ErrVersionDestroyed, or ErrVersionDeleted as appropriate.
 //
-// Security invariant S4-1: does NOT call backend.Get (calls backend.GetVersioned).
+// Security invariant: does NOT call backend.Get (calls backend.GetVersioned).
 func GetVersion(
 	ctx context.Context,
 	path string,
@@ -307,7 +307,7 @@ func GetVersion(
 		return nil, vmeta.VersionMeta{}, ErrVersionNotFound
 	}
 
-	// Security invariant S4-3: metadata-layer block takes precedence over
+	// Security invariant: metadata-layer block takes precedence over
 	// physical file presence.
 	if vm.DestroyedAt != nil {
 		return nil, vmeta.VersionMeta{}, ErrVersionDestroyed
@@ -325,10 +325,10 @@ func GetVersion(
 
 // DestroyVersion permanently marks a version as destroyed and attempts to
 // delete its ciphertext file. The metadata-layer block is enforced even if
-// the physical file persists (security invariant S4-3).
+// the physical file persists.
 //
 // Returns ErrDestroyCurrentVersion if caller tries to destroy the current version.
-// Security invariants S4-3 and S4-8: caller must check IsLLMSession before calling.
+// Security invariant: caller must check IsLLMSession before calling.
 func DestroyVersion(
 	ctx context.Context,
 	path string,
@@ -369,7 +369,7 @@ func DestroyVersion(
 	// Best-effort physical delete.
 	_ = b.DeleteVersioned(ctx, canonical, version)
 
-	// Metadata-layer block (S4-3): always set DestroyedAt regardless of whether
+	// Metadata-layer block: always set DestroyedAt regardless of whether
 	// the physical delete succeeded.
 	now := time.Now()
 	vm.DestroyedAt = &now
@@ -383,7 +383,7 @@ func DestroyVersion(
 // Version numbers are monotonically increasing; rollback never moves a pointer.
 // The new version's Custom map includes "rolled_back_from" = strconv.Itoa(version).
 //
-// Security invariant S4-8: caller must check IsLLMSession before calling.
+// Security invariant: caller must check IsLLMSession before calling.
 func Rollback(
 	ctx context.Context,
 	path string,
@@ -418,7 +418,7 @@ func Rollback(
 		return ErrVersionDeleted
 	}
 
-	// Read plaintext via versioned storage (not backend.Get — S4-1).
+	// Read plaintext via versioned storage (not backend.Get).
 	plaintext, err := b.GetVersioned(ctx, canonical, version)
 	if err != nil {
 		return fmt.Errorf("vault: Rollback GetVersioned: %w", err)

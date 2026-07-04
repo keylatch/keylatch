@@ -67,7 +67,7 @@ func newConfigSetCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			key, value := args[0], args[1]
 
-			// S05-4: blocklist check.
+			// Blocklist check.
 			if err := config.ValidateSetKey(key); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", err)
 				os.Exit(1)
@@ -80,7 +80,7 @@ func newConfigSetCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			// EPIC-17: validate operating mode before persisting.
+			// validate operating mode before persisting.
 			if strings.ToLower(key) == "mode" {
 				if _, parseErr := klruntime.ParseMode(value); parseErr != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", parseErr)

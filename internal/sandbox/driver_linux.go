@@ -15,11 +15,11 @@ import (
 // RunSandboxed executes m.Executable inside a bwrap sandbox.
 //
 // Security properties:
-//   - Executable hash is verified before exec.
-//   - ~/.keylatch is denied in bind-mount list.
-//   - Only explicit EnvInject vars are passed; inherit is false.
-//   - No shell string construction — argv is a slice.
-//   - KEYLATCH_* vars are never exposed in bwrap's environment (cmd.Env is set explicitly).
+// - Executable hash is verified before exec.
+// - ~/.keylatch is denied in bind-mount list.
+// - Only explicit EnvInject vars are passed; inherit is false.
+// - No shell string construction — argv is a slice.
+// - KEYLATCH_* vars are never exposed in bwrap's environment (cmd.Env is set explicitly).
 //
 // If featureEnabled is false, ErrFeatureFlagRequired is returned.
 func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, extraEnv []string, emitter audit.Emitter) error {
@@ -89,15 +89,15 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 //	bwrap
 //	  --ro-bind /usr /usr
 //	  --ro-bind /lib /lib
-//	  --ro-bind /lib64 /lib64   (if exists)
+//	  --ro-bind /lib64 /lib64 (if exists)
 //	  --ro-bind /bin /bin
 //	  --ro-bind /etc /etc
 //	  --dev /dev
 //	  --proc /proc
 //	  --tmpfs /tmp
 //	  [manifest bind mounts]
-//	  --setenv KEY val   (for each EnvInject)
-//	  --unsetenv HOME    (prevent host home leaking)
+//	  --setenv KEY val (for each EnvInject)
+//	  --unsetenv HOME (prevent host home leaking)
 //	  -- <executable> [args]
 func buildBwrapArgs(m *SandboxManifest, extraEnv []string) ([]string, error) {
 	var args []string

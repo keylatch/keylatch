@@ -12,9 +12,9 @@ const TABS = ['bash', 'python', 'node'] as const
 type Tab = typeof TABS[number]
 
 const SNIPPETS: Record<Tab, string> = {
-  bash:   'keylatch run <provider> -- <your-agent-command>',
+  bash: 'keylatch run <provider> -- <your-agent-command>',
   python: 'subprocess.run(["keylatch", "run", "<provider>", "--", "<your-agent-command>"])',
-  node:   'execSync("keylatch run <provider> -- <your-agent-command>")',
+  node: 'execSync("keylatch run <provider> -- <your-agent-command>")',
 }
 
 export function AgentSnippet({ snippet, language = 'bash', className }: AgentSnippetProps) {

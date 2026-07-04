@@ -97,7 +97,7 @@ func ValidateConnection(ctx context.Context, namespace, provider, _ string, stor
 // ValidateStore validates all connections in the given namespace.
 // Returns all issues across all connections.
 //
-// Canonical path format: namespace/category/provider/meta (S-FIND-23).
+// Canonical path format: namespace/category/provider/meta.
 // Scans each registered provider's meta path to discover connected providers.
 func ValidateStore(ctx context.Context, opts ValidateOptions, store connections.Store) ([]Issue, error) {
 	ns := opts.Namespace
@@ -176,7 +176,7 @@ func ValidateStore(ctx context.Context, opts ValidateOptions, store connections.
 }
 
 // secretFieldPath mirrors the connections package canonical path helper.
-// Canonical format: namespace/category/provider/field (S-FIND-23).
+// Canonical format: namespace/category/provider/field.
 func secretFieldPath(namespace, category, provider, field string) string {
 	if category == "" {
 		category = "ai"

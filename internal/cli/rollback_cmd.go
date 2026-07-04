@@ -12,7 +12,7 @@ import (
 )
 
 // newRollbackCmd returns the `rollback` subcommand.
-// Security invariant S4-8: blocked in LLM sessions.
+// Security invariant: blocked in LLM sessions.
 func newRollbackCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollback <path> <version>",
@@ -23,14 +23,14 @@ Version numbers are monotonically increasing — rollback creates a new version
 rather than moving a pointer. The new version's metadata records which version
 was rolled back from.
 
-Blocked in LLM sessions (S4-8). Requires confirmation or --force.`,
+Blocked in LLM sessions. Requires confirmation or --force.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			ctx := c.Context()
 			cfg := loadCLIConfig(c)
 			env := llmcontext.DefaultLookup
 
-			// S4-8: block in LLM sessions.
+			// Block in LLM sessions.
 			if llmcontext.IsLLMSession(env) {
 				return fmt.Errorf("[keylatch] security block: rollback requires a human terminal. Run outside an LLM session. (exit %d)", exitcode.SecurityBlock)
 			}

@@ -1,10 +1,10 @@
 package cli
 
-// guard_approval_root.go — Phase 11 (E14 T3): hardware approval JWT validation
+// guard_approval_root.go — hardware approval JWT validation
 // for direct_classic_sandboxed runtime mode.
 //
 // Security invariants:
-//   - S11-3: Approval root IDs in the JWT are HMAC'd; they are never raw.
+//   - Approval root IDs in the JWT are HMAC'd; they are never raw.
 //   - GuardRuntime calls ValidateApprovalRootJWT when a 32-byte signing key is
 //     provided. Without a signing key, GuardRuntime blocks any approval JWT.
 //   - ValidateApprovalRootJWT performs full cryptographic validation (HS256 sig,
@@ -18,8 +18,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// ApprovalRootClaims holds the Phase 11 approval root fields from a gateway JWT.
-// All root IDs are HMAC'd (S11-3).
+// ApprovalRootClaims holds the approval root fields from a gateway JWT.
+// All root IDs are HMAC'd.
 type ApprovalRootClaims struct {
 	// ApprovalRootHMAC is the HMAC of the primary approval root spec ID.
 	ApprovalRootHMAC string
@@ -88,7 +88,7 @@ func ValidateApprovalRootJWT(jwtStr string, signingKey []byte, requireTwoPerson 
 		return ApprovalRootClaims{}, ErrApprovalJWTInvalid
 	}
 
-	// Require hardware root HMAC (S11-3: must be HMAC'd, not raw).
+	// Require hardware root HMAC (must be HMAC'd, not raw).
 	if claims.ApprovalRootHMAC == "" {
 		return ApprovalRootClaims{}, ErrApprovalJWTMissingRootClaims
 	}

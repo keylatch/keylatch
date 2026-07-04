@@ -13,8 +13,8 @@ import (
 // if absent.
 //
 // Security invariants:
-//   - File mode is enforced as exactly 0o600 on read.
-//   - The salt bytes are NEVER logged or printed (S5-3).
+// - File mode is enforced as exactly 0o600 on read.
+// - The salt bytes are NEVER logged or printed.
 func LoadOrCreate(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err == nil {

@@ -9,7 +9,7 @@ import (
 // IsExperimentalEnabled reports whether the user has opted into experimental features.
 // Two conditions enable experimental mode:
 //  1. KEYLATCH_EXPERIMENTAL=1 is set in the process environment (per-process override).
-//  2. settings.ExperimentalGated is true (persisted via custom mode config, EPIC-17).
+//  2. settings.ExperimentalGated is true (persisted via custom mode config).
 //
 // The env var takes precedence as a conventional escape hatch; it wins even when
 // settings.ExperimentalGated is false. Either condition alone is sufficient.

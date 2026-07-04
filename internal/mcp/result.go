@@ -32,7 +32,7 @@ func newToolResultErrorf(format string, args ...any) *sdkmcp.CallToolResult {
 // newTextContent wraps a string in a *TextContent Content value.
 // Mirrors mark3labs's mcpgo.NewTextContent(s).
 //
-//nolint:unused // planned: used by MCP tool handlers in Phase 12 when JSON result types are unified
+//nolint:unused // planned: used by MCP tool handlers when JSON result types are unified
 func newTextContent(text string) sdkmcp.Content {
 	return &sdkmcp.TextContent{Text: text}
 }

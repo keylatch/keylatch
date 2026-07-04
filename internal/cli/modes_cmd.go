@@ -15,7 +15,7 @@ import (
 
 // ModeEntry describes a single keylatch runtime mode for JSON and table output.
 //
-// T-09-03: Added Available, Reason, and Fix fields (§13.7).
+// Added Available, Reason, and Fix fields (§13.7).
 type ModeEntry struct {
 	Name          string `json:"name"`
 	Available     bool   `json:"available"`
@@ -29,7 +29,7 @@ type ModeEntry struct {
 // newModesCmd returns the `keylatch modes` command.
 // It is a read-only informational command — no side effects.
 //
-// T-09-03: Added --json flag directly on the command (not just global root flag),
+// Added --json flag directly on the command (not just global root flag),
 // AVAILABLE and FIX columns, and removes the deleted direct_classic modes.
 func newModesCmd() *cobra.Command {
 	var jsonOut bool
@@ -43,7 +43,7 @@ func newModesCmd() *cobra.Command {
 For most users: the default gateway_typed mode is what you want.
 Use 'keylatch runtime doctor <provider>' for a per-provider recommendation.
 
-Exits non-zero if any preferred mode is unavailable (T-09-03).`,
+Exits non-zero if any preferred mode is unavailable.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			// Determine if the gateway is currently running by checking the PID file.
 			env := llmcontext.DefaultLookup
@@ -122,7 +122,7 @@ Exits non-zero if any preferred mode is unavailable (T-09-03).`,
 					}(),
 				},
 				{
-					// EPIC-24: direct_classic_sandboxed reinstated.
+					// direct_classic_sandboxed reinstated.
 					Name:          "direct_classic_sandboxed",
 					UseWhen:       "Isolated subprocess execution via OS sandbox (bwrap/sandbox-exec). Credentials injected inside a filesystem-restricted container.",
 					SecurityLevel: "High — ~/.keylatch denied inside sandbox; executable hash verified",
@@ -133,7 +133,7 @@ Exits non-zero if any preferred mode is unavailable (T-09-03).`,
 				},
 			}
 
-			// Determine exit code: non-zero if any mode is unavailable (T-09-03).
+			// Determine exit code: non-zero if any mode is unavailable.
 			anyUnavailable := false
 			for _, m := range modes {
 				if !m.Available {

@@ -1,13 +1,13 @@
 // Package op implements the Backend interface using the 1Password CLI (`op`).
 // It shells out via internal/exec.CommandRunner, stores one 1Password item per
-// Keylatch connection, and satisfies all Phase 2 security invariants.
+// Keylatch connection, and satisfies the following security invariants.
 //
 // Security invariants:
-//   - S2-1: Never print secret values to stdout/stderr.
-//   - S2-3: List zero-fills field values before returning.
-//   - S2-5: Fail-closed on binary unavailability (ErrUnavailable).
-//   - S2-9: Raw subprocess stderr never propagated; auth-failure hints only.
-//   - S2-10: Single-flight collapse for concurrent Get calls.
+//   - Never print secret values to stdout/stderr.
+//   - List zero-fills field values before returning.
+//   - Fail-closed on binary unavailability (ErrUnavailable).
+//   - Raw subprocess stderr never propagated; auth-failure hints only.
+//   - Single-flight collapse for concurrent Get calls.
 package op
 
 import (
@@ -102,7 +102,7 @@ func (b *OnePasswordBackend) Capabilities() []backend.Capability {
 }
 
 // Get returns the plaintext bytes for a canonical path via `op item get`.
-// Uses single-flight collapse and a 60-second metadata cache (S2-10).
+// Uses single-flight collapse and a 60-second metadata cache.
 func (b *OnePasswordBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	connection, field, err := parsePath(path)
 	if err != nil {
@@ -217,7 +217,7 @@ func (b *OnePasswordBackend) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-// List returns metadata-only entries with zero-filled field values (S2-3).
+// List returns metadata-only entries with zero-filled field values.
 func (b *OnePasswordBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin,
 		[]string{"item", "list",
@@ -244,7 +244,7 @@ func (b *OnePasswordBackend) List(ctx context.Context, prefix string) ([]backend
 	var entries []backend.Entry
 	for _, item := range items {
 		for _, f := range item.Fields {
-			// S2-3: zero-fill field values unconditionally on list.
+			// Zero-fill field values unconditionally on list.
 			path := "default/" + item.Title + "/" + f.Label
 			if prefix != "" && !strings.HasPrefix(path, prefix) {
 				continue
@@ -269,7 +269,7 @@ func (b *OnePasswordBackend) Close() error { return nil }
 
 // --- internal helpers ---
 
-// fetchItem returns an opItem, using cache + single-flight collapse (S2-10).
+// fetchItem returns an opItem, using cache + single-flight collapse.
 func (b *OnePasswordBackend) fetchItem(ctx context.Context, connection string) (opItem, error) {
 	const ttl = 60 * time.Second
 
@@ -335,7 +335,7 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 
 	if exitCode != 0 {
 		stderrStr := string(stderr)
-		// S2-9: do not echo raw stderr — map to typed errors with hints.
+		// Do not echo raw stderr — map to typed errors with hints.
 		if isAuthFailure(stderrStr) {
 			return opItem{}, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
 		}

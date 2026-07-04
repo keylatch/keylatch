@@ -1,7 +1,7 @@
 //go:build !windows
 
 // Package runner — driver_classic_sandboxed.go wires the direct_classic_sandboxed
-// runtime mode to the sandbox package on Linux and macOS (EPIC-24).
+// runtime mode to the sandbox package on Linux and macOS.
 //
 // On Linux  → bwrap (bubblewrap) process sandbox.
 // On macOS  → sandbox-exec(1) TinyScheme sandbox.
@@ -69,7 +69,7 @@ func (d *classicSandboxedDriver) Run(ctx context.Context, req ExecRequest, tmpl 
 	// The executable is the first element of the command; additional args are
 	// NOT passed to sandbox.RunSandboxed — RunSandboxed executes the manifest
 	// Executable directly. For a full arg-passing implementation, the manifest
-	// would need an Args field. For EPIC-24 the executable is the primary unit.
+	// would need an Args field. The executable is the primary unit.
 	execPath := req.Command[0]
 
 	// Compute executable hash for verification.
@@ -92,7 +92,7 @@ func (d *classicSandboxedDriver) Run(ctx context.Context, req ExecRequest, tmpl 
 	// This follows the same pattern as the brokered driver: the caller provides
 	// prepared KEY=VALUE pairs via req.FeatureFlags / ExtraEnvVars.
 	//
-	// For EPIC-24: ExtraEnvVars carries the actual credential env pairs.
+	// ExtraEnvVars carries the actual credential env pairs.
 	// The Manifest.EnvInject map is used for static / well-known pairs only.
 
 	// Step 4: emit SandboxLaunched audit event before exec.

@@ -20,7 +20,7 @@ const (
 // It is stored in the keyring file under KeyringFile.Roots.
 //
 // Security: the ID field is opaque. Callers MUST HMAC the ID before logging
-// or including it in JWT claims (S11-3).
+// or including it in JWT claims.
 type RootSpec struct {
 	// ID is the stable opaque identifier for this root instance.
 	ID string `json:"id"`
@@ -34,7 +34,7 @@ type RootSpec struct {
 	// Label is a human-readable name for display purposes only (value-free).
 	Label string `json:"label,omitempty"`
 
-	// AgePublicKey is the AGE public key derived for this root (FIND2-001).
+	// AgePublicKey is the AGE public key derived for this root.
 	// Format: "age1..." for X25519 or "age1ssh-ed25519..." for SSH.
 	// Empty when the root does not support AGE key derivation.
 	AgePublicKey string `json:"age_public_key,omitempty"`

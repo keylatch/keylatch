@@ -1,6 +1,6 @@
 // Package store implements URI dispatch for external credential store references.
 //
-// T-05-01 (EPIC-05): resolves provider-managed secret URIs in the form:
+// Resolves provider-managed secret URIs in the form:
 //
 //	op://vault/item/field      — 1Password CLI (op)
 //	aws-sm://region/secret-id  — AWS Secrets Manager (aws secretsmanager get-secret-value)
@@ -65,7 +65,7 @@ func IsProviderRefURI(val []byte) bool {
 // any store write occurs. It returns ErrInvalidURI when the scheme is not supported
 // or the URI is structurally invalid, without invoking any external binary.
 //
-// EPIC-10 (T-10-01): used by the CLI --provider-ref flag to gate persistence.
+// Used by the CLI --provider-ref flag to gate persistence.
 func ValidateProviderRefURI(uri string) error {
 	uri = strings.TrimSpace(uri)
 	if uri == "" {

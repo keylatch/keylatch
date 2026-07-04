@@ -1,7 +1,6 @@
 // Package file implements the envelope-encrypted file backend.
 // v1.0.0: Set uses xchacha20-poly1305 AEAD (or aes-256-gcm when built with
-// the -tags=fips build tag). Plaintext and base64 write paths are removed
-// (T-02-02, S-INV-1).
+// the -tags=fips build tag). Plaintext and base64 write paths are removed.
 package file
 
 import (
@@ -28,8 +27,8 @@ type Options struct {
 	// Dir is the root data directory (required). Created with 0o700 if absent.
 	Dir string
 
-	// PassphraseFn is a placeholder for Phase 5 keyring integration.
-	// Phase 1 does not use it.
+	// PassphraseFn is a placeholder for future keyring integration.
+	// Not currently used.
 	PassphraseFn func() ([]byte, error)
 }
 
@@ -39,8 +38,8 @@ type FileBackend struct {
 	mu       sync.Mutex
 	manifest fileManifest
 	loaded   bool
-	crypto   *cryptoState     //nolint:unused // Phase 5 AEAD keyring state; nil = plaintext mode
-	keyring  *keyring.Keyring // Phase 5 live keyring for SetVersioned/GetVersioned dispatch
+	crypto   *cryptoState     //nolint:unused // AEAD keyring state; nil = plaintext mode
+	keyring  *keyring.Keyring // live keyring for SetVersioned/GetVersioned dispatch
 }
 
 // Open validates opts.Dir, creates it if absent, and returns an initialized
@@ -58,7 +57,7 @@ func Open(opts Options) (*FileBackend, error) {
 }
 
 // OpenWithKeyring opens a FileBackend with an attached keyring so that
-// SetVersioned and GetVersioned automatically encrypt/decrypt values (S5-1).
+// SetVersioned and GetVersioned automatically encrypt/decrypt values.
 func OpenWithKeyring(opts Options, kr *keyring.Keyring) (*FileBackend, error) {
 	fb, err := Open(opts)
 	if err != nil {
@@ -84,11 +83,11 @@ func (fb *FileBackend) Capabilities() []backend.Capability {
 	}
 }
 
-// Set writes value to opts.Dir/{path}/value.enc using AEAD encryption (S-INV-1, T-02-02).
+// Set writes value to opts.Dir/{path}/value.enc using AEAD encryption.
 // Requires a keyring — returns ErrBootstrapRequired if no keyring is configured.
-// Path-traversal inputs are rejected (S-INV-11).
+// Path-traversal inputs are rejected.
 func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta backend.Meta) error {
-	// Require keyring: no plaintext or base64 write path in v1.0.0 (T-02-02).
+	// Require keyring: no plaintext or base64 write path in v1.0.0.
 	if fb.keyring == nil {
 		return backend.ErrBootstrapRequired
 	}
@@ -100,7 +99,7 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 		return err
 	}
 
-	// Path-traversal guard (S-INV-11 / S-FIND-23).
+	// Path-traversal guard.
 	dir := filepath.Join(fb.dir, filepath.FromSlash(path))
 	if !strings.HasPrefix(dir, filepath.Clean(fb.dir)+string(filepath.Separator)) {
 		return fmt.Errorf("file backend: path escapes vault root")
@@ -110,7 +109,7 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 		return fmt.Errorf("file backend: mkdir %q: %w", dir, err)
 	}
 
-	// AEAD encryption (T-02-02, S-INV-1, S-INV-7).
+	// AEAD encryption.
 	now := time.Now().UTC()
 	namespace := "default"
 	if parts, err := vpath.Parts(path); err == nil {
@@ -197,14 +196,14 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 // Get reads value.enc, decrypts via AEAD, and returns plaintext bytes.
 // Returns ErrNotFound if path is not in the manifest.
 // Requires a keyring — returns ErrBootstrapRequired if no keyring is configured.
-// S1-7: checks runner.OK before returning plaintext.
+// Checks runner.OK before returning plaintext.
 func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	// S1-7: check LLM/runner approval before returning plaintext.
+	// Check LLM/runner approval before returning plaintext.
 	if !runner.OK(ctx) {
 		return nil, backend.Meta{}, backend.ErrLocked
 	}
 
-	// Require keyring: no plaintext read path in v1.0.0 (T-02-02).
+	// Require keyring: no plaintext read path in v1.0.0.
 	if fb.keyring == nil {
 		return nil, backend.Meta{}, backend.ErrBootstrapRequired
 	}
@@ -221,7 +220,7 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 		return nil, backend.Meta{}, backend.ErrNotFound
 	}
 
-	// S1-6 analog: only read value.enc on explicit Get; List/GetMeta never read it.
+	// Only read value.enc on explicit Get; List/GetMeta never read it.
 	encPath := filepath.Join(fb.dir, filepath.FromSlash(path), "value.enc")
 	ct, err := os.ReadFile(encPath)
 	if err != nil {
@@ -271,7 +270,7 @@ func (fb *FileBackend) Delete(ctx context.Context, path string) error {
 	fb.mu.Lock()
 	defer fb.mu.Unlock()
 
-	// Path-traversal guard (S-INV-11): must run before manifest lookup.
+	// Path-traversal guard: must run before manifest lookup.
 	dir := filepath.Join(fb.dir, filepath.FromSlash(path))
 	if !strings.HasPrefix(filepath.Clean(dir), filepath.Clean(fb.dir)+string(filepath.Separator)) {
 		return fmt.Errorf("file backend: path escapes vault root")
@@ -299,7 +298,7 @@ func (fb *FileBackend) Delete(ctx context.Context, path string) error {
 }
 
 // List returns metadata-only entries with paths matching the given prefix.
-// MUST NOT open any value.enc files (S1-6 analog).
+// MUST NOT open any value.enc files.
 func (fb *FileBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	fb.mu.Lock()
 	defer fb.mu.Unlock()
@@ -317,9 +316,9 @@ func (fb *FileBackend) List(ctx context.Context, prefix string) ([]backend.Entry
 	return entries, nil
 }
 
-// GetMeta returns Phase 4 metadata for path from the metadata directory.
+// GetMeta returns value-free metadata for path from the metadata directory.
 // Returns ErrNotFound if absent. MUST NOT read value files.
-// Full implementation lives in internal/backend/file/meta.go (T5-03).
+// Full implementation lives in internal/backend/file/meta.go.
 func (fb *FileBackend) GetMeta(ctx context.Context, path string) (vmeta.Meta, error) {
 	return getMetaFromDisk(fb.dir, path)
 }

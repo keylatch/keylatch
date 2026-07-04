@@ -10,7 +10,7 @@ import (
 )
 
 // newPathsCmd returns the `keylatch paths` command.
-// P1.7: shows all well-known keylatch filesystem paths.
+// Shows all well-known keylatch filesystem paths.
 func newPathsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "paths",
@@ -56,7 +56,7 @@ var knownEnvVars = []envEntry{
 }
 
 // newEnvCmd returns the `keylatch env` command.
-// P1.7: documents recognized environment variables with current values if set.
+// Documents recognized environment variables with current values if set.
 func newEnvCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "env",

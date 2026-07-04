@@ -1,4 +1,4 @@
-// Package cli — Phase 8 projects subcommands.
+// Package cli — projects subcommands.
 package cli
 
 import (

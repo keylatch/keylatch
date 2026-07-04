@@ -46,7 +46,7 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 //  4. router.Match(method, path) → rt | 404
 //  5. Check t.Capabilities ⊇ {rt.Capability} | 403
 //     5b. LLM-session gate (from JWT claim, NOT from server env)
-//  6. policy check (Phase 9: always allow via CheckPolicy stub)
+//  6. policy check (always allow via CheckPolicy for now)
 //     6-budget. per-actor budget CheckAndRecord | 429 with value-free denial receipt
 //     6a. substitution.CheckRequest | 400
 //  7. vault.Get (canonical path for provider) → rootCredential
@@ -135,7 +135,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 5b: LLM-session gate (from JWT claim, NEVER from server env — S9-13).
+	// Step 5b: LLM-session gate (from JWT claim, NEVER from server env).
 	if t.LLMSession {
 		// Block read-class capabilities.
 		if token.IsReadClassCap(rt.Capability) {
@@ -155,7 +155,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			outcome = audit.OutcomeDenied
 			return
 		}
-		// S11-19: direct_classic_sandboxed in LLM sessions requires two-person approval.
+		// direct_classic_sandboxed in LLM sessions requires two-person approval.
 		// If the token was minted with ApprovalRootHMAC set (sandboxed approval path)
 		// but TwoPerson is false, block the request.
 		if t.ApprovalRootHMAC != "" && !t.TwoPerson {
@@ -169,7 +169,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 6: Policy check (Phase 9: pass-through; full policy enforcement in later phase).
+	// Step 6: Policy check (pass-through; full policy enforcement not yet implemented).
 	// Placeholder — no policy evaluation yet.
 
 	// Step 6-budget: per-actor budget enforcement. CheckAndRecord is atomic
@@ -196,7 +196,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 6-SSRF: SSRF gate (FIND2-017). Validate the route-resolved upstream
+	// Step 6-SSRF: SSRF gate. Validate the route-resolved upstream
 	// host against the provider allowlist and IP deny-ranges before any
 	// outbound request. Pure HTTP middleware cannot do this because the
 	// provider ID and upstream host are only known after router.Match() above.
@@ -218,7 +218,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// and consumed above; it must not be forwarded to the upstream.
 	r.Header.Del("Authorization")
 
-	// Step 6a: Substitution prevention (S9-16).
+	// Step 6a: Substitution prevention.
 	if kind, subErr := substitution.CheckRequest(r, rt.UpstreamHost, rt.AllowedParams, false); subErr != nil {
 		writeError(w, http.StatusBadRequest, "substitution_blocked", "substitution attempt detected")
 		s.logAudit(ctx, audit.ActionSubstitutionBlocked, audit.OutcomeDenied, map[string]any{
@@ -241,7 +241,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 7: vault.Get — read root credential from vault (T01).
 	//
-	// T-04-01 audit: vault.Get is value-bearing. Guard coverage:
+	// Audit: vault.Get is value-bearing. Guard coverage:
 	//   (a) The caller must hold a valid gateway JWT (verified in step 3). The JWT
 	//       is only minted by DispatchRunner.Run after it has passed the CLI-level
 	//       LLM session guard (GuardRuntime). LLM sessions receive gateway_typed
@@ -278,7 +278,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// When vault is nil (tests without vault), rootCredential stays nil and
 	// the broker's static_gateway_only strategy treats it as an empty credential.
-	// rootCredential is zeroed in the single defer below (S9-2) — do not add a second defer here.
+	// rootCredential is zeroed in the single defer below — do not add a second defer here.
 
 	// Step 8: Exchange credential via broker.
 	accessToken, err := s.broker.Exchange(ctx, staticbroker.ExchangeSpec{
@@ -294,15 +294,15 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if isErr(err, staticbroker.ErrExchangeUnsupported) {
-			// S9-19c: never fallback; documented remediation.
+			// Never fallback; documented remediation.
 			writeError(w, http.StatusServiceUnavailable, "exchange_unsupported",
-				"exchange strategy unsupported in Phase 9. Remediation: use static_gateway_only or upgrade to Phase 13.")
+				"exchange strategy not supported. Remediation: use static_gateway_only.")
 			return
 		}
 		writeError(w, http.StatusServiceUnavailable, "exchange_error", "credential exchange failed")
 		return
 	}
-	// S9-2: zero root credential bytes after use.
+	// Zero root credential bytes after use.
 	defer func() {
 		for i := range rootCredential {
 			rootCredential[i] = 0
@@ -448,7 +448,7 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 		q.Set(placement.Name, tokenStr)
 		req.URL.RawQuery = q.Encode()
 	case "body":
-		// Phase 9: body injection not yet implemented; use header fallback.
+		// Body injection not yet implemented; use header fallback.
 		req.Header.Set("Authorization", "Bearer "+tokenStr)
 	default:
 		// Default: Bearer header.

@@ -1,4 +1,4 @@
-// Package cli — Phase 9 gateway rules subcommands (stub).
+// Package cli — gateway rules subcommands (stub).
 //
 // Rules persist to ~/.keylatch/gateway-rules.json (mode 0o600).
 package cli
@@ -31,7 +31,7 @@ type GatewayRule struct {
 func newRulesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
-		Short: "Manage gateway rules (Phase 9 stub)",
+		Short: "Manage gateway rules",
 	}
 	cmd.AddCommand(newRulesListCmd())
 	cmd.AddCommand(newRulesCreateCmd())
@@ -225,7 +225,7 @@ func newGatewayRuleID() (string, error) {
 
 // randRead is an alias for use in gateway_cmd.go.
 //
-//nolint:unused // planned: used by gateway token generation in Phase 9 auth refactor
+//nolint:unused // planned: used by gateway token generation in a future auth refactor
 func randRead(b []byte) (int, error) {
 	return rand.Read(b)
 }

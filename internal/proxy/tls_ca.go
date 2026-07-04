@@ -89,7 +89,7 @@ func selfSignedCACertWithKey(privKey *ecdsa.PrivateKey) (*x509.Certificate, erro
 		SerialNumber: serial,
 		Subject: pkix.Name{
 			Organization:       []string{"Keylatch Local CA"},
-			OrganizationalUnit: []string{"Phase 13 Proxy"},
+			OrganizationalUnit: []string{"Keylatch Proxy"},
 			CommonName:         "keylatch-local-ca",
 		},
 		NotBefore:             time.Now().Add(-1 * time.Minute),

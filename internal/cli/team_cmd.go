@@ -1,9 +1,9 @@
-// Package cli — Phase 12 team governance CLI commands.
+// Package cli — team governance CLI commands.
 //
 // Security invariants:
-//   - S12-15: Role enforcement at package layer (team.RequireRole), not here.
+//   - Role enforcement at package layer (team.RequireRole), not here.
 //   - All output is value-free (emails never printed raw — HMACd only).
-//   - Shared-secret reveal is blocked in LLM sessions (S12-7).
+//   - Shared-secret reveal is blocked in LLM sessions.
 package cli
 
 import (
@@ -21,11 +21,11 @@ import (
 	"github.com/keylatch/keylatch/internal/team"
 )
 
-// newTeamCmd returns the `team` subcommand group for Phase 12.
+// newTeamCmd returns the `team` subcommand group.
 func newTeamCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "team",
-		Short: "Manage team membership, roles, and governance (Phase 12)",
+		Short: "Manage team membership, roles, and governance",
 	}
 	cmd.AddCommand(newTeamListCmd())
 	cmd.AddCommand(newTeamInviteCmd())
@@ -100,7 +100,7 @@ func newTeamInviteCmd() *cobra.Command {
 			role, _ := c.Flags().GetString("role")
 
 			if emailHMAC == "" {
-				// P1.3: actionable error with how to generate HMAC.
+				// Actionable error with how to generate HMAC.
 				fmt.Fprintln(c.ErrOrStderr(), "Error: team invite requires a pre-computed HMAC.")
 				fmt.Fprintln(c.ErrOrStderr())
 				fmt.Fprintln(c.ErrOrStderr(), "  Use `keylatch team hash-email` to generate one:")
@@ -147,7 +147,7 @@ func newTeamInviteCmd() *cobra.Command {
 }
 
 // requireCallerAdmin loads the caller's member from the team and enforces admin role.
-// M-7: used by mutating team commands to enforce S12-15 at the CLI layer.
+// Used by mutating team commands to enforce role checks at the CLI layer.
 func requireCallerAdmin(t *team.Team) error {
 	callerID := os.Getenv("KEYLATCH_MEMBER_ID")
 	if callerID == "" {
@@ -164,11 +164,11 @@ func requireCallerAdmin(t *team.Team) error {
 }
 
 // newTeamRemoveCmd returns `keylatch team remove --id <member-id>`.
-// Removes a member and triggers shared-secret rotation (FIND3-006).
+// Removes a member and triggers shared-secret rotation.
 func newTeamRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove",
-		Short: "Remove a member from the team and rotate shared secrets (FIND3-006)",
+		Short: "Remove a member from the team and rotate shared secrets",
 		RunE: func(c *cobra.Command, _ []string) error {
 			memberID, _ := c.Flags().GetString("id")
 			if memberID == "" {
@@ -250,7 +250,7 @@ func newTeamTransferCmd() *cobra.Command {
 }
 
 // newTeamRoleCmd returns `keylatch team role --id <id> --role <role>`.
-// Updates a member's role (S12-15: RequireRole enforced at package layer).
+// Updates a member's role (RequireRole enforced at package layer).
 func newTeamRoleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "role",
@@ -308,7 +308,7 @@ func newTeamRoleCmd() *cobra.Command {
 
 // newTeamRotateOwnerKeyCmd returns `keylatch team rotate-owner-key`.
 // Rotates the team owner's AGE key pair.
-// P0.4: this is a stub — hidden from help.
+// This is a stub — hidden from help.
 func newTeamRotateOwnerKeyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "rotate-owner-key",
@@ -316,7 +316,7 @@ func newTeamRotateOwnerKeyCmd() *cobra.Command {
 		Hidden: true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			// Key rotation requires interactive hardware presence proof.
-			// In Phase 12 this triggers AGE key regeneration and shared-secret rewrap.
+			// This triggers AGE key regeneration and shared-secret rewrap.
 			fmt.Fprintln(c.OutOrStdout(), "Owner key rotation requires hardware presence proof.")
 			fmt.Fprintln(c.OutOrStdout(), "Run: keylatch trust challenge --then team rotate-owner-key --confirmed")
 			os.Exit(exitcode.UserError)
@@ -328,7 +328,7 @@ func newTeamRotateOwnerKeyCmd() *cobra.Command {
 // newTeamHashEmailCmd returns `keylatch team hash-email <email>`.
 // Produces the SHA256-HMAC of the email using the team's HMAC algorithm.
 // This is a convenience command to pre-compute the HMAC for use with --email-hmac.
-// P1.10: hash-email helper.
+// hash-email helper.
 func newTeamHashEmailCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "hash-email <email>",

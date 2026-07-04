@@ -29,7 +29,7 @@ type cacheEntry struct {
 	onEvict func()
 }
 
-// tokenCache is the in-process token store. Never written to disk (S9-17).
+// tokenCache is the in-process token store. Never written to disk.
 //
 // The cache is bounded: at most maxEntries live entries are kept. When a
 // new entry is set and the cache is full, the entry with the oldest
@@ -189,7 +189,7 @@ func (c *tokenCache) delete(key string) {
 }
 
 // flush zeroes all token bytes and clears all entries.
-// FIND2-004: called synchronously on vault lock.
+// Called synchronously on vault lock.
 func (c *tokenCache) flush() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

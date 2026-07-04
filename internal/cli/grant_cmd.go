@@ -1,4 +1,4 @@
-// Package cli — Phase 8 grant subcommands.
+// Package cli — grant subcommands.
 package cli
 
 import (

@@ -1,9 +1,9 @@
-// Package token implements JWT-shaped scoped gateway tokens for Phase 9.
+// Package token implements JWT-shaped scoped gateway tokens.
 //
 // Security invariants:
-//   - S9-13: LLMSession is derived from the JWT claim, NEVER from os.Getenv.
-//   - FIND-001: callers MUST set spec.LLMSession from llmcontext.IsLLMSession() in their own process.
-//   - FIND3-009: MaxUses enforcement uses flock + append-only consumption log.
+//   - LLMSession is derived from the JWT claim, NEVER from os.Getenv.
+//   - Callers MUST set spec.LLMSession from llmcontext.IsLLMSession() in their own process.
+//   - MaxUses enforcement uses flock + append-only consumption log.
 //   - No credential bytes appear in any error message or log.
 package token
 
@@ -77,10 +77,10 @@ type Token struct {
 	RevokedAt          *time.Time `json:"revoked_at,omitempty"`
 	Parent             string     `json:"parent,omitempty"`
 	LLMSession         bool       `json:"llm_session"`
-	FDNonceHash        string     `json:"fd_nonce_hash,omitempty"` // FIND3-003
+	FDNonceHash        string     `json:"fd_nonce_hash,omitempty"` // ephemeral nonce hash
 
-	// Phase 11: approval root claims.
-	// All root IDs are HMAC'd per S11-3; never raw.
+	// Approval root claims.
+	// All root IDs are HMAC'd; never raw.
 	// ApprovalRootHMAC is the HMAC of the primary approval root spec ID.
 	ApprovalRootHMAC string `json:"approval_root_hmac,omitempty"`
 	// ApprovalCapability is the capability that was approved (e.g. "inject").
@@ -107,12 +107,12 @@ type TokenSpec struct {
 	MaxUses      int // 0 = unlimited (explicit); default for runner-minted = 1
 	Parent       string
 	LLMSession   bool
-	FDNonce      []byte // FIND3-003; 32-byte ephemeral nonce from pipe
+	FDNonce      []byte // 32-byte ephemeral nonce from pipe
 	StorePath    string // defaults to paths.GatewayTokens(env)
 	SigningKey   []byte // 32-byte; loaded from ~/.keylatch/gateway/signing.key
 
-	// Phase 11: approval root parameters (E14 T1).
-	// ApprovalRootID is the raw root spec ID; it will be HMAC'd (S11-3) before embedding in JWT/Token.
+	// Approval root parameters.
+	// ApprovalRootID is the raw root spec ID; it will be HMAC'd before embedding in JWT/Token.
 	ApprovalRootID string
 	// ApprovalCapability is the capability being approved.
 	ApprovalCapability string
@@ -124,7 +124,7 @@ type TokenSpec struct {
 	ApprovalBinding string
 	// TwoPerson requires two distinct root approvals.
 	TwoPerson bool
-	// ApprovalRootIDs are raw root spec IDs for two-person approvals; each HMAC'd per S11-3.
+	// ApprovalRootIDs are raw root spec IDs for two-person approvals; each HMAC'd.
 	ApprovalRootIDs []string
 }
 
@@ -143,7 +143,7 @@ type gatewayClaims struct {
 	CWDHash     string   `json:"cwd_hash,omitempty"`
 	LLMSession  bool     `json:"llm_session"`
 
-	// Phase 11: approval root claims (S11-3: root IDs are HMAC'd, never raw).
+	// Approval root claims (root IDs are HMAC'd, never raw).
 	ApprovalRootHMAC  string   `json:"apv_root_hmac,omitempty"`
 	ApprovalCap       string   `json:"apv_cap,omitempty"`
 	ApprovalMaxAgeSec int      `json:"apv_max_age_sec,omitempty"`
@@ -158,7 +158,7 @@ type gatewayClaims struct {
 // JWT claims: jti, iat, exp, actor, caps ([]string), cmd_hash, cwd_hash, llm_session.
 // If spec.FDNonce is non-empty, Token.FDNonceHash = HMAC-SHA256(signingKey, fdNonce) hex-encoded.
 // If spec.MaxUses > 0, Token.ConsumptionLogPath is set.
-// FIND-001: callers MUST set spec.LLMSession from llmcontext.IsLLMSession() in their own process.
+// Callers MUST set spec.LLMSession from llmcontext.IsLLMSession() in their own process.
 func Mint(spec TokenSpec) (string, *Token, error) {
 	if len(spec.SigningKey) != 32 {
 		return "", nil, fmt.Errorf("token: signing key must be 32 bytes")
@@ -193,7 +193,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		cwdHash = hmacHex(spec.SigningKey, []byte(spec.CWD))
 	}
 
-	// Phase 11: compute HMAC'd approval root IDs (S11-3: never embed raw root IDs).
+	// Compute HMAC'd approval root IDs (never embed raw root IDs).
 	var approvalRootHMAC string
 	var approvalRootHMACs []string
 	var approvalExpiryStr string
@@ -248,7 +248,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		Parent:        spec.Parent,
 		LLMSession:    spec.LLMSession,
 
-		// Phase 11: approval root fields (HMAC'd per S11-3).
+		// Approval root fields (HMAC'd).
 		ApprovalRootHMAC:   approvalRootHMAC,
 		ApprovalCapability: spec.ApprovalCapability,
 		ApprovalMaxAgeSec:  spec.ApprovalMaxAgeSec,
@@ -258,7 +258,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		ApprovalRootHMACs:  approvalRootHMACs,
 	}
 
-	// FD nonce hash (FIND3-003).
+	// FD nonce hash.
 	if len(spec.FDNonce) > 0 {
 		t.FDNonceHash = hmacHex(spec.SigningKey, spec.FDNonce)
 	}
@@ -290,7 +290,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 // If r is non-nil and Token.FDNonceHash is set: reads X-Keylatch-FD-Nonce header,
 // computes HMAC(signingKey, headerBytes), constant-time compares to FDNonceHash.
 // Mismatch → ErrFDNonceMismatch.
-// FIND3-009: for MaxUses>0 tokens, atomically appends one consumption record
+// For MaxUses>0 tokens, atomically appends one consumption record
 // to ConsumptionLogPath under flock.
 func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string) (*Token, error) {
 	if len(signingKey) != 32 {
@@ -330,7 +330,7 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 		return nil, ErrTokenExpired
 	}
 
-	// FD nonce verification (FIND3-003).
+	// FD nonce verification.
 	if t.FDNonceHash != "" && r != nil {
 		nonceHeader := r.Header.Get("X-Keylatch-FD-Nonce")
 		if nonceHeader == "" {
@@ -346,7 +346,7 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 		}
 	}
 
-	// MaxUses enforcement (FIND3-009).
+	// MaxUses enforcement.
 	if t.MaxUses > 0 {
 		if !consumeUseForToken(t) {
 			return nil, ErrTokenExhausted

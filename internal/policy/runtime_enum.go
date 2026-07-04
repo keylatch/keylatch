@@ -1,6 +1,6 @@
 // Package policy implements the keylatch policy engine.
 // runtime_enum.go defines the closed set of valid runtime modes and
-// provides a parser that rejects removed or unknown names (FIND2-023).
+// provides a parser that rejects removed or unknown names.
 package policy
 
 import "fmt"
@@ -17,7 +17,7 @@ const (
 	RuntimeGatewayProxy  RuntimeMode = "gateway_proxy"
 )
 
-// removedRuntimes is the set of names that have been removed (FIND2-023).
+// removedRuntimes is the set of names that have been removed.
 // ValidateRuntimeMode returns a descriptive error pointing to the migration table.
 var removedRuntimes = map[string]bool{
 	"direct_run":     true,
@@ -34,7 +34,7 @@ var plannedRuntimes = map[string]bool{
 
 // ValidateRuntimeMode returns nil for a valid runtime mode.
 // It returns a descriptive error for removed names and unknown strings.
-// See migration table in spec §FIND2-023.
+// See migration table in spec §.
 func ValidateRuntimeMode(s string) error {
 	switch RuntimeMode(s) {
 	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeDirectClassic, RuntimeGatewayProxy:
@@ -42,7 +42,7 @@ func ValidateRuntimeMode(s string) error {
 	}
 	if removedRuntimes[s] {
 		return fmt.Errorf(
-			"runtime %q has been removed (FIND2-023); see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, direct_brokered, direct_classic, or gateway_proxy",
+			"runtime %q has been removed; see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, direct_brokered, direct_classic, or gateway_proxy",
 			s,
 		)
 	}

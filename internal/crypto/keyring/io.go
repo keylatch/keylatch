@@ -10,7 +10,7 @@ import (
 // atomicWrite writes data to path atomically: write to a temp file, fsync the
 // temp file, rename to path, fsync the parent directory.
 //
-// S5-19: post-failure the file at path is one of two consistent states — the
+// Post-failure the file at path is one of two consistent states — the
 // previous contents or the new contents. Never partial.
 func atomicWrite(path string, data []byte) error {
 	dir := filepath.Dir(path)
@@ -99,7 +99,7 @@ func loadFile(path string) (KeyringFile, error) {
 		return KeyringFile{}, fmt.Errorf("%w: parse %q: %v", ErrKeyringCorrupt, path, err)
 	}
 
-	// Accept schema versions 1 (Phase 5 legacy) and 2 (Phase 11+).
+	// Accept schema versions 1 (legacy) and 2 (roots-of-trust and later).
 	// Version 1 keyrings are migrated on Open; version > SchemaVersion is rejected.
 	if kf.SchemaVersion < 1 || kf.SchemaVersion > SchemaVersion {
 		return KeyringFile{}, fmt.Errorf("%w: %q has schema version %d, want 1 or %d",

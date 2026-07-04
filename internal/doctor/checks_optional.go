@@ -281,7 +281,7 @@ func checkHookPreToolUse(env llmcontext.Lookup) Check {
 }
 
 // checkNoConnections is a soft WARN check that fires when no connections are configured.
-// P1.8: warn the user to run setup or connect.
+// Warns the user to run setup or connect.
 func checkNoConnections(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		vaultDir := paths.Vault(env)
@@ -321,7 +321,7 @@ func checkNoConnections(env llmcontext.Lookup) Check {
 }
 
 // checkGatewayRunning is a soft WARN check that reports if the gateway is not running.
-// P1.8: inform the user about gateway_typed runtime mode.
+// Informs the user about gateway_typed runtime mode.
 func checkGatewayRunning(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		pidPath := paths.GatewayPID(env)
@@ -423,13 +423,13 @@ func checkCosignInstalled(probe kexec.Probe) Check {
 
 // checkPlaintextRetention implements doctor check F3.
 //
-// T-12-03: F3 verifies that keylatchd does not retain credential plaintext
+// F3 verifies that keylatchd does not retain credential plaintext
 // after a run completes. The check:
-//  1. Pings keylatchd on the default UI address.
-//  2. If keylatchd is not running: reports [WARN] F3 with start hint.
-//  3. If the runtime monitor is running: queries /v1/retention-canary (a memory
-//     inspection endpoint) with a generated canary token. If the monitor
-//     reports the canary is absent from live memory, the check passes.
+// 1. Pings keylatchd on the default UI address.
+// 2. If keylatchd is not running: reports [WARN] F3 with start hint.
+// 3. If the runtime monitor is running: queries /v1/retention-canary (a memory
+// inspection endpoint) with a generated canary token. If the monitor
+// reports the canary is absent from live memory, the check passes.
 //
 // When the /v1/retention-canary endpoint is not present, the check reports
 // a warning with an upgrade hint rather than failing.
@@ -478,7 +478,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 		}
 		canaryResp, err := client.Do(req)
 		if err != nil || canaryResp.StatusCode == http.StatusNotFound {
-			// Endpoint not present — old keylatchd without T-12-03 support.
+			// Endpoint not present — old keylatchd without support.
 			if canaryResp != nil {
 				canaryResp.Body.Close()
 			}
@@ -685,10 +685,10 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"providers", checkACLKeychainUnlock()},
 		{"environment", checkHookPreToolUse(env)},
 		{"environment", checkCosignInstalled(probe)},
-		// P1.8: soft checks.
+		// Soft checks.
 		{"providers", checkNoConnections(env)},
 		{"daemon", checkGatewayRunning(env)},
-		// T-12-03: F3 — plaintext retention after run.
+		// F3 — plaintext retention after run.
 		{"daemon", checkPlaintextRetention(env)},
 		// Integration-marker checks.
 		{"environment", checkIntegrationMarkers()},

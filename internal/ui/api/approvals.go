@@ -47,7 +47,7 @@ func (h *ApprovalsHandler) list(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]interface{}{"approvals": []interface{}{}})
 }
 
-// stream implements Server-Sent Events (SSE) for FIND-020.
+// stream implements Server-Sent Events (SSE) for .
 func (h *ApprovalsHandler) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

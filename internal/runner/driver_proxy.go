@@ -30,7 +30,7 @@ type ProxyServerStarter interface {
 
 // proxyDriver starts the gateway_proxy server, mints a scoped session token,
 // injects the proxy env vars into the child environment, and execs the subprocess.
-// Provider API keys are NEVER present in the child environment (S9-15).
+// Provider API keys are NEVER present in the child environment.
 type proxyDriver struct {
 	server     *proxy.Server
 	signingKey []byte
@@ -90,8 +90,8 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	}
 
 	// Mint a scoped JWT for audit/revocation tracking (gateway token store).
-	// This is independent of the proxy's own caller-auth bearer token (M1,
-	// below): the JWT records who/what was authorized to run this capability;
+	// This is independent of the proxy's own caller-auth bearer token (the
+	// proxy caller-auth check, below): the JWT records who/what was authorized to run this capability;
 	// the caller-auth token is what the child must present back to the proxy
 	// listener to prove it is the process we intended to authorize.
 	if _, _, err := token.Mint(token.TokenSpec{
@@ -105,7 +105,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 		return receipt, fmt.Errorf("gateway_proxy: mint session token: %w", err)
 	}
 
-	// M1: the value injected into the child's KEYLATCH_SESSION_TOKEN env var
+	// The value injected into the child's KEYLATCH_SESSION_TOKEN env var
 	// is the proxy's own per-session caller-auth bearer token — this is what
 	// the child must present as "Proxy-Authorization: Bearer <token>" on
 	// every request to the proxy listener. Without this, any same-user
@@ -121,15 +121,15 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 
 	// Step 3: build child env with proxy vars injected.
 	// Start from a minimal base env (not os.Environ()) to ensure provider API
-	// keys do not leak into the child process (S9-15).
+	// keys do not leak into the child process.
 	// We add only essential PATH and minimal runtime vars.
-	// T-08-02: --extra vars are appended on top of the minimal base even when
+	// --extra vars are appended on top of the minimal base even when
 	// CleanEnv is not set, because the proxy driver is always minimally clean.
 	//
 	// docker-server-security hardening: --extra is an operator/CLI-controlled
 	// list of env var NAMES to copy from the parent process into the child.
 	// Without a denylist, an operator could pass --extra OPENAI_API_KEY (or
-	// any other provider credential var) and silently defeat S9-15 — the
+	// any other provider credential var) and silently defeat this invariant — the
 	// exact leak this minimal base env exists to prevent. providerKeyDenylist
 	// blocks any --extra name that matches a well-known provider credential
 	// env var, regardless of what value is currently set for it.
@@ -143,7 +143,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	baseEnv := proxyBaseEnv()
 	for _, k := range req.ExtraEnvVars {
 		if isCredentialShapedName(k) {
-			// S9-15: never let --extra leak a credential-shaped var into the
+			// Never let --extra leak a credential-shaped var into the
 			// gateway_proxy child env — tell the operator so the omission
 			// isn't silently confusing.
 			fmt.Fprintf(stderr, "warning: --extra %q looks like a credential env var; withheld from gateway_proxy child env\n", k)
@@ -238,7 +238,7 @@ var providerKeyDenylist = map[string]bool{
 // docker-server-security hardening: providerKeyDenylist only covers ~20
 // well-known provider names — any other secret-shaped var (AWS_SECRET_ACCESS_KEY,
 // AWS_SESSION_TOKEN, NPM_TOKEN, a custom *_SECRET, etc.) would otherwise pass
-// straight through os.Getenv(k) into the gateway_proxy child, defeating S9-15
+// straight through os.Getenv(k) into the gateway_proxy child, defeating this guarantee
 // for anything not on the fixed list.
 //
 // Matched as a SUFFIX of the uppercased name, so both glued compounds
@@ -263,7 +263,7 @@ var credentialWords = []string{
 // isCredentialShapedName reports whether name looks like it holds a secret —
 // either an exact match against providerKeyDenylist, or its uppercased form
 // ending in one of credentialWords. Used to deny --extra names on the
-// gateway_proxy path, where the child must never receive raw secrets (S9-15).
+// gateway_proxy path, where the child must never receive raw secrets.
 func isCredentialShapedName(name string) bool {
 	if providerKeyDenylist[name] {
 		return true

@@ -1,6 +1,6 @@
 // Package backend defines the Backend interface and shared types that every
 // credential store implementation must satisfy. This is the zero-dependency
-// foundation that every other Phase 1 package imports.
+// foundation that every other package imports.
 package backend
 
 import (
@@ -16,7 +16,7 @@ type Capability int
 const (
 	CapList     Capability = iota // enumerate stored paths/services
 	CapMetadata                   // metadata read without value decrypt
-	CapVersions                   // versioned value writes (Phase 4)
+	CapVersions                   // versioned value writes
 	CapImport                     // bulk import from another backend
 	CapExport                     // bulk export
 	CapACL                        // platform-level access control
@@ -25,19 +25,19 @@ const (
 	CapNetworkedFetch
 )
 
-// ID is an opaque per-path accessor. Audit logs reference it (HMAC'd in
-// Phase 5). Generated on first write; stable across reads.
+// ID is an opaque per-path accessor. Audit logs reference it (HMAC'd).
+// Generated on first write; stable across reads.
 type ID string
 
-// Meta is value-free metadata associated with each secret path for Phase 1
-// manifest-based backends. Phase 4 replaces this with meta.Meta at the
-// interface level; this type is kept for internal manifest serialisation.
+// Meta is value-free metadata associated with each secret path for
+// manifest-based backends. meta.Meta replaces this at the interface level
+// for versioned backends; this type is kept for internal manifest serialisation.
 type Meta struct {
 	Path       string    `json:"path"`     // canonical, e.g. "default/ai/openrouter/api_key"
 	Accessor   ID        `json:"accessor"` // opaque handle
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
-	Version    int       `json:"version"`               // current version (1 in Phase 1)
+	Version    int       `json:"version"`               // current version
 	Backend    string    `json:"backend"`               // "file" | "keychain" | "op" | "bw"
 	SafeFields []string  `json:"safe_fields,omitempty"` // field names safe to log in plaintext
 }
@@ -100,15 +100,15 @@ type Backend interface {
 	// decrypt values; safe to call when the backend is "sealed".
 	List(ctx context.Context, prefix string) ([]Entry, error)
 
-	// GetMeta returns Phase 4 metadata only. Non-file backends return
+	// GetMeta returns value-free metadata only. Non-file backends return
 	// ErrNotSupported. MUST NOT decrypt values.
 	GetMeta(ctx context.Context, path string) (meta.Meta, error)
 
-	// SetMeta writes Phase 4 metadata atomically. Non-file backends return
+	// SetMeta writes value-free metadata atomically. Non-file backends return
 	// ErrNotSupported.
 	SetMeta(ctx context.Context, path string, m meta.Meta) error
 
-	// ListMeta returns Phase 4 metadata for all paths with the given prefix.
+	// ListMeta returns value-free metadata for all paths with the given prefix.
 	// An empty prefix returns all metadata. Non-file backends return
 	// ErrNotSupported. MUST NOT decrypt values.
 	ListMeta(ctx context.Context, prefix string) ([]meta.Meta, error)

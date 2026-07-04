@@ -21,9 +21,9 @@ var leakPatterns = []*regexp.Regexp{
 // an AI agent to interact with keylatch.
 //
 // Security invariants:
-//   - S3-6: no secret bytes, no $HOME//Users/ paths, no KEYLATCH_MCP_TOKEN
-//   - S3-14/FIND-012: appends Limitations section warning about redaction
-//   - S3-16(a): no raw provider-root runtime recommendation
+// - no secret bytes, no $HOME//Users/ paths, no KEYLATCH_MCP_TOKEN
+// - appends Limitations section warning about redaction
+// - no raw provider-root runtime recommendation
 func GenerateInstruction(ctx context.Context, opts InstructionOpts, store connections.Store) (string, error) {
 	if opts.Namespace == "" {
 		opts.Namespace = "default"
@@ -79,7 +79,7 @@ func GenerateInstruction(ctx context.Context, opts InstructionOpts, store connec
 		sb.WriteString("- `keylatch_run` — run a command using a connection's credentials\n\n")
 	}
 
-	// FIND-012 / S3-14: Limitations section.
+	// Limitations section.
 	sb.WriteString("## Limitations\n\n")
 	sb.WriteString("**Important**: Keylatch gateway response redaction is best-effort and is NOT a security boundary. ")
 	sb.WriteString("Credentials may appear in subprocess output if the subprocess is not governed by a gateway runtime. ")
@@ -87,12 +87,12 @@ func GenerateInstruction(ctx context.Context, opts InstructionOpts, store connec
 
 	result := sb.String()
 
-	// S3-6: assert no leak patterns.
+	// assert no leak patterns.
 	if err := assertNoLeaks(result); err != nil {
 		return "", err
 	}
 
-	// S3-16(a): when IncludeMCP is true, no raw provider-root runtime recommendation.
+	// when IncludeMCP is true, no raw provider-root runtime recommendation.
 	if opts.IncludeMCP && strings.Contains(result, "direct_run") {
 		return "", &ErrSnippetLeakDetected{Reason: "raw provider-root runtime recommendation detected"}
 	}

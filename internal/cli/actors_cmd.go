@@ -1,4 +1,4 @@
-// Package cli — Phase 8 actors subcommands.
+// Package cli — actors subcommands.
 package cli
 
 import (

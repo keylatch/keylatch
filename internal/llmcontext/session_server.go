@@ -1,6 +1,6 @@
 package llmcontext
 
-// session_server.go — EPIC-05 Task 2
+// session_server.go
 //
 // SessionServer exposes a minimal HTTP-over-UDS server that keylatchd runs to
 // answer LLM session queries from CLI child processes.
@@ -9,7 +9,7 @@ package llmcontext
 //
 //	GET  /v1/llm-session?pid=<n>
 //	  Returns {"_schema":"v1","active":bool,"agent":"","ticket":""}.
-//	  The `_schema` field is load-bearing for EPIC-21 and EPIC-23.
+//	  The `_schema` field is load-bearing for the session contract.
 //	  The `ticket` field is reserved for future use (IDE extension, out of scope v1.0.0).
 //
 //	POST /v1/llm-session
@@ -24,7 +24,7 @@ package llmcontext
 // Security: the socket is mode 0600 so only the daemon user (and root) can
 // connect. No authentication is applied — trust is via filesystem permissions.
 //
-// S0-7: this file imports only stdlib packages.
+// This file imports only stdlib packages.
 
 import (
 	"context"

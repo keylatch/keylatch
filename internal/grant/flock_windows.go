@@ -1,7 +1,7 @@
 //go:build windows
 
 // Package grant — Windows best-effort consumption log implementation.
-// FIND3-009: On Windows, flock is not available; we use O_CREATE|O_EXCL retry loop.
+// On Windows, flock is not available; we use O_CREATE|O_EXCL retry loop.
 package grant
 
 import (
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// consumeUseLog implements best-effort FIND3-009 on Windows.
+// consumeUseLog implements best-effort on Windows.
 // It uses an O_CREATE|O_EXCL lock file with a retry loop.
 func consumeUseLog(g *Grant) bool {
 	logPath := g.ConsumptionLogPath

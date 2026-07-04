@@ -2,9 +2,9 @@
  * Shared TypeScript interfaces for the keylatch UI.
  *
  * Security invariants enforced at type level:
- *   - No `value` field on any type (value-free principle).
- *   - No `direct_run` in any RuntimeMode union.
- *   - MaskedField props deliberately excludes `value`.
+ * - No `value` field on any type (value-free principle).
+ * - No `direct_run` in any RuntimeMode union.
+ * - MaskedField props deliberately excludes `value`.
  */
 
 // ── Runtime modes ────────────────────────────────────────────────────────────
@@ -129,8 +129,8 @@ export interface DoctorResult {
  * ReadinessPillState drives the "Ready for agents" pill on the Dashboard.
  *
  * - not_ready: no verified provider, daemon not running, or no KEK configured.
- * - ready:     daemon running + KEK loaded + at least one provider verified.
- * - degraded:  ready conditions met but at least one provider is returning errors.
+ * - ready: daemon running + KEK loaded + at least one provider verified.
+ * - degraded: ready conditions met but at least one provider is returning errors.
  */
 export type ReadinessPillState = 'not_ready' | 'ready' | 'degraded'
 

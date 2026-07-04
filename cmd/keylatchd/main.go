@@ -1,8 +1,8 @@
 // Package main is the keylatchd sidecar entry point.
 //
-// keylatchd wraps the keylatch UI server (Phase 10) with additional
+// keylatchd wraps the keylatch UI server with additional
 // desktop-shell integration: HMAC-authenticated IPC over a Unix socket,
-// FD-based key ingestion (FIND2-002), and LLM-session gating (S14-7).
+// FD-based key ingestion, and LLM-session gating.
 //
 // Normal invocation (backwards-compatible):
 //
@@ -11,7 +11,7 @@
 // Desktop-shell invocation (from Tauri shell only):
 //
 //	keylatchd --from-desktop-shell --ipc-socket <path>
-//	KEYLATCH_IPC_KEY_FD=<n>  (inherited file descriptor — FIND2-002)
+//	KEYLATCH_IPC_KEY_FD=<n> (inherited file descriptor)
 package main
 
 import (
@@ -66,7 +66,7 @@ func newRootCmd() *cobra.Command {
 When launched by the Tauri desktop shell, pass --from-desktop-shell and
 --ipc-socket. The HMAC key for IPC authentication is passed via the file
 descriptor numbered in the KEYLATCH_IPC_KEY_FD environment variable —
-never via a file path or command-line flag (FIND2-002).
+never via a file path or command-line flag.
 
 When run without --from-desktop-shell, behaviour is identical to
 		"keylatch ui" (backwards-compatible).`,
@@ -86,14 +86,14 @@ When run without --from-desktop-shell, behaviour is identical to
 
 			env := llmcontext.DefaultLookup
 
-			// S14-7: if an LLM session is detected in desktop-shell mode,
+			// If an LLM session is detected in desktop-shell mode,
 			// refuse to start the value-bearing UI and exit cleanly.
 			if fromDesktopShell && llmcontext.IsLLMSession(env) {
 				slog.Warn("LLM session detected; use the keylatch CLI instead")
 				return nil
 			}
 
-			// EPIC-12: heap-dump canary check.
+			// heap-dump canary check.
 			// On Linux: scan /proc/self/mem for residual sensitive patterns.
 			// On macOS/Windows: log that OS-level protection is in effect.
 			logHeapDumpProtectionStatus()
@@ -116,7 +116,7 @@ When run without --from-desktop-shell, behaviour is identical to
 				_ = daemon.SaveState(statePath, daemonState)
 			}
 
-			// Read HMAC key from inherited FD (FIND2-002).
+			// Read HMAC key from inherited FD.
 			var hmacKey []byte
 			if fromDesktopShell {
 				if ipcSocket == "" {
@@ -129,13 +129,13 @@ When run without --from-desktop-shell, behaviour is identical to
 				}
 			}
 
-			// Generate a signing key for the Phase 10 UI session.
+			// Generate a signing key for the UI session.
 			signingKey := make([]byte, 32)
 			if _, err := rand.Read(signingKey); err != nil {
 				return fmt.Errorf("keylatchd: generate signing key: %w", err)
 			}
 
-			// Generate IPC secret for POST /v1/receipts (S-INV-12).
+			// Generate IPC secret for POST /v1/receipts.
 			ipcSecretRaw := make([]byte, 32)
 			if _, err := rand.Read(ipcSecretRaw); err != nil {
 				return fmt.Errorf("keylatchd: generate IPC secret: %w", err)
@@ -169,7 +169,7 @@ When run without --from-desktop-shell, behaviour is identical to
 			audit.StartRetentionSweepLoop(ctx, paths.Audit(env), retentionDays, sweepHours)
 
 			// Start LLM session server if a socket path is configured.
-			// EPIC-05: provides GET /v1/llm-session and POST /v1/llm-session
+			// Provides GET /v1/llm-session and POST /v1/llm-session
 			// endpoints for CLI processes to register/query active LLM sessions.
 			if llmSessionSocket != "" {
 				sessionRegistry := llmcontext.NewSessionRegistry()
@@ -219,11 +219,11 @@ When run without --from-desktop-shell, behaviour is identical to
 	}
 
 	cmd.Flags().BoolVar(&fromDesktopShell, "from-desktop-shell", false,
-		"Enable desktop-shell integration (IPC + FD key ingestion — FIND2-002)")
+		"Enable desktop-shell integration (IPC + FD key ingestion)")
 	cmd.Flags().StringVar(&ipcSocket, "ipc-socket", "",
 		"Unix socket path for IPC (required with --from-desktop-shell)")
 	cmd.Flags().StringVar(&llmSessionSocket, "llm-session-socket", "",
-		"Unix socket path for the LLM session HTTP endpoint (EPIC-05). "+
+		"Unix socket path for the LLM session HTTP endpoint. "+
 			"When set, starts GET/POST /v1/llm-session for CLI processes. "+
 			"Child processes that need IPC access must inherit KEYLATCH_DAEMON_SOCKET=<socket-path> in their environment.")
 	cmd.Flags().IntVar(&port, "port", 7890, "Port for the UI HTTP server")
@@ -234,14 +234,14 @@ When run without --from-desktop-shell, behaviour is identical to
 }
 
 // readHMACKeyFromFD reads exactly 32 bytes from the file descriptor
-// identified by the KEYLATCH_IPC_KEY_FD environment variable (FIND2-002).
+// identified by the KEYLATCH_IPC_KEY_FD environment variable.
 // The FD is closed immediately after reading.
 // The caller is responsible for zeroing the returned slice after use.
 func readHMACKeyFromFD() ([]byte, error) {
 	fdStr := os.Getenv("KEYLATCH_IPC_KEY_FD")
 	if fdStr == "" {
 		return nil, fmt.Errorf("KEYLATCH_IPC_KEY_FD is not set; " +
-			"HMAC key must be passed via an inherited file descriptor (FIND2-002)")
+			"HMAC key must be passed via an inherited file descriptor")
 	}
 	fdNum, err := strconv.Atoi(fdStr)
 	if err != nil {

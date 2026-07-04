@@ -1,4 +1,4 @@
-// Package cli — Phase 8 receipts subcommands.
+// Package cli — receipts subcommands.
 package cli
 
 import (

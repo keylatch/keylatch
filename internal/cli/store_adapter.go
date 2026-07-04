@@ -12,18 +12,18 @@ import (
 // dispatchedStore adapts a backend.Backend to the connections.Store interface.
 // It selects the backend via dispatch.Select on each call.
 //
-// T-04-01 audit: dispatchedStore.Get is the central value-bearing read path for
+// dispatchedStore.Get is the central value-bearing read path for
 // all CLI commands. Every caller that reads a credential value via this method
 // must be gated by one of:
 //
-//	(a) llmcontext.IsLLMSession guard (blocks in LLM sessions — S-INV-2)
+//	(a) llmcontext.IsLLMSession guard (blocks in LLM sessions)
 //	(b) AsValueBearing wrapper (wraps the Cobra RunE with GuardLLMSession)
 //	(c) provably unreachable in LLM sessions (e.g. bootstrap, keyring init
 //	    which require a terminal and cannot be invoked by an agent)
 //
 // Current callers and their guard status:
-//   - connections.Test  → cmd_status.go:newPhase3TestCmd  → (a) IsLLMSession guard added (T-04-01)
-//   - connections.Test  → cmd_connect.go                  → (a) connect is blocked in LLM sessions via S-INV-6
+//   - connections.Test  → cmd_status.go:newTestCmd         → (a) IsLLMSession guard added
+//   - connections.Test  → cmd_connect.go                  → (a) connect is blocked in LLM sessions
 //   - connections.RunTestStrategy → cmd_connect.go        → same
 //   - validate.CheckField → cmd_connect.go               → same (connect blocked)
 //   - connections.Store.Get in proxy/server.go           → (c) proxy server; the gateway_proxy driver

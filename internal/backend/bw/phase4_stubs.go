@@ -1,5 +1,5 @@
 // Package bw implements the Bitwarden backend for keylatch.
-// Phase 4 stubs: versioned storage is not supported; all Phase 4 methods return ErrNotSupported.
+// Versioned storage is not supported; all versioned/metadata methods return ErrNotSupported.
 package bw
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/keylatch/keylatch/internal/vault/meta"
 )
 
-// GetMeta returns ErrNotSupported — Bitwarden does not support Phase 4 metadata.
+// GetMeta returns ErrNotSupported — Bitwarden does not support versioned metadata.
 func (b *BitwardenBackend) GetMeta(_ context.Context, _ string) (meta.Meta, error) {
 	return meta.Meta{}, backend.ErrNotSupported
 }

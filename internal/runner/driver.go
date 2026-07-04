@@ -78,7 +78,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, err
 	}
 
-	// Step 2b: allowlist enforcement (S0-9). Mirrors ProcessRunner matching rules:
+	// Step 2b: allowlist enforcement. Mirrors ProcessRunner matching rules:
 	//   - Exact match:   exe == allowed
 	//   - Dot-suffix:    exe starts with allowed+"." (e.g. "python3.12" matches "python3")
 	//   - Path-suffix:   exe starts with allowed+"/" (e.g. "python3/bin" matches "python3")

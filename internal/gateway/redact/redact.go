@@ -1,6 +1,6 @@
 // Package redact provides leakage-reduction helpers for the keylatch gateway.
 //
-// S9-24: every redaction.Body() comment includes
+// Every redaction.Body() comment includes
 // "leakage reduction only, not a primary security control".
 //
 // Security note: these functions reduce the probability of accidental credential
@@ -110,7 +110,7 @@ var commonPatterns = []*regexp.Regexp{
 }
 
 // Body applies provider-specific redaction patterns + masking profile
-// to a response body. In Phase 9: basic pattern redaction always;
+// to a response body. Basic pattern redaction always applied;
 // strict/metadata_only honoured when declared.
 // Leakage reduction only, not a primary security control.
 func Body(provider string, body []byte, profile MaskingProfile, patterns []string) []byte {
@@ -178,15 +178,15 @@ func Error(err error) error {
 }
 
 // LabelUntrustedContent wraps body in an untrusted-content envelope.
-// Phase 13 forward-compat stub in Phase 9 — returns body unchanged with a
+// Forward-compat stub for a future redaction mode — returns body unchanged with a
 // "untrusted-source" wrapper comment.
 // Leakage reduction only, not a primary security control.
 func LabelUntrustedContent(body []byte, source string) []byte {
 	if len(body) == 0 {
 		return body
 	}
-	// Phase 9 stub: prefix with a safe metadata wrapper indicating untrusted source.
-	// Phase 13 will replace this with a structured envelope.
+	// Prefix with a safe metadata wrapper indicating untrusted source.
+	// A future version will replace this with a structured envelope.
 	prefix := []byte("/* keylatch:untrusted-source:" + sanitiseSource(source) + " */\n")
 	return append(prefix, body...)
 }

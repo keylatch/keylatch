@@ -31,16 +31,16 @@ func (fb *FileBackend) MigrateIfFlat(ctx context.Context, canonical string) erro
 	return fb.migrateIfFlat(ctx, canonical)
 }
 
-// migrateIfFlat migrates a pre-Phase-4 flat-layout secret to the versioned
+// migrateIfFlat migrates a legacy flat-layout secret to the versioned
 // layout when the flat file exists but the versioned value file does not.
 //
 // The flat layout stored secrets as: <root>/<canonical>/value.enc
-// The Phase 4 layout uses:
+// The versioned layout uses:
 //
 //	<root>/values/<canonical>/1    — version 1 value
 //	<root>/metadata/<canonical>.json — metadata
 //
-// Security invariant S4-5: if SetVersioned succeeds but SetMeta fails, the
+// Security invariant: if SetVersioned succeeds but SetMeta fails, the
 // new versioned file is removed and the old flat file is left intact for the
 // next call to retry.
 func (fb *FileBackend) migrateIfFlat(ctx context.Context, canonical string) error {
@@ -79,7 +79,7 @@ func (fb *FileBackend) migrateIfFlat(ctx context.Context, canonical string) erro
 	if afterValueWriteHook != nil {
 		if hookErr := afterValueWriteHook(); hookErr != nil {
 			// Compensate: remove the newly written versioned file so the old
-			// flat file remains as the source of truth (S4-5).
+			// flat file remains as the source of truth.
 			_ = os.Remove(vp)
 			return fmt.Errorf("migrate: aborted by test hook: %w", hookErr)
 		}
@@ -105,7 +105,7 @@ func (fb *FileBackend) migrateIfFlat(ctx context.Context, canonical string) erro
 	}
 
 	if err := fb.SetMeta(ctx, canonical, m); err != nil {
-		// Compensate: remove the new versioned file; leave flat file intact (S4-5).
+		// Compensate: remove the new versioned file; leave flat file intact.
 		_ = os.Remove(vp)
 		return fmt.Errorf("migrate: SetMeta: %w", err)
 	}
@@ -115,7 +115,7 @@ func (fb *FileBackend) migrateIfFlat(ctx context.Context, canonical string) erro
 	// because valuePath/1 now exists).
 	if err := os.Remove(flatPath); err != nil && !os.IsNotExist(err) {
 		// Non-fatal: log and continue.
-		_ = err // production code would log here; Phase 4 defers logging to Phase 5
+		_ = err // production code would log here; structured logging is not yet wired up
 	}
 
 	return nil

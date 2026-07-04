@@ -21,9 +21,9 @@ const INITIAL_DELAY_MS = 0
 
 const STATUS_DOT_LABEL: Record<HealthStatus, string> = {
   pending: 'Health check pending',
-  green:   'Healthy',
-  yellow:  'Warnings detected',
-  red:     'Errors detected',
+  green: 'Healthy',
+  yellow: 'Warnings detected',
+  red: 'Errors detected',
 }
 
 // DoctorCheck mirrors the Go doctor.Status struct.
@@ -51,7 +51,7 @@ function exitToHealth(exit: number): HealthStatus {
 }
 
 /** useDoctorHealth polls GET /api/doctor?connection=<provider>&json=true on mount
- *  and every 60s. Debounced: never fires while a request is in flight. */
+ * and every 60s. Debounced: never fires while a request is in flight. */
 function useDoctorHealth(provider: string) {
   const [health, setHealth] = useState<HealthStatus>('pending')
   const [checks, setChecks] = useState<DoctorCheck[]>([])
@@ -101,11 +101,11 @@ function useDoctorHealth(provider: string) {
 
 
 const SCHEME_LABELS: Record<string, string> = {
-  keychain:   'Keychain',
-  op:         '1Password',
-  'aws-sm':   'AWS Secrets',
+  keychain: 'Keychain',
+  op: '1Password',
+  'aws-sm': 'AWS Secrets',
   hashivault: 'HashiCorp Vault',
-  bw:         'Bitwarden',
+  bw: 'Bitwarden',
 }
 
 // ── ProviderCard ──────────────────────────────────────────────────────────────
@@ -134,16 +134,16 @@ export function ProviderCard({ connection, onEdit, onDelete }: ProviderCardProps
 
   const dotColor = {
     pending: 'bg-neutral-300',
-    green:   'bg-emerald-500',
-    yellow:  'bg-amber-400',
-    red:     'bg-red-500',
+    green: 'bg-emerald-500',
+    yellow: 'bg-amber-400',
+    red: 'bg-red-500',
   }[health]
 
   const fieldsText = connection.fields.map((f) => {
     const scheme = f.uri ? f.uri.split('://')[0] : undefined
     const storage = f.mode === 'direct' ? 'Vault' : (SCHEME_LABELS[scheme ?? ''] ?? 'Password manager')
     return `${f.name} · ${storage}`
-  }).join('  ·  ')
+  }).join(' · ')
 
   return (
     <article

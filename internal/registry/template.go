@@ -1,10 +1,10 @@
 // Package registry defines the canonical typed Go struct model for all provider
-// entries. It is the foundational data layer for Phase 3: every other package
+// entries. It is the foundational data layer: every other package
 // (connections, mcp, agentsnippet, agent) reads from it.
 //
 // The registry ships as compiled-in Go structs for Core-v1 templates; community
 // bundle loading via LoadBundle is included with mandatory cosign signature
-// verification (FIND-008).
+// verification.
 package registry
 
 import "github.com/keylatch/keylatch/internal/template"
@@ -33,7 +33,7 @@ const (
 )
 
 // validRuntimeModes is the closed set of valid RuntimeMode values.
-// S3-15(b): any RuntimeSupport.Supported entry must be in this set.
+// Any RuntimeSupport.Supported entry must be in this set.
 var validRuntimeModes = map[RuntimeMode]struct{}{
 	RuntimeGatewayTyped:   {},
 	RuntimeGatewaySDK:     {},
@@ -191,7 +191,7 @@ type RedactionRule struct {
 
 // GatewayAction describes a single gateway-level action for a provider.
 // Forward-compat: fields ExchangeStrategy through LLMSessionDeny are stored and
-// round-tripped but not semantically honoured until Phase 9 / Phase 13.
+// round-tripped but not semantically honoured yet.
 type GatewayAction struct {
 	Name        string `json:"name"                  yaml:"name"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
@@ -204,7 +204,7 @@ type GatewayAction struct {
 	// UpstreamPath is the exact path to forward to on the upstream host.
 	// When empty, falls back to the TestStrategy endpoint path.
 	UpstreamPath string `json:"upstream_path,omitempty" yaml:"upstream_path,omitempty"`
-	// Forward-compat Phase 9/13 fields:
+	// Forward-compat fields:
 	ExchangeStrategy       ExchangeStrategy `json:"exchange_strategy,omitempty"       yaml:"exchange_strategy,omitempty"`
 	MaxAccessTokenTTL      string           `json:"max_access_token_ttl,omitempty"    yaml:"max_access_token_ttl,omitempty"`
 	RequiredScopes         []string         `json:"required_scopes,omitempty"         yaml:"required_scopes,omitempty"`
@@ -225,7 +225,7 @@ type ConnectionTemplate struct {
 	Description string       `json:"description,omitempty" yaml:"description,omitempty"`
 	DocsURL     string       `json:"docs_url,omitempty"    yaml:"docs_url,omitempty"`
 	Docs        TemplateDocs `json:"docs,omitempty"        yaml:"docs,omitempty"`
-	// Actions is the EPIC-20 action catalog: named HTTP operations available via
+	// Actions is the action catalog: named HTTP operations available via
 	// `keylatch call <connection> <action>`. Optional — omit for providers that
 	// do not expose scoped HTTP actions.
 	Actions map[string]template.Action `json:"actions,omitempty" yaml:"actions,omitempty"`

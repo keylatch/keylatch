@@ -14,9 +14,9 @@ import { api, DEV_MOCK } from './lib/api'
  * FirstRunGuard — on mount checks whether this looks like a fresh install.
  *
  * Conditions for redirect to /first-run:
- *   - Not in mock/dev mode (DEV_MOCK skips the check — mock always has stub connections)
- *   - GET /api/connections returns an empty list
- *   - GET /api/status returns { demo: false }
+ * - Not in mock/dev mode (DEV_MOCK skips the check — mock always has stub connections)
+ * - GET /api/connections returns an empty list
+ * - GET /api/status returns { demo: false }
  *
  * Renders children immediately — the guard fires async so it never blocks render.
  */

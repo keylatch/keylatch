@@ -78,7 +78,7 @@ export interface UseConnectionsReturn {
  * useConnections provides the full CRUD interface for provider connections.
  *
  * Usage:
- *   const { connections, loading, error, refresh, createConnection, deleteConnection } = useConnections()
+ * const { connections, loading, error, refresh, createConnection, deleteConnection } = useConnections()
  */
 export function useConnections(): UseConnectionsReturn {
   const [connections, setConnections] = useState<ProviderConnection[]>([])

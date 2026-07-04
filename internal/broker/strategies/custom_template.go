@@ -10,7 +10,7 @@ import (
 )
 
 // forbiddenOutputFields is the set of field name patterns that a template must
-// not return as plain output fields, per the Phase 13 security model.
+// not return as plain output fields, per the security model.
 var forbiddenOutputFields = []string{
 	"token", "access_token", "key", "secret",
 }

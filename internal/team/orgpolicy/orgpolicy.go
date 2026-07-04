@@ -1,10 +1,10 @@
-// Package orgpolicy implements Phase 12 org policy bundle management.
+// Package orgpolicy implements org policy bundle management.
 //
 // Security invariants:
-//   - FIND3-005: org AllowedEnvelope is a hard upper bound.
-//   - Cosign signature required on all bundles.
-//   - Monotonic version — old bundles cannot be reinstalled.
-//   - Expired bundles are rejected on install and not returned by Active.
+// - org AllowedEnvelope is a hard upper bound.
+// - Cosign signature required on all bundles.
+// - Monotonic version — old bundles cannot be reinstalled.
+// - Expired bundles are rejected on install and not returned by Active.
 package orgpolicy
 
 import (
@@ -160,7 +160,7 @@ func Install(ctx context.Context, bundlePath string, cosignPubKey string) error 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("orgpolicy: mkdir: %w", err)
 	}
-	out, err := json.MarshalIndent(b, "", "  ")
+	out, err := json.MarshalIndent(b, "", " ")
 	if err != nil {
 		return fmt.Errorf("orgpolicy: marshal: %w", err)
 	}

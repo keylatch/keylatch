@@ -1,12 +1,12 @@
 // Package protonpass implements the Backend interface using the Proton Pass CLI (`pass-cli`).
-// It shells out via internal/exec.CommandRunner and satisfies all Phase 2 security invariants.
+// It shells out via internal/exec.CommandRunner and satisfies the following security invariants.
 //
 // Security invariants:
-//   - S2-1: Never print secret values to stdout/stderr.
-//   - S2-3: List zero-fills field values before returning.
-//   - S2-5: Fail-closed on binary unavailability (ErrUnavailable).
-//   - S2-9: Raw subprocess stderr never propagated; auth-failure hints only.
-//   - S2-10: Single-flight collapse for concurrent Get calls.
+//   - Never print secret values to stdout/stderr.
+//   - List zero-fills field values before returning.
+//   - Fail-closed on binary unavailability (ErrUnavailable).
+//   - Raw subprocess stderr never propagated; auth-failure hints only.
+//   - Single-flight collapse for concurrent Get calls.
 package protonpass
 
 import (
@@ -92,7 +92,7 @@ func (b *ProtonPassBackend) Capabilities() []backend.Capability {
 }
 
 // Get returns the plaintext bytes for a canonical path via `pass-cli item get`.
-// Uses a 60-second TTL cache and single-flight collapse for concurrent calls (S2-10).
+// Uses a 60-second TTL cache and single-flight collapse for concurrent calls.
 func (b *ProtonPassBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	name := b.itemName(path)
 	const ttl = 60 * time.Second
@@ -200,7 +200,7 @@ func (b *ProtonPassBackend) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-// List returns metadata-only entries (S2-3) via `pass-cli item list --output json`.
+// List returns metadata-only entries via `pass-cli item list --output json`.
 func (b *ProtonPassBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	args := []string{"item", "list", "--output", "json"}
 	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.opts.Bin, args, nil)
@@ -230,7 +230,7 @@ func (b *ProtonPassBackend) List(ctx context.Context, prefix string) ([]backend.
 		if prefix != "" && !strings.HasPrefix(path, prefix) {
 			continue
 		}
-		// S2-3: never include value fields in list output.
+		// Never include value fields in list output.
 		entries = append(entries, backend.Entry{
 			Meta: backend.Meta{
 				Path:    path,
@@ -261,7 +261,7 @@ func (b *ProtonPassBackend) itemName(path string) string {
 	return b.opts.ItemPrefix + path
 }
 
-// mapGetError maps pass-cli stderr to typed backend errors (S2-9).
+// mapGetError maps pass-cli stderr to typed backend errors.
 func (b *ProtonPassBackend) mapGetError(errStr string) error {
 	if isProtonNotFound(errStr) {
 		return fmt.Errorf("%w: proton-pass item not found", backend.ErrNotFound)

@@ -12,9 +12,9 @@ interface ReceiptCardProps {
  *
  * Renders as a compact flex row: status dot | provider | capability | runtime badge | TTL | outcome.
  *
- * Security invariants (S-RM-9):
- *   - Renders only provider, capability, runtime mode, timestamp, and exit code.
- *   - Never renders a credential value — Receipt type enforces this at the type level.
+ * Security invariants:
+ * - Renders only provider, capability, runtime mode, timestamp, and exit code.
+ * - Never renders a credential value — Receipt type enforces this at the type level.
  */
 export function ReceiptCard({ receipt, className }: ReceiptCardProps) {
   const passed = (receipt.exit_code ?? 0) === 0

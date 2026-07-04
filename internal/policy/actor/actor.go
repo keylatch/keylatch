@@ -1,13 +1,13 @@
 // Package actor derives and validates keylatch actor identities.
 // Priority order for Infer:
-//  1. env("KEYLATCH_ACTOR") — explicit override (Source="env")
-//  2. env("CLAUDE_CODE") non-empty → "claude-code" (Source="infer")
-//  3. env("CODEX_ENV") non-empty → "codex" (Source="infer")
-//  4. env("CREDENTIALS_LLM_SESSION") == "1" → "llm-session" (Source="infer")
-//  5. stdin is a terminal → "human-shell" (Source="infer")
-//  6. fallback → "unknown-non-tty" (Source="infer")
+// 1. env("KEYLATCH_ACTOR") — explicit override (Source="env")
+// 2. env("CLAUDE_CODE") non-empty → "claude-code" (Source="infer")
+// 3. env("CODEX_ENV") non-empty → "codex" (Source="infer")
+// 4. env("CREDENTIALS_LLM_SESSION") == "1" → "llm-session" (Source="infer")
+// 5. stdin is a terminal → "human-shell" (Source="infer")
+// 6. fallback → "unknown-non-tty" (Source="infer")
 //
-// S8-6: Infer never returns an empty Name.
+// Infer never returns an empty Name.
 package actor
 
 import (
@@ -37,7 +37,7 @@ func Validate(name string) error {
 }
 
 // Infer derives a conservative actor label from the environment.
-// It never returns an empty Name (S8-6).
+// It never returns an empty Name.
 func Infer(env llmcontext.Lookup) Actor {
 	// Priority 1: explicit override.
 	if v := env("KEYLATCH_ACTOR"); v != "" {

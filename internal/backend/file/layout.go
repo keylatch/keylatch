@@ -1,7 +1,7 @@
 // Package file implements the envelope-encrypted file backend.
-// layout.go defines path construction helpers for the Phase 4 on-disk layout:
+// layout.go defines path construction helpers for the on-disk layout:
 //
-//	<root>/metadata/<canonical>.json   — Phase 4 value-free metadata
+//	<root>/metadata/<canonical>.json   — value-free metadata
 //	<root>/values/<canonical>/<N>      — encrypted value records
 //	<root>/receipts/<canonical>/       — runtime delivery receipts
 //
@@ -14,7 +14,7 @@ import (
 	"strconv"
 )
 
-// metadataPath returns the full path to the Phase 4 metadata JSON file for a
+// metadataPath returns the full path to the metadata JSON file for a
 // canonical secret path.
 //
 // Example: root="~/.keylatch/vault", canonical="default/ai/openrouter/api_key"
@@ -40,7 +40,7 @@ func valuePath(root, canonical string, version int) string {
 // Example: root="~/.keylatch/vault", canonical="default/ai/openrouter/api_key"
 //
 //	→ "~/.keylatch/vault/receipts/default/ai/openrouter/api_key"
-func receiptDir(root, canonical string) string { //nolint:unused // planned: delivery-receipt storage for Phase 6
+func receiptDir(root, canonical string) string { //nolint:unused // planned: delivery-receipt storage
 	return filepath.Join(root, "receipts", filepath.FromSlash(canonical))
 }
 

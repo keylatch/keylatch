@@ -108,7 +108,7 @@ func RunBackendComplianceTests(t *testing.T, factory func() backend.Backend) {
 		}
 	})
 
-	t.Run("GetMeta/Phase4", func(t *testing.T) {
+	t.Run("GetMeta/", func(t *testing.T) {
 		t.Helper()
 		b := factory()
 		defer b.Close()

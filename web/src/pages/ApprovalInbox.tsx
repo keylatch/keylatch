@@ -16,9 +16,9 @@ interface AutoDenyBanner {
  * ApprovalInbox — SSE primary, polling fallback.
  *
  * Extensions over the original:
- *   - 3c: Auto-deny TTL — when a request TTL hits 0, call /deny automatically
- *         and show a sticky (non-dismissable-until-acknowledged) banner.
- *   - Banner stacks per expired request, each with its own dismiss button.
+ * - 3c: Auto-deny TTL — when a request TTL hits 0, call /deny automatically
+ * and show a sticky (non-dismissable-until-acknowledged) banner.
+ * - Banner stacks per expired request, each with its own dismiss button.
  */
 export function ApprovalInbox() {
   const [approvals, setApprovals] = useState<Approval[]>([])
@@ -37,7 +37,7 @@ export function ApprovalInbox() {
       .catch(() => {})
   }
 
-  // Load approval TTL from server on mount (T-13-05: TTL is server-validated).
+  // Load approval TTL from server on mount (TTL is server-validated).
   useEffect(() => {
     api.get<{ approval_ttl_seconds: number }>('/api/settings')
       .then((d) => setApprovalTtlSeconds(d.approval_ttl_seconds))

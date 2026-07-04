@@ -1,7 +1,7 @@
 // Package sandbox implements the direct_classic_sandboxed runtime driver.
 // RunSandboxed is provided by platform-specific files:
-//   - driver_linux.go  (build tag: linux)  — uses bwrap
-//   - driver_darwin.go (build tag: darwin) — uses sandbox-exec
+// - driver_linux.go (build tag: linux) — uses bwrap
+// - driver_darwin.go (build tag: darwin) — uses sandbox-exec
 //
 // On unsupported platforms a stub returns ErrUnsupportedPlatform.
 package sandbox

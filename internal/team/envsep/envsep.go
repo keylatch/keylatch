@@ -1,4 +1,4 @@
-// Package envsep implements Phase 12 environment separation policies.
+// Package envsep implements environment separation policies.
 package envsep
 
 import (

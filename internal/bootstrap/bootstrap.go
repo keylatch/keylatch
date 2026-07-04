@@ -3,9 +3,9 @@
 // vault dir, audit log, config file, and cryptographic keyring with correct
 // file modes.
 //
-// Security invariant S05-1: all dirs created with 0o700, all files with 0o600.
-// Security invariant S05-2: running twice produces all noop steps.
-// Security invariant T-02-04: bootstrap initialises the keyring/KEK so the
+// Security invariant all dirs created with 0o700, all files with 0o600.
+// Security invariant running twice produces all noop steps.
+// Security invariant bootstrap initialises the keyring/KEK so the
 // file backend can operate without a separate setup step.
 package bootstrap
 
@@ -129,7 +129,7 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 		return plan, fmt.Errorf("check config file: %w", err)
 	}
 	if cfgExists {
-		// S05-7: do not overwrite existing config.
+		// do not overwrite existing config.
 		// Check if it has a different version — if so, warn.
 		existing, loadErr := config.Load(configFile)
 		if loadErr != nil {

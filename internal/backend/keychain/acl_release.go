@@ -1,6 +1,6 @@
 //go:build darwin && !dev
 
-// Package keychain — release build ACL behaviour (T-13-03).
+// Package keychain — release build ACL behaviour.
 //
 // In release builds (default, no -tags dev), an unsigned keychain ACL is a
 // hard error: OpenWithKeyring returns ErrACLMismatch, which surfaces as [FAIL]

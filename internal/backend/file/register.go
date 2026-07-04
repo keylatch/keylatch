@@ -54,7 +54,7 @@ func fileFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend,
 		typed.DataDir = home + "/.keylatch/vault"
 	}
 
-	// T-02-01: OpenWithKeyring is the only production path (S-INV-1).
+	// OpenWithKeyring is the only production path.
 	// If no keyring is configured, fail closed with a bootstrap hint.
 	krPath := typed.KeyringPath
 	if krPath == "" {
@@ -94,11 +94,11 @@ func loadPlatformKEK(krPath string) (kek.KEK, error) {
 		return nil, fmt.Errorf("read keyring header: %w", err)
 	}
 
-	// Phase 11: Roots-based keyrings (SchemaVersion=2) use trust adapters.
-	// Phase 5 (legacy): use KEKType field.
+	// Roots-based keyrings (SchemaVersion=2) use trust adapters.
+	// Legacy keyrings use the KEKType field.
 	kekType := kf.KEKType
 	if kekType == "" && len(kf.Roots) > 0 {
-		// Phase 11 keyring — KEKType is embedded per-term and per-root.
+		// Roots-based keyring — KEKType is embedded per-term and per-root.
 		// For now, use the first root's type.
 		kekType = string(kf.Roots[0].Spec.Type)
 	}

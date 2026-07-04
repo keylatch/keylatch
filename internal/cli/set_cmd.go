@@ -14,8 +14,8 @@ import (
 )
 
 // newSetCmd returns the `set` subcommand for writing a credential value.
-// Phase 4: accepts --expires-at, --issued-at, --owner, --scope, --max-versions.
-// Security invariant S4-6: values MUST NOT be passed as positional arguments.
+// Accepts --expires-at, --issued-at, --owner, --scope, --max-versions.
+// Security invariant: values MUST NOT be passed as positional arguments.
 func newSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <path>",
@@ -23,7 +23,7 @@ func newSetCmd() *cobra.Command {
 		Long: `Write a credential value at the given path.
 
 The value is read from stdin (piped) or via an interactive prompt.
-Do NOT pass secret values as command-line arguments (S4-6).
+Do NOT pass secret values as command-line arguments.
 
 Example:
   echo 'sk-or-v1-...' | keylatch set openrouter.api_key
@@ -36,7 +36,7 @@ Example:
 
 			path := args[0]
 
-			// S4-6: check for accidental positional value argument.
+			// Check for accidental positional value argument.
 			// The command requires exactly 1 arg (the path), so extra args
 			// would have been caught by cobra.ExactArgs above. But if the
 			// user passes the value via ENV or similar, we don't block here.

@@ -55,8 +55,8 @@ type Server struct {
 	CA *tlsCA
 	// AuditEmitter receives audit events. May be nil.
 	AuditEmitter audit.Emitter
-	// Token is the per-session bearer token callers must present (M1: proxy
-	// caller authentication). Serve() mints one via EnsureToken if empty.
+	// Token is the per-session bearer token callers must present (the proxy
+	// caller-auth check). Serve() mints one via EnsureToken if empty.
 	//
 	// Empty Token disables authentication — mirrors the established
 	// "empty secret = disabled" pattern used by ui.ServerOptions.IPCSecret
@@ -72,7 +72,7 @@ type Server struct {
 }
 
 // proxyAuthHeader is the header proxy callers must present the per-session
-// bearer token in (M1). "Proxy-Authorization" is the RFC 7235 standard
+// bearer token in (the proxy caller-auth check). "Proxy-Authorization" is the RFC 7235 standard
 // header for authenticating to a forward/CONNECT proxy — deliberately
 // distinct from "Authorization", which callers may legitimately (attempt to)
 // set for the *upstream origin* and which this proxy already strips before
@@ -99,8 +99,8 @@ func (s *Server) EnsureToken() (string, error) {
 	return s.Token, s.tokenErr
 }
 
-// checkCallerAuth validates the per-session bearer token (M1: proxy caller
-// authentication — FIND: internal/proxy/server.go bound 127.0.0.1:7879 with
+// checkCallerAuth validates the per-session bearer token (the proxy caller-auth
+// check — internal/proxy/server.go bound 127.0.0.1:7879 with
 // no client auth, so any same-user process could drive credential
 // injection). Returns true if the request is authorized.
 func (s *Server) checkCallerAuth(r *http.Request) bool {
@@ -145,8 +145,8 @@ func isLoopbackAddr(addr string) bool {
 // per-request, capability-scoped authorization as granular as the gateway's
 // minted JWTs. Exposing that control plane to a container's host network
 // would multiply the blast radius of a single compromised profile well
-// beyond the UI's status surface or the gateway's scoped tokens. M1 (caller
-// bearer-auth below) mitigates the "any same-user process" risk; it does not
+// beyond the UI's status surface or the gateway's scoped tokens. The proxy
+// caller-auth check (below) mitigates the "any same-user process" risk; it does not
 // by itself justify network exposure, so no opt-in is offered here.
 func (s *Server) Serve(ctx context.Context) error {
 	addr := s.Addr
@@ -158,7 +158,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		return fmt.Errorf("proxy: refusing non-loopback bind %q — the CONNECT proxy is loopback-only by design (no --listen/--unsafe-bind-all opt-in)", addr)
 	}
 
-	// M1: mint the per-session caller-auth bearer token before accepting any
+	// Mint the per-session caller-auth bearer token before accepting any
 	// connections. See checkCallerAuth.
 	if _, err := s.EnsureToken(); err != nil {
 		return fmt.Errorf("proxy: %w", err)
@@ -199,7 +199,7 @@ func (s *Server) Serve(ctx context.Context) error {
 // ServeHTTP dispatches requests: CONNECT to handleCONNECT, everything else to
 // routeHandler. This method is exported so tests can use httptest.Server.
 //
-// M1: caller authentication is enforced first, before any routing or
+// The proxy caller-auth check is enforced first, before any routing or
 // host-allowlist decisions — an unauthenticated caller must not learn
 // anything about the profile (not even "host not allowed" vs "unauthorized").
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -288,7 +288,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 	// Copy safe headers.
 	for k, vv := range r.Header {
 		lower := strings.ToLower(k)
-		// M1: proxy-authorization carries our own caller-auth bearer token
+		// proxy-authorization carries our own caller-auth bearer token
 		// (checked in ServeHTTP) and must never reach the upstream provider.
 		if lower == "authorization" || lower == "proxy-authorization" || strings.HasPrefix(lower, "x-keylatch-") {
 			continue

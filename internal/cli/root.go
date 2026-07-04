@@ -132,7 +132,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().Bool("quiet", false, "suppress non-essential output")
 	root.PersistentFlags().String("log-level", "info", "log level: debug, info, warn, error")
 
-	// P1.1: Add help groups for user-journey-oriented help output.
+	// Add help groups for user-journey-oriented help output.
 	root.AddGroup(&cobra.Group{ID: "start", Title: "Getting Started"})
 	root.AddGroup(&cobra.Group{ID: "daily", Title: "Daily Use"})
 	root.AddGroup(&cobra.Group{ID: "gateway", Title: "Gateway"})
@@ -150,14 +150,14 @@ func addCmd(root *cobra.Command, cmd *cobra.Command, groupID string) {
 }
 
 // Register attaches all subcommands to root with group assignments.
-// P0.4: stub commands are Hidden=true so they don't clutter --help.
-// P1.1: commands are grouped by user journey.
+// Stub commands are Hidden=true so they don't clutter --help.
+// Commands are grouped by user journey.
 func Register(root *cobra.Command) {
 	// --- Getting Started ---
 	addCmd(root, newSetupCmd(), "start")
 	addCmd(root, newInitCmd(), "start")
-	addCmd(root, newPhase3ConnectCmd(), "start")
-	addCmd(root, newPhase3AgentCmd(), "start")
+	addCmd(root, newConnectCmd(), "start")
+	addCmd(root, newAgentCmd(), "start")
 	addCmd(root, newDoctorCmdImpl(), "start")
 	addCmd(root, newUICmd(), "start")
 	addCmd(root, newBootstrapCmd(), "start")
@@ -168,14 +168,14 @@ func Register(root *cobra.Command) {
 	addCmd(root, newGetCmd(), "daily")
 	addCmd(root, newGetMaskedCmd(), "daily")
 	addCmd(root, newListCmdImpl(), "daily")
-	addCmd(root, newPhase3StatusCmd(), "daily")
+	addCmd(root, newStatusCmd(), "daily")
 	addCmd(root, newRunCmd(), "daily")
 	addCmd(root, newShareCmd(), "daily")
 	addCmd(root, newAllowCmd(), "daily")
 	addCmd(root, newDisconnectCmd(), "daily")
 	// keylatch inject was removed in v1.0.0. Running it returns cobra's "unknown command" error.
-	addCmd(root, newPhase3TestCmd(), "daily")
-	addCmd(root, newPhase3DescribeCmd(), "daily")
+	addCmd(root, newTestCmd(), "daily")
+	addCmd(root, newDescribeCmd(), "daily")
 	addCmd(root, newModesCmd(), "daily")
 
 	// --- Gateway ---
@@ -191,7 +191,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newAuditCmd(), "advanced")
 	addCmd(root, newSecurityCmd(), "advanced")
 	addCmd(root, newVerifyCmd(), "advanced")
-	addCmd(root, newPhase3ValidateCmd(), "advanced")
+	addCmd(root, newValidateCmd(), "advanced")
 	addCmd(root, newBackendCmd(), "advanced")
 	addCmd(root, newCompletionCmd(root), "advanced")
 	addCmd(root, newConfigCmd(), "advanced")
@@ -209,14 +209,14 @@ func Register(root *cobra.Command) {
 	cmdtrust.RegisterCommands(root, "advanced")
 	addCmd(root, newVersionsCmd(), "advanced")
 	addCmd(root, newDestroyVersionCmd(), "advanced")
-	addCmd(root, newPhase4CheckExpiryCmd(), "advanced")
+	addCmd(root, newCheckExpiryCmd(), "advanced")
 	addCmd(root, newKeyringCmd(), "advanced")
-	addCmd(root, newPhase3MCPCmd(), "advanced")
+	addCmd(root, newMCPCmd(), "advanced")
 	addCmd(root, newTokenCmd(), "advanced")
 
-	// Phase 1: keychain lifecycle commands (advanced).
+	// Keychain lifecycle commands (advanced).
 	RegisterKeychainCommands(root)
-	// Phase 2: 1Password and Bitwarden commands (advanced).
+	// 1Password and Bitwarden commands (advanced).
 	RegisterOPCommands(root)
 	RegisterBWCommands(root)
 
@@ -236,15 +236,15 @@ func Register(root *cobra.Command) {
 	experimentalGroup := newExperimentalCmd()
 	addCmd(root, experimentalGroup, "advanced")
 
-	// Epics 19-22: proxy, sandbox, call, broker graduated from experimental.
+	// proxy, sandbox, call, broker graduated from experimental.
 	// Registered unconditionally so shell completion and invocation work without
 	// KEYLATCH_EXPERIMENTAL=1.
 	root.AddCommand(newProxyCmdFull())
 	root.AddCommand(newSandboxCmd())
-	root.AddCommand(newPhase3CallCmd())
+	root.AddCommand(newCallCmd())
 	root.AddCommand(newBrokerCmd())
 
-	// Epic 23: approve and deny graduated to production — registered unconditionally.
+	// approve and deny graduated to production — registered unconditionally.
 	// LLM session guard is enforced at runtime by the commands themselves.
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newDenyCmd())
@@ -256,7 +256,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newPathsCmd(), "advanced")
 	addCmd(root, newEnvCmd(), "advanced")
 
-	// T-12-02: backup command.
+	// Backup command.
 	addCmd(root, newBackupCmd(), "advanced")
 
 	// `verify` — cosign signature verification.
@@ -373,7 +373,7 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 		gatewayRunning = true
 	}
 
-	// v1.0.0 mode set (EPIC-24: direct_classic_sandboxed reinstated).
+	// v1.0.0 mode set (direct_classic_sandboxed reinstated).
 	allModes := []string{"gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy", "direct_classic_sandboxed"}
 	for _, m := range allModes {
 		status := runtimeModeStatus{Mode: m}
@@ -405,7 +405,7 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 			}
 			status.Available = true
 		case m == "direct_classic_sandboxed":
-			// EPIC-24: sandbox availability depends on platform primitive.
+			// sandbox availability depends on platform primitive.
 			sandboxAvail, sandboxReason, _ := sandboxModeAvailability()
 			if sandboxAvail {
 				reason = "sandbox primitive available: " + sandboxReason
@@ -430,8 +430,8 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 }
 
 // newGetCmd returns the `get` subcommand wrapped with GuardLLMSession.
-// S0-5: `get` is value-bearing — it IS guarded.
-// S0-4: blocked in LLM session with exit code SecurityBlock.
+// `get` is value-bearing — it IS guarded.
+// blocked in LLM session with exit code SecurityBlock.
 func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <service> <key>",
@@ -446,13 +446,13 @@ func newGetCmd() *cobra.Command {
 	// never reaches this inner handler at all — no escape hatch applies.
 	//
 	// Only once GuardLLMSession has passed (SignalNone, or the session
-	// verification checks below) do we reach the M2 raw-credential-path
+	// verification checks below) do we reach the raw-credential session gate's
 	// corroboration check. This ordering matters for messaging correctness:
-	// M2's message advertises the KEYLATCH_ALLOW_UNVERIFIED_SESSION escape
+	// that gate's message advertises the KEYLATCH_ALLOW_UNVERIFIED_SESSION escape
 	// hatch, but that hatch has no effect on GuardLLMSession's hard block —
-	// so a genuinely detected LLM session must never see the M2 message.
+	// so a genuinely detected LLM session must never see that message.
 	//
-	// M2: raw-credential-path corroboration (fail closed). `get`
+	// Raw-credential session gate: raw-credential-path corroboration (fail closed). `get`
 	// (non-masked) always returns a raw credential value, so
 	// rawCredentialExposure is unconditionally true here — this applies to
 	// SignalNone sessions (no LLM signals detected at all), which is the
@@ -474,7 +474,7 @@ func newGetCmd() *cobra.Command {
 		masked, _ := c.Flags().GetBool("masked")
 		if masked {
 			// --masked is NOT guarded — it never outputs raw credentials.
-			// S0-5: get --masked is a safe path.
+			// get --masked is a safe path.
 			stdout := c.OutOrStdout()
 			if len(args) >= 2 {
 				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
@@ -498,7 +498,7 @@ func newGetCmd() *cobra.Command {
 }
 
 // newGetMaskedCmd returns the `get-masked` subcommand — NOT guarded.
-// S0-5: get-masked is a safe path.
+// get-masked is a safe path.
 func newGetMaskedCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get-masked <service> <key>",
@@ -516,10 +516,10 @@ func newGetMaskedCmd() *cobra.Command {
 }
 
 // newRunCmd returns the `run` subcommand with --runtime and --approval-jwt flags.
-// S0-5: `run` is NOT value-bearing — not wrapped by GuardLLMSession.
+// `run` is NOT value-bearing — not wrapped by GuardLLMSession.
 // GuardRuntime enforces mode restrictions for LLM sessions.
-// P1.2: actionable allowlist error with --allow flag.
-// P1.4: success/failure summary printed to stderr after run.
+// Actionable allowlist error with --allow flag.
+// Success/failure summary printed to stderr after run.
 func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run <connection> -- <command>",
@@ -531,7 +531,7 @@ func newRunCmd() *cobra.Command {
 			rawAllows, _ := c.Flags().GetStringArray("allow")
 			var stderrBuf bytes.Buffer
 
-			// EPIC-11 first-run guards — sequential, fail-fast checks before any
+			// First-run guards — sequential, fail-fast checks before any
 			// backend, vault, or runtime calls.
 			//
 			// Order: (1) mode validation → (2) bootstrap → (3) connection.
@@ -547,7 +547,7 @@ func newRunCmd() *cobra.Command {
 				os.Exit(exitcode.RuntimeNotAvailable)
 			}
 
-			// T-09-01: --dry-run mode must bypass all infrastructure guards because it
+			// --dry-run mode must bypass all infrastructure guards because it
 			// never decrypts credentials and must work on machines that have not yet
 			// been bootstrapped (e.g. CI canary tests, operator previews).
 			{
@@ -572,7 +572,7 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			// Guard 1b (M2): raw-credential-path corroboration (fail closed).
+			// Guard 1b (raw-credential session gate): raw-credential-path corroboration (fail closed).
 			// Skipped for --dry-run above (never decrypts a credential).
 			// rawCredentialExposure is true only for direct/brokered runtime
 			// modes (runtime.IsRawCredentialMode) — the modes that inject the
@@ -644,15 +644,15 @@ func newRunCmd() *cobra.Command {
 				os.Exit(code)
 			}
 
-			// No per-mode warning needed in v1.0.0 (direct_classic removed in T-10-03).
+			// No per-mode warning needed in v1.0.0 (direct_classic removed).
 
-			// P1.2: gate --allow in LLM sessions.
+			// Gate --allow in LLM sessions.
 			if len(rawAllows) > 0 && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "Error: flag --allow is not permitted in LLM sessions.")
 				os.Exit(exitcode.SecurityBlock)
 			}
 
-			// Auto-spawn keylatchd if it is not already running (Epic 31).
+			// Auto-spawn keylatchd if it is not already running.
 			noDaemonStart, _ := c.Flags().GetBool("no-daemon-start")
 			if !noDaemonStart && !daemon.IsRunning() {
 				fmt.Fprintln(c.ErrOrStderr(), "Starting Keylatch daemon... (will run in background)")
@@ -680,7 +680,7 @@ func newRunCmd() *cobra.Command {
 
 			ctx := c.Context()
 
-			// T-09-01: --dry-run mode.
+			// --dry-run mode.
 			// Show what would be injected and executed, then exit 0 (or non-zero
 			// if the plan is not executable). Never decrypts a credential.
 			dryRun, _ := c.Flags().GetBool("dry-run")
@@ -701,7 +701,7 @@ func newRunCmd() *cobra.Command {
 				os.Exit(exitcode.OperationFailed)
 			}
 
-			// P1.4: track start time for summary.
+			// Track start time for summary.
 			start := time.Now()
 
 			// Wire the DispatchRunner with the directClassicDriver and the
@@ -747,7 +747,7 @@ func newRunCmd() *cobra.Command {
 				return running
 			}
 
-			// EPIC-17: resolve operating mode from flag, env var, and config file.
+			// resolve operating mode from flag, env var, and config file.
 			cfgPath := paths.Config(env)
 			opCfg, cfgLoadErr := config.Load(cfgPath)
 			if cfgLoadErr != nil {
@@ -764,7 +764,7 @@ func newRunCmd() *cobra.Command {
 					string(runtime.RuntimeGatewaySDK):     runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
 					string(runtime.RuntimeDirectBrokered): runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil),
 					string(runtime.RuntimeGatewayProxy):   runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
-					// EPIC-24: direct_classic_sandboxed reinstated.
+					// direct_classic_sandboxed reinstated.
 					string(runtime.RuntimeDirectClassicSandboxed): runner.NewClassicSandboxedDriver(nil),
 				},
 			}
@@ -791,7 +791,7 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			// T-08-02: read --clean-env and --extra flags.
+			// read --clean-env and --extra flags.
 			cleanEnv, _ := c.Flags().GetBool("clean-env")
 			rawExtras, _ := c.Flags().GetStringArray("extra")
 			var extraEnvVars []string
@@ -842,7 +842,7 @@ func newRunCmd() *cobra.Command {
 					os.Exit(exitCode)
 				}
 				if errors.Is(runErr, runner.ErrCommandNotAllowed) {
-					// P1.2: actionable allowlist error.
+					// Actionable allowlist error.
 					printAllowlistError(c, connectionName, command, tmpl.AllowedCommandPrefixes)
 					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.SecurityBlock)
@@ -853,7 +853,7 @@ func newRunCmd() *cobra.Command {
 					os.Exit(exitcode.SecurityBlock)
 				}
 				if errors.Is(runErr, runtime.ErrModeRemoved) {
-					// T-10-03: removed mode returns exit 5 with hint.
+					// removed mode returns exit 5 with hint.
 					fmt.Fprintf(c.ErrOrStderr(), "error: %v\n", runErr)
 					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.RuntimeNotAvailable)
@@ -915,7 +915,7 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			// P1.4: print success/failure summary to stderr.
+			// Print success/failure summary to stderr.
 			if receipt.ExitCode == 0 {
 				fmt.Fprintf(c.ErrOrStderr(), "v %s — exit 0 (%s)\n", connectionName, elapsed.Round(time.Millisecond))
 			} else {
@@ -975,7 +975,7 @@ type dryRunWrapper struct {
 	Plan   dryRunPlan   `json:"plan"`
 }
 
-// runDryRun implements T-09-01: print what keylatch run would do without executing.
+// runDryRun prints what keylatch run would do without executing.
 //
 // Rules:
 //   - Never decrypts a credential.
@@ -984,7 +984,7 @@ type dryRunWrapper struct {
 //     argv that would be exec'd, and policy flags.
 //   - Exits 0 if the plan is executable, non-zero if not.
 //   - Respects --json flag; JSON is: {"_schema":"v1","plan":{...}}.
-//   - EPIC-17: when canary mode is active, KEYLATCH_CANARY_<PROVIDER> appears in env_added.
+//   - When canary mode is active, KEYLATCH_CANARY_<PROVIDER> appears in env_added.
 func runDryRun(c *cobra.Command, connectionName string, command []string, mode runtime.RuntimeMode, modeFlag string, approvalJWT string, jsonOut bool) {
 	env := llmcontext.DefaultLookup
 	isLLM := llmcontext.IsLLMSession(env)
@@ -1065,7 +1065,7 @@ func runDryRun(c *cobra.Command, connectionName string, command []string, mode r
 		)
 	}
 
-	// EPIC-17: if operating mode enables canary injection, include canary var in env_added.
+	// if operating mode enables canary injection, include canary var in env_added.
 	// Load config to resolve the operating mode (same precedence as the real run path).
 	{
 		dryRunCfgPath := paths.Config(env)
@@ -1111,7 +1111,7 @@ func runDryRun(c *cobra.Command, connectionName string, command []string, mode r
 	_ = approvalJWT // already captured in plan.Policy.ApprovalRequired
 }
 
-// printAllowlistError prints the P1.2 actionable allowlist error message.
+// printAllowlistError prints the actionable allowlist error message.
 func printAllowlistError(c *cobra.Command, connectionName string, command []string, allowed []string) {
 	cmdName := ""
 	if len(command) > 0 {
@@ -1214,11 +1214,11 @@ func loadConnectionBackend(ctx context.Context, connectionName string) (backend.
 	return b, tmpl, storagePath, nil
 }
 
-// newCallCmd returns the `call` subcommand with runtime guards.
-// S0-5: NOT value-bearing.
+// newCallCmdStub returns the `call` subcommand with runtime guards.
+// NOT value-bearing.
 //
-//nolint:unused // planned: wired to root command when call/describe/validate are promoted from Phase 9
-func newCallCmd() *cobra.Command {
+//nolint:unused // planned: wired to root command when call/describe/validate are promoted
+func newCallCmdStub() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "call <connection> <endpoint>",
 		Short: "Call an endpoint via a credential connection",
@@ -1238,11 +1238,11 @@ func newCallCmd() *cobra.Command {
 	return cmd
 }
 
-// newDescribeCmd returns the `describe` subcommand — NOT guarded.
-// S0-5: describe is a safe path.
+// newDescribeCmdStub returns the `describe` subcommand — NOT guarded.
+// describe is a safe path.
 //
-//nolint:unused // planned: wired to root command when call/describe/validate are promoted from Phase 9
-func newDescribeCmd() *cobra.Command {
+//nolint:unused // planned: wired to root command when call/describe/validate are promoted
+func newDescribeCmdStub() *cobra.Command {
 	return &cobra.Command{
 		Use:   "describe <service>",
 		Short: "Describe a credential (no values)",
@@ -1250,11 +1250,11 @@ func newDescribeCmd() *cobra.Command {
 	}
 }
 
-// newValidateCmd returns the `validate` subcommand — NOT guarded.
-// S0-5: validate is a safe path.
+// newValidateCmdStub returns the `validate` subcommand — NOT guarded.
+// validate is a safe path.
 //
-//nolint:unused // planned: wired to root command when call/describe/validate are promoted from Phase 9
-func newValidateCmd() *cobra.Command {
+//nolint:unused // planned: wired to root command when call/describe/validate are promoted
+func newValidateCmdStub() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate <service>",
 		Short: "Validate a credential without returning its value",
@@ -1262,12 +1262,12 @@ func newValidateCmd() *cobra.Command {
 	}
 }
 
-// newListCmd is replaced by newListCmdImpl in list_cmd.go (Phase 1).
-// Kept as a reference for Phase 0 behavior: the original stub exited with
+// newListCmd is replaced by newListCmdImpl in list_cmd.go.
+// Kept as a reference for original behavior: the original stub exited with
 // exitcode.OperationFailed.
 
 // newConnectionsCmd returns the `connections` subcommand — NOT guarded.
-// S0-5: connections is a safe path.
+// connections is a safe path.
 // Delegates to the same list implementation used by `keylatch list` so that
 // `keylatch connections` and `keylatch connections list` both work.
 func newConnectionsCmd() *cobra.Command {
@@ -1288,7 +1288,7 @@ func newConnectionsCmd() *cobra.Command {
 	return cmd
 }
 
-//nolint:unused // used by newDescribeCmd and newValidateCmd (Phase 9 stubs)
+//nolint:unused // used by newDescribeCmd and newValidateCmd (stubs)
 func notImplementedRunE(code int) func(*cobra.Command, []string) error {
 	return func(_ *cobra.Command, _ []string) error {
 		os.Exit(code)

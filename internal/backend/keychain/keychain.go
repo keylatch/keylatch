@@ -5,11 +5,11 @@
 //
 // Security design:
 //   - Custom locked keychain (not login keychain): Layer 3 of the defense model
-//   - flock serializes all operations across processes (S1-2)
-//   - lock-keychain deferred immediately after unlock, runs on all paths (S1-1)
-//   - Per-item ACL via RepairItemACLs (FIND3-001, S1-12)
-//   - Get reads exactly one value via getOneValue (FIND3-007, S1-13)
-//   - List/GetMeta read zero values (S1-6)
+//   - flock serializes all operations across processes
+//   - lock-keychain deferred immediately after unlock, runs on all paths
+//   - Per-item ACL via RepairItemACLs
+//   - Get reads exactly one value via getOneValue
+//   - List/GetMeta read zero values
 package keychain
 
 import (
@@ -52,11 +52,11 @@ type KeychainBackend struct {
 	opts        Options
 	mu          sync.Mutex // protects unlocked; flock handles cross-process serialization
 	unlocked    bool
-	initACLOnce sync.Once //nolint:unused // planned: deferred ACL initialization gate for Phase 6
+	initACLOnce sync.Once //nolint:unused // planned: deferred ACL initialization gate
 }
 
 // Open validates options and returns an initialized KeychainBackend.
-// Does NOT unlock the keychain (S1-9). Unlock is lazy, per-operation.
+// Does NOT unlock the keychain. Unlock is lazy, per-operation.
 func Open(opts Options) (*KeychainBackend, error) {
 	// Resolve defaults.
 	if opts.KeychainPath == "" {
@@ -86,7 +86,7 @@ func Open(opts Options) (*KeychainBackend, error) {
 		opts.Env = llmcontext.DefaultLookup
 	}
 
-	// S1-9: Open does NOT unlock the keychain.
+	// Open does NOT unlock the keychain.
 	return &KeychainBackend{opts: opts}, nil
 }
 
@@ -107,21 +107,21 @@ func (k *KeychainBackend) Capabilities() []backend.Capability {
 // Get implements the full unlock→manifest→getOneValue→lock sequence.
 //
 // Sequence per architecture spec:
-//  1. Check runner.OK(ctx) → ErrLocked if not approved (S1-7)
-//  2. acquireFlock → defer release (S1-2)
+//  1. Check runner.OK(ctx) → ErrLocked if not approved
+//  2. acquireFlock → defer release
 //  3. Read unlock password from LOGIN keychain (no -k flag)
 //  4. unlock-keychain -p $pw $KeychainPath
-//  5. defer lock-keychain (S1-1) — registered immediately after step 4
+//  5. defer lock-keychain — registered immediately after step 4
 //  6. loadManifest → resolve ManifestRow
-//  7. getOneValue(row, field) — exactly one value read (FIND3-007)
+//  7. getOneValue(row, field) — exactly one value read
 //  8. Return value
 func (k *KeychainBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	// S1-7: check runner/gateway approval before returning plaintext.
+	// Check runner/gateway approval before returning plaintext.
 	if !runner.OK(ctx) {
 		return nil, backend.Meta{}, backend.ErrLocked
 	}
 
-	// S1-2: acquire flock for cross-process serialization.
+	// Acquire flock for cross-process serialization.
 	release, err := acquireFlock(k.opts.LockPath)
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("keychain Get: flock: %w", err)
@@ -142,7 +142,7 @@ func (k *KeychainBackend) Get(ctx context.Context, path string) ([]byte, backend
 	k.unlocked = true
 	k.mu.Unlock()
 
-	// Step 5: S1-1 — defer lock-keychain IMMEDIATELY after unlock; runs on all paths.
+	// Step 5: defer lock-keychain IMMEDIATELY after unlock; runs on all paths.
 	defer func() {
 		_ = k.lockKeychain(context.Background())
 		k.mu.Lock()
@@ -162,7 +162,7 @@ func (k *KeychainBackend) Get(ctx context.Context, path string) ([]byte, backend
 		return nil, backend.Meta{}, err
 	}
 
-	// Step 7: getOneValue — exactly one value read (FIND3-007).
+	// Step 7: getOneValue — exactly one value read.
 	value, err := k.getOneValue(ctx, row, field)
 	if err != nil {
 		return nil, backend.Meta{}, err
@@ -178,7 +178,7 @@ func (k *KeychainBackend) Get(ctx context.Context, path string) ([]byte, backend
 }
 
 // Set stores a value in the keychain and updates the manifest.
-// S1-14: per-item ACL is applied by RepairItemACLs (acl.go), called during Init and keylatch keychain repair.
+// Per-item ACL is applied by RepairItemACLs (acl.go), called during Init and keylatch keychain repair.
 func (k *KeychainBackend) Set(ctx context.Context, path string, value []byte, meta backend.Meta) error {
 	release, err := acquireFlock(k.opts.LockPath)
 	if err != nil {
@@ -327,7 +327,7 @@ func (k *KeychainBackend) Delete(ctx context.Context, path string) error {
 	return k.saveManifest(ctx, manifest)
 }
 
-// List returns metadata-only entries — zero value reads (S1-6, FIND3-007).
+// List returns metadata-only entries — zero value reads.
 func (k *KeychainBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	return k.listMetadata(ctx, prefix)
 }
@@ -362,7 +362,7 @@ type ManifestRow struct {
 }
 
 // loadManifest reads ONLY the manifest item from the custom keychain.
-// FIND3-007: does NOT read any value-bearing item. Returns empty Manifest
+// Does NOT read any value-bearing item. Returns empty Manifest
 // (Version:1) if the manifest item does not exist yet (first run).
 func (k *KeychainBackend) loadManifest(ctx context.Context) (Manifest, error) {
 	stdout, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
@@ -413,7 +413,7 @@ func (k *KeychainBackend) saveManifest(ctx context.Context, m Manifest) error {
 }
 
 // listMetadata returns Entry records from the manifest — ZERO value reads.
-// FIND3-007: List and GetMeta MUST NOT read any value-bearing item.
+// List and GetMeta MUST NOT read any value-bearing item.
 func (k *KeychainBackend) listMetadata(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	manifest, err := k.loadManifest(ctx)
 	if err != nil {
@@ -440,8 +440,8 @@ func (k *KeychainBackend) listMetadata(ctx context.Context, prefix string) ([]ba
 }
 
 // getOneValue retrieves exactly one value from the keychain.
-// FIND3-007: exactly ONE find-generic-password call with the matching service+account.
-// S1-13: Get reads exactly one value; List/GetMeta read zero.
+// Exactly ONE find-generic-password call with the matching service+account.
+// Get reads exactly one value; List/GetMeta read zero.
 func (k *KeychainBackend) getOneValue(ctx context.Context, row ManifestRow, field string) ([]byte, error) {
 	stdout, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"find-generic-password",
@@ -517,7 +517,7 @@ func (k *KeychainBackend) unlockKeychain(ctx context.Context, pw string) error {
 }
 
 // lockKeychain runs security lock-keychain.
-// S1-1: ALWAYS called after unlock, even on error paths (via defer).
+// ALWAYS called after unlock, even on error paths (via defer).
 func (k *KeychainBackend) lockKeychain(ctx context.Context) error {
 	_, _, _, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"lock-keychain", k.opts.KeychainPath},
@@ -577,14 +577,14 @@ func (k *KeychainBackend) rowFieldToPath(row ManifestRow, field string) string {
 	return "default/" + row.Connection + "/" + field
 }
 
-// loadStore is DEPRECATED for single-key path (FIND3-007).
+// loadStore is DEPRECATED for single-key path.
 // RETAINED ONLY for Import/Export bulk operations that explicitly need every value.
 // Use getOneValue for Get; loadManifest for List/GetMeta.
 //
 // Steps: flock → unlock-password → unlock-keychain → manifest → per-item reads
 //
 //	→ lock-keychain → flock release.
-func (k *KeychainBackend) loadStore(ctx context.Context) (*backend.Store, error) { //nolint:unused // planned: batch-load path for Phase 6 manifest reads
+func (k *KeychainBackend) loadStore(ctx context.Context) (*backend.Store, error) { //nolint:unused // planned: batch-load path for manifest reads
 	release, err := acquireFlock(k.opts.LockPath)
 	if err != nil {
 		return nil, fmt.Errorf("keychain loadStore: flock: %w", err)
@@ -602,7 +602,7 @@ func (k *KeychainBackend) loadStore(ctx context.Context) (*backend.Store, error)
 	k.mu.Lock()
 	k.unlocked = true
 	k.mu.Unlock()
-	// S1-1: lock-keychain deferred immediately; runs on all paths.
+	// Lock-keychain deferred immediately; runs on all paths.
 	defer func() {
 		_ = k.lockKeychain(context.Background())
 		k.mu.Lock()

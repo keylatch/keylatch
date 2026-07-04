@@ -1,11 +1,11 @@
 // Package api — wizard setup handlers for the /v1/ route family.
 //
 // Security invariants:
-//   - S10-V: api_key values are NEVER logged or echoed back in responses.
-//     The api_key is decoded directly into a []byte via a custom JSON type so
-//     it can be explicitly zeroed in memory after use. The JSON decode buffer
-//     is the only other copy and is GC-eligible immediately after decoding.
-//   - All write handlers require a valid session and CSRF token (enforced in server.go).
+// - S10-V: api_key values are NEVER logged or echoed back in responses.
+// The api_key is decoded directly into a []byte via a custom JSON type so
+// it can be explicitly zeroed in memory after use. The JSON decode buffer
+// is the only other copy and is GC-eligible immediately after decoding.
+// - All write handlers require a valid session and CSRF token (enforced in server.go).
 package api
 
 import (
@@ -590,7 +590,7 @@ func (h *WizardHandlers) checkCanaryPass() (ok bool, message string) {
 
 // isProviderConnected returns true when at least one provider connection meta
 // record exists in the store under any category within the "default/" namespace
-// (S-FIND-23). Scans "default/" and filters for entries whose path ends with
+// Scans "default/" and filters for entries whose path ends with
 // "/meta", covering all categories (ai, observability, etc.).
 // Returns false when the store is nil or the list call fails (error is logged at debug level).
 func (h *WizardHandlers) isProviderConnected(ctx context.Context) bool {

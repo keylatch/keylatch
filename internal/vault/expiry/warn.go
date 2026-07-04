@@ -16,10 +16,10 @@ var warnedPaths sync.Map
 // WarnOnce emits exactly one warning per (path, process) to stderr when the
 // secret is expired. Subsequent calls for the same path are no-ops.
 //
-// Security invariant S4-7: warning format is "[keylatch] warn: <path> expired on <date>".
+// Security invariant: warning format is "[keylatch] warn: <path> expired on <date>".
 // The warning MUST NOT include any value bytes. MUST NOT write to stdout.
 //
-// ctx is accepted for future cancellation but not used in Phase 4.
+// ctx is accepted for future cancellation but not currently used.
 func WarnOnce(ctx context.Context, m meta.Meta) {
 	if !IsExpired(m, time.Now()) {
 		return

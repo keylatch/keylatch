@@ -8,9 +8,9 @@ import (
 	"github.com/keylatch/keylatch/internal/paths"
 )
 
-// session_enforce.go — M2: raw-credential-path corroboration (fail closed).
+// session_enforce.go — raw-credential session gate: raw-credential-path corroboration (fail closed).
 //
-// Problem: a naive "gate every LLM-heuristic session" rule (the original M2
+// Problem: a naive "gate every LLM-heuristic session" rule (the original
 // shape) only refused when llmcontext.ClassifySession(env) reported
 // SignalHeuristic — i.e. the ONLY reason a session looked like an LLM session
 // was the spoofable env-var heuristic (S0-S6). SignalNone (no signal at all)
@@ -48,8 +48,9 @@ import (
 // IsRunning — GET 127.0.0.1:7890/health) used to be accepted here as a third
 // corroboration path. That check is session/PID-unbound — ANY local process
 // can satisfy it merely by starting a listener on that port (e.g. `keylatch
-// ui --port 7890 --no-open &`), which would defeat M2's fail-closed intent
-// (the exact spoof-to-human bypass M2 exists to close). It has been removed;
+// ui --port 7890 --no-open &`), which would defeat the raw-credential
+// session gate's fail-closed intent (the exact spoof-to-human bypass this
+// gate exists to close). It has been removed;
 // keylatchd only helps here if it is actually tracking this specific session
 // via its authenticated IPC socket (SignalDaemonActive) — merely being
 // reachable is not enough.
@@ -70,7 +71,7 @@ import (
 // have to remember every session.
 const requireVerifiedSessionHint = "Provide a signed session ticket (KEYLATCH_LLM_TICKET), or set KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (or allow_unverified_session in config) to restore unverified access. Note: keylatchd only helps if it is actively tracking this session via its IPC socket (KEYLATCH_DAEMON_SOCKET) — merely being reachable is not sufficient corroboration."
 
-// RequireVerifiedSession enforces M2 for raw-credential-exposure paths.
+// RequireVerifiedSession enforces the raw-credential session gate for raw-credential-exposure paths.
 //
 // rawCredentialExposure must be true only when the calling command is about
 // to hand a raw provider secret to something outside keylatchd's control —

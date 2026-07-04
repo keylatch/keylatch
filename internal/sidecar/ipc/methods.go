@@ -6,7 +6,7 @@ import (
 )
 
 // MethodName is the IPC method identifier. Only the 5 values in the
-// compile-time allow-list are valid (S14-8).
+// compile-time allow-list are valid.
 type MethodName string
 
 const (
@@ -17,7 +17,7 @@ const (
 	MethodOpenSystemBrowser  MethodName = "OpenSystemBrowser"
 )
 
-// allowedMethods is the compile-time allow-list of IPC method names (S14-8).
+// allowedMethods is the compile-time allow-list of IPC method names.
 // A CI lint verifies this map has exactly 5 entries and no others.
 var allowedMethods = map[MethodName]struct{}{
 	MethodHealth:             {},
@@ -46,7 +46,7 @@ type Response struct {
 type HandlerFunc func(ctx context.Context, params any, fw *FrameWriter) (any, error)
 
 // MethodRegistry maps method names to their handler implementations.
-// Only names in allowedMethods may be registered (S14-8).
+// Only names in allowedMethods may be registered.
 type MethodRegistry struct {
 	handlers map[MethodName]HandlerFunc
 }
@@ -57,11 +57,11 @@ func NewMethodRegistry() *MethodRegistry {
 }
 
 // Register adds a handler for name. Panics if name is not in the allow-list
-// (S14-8 — compile-time enforcement). This panic is intentional: an
+// (compile-time enforcement). This panic is intentional: an
 // unregistered method name is a programming error, not a runtime error.
 func (r *MethodRegistry) Register(name MethodName, fn HandlerFunc) {
 	if _, ok := allowedMethods[name]; !ok {
-		panic(fmt.Sprintf("ipc: attempt to register disallowed method %q (S14-8)", name))
+		panic(fmt.Sprintf("ipc: attempt to register disallowed method %q", name))
 	}
 	r.handlers[name] = fn
 }
@@ -71,7 +71,7 @@ func (r *MethodRegistry) Register(name MethodName, fn HandlerFunc) {
 // (even if they would otherwise be valid strings).
 func (r *MethodRegistry) Dispatch(ctx context.Context, req Request, fw *FrameWriter) Response {
 	if _, ok := allowedMethods[req.Method]; !ok {
-		// Audit hook placeholder — wired to Phase 5 audit in E5-T2.
+		// Audit hook placeholder — wired to the audit system.
 		return Response{Error: "unsupported_method"}
 	}
 	fn, registered := r.handlers[req.Method]
@@ -80,7 +80,7 @@ func (r *MethodRegistry) Dispatch(ctx context.Context, req Request, fw *FrameWri
 	}
 	result, err := fn(ctx, req.Params, fw)
 	if err != nil {
-		// Do not expose internal error detail through IPC (S14-8).
+		// Do not expose internal error detail through IPC.
 		return Response{Error: "internal_error"}
 	}
 	return Response{Result: result}

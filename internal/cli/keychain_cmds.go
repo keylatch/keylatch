@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RegisterKeychainCommands attaches Phase 1 keychain-related commands to root.
+// RegisterKeychainCommands attaches keychain-related commands to root.
 // Called from Register in root.go.
 func RegisterKeychainCommands(root *cobra.Command) {
 	root.AddCommand(newKeychainInitCmd())
@@ -160,7 +160,7 @@ func newKeychainListCmd() *cobra.Command {
 			}
 
 			for _, e := range entries {
-				// Output: connection/field — never print values (S1-6).
+				// Output: connection/field — never print values.
 				fmt.Fprintln(c.OutOrStdout(), e.Path)
 			}
 			return nil

@@ -20,8 +20,8 @@ const (
 )
 
 // Server is the IPC Unix-socket server. It accepts exactly one connection at
-// a time (single Tauri shell instance per S14-13). On HMAC mismatch the
-// connection is dropped silently without surfacing detail (S14-8).
+// a time (single Tauri shell instance). On HMAC mismatch the
+// connection is dropped silently without surfacing detail.
 type Server struct {
 	socketPath string
 	key        []byte
@@ -63,7 +63,7 @@ func (s *Server) Listen(ctx context.Context) error {
 	// Remove stale socket file if it exists.
 	_ = os.Remove(s.socketPath)
 
-	// M7: listenSocket sets a restrictive umask on Unix before creating the
+	// listenSocket sets a restrictive umask on Unix before creating the
 	// socket file (platform-specific: socket_unix.go / socket_windows.go).
 	ln, err := listenSocket(s.socketPath)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *Server) Listen(ctx context.Context) error {
 		}
 
 		// Serve this connection synchronously (one connection at a time —
-		// S14-13: single Tauri shell instance).
+		// Single Tauri shell instance).
 		s.serveConn(ctx, conn)
 	}
 }
@@ -127,7 +127,7 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 		if err := fr.Read(&req); err != nil {
 			if errors.Is(err, ErrHMACMismatch) {
 				s.recordInvalidFrame()
-				// Drop connection silently — no error detail to caller (S14-8).
+				// Drop connection silently — no error detail to caller.
 				return
 			}
 			// EOF or connection reset — normal teardown.
@@ -162,7 +162,7 @@ func (s *Server) recordInvalidFrame() {
 	s.invalidFrameCount++
 	count := s.invalidFrameCount
 	if count >= invalidFrameAlertThreshold {
-		// Audit hook placeholder — wired to Phase 5 audit in E5-T2.
+		// Audit hook placeholder — wired to the audit system.
 		slog.Warn("invalid HMAC frame threshold exceeded", "count", count, "window", invalidFrameWindowDuration)
 		// Reset to avoid repeated alerts.
 		s.invalidFrameCount = 0

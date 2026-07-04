@@ -11,7 +11,7 @@ import (
 // Status enumerates all connections in the given namespace and returns their
 // status. If opts.Test is true, each connection is health-tested.
 //
-// Canonical path format: namespace/category/provider/meta (S-FIND-23).
+// Canonical path format: namespace/category/provider/meta.
 // Scans all registered gateway-supporting categories in the namespace.
 func Status(ctx context.Context, opts StatusOptions, store Store) ([]ConnectionStatus, error) {
 	ns := opts.Namespace
@@ -92,7 +92,7 @@ func Status(ctx context.Context, opts StatusOptions, store Store) ([]ConnectionS
 			}
 		}
 
-		// Populate capabilities by name only (S3-10: no values).
+		// Populate capabilities by name only (no values).
 		capNames := make([]string, len(tmpl.Capabilities))
 		for i, cap := range tmpl.Capabilities {
 			capNames[i] = cap.Name
@@ -109,7 +109,7 @@ func Status(ctx context.Context, opts StatusOptions, store Store) ([]ConnectionS
 }
 
 // Describe returns the ConnectionTemplate for a provider with all secret field
-// values replaced by "****". This is safe to display in any context (S3-10).
+// values replaced by "****". This is safe to display in any context.
 func Describe(ctx context.Context, providerOrConnection string, store Store) (*registry.ConnectionTemplate, map[string]string, error) {
 	// providerOrConnection can be a provider slug or a "namespace/provider/account" path.
 	provider := providerOrConnection
@@ -124,7 +124,7 @@ func Describe(ctx context.Context, providerOrConnection string, store Store) (*r
 		return nil, nil, ErrProviderNotFound
 	}
 
-	// S3-10: replace all secret field values with "****".
+	// replace all secret field values with "****".
 	masked := make(map[string]string, len(tmpl.SecretFields))
 	for _, sf := range tmpl.SecretFields {
 		masked[sf.Name] = "****"

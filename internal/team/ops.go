@@ -87,7 +87,7 @@ func writeTeam(t *Team) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("team: mkdir: %w", err)
 	}
-	data, err := json.MarshalIndent(t, "", "  ")
+	data, err := json.MarshalIndent(t, "", " ")
 	if err != nil {
 		return fmt.Errorf("team: marshal: %w", err)
 	}

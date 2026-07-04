@@ -12,7 +12,7 @@ import (
 )
 
 // Backend is a thread-safe in-memory backend implementing backend.Backend.
-// All Phase 4 and versioned methods return backend.ErrNotSupported so that
+// All metadata and versioned methods return backend.ErrNotSupported so that
 // the compliance harness skips them gracefully.
 type Backend struct {
 	mu   sync.RWMutex

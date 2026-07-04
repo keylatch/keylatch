@@ -1,7 +1,7 @@
 //go:build !windows
 
 // Package token — Unix flock-based consumption log implementation.
-// FIND3-009: inter-process atomic use counting via append-only log + flock.
+// Inter-process atomic use counting via append-only log + flock.
 package token
 
 import (
@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// consumeTokenUseLog implements FIND3-009 on Unix using flock.
+// consumeTokenUseLog implements atomic use counting on Unix using flock.
 // It flocks the <id>.lock file, counts lines in the consumption log, and
 // appends a record if count < MaxUses.
 // Returns true if a use was successfully recorded, false if uses are exhausted.

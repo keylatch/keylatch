@@ -1,4 +1,4 @@
-// Package ui — rate limiting middleware for bootstrap endpoints (T-13-01).
+// Package ui — rate limiting middleware for bootstrap endpoints.
 package ui
 
 import (
@@ -27,7 +27,7 @@ type bootstrapRateLimiter struct {
 	now         func() time.Time // injectable for tests
 }
 
-// newBootstrapRateLimiter returns a rate limiter configured per T-13-01 spec:
+// newBootstrapRateLimiter returns a rate limiter configured per spec:
 // 5 failed attempts per IP before 429, counter resets after 15 minutes.
 func newBootstrapRateLimiter() *bootstrapRateLimiter {
 	return &bootstrapRateLimiter{

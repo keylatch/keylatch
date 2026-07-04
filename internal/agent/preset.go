@@ -3,10 +3,10 @@
 // others) and the keylatch agent setup/snippet command handlers.
 //
 // Security invariants:
-//   - S3-7: --dry-run produces no file writes
-//   - S3-8: profile files contain placeholder values only
-//   - S3-11: presets declare write paths up front; writing to undeclared path is rejected
-//   - S3-5: no KEYLATCH_MCP_TOKEN in any written config file
+// - --dry-run produces no file writes
+// - profile files contain placeholder values only
+// - presets declare write paths up front; writing to undeclared path is rejected
+// - no KEYLATCH_MCP_TOKEN in any written config file
 package agent
 
 import (
@@ -38,7 +38,7 @@ type Preset interface {
 // SetupOptions configures agent profile installation.
 type SetupOptions struct {
 	Mode      agentsnippet.ProfileMode
-	DryRun    bool // if true, no files are written (S3-7)
+	DryRun    bool // if true, no files are written
 	Force     bool // if true, overwrite existing files (blocked inside LLM sessions)
 	Namespace string
 }

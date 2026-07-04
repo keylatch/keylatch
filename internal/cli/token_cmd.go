@@ -13,7 +13,7 @@ func newTokenCmd() *cobra.Command {
 }
 
 // newTokenBrokerCmd returns the `token broker` subcommand group.
-// P0.4: broker subcommands are stubs — hide the whole group from help.
+// Broker subcommands are stubs — hide the whole group from help.
 func newTokenBrokerCmd() *cobra.Command {
 	broker := &cobra.Command{
 		Use:    "broker",

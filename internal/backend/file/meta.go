@@ -14,12 +14,12 @@ import (
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
-// getMetaFromDisk reads and returns the Phase 4 metadata for a canonical path.
+// getMetaFromDisk reads and returns the value-free metadata for a canonical path.
 // Returns backend.ErrNotFound if the metadata file does not exist.
 func getMetaFromDisk(root, path string) (vmeta.Meta, error) {
 	p := metadataPath(root, path)
 
-	// Path-traversal guard (S-INV-11 / S-FIND-23) — mirrors the guard in
+	// Path-traversal guard — mirrors the guard in
 	// file.go's Set/Delete. Metadata reads/writes go through metadataPath
 	// rather than FileBackend.Set/Delete's own guard, so a path containing
 	// "../" segments must be defended here independently.
@@ -42,12 +42,12 @@ func getMetaFromDisk(root, path string) (vmeta.Meta, error) {
 	return m, nil
 }
 
-// SetMeta writes Phase 4 metadata for path atomically:
-// temp file + fsync + rename. Uses mode 0o600 (S4-2).
+// SetMeta writes value-free metadata for path atomically:
+// temp file + fsync + rename. Uses mode 0o600.
 func (fb *FileBackend) SetMeta(_ context.Context, path string, m vmeta.Meta) error {
 	p := metadataPath(fb.dir, path)
 
-	// Path-traversal guard (S-INV-11 / S-FIND-23) — see getMetaFromDisk.
+	// Path-traversal guard — see getMetaFromDisk.
 	if !strings.HasPrefix(filepath.Clean(p), filepath.Clean(fb.dir)+string(filepath.Separator)) {
 		return fmt.Errorf("file backend: path escapes vault root")
 	}
@@ -64,9 +64,9 @@ func (fb *FileBackend) SetMeta(_ context.Context, path string, m vmeta.Meta) err
 	return atomicWrite(p, data, 0o600)
 }
 
-// ListMeta returns all stored Phase 4 metadata records whose Path starts with
+// ListMeta returns all stored value-free metadata records whose Path starts with
 // the given prefix. An empty prefix returns all records. Results are sorted by
-// Meta.Path. MUST NOT read any value files (S4-1).
+// Meta.Path. MUST NOT read any value files.
 func (fb *FileBackend) ListMeta(_ context.Context, prefix string) ([]vmeta.Meta, error) {
 	root := filepath.Join(fb.dir, "metadata")
 

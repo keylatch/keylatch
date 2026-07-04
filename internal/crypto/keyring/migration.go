@@ -1,5 +1,5 @@
-// Package keyring migration support for Phase 11.
-// Handles upgrading schema version 1 (Phase 5) keyrings to schema version 2.
+// Package keyring migration support for the roots-of-trust upgrade.
+// Handles upgrading schema version 1 (legacy) keyrings to schema version 2.
 package keyring
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/keylatch/keylatch/internal/trust"
 )
 
-// migrateV1toV2 synthesises a Phase 11 Roots slice from the legacy KEK fields
+// migrateV1toV2 synthesises a Roots slice from the legacy KEK fields
 // if the keyring was loaded as schema version 1.
 //
 // The migration does NOT write the keyring to disk — the caller is responsible
@@ -63,7 +63,7 @@ func migrateV1toV2(kf *KeyringFile) error { //nolint:unused // planned: called f
 	return nil
 }
 
-// legacyKEKTypeToRootType maps Phase 5 KEKType strings to Phase 11 RootType values.
+// legacyKEKTypeToRootType maps legacy KEKType strings to RootType values.
 //
 //nolint:unused // called from migrateV1toV2 (which is itself planned)
 func legacyKEKTypeToRootType(kekType string) trust.RootType {

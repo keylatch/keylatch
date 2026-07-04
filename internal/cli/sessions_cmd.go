@@ -1,4 +1,4 @@
-// Package cli — Phase 8/9 sessions subcommands (Phase 9 wire-up stub).
+// Package cli — sessions subcommands.
 package cli
 
 import (
@@ -27,7 +27,7 @@ type sessionEntry struct {
 func newSessionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sessions",
-		Short: "Manage LLM sessions (Phase 9 stub)",
+		Short: "Manage LLM sessions",
 	}
 	cmd.AddCommand(newSessionsListCmd())
 	cmd.AddCommand(newSessionsStartCmd())
@@ -84,7 +84,7 @@ func newSessionsStartCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start a new session (Phase 9 stub — persists record only)",
+		Short: "Start a new session (persists record only)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if actorName == "" {
 				return fmt.Errorf("--actor is required")

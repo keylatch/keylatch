@@ -11,7 +11,7 @@ import (
 )
 
 // uiValidRuntimeModes lists the v1.0.0 runtime modes surfaced in the UI.
-// direct_classic and direct_classic_sandboxed are removed in v1.0.0 (T-10-03).
+// direct_classic and direct_classic_sandboxed are removed in v1.0.0.
 var uiValidRuntimeModes = map[runtime.RuntimeMode]bool{
 	runtime.RuntimeGatewayTyped:   true,
 	runtime.RuntimeGatewaySDK:     true,
@@ -66,7 +66,7 @@ func (h *RuntimeTestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // DoctorHandler handles GET /api/runtime/doctor/{connection} and
-// GET /api/doctor?connection=<provider>&json=true (T-14-07).
+// GET /api/doctor?connection=<provider>&json=true.
 //
 // Exit code mapping (mirroring the CLI exit codes):
 //
@@ -81,8 +81,8 @@ func (h *DoctorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read optional ?connection= filter.  When present, only checks whose Section
-	// contains the provider name (case-insensitive) are returned.  This prevents
+	// Read optional ?connection= filter. When present, only checks whose Section
+	// contains the provider name (case-insensitive) are returned. This prevents
 	// N cards firing identical global-scope doctor runs and receiving redundant data.
 	connectionFilter := strings.TrimSpace(r.URL.Query().Get("connection"))
 

@@ -21,14 +21,14 @@ type ChainReport struct {
 
 // VerifyChain verifies the HMAC chain integrity of the audit log at path.
 //
-// Dual-mode per FIND3-008:
-//   - auditDEK == nil: header-only mode (no AEAD; chain integrity only).
-//   - auditDEK != nil: full mode (AEAD-open each event body + chain check).
+// Dual-mode:
+// - auditDEK == nil: header-only mode (no AEAD; chain integrity only).
+// - auditDEK != nil: full mode (AEAD-open each event body + chain check).
 //
 // salt is the 32-byte HMAC salt used to derive the chain MAC key.
 func VerifyChain(path string, salt []byte, auditDEK []byte) (ChainReport, error) {
 	// Derive chainMACKey from salt only (matches Logger.Open / DeriveChainMACKey).
-	// This key is DEK-independent so VerifyChain works in header-only mode (FIND3-008).
+	// This key is DEK-independent so VerifyChain works in header-only mode.
 	chainMACKey := DeriveChainMACKey(salt)
 
 	f, err := os.Open(path)

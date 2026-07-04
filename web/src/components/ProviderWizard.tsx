@@ -3,9 +3,9 @@
  *
  * Step 1: pick a provider from the template catalogue
  * Step 2: configure per-field storage modes (direct / reference)
- *   Sub-view: PM browse inline (browseState) — no second Sheet
+ * Sub-view: PM browse inline (browseState) — no second Sheet
  *
- * Implemented in T-14-03.
+ * Implemented in .
  */
 
 import { useState, useEffect, useRef } from 'react'
@@ -50,8 +50,8 @@ interface ProviderDetail {
 // ── Field state ───────────────────────────────────────────────────────────────
 
 interface FieldState {
-  id: string        // stable — never changes after creation
-  name: string      // derived from label, used as credential key
+  id: string // stable — never changes after creation
+  name: string // derived from label, used as credential key
   label: string
   required: boolean
   mode: 'direct' | 'reference'

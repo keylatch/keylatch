@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
 // TOKEN_REGEX matches content that looks like a credential. If content matches,
-// the button refuses to copy. Covered patterns (T-13-04: extended to cover all
+// the button refuses to copy. Covered patterns (extended to cover all
 // provider template sensitive field prefixes).
 //
 // Not covered: short UUIDs, numeric IDs, connection names, snippet code.
@@ -54,9 +54,9 @@ interface SafeCopyButtonProps {
  * SafeCopyButton — copies text to clipboard.
  *
  * Security invariants:
- *   - Refuses to copy content that matches the token-regex pattern.
- *   - Copied state resets after 1500ms.
- *   - aria-live announces copy success to screen readers.
+ * - Refuses to copy content that matches the token-regex pattern.
+ * - Copied state resets after 1500ms.
+ * - aria-live announces copy success to screen readers.
  */
 export function SafeCopyButton({ content, label = 'Copy', className }: SafeCopyButtonProps) {
   const [state, setState] = useState<'idle' | 'copied' | 'refused'>('idle')

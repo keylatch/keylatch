@@ -13,11 +13,11 @@
  * (e.g. op://Item-Title/<field>) that the user completes in the URI input before
  * submitting. Spaces in item titles are replaced with hyphens so the URI is valid.
  *
- * Implemented in T-14-05.
+ * Implemented in .
  *
  * Exports:
- *   PMBrowseBody — the browse body without any Sheet wrapper (used inline in ProviderWizard)
- *   PMBrowseModal — standalone Sheet-wrapped version for use outside the wizard
+ * PMBrowseBody — the browse body without any Sheet wrapper (used inline in ProviderWizard)
+ * PMBrowseModal — standalone Sheet-wrapped version for use outside the wizard
  */
 
 import { useEffect, useRef, useState } from 'react'

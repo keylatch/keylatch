@@ -1,10 +1,10 @@
-// Package team implements Phase 12 team identity, membership, RBAC, and shared-secret coordination.
+// Package team implements team identity, membership, RBAC, and shared-secret coordination.
 //
 // Security invariants:
-//   - Value-free output: all output HMACs sensitive values (member emails, OIDC subjects, secret names, root IDs).
-//     Never emit raw values. Use HMACValue(teamID, raw) pattern.
-//   - S12-15: Role enforcement happens at package layer, not CLI layer.
-//   - S12-9: Self-approval is blocked — approver must differ from requester.
+// - Value-free output: all output HMACs sensitive values (member emails, OIDC subjects, secret names, root IDs).
+// Never emit raw values. Use HMACValue(teamID, raw) pattern.
+// - Role enforcement happens at package layer, not CLI layer.
+// - Self-approval is blocked — approver must differ from requester.
 package team
 
 import (

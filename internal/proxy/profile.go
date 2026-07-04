@@ -1,5 +1,5 @@
 // Package proxy implements the gateway_proxy runtime profile schema,
-// TLS CA management, and env injection for Phase 13.
+// TLS CA management, and env injection.
 package proxy
 
 import (

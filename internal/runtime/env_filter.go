@@ -1,12 +1,12 @@
 // Package runtime — env_filter.go strips KEYLATCH_* env vars from child process
 // environments, retaining only the explicitly injected vars.
 //
-// T-08-01 (EPIC-08): every runtime driver wires FilterChildEnv at the
+// Every runtime driver wires FilterChildEnv at the
 // exec.Cmd.Env = ... site so that no KEYLATCH_* configuration var leaks to the
 // child process. Drivers in gateway modes re-inject the two gateway vars
 // (KEYLATCH_GATEWAY_TOKEN, KEYLATCH_GATEWAY_URL) explicitly after filtering.
 //
-// T-09-01 (EPIC-09): Filter() is the unified entry point that wraps
+// Filter() is the unified entry point that wraps
 // FilterChildEnv / CleanBaseEnv, emits child_env.filter / child_env.clean audit
 // events, and accepts a FilterOpts struct for structured configuration.
 //
@@ -25,7 +25,7 @@ import (
 
 // FilterOpts controls how Filter() processes a child process environment.
 //
-// T-09-01 (EPIC-09): replaces the per-driver ad-hoc construction pattern with
+// Replaces the per-driver ad-hoc construction pattern with
 // a single options struct that is straightforward to extend without changing call sites.
 type FilterOpts struct {
 	// Mode identifies the runtime mode (gateway_typed, gateway_sdk, direct_brokered,
@@ -38,7 +38,7 @@ type FilterOpts struct {
 	// Empty string means do not inject this var.
 	GatewayURL string
 	// CleanEnv, when true, applies CleanBaseEnv (minimal allowlist) instead of
-	// FilterChildEnv (strip-KEYLATCH_*-only). T-08-02: --clean-env flag.
+	// FilterChildEnv (strip-KEYLATCH_*-only). --clean-env flag.
 	CleanEnv bool
 	// Extras lists additional variable names to preserve when CleanEnv is true.
 	// These names are passed through to CleanBaseEnv and are included in the
@@ -214,7 +214,7 @@ func envKey(e string) string {
 // preserved from the parent environment. Every other var (including all
 // KEYLATCH_* vars) is stripped. Drivers re-inject credential vars explicitly.
 //
-// T-08-02: the list covers the vars required for most CLI tools to function
+// The list covers the vars required for most CLI tools to function
 // correctly without leaking any secrets or keylatch configuration.
 var cleanBaseVars = map[string]bool{
 	"PATH":            true,
@@ -233,7 +233,7 @@ var cleanBaseVars = map[string]bool{
 }
 
 // CleanBaseEnv returns a minimal environment suitable for clean child-process
-// execution (T-08-02, --clean-env flag).
+// execution (--clean-env flag).
 //
 // The returned slice contains only:
 //   - Variables from the cleanBaseVars allowlist (PATH, HOME, USER, …)

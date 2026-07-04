@@ -41,7 +41,7 @@ func Open(path string, k kek.KEK) (*Keyring, error) {
 		return nil, err
 	}
 
-	// Phase 11: schema version 2 uses Roots instead of legacy KEKType.
+	// Schema version 2 uses Roots instead of legacy KEKType.
 	// For legacy schema version 1 keyrings, validate the KEKType allowlist.
 	if kf.SchemaVersion == 1 {
 		allowed := map[string]bool{
@@ -126,7 +126,7 @@ func (kr *Keyring) Algorithm() envelope.Algorithm {
 }
 
 // Zero zeroes every DEK byte slice held in memory.
-// Safe to call from a defer on process exit (S5-5).
+// Safe to call from a defer on process exit.
 func (kr *Keyring) Zero() {
 	kr.mu.Lock()
 	defer kr.mu.Unlock()

@@ -158,7 +158,7 @@ func SaveAllowlist(userEntries []ModuleEntry) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("pkcs11: mkdir: %w", err)
 	}
-	data, err := json.MarshalIndent(userEntries, "", "  ")
+	data, err := json.MarshalIndent(userEntries, "", " ")
 	if err != nil {
 		return fmt.Errorf("pkcs11: marshal: %w", err)
 	}

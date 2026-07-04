@@ -96,7 +96,7 @@ func HashActor(key []byte, actor string) string {
 
 // captureResponseWriter wraps http.ResponseWriter to capture the status code.
 //
-//nolint:unused // planned: used by budget audit middleware in Phase 9 response size accounting
+//nolint:unused // planned: used by budget audit middleware for response size accounting
 type captureResponseWriter struct {
 	http.ResponseWriter
 	statusCode int

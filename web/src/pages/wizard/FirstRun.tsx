@@ -1,11 +1,11 @@
-// FirstRun — 5-step self-sufficient onboarding wizard (Epic 42).
+// FirstRun — 5-step self-sufficient onboarding wizard.
 //
 // Steps:
-//   1. Welcome    — "Get Started" button
-//   2. Backend    — choose from dynamic backend list (calls bootstrap IPC)
-//   3. Connect    — provider picker + API key + inline verify
-//   4. Try It     — run a command through Keylatch
-//   5. Done       — success + optional CLI install
+// 1. Welcome — "Get Started" button
+// 2. Backend — choose from dynamic backend list (calls bootstrap IPC)
+// 3. Connect — provider picker + API key + inline verify
+// 4. Try It — run a command through Keylatch
+// 5. Done — success + optional CLI install
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";

@@ -1,13 +1,13 @@
-// Package breakglass implements Phase 12 break-glass emergency access.
+// Package breakglass implements break-glass emergency access.
 //
 // Security invariants:
-//   - S12-10: Break-glass blocked during LLM sessions (except draft exception per spec §6.7).
-//   - FIND2-016: Rate-limiting per member: max 3 opens per 24h.
-//   - FIND2-021: Cooling period enforced: min 1h between close and next open.
-//   - Counters backed by files in ~/.keylatch/team/breakglass/ — survive restarts.
-//   - M-1: File-level locking prevents TOCTOU races on counter files.
-//   - N-5: Corrupt counter file returns error instead of silently resetting.
-//   - Reason IS stored in audit (loud by design — spec §6.7).
+// - Break-glass blocked during LLM sessions (except draft exception per spec §6.7).
+// - Rate-limiting per member: max 3 opens per 24h.
+// - Cooling period enforced: min 1h between close and next open.
+// - Counters backed by files in ~/.keylatch/team/breakglass/ — survive restarts.
+// - M-1: File-level locking prevents TOCTOU races on counter files.
+// - N-5: Corrupt counter file returns error instead of silently resetting.
+// - Reason IS stored in audit (loud by design — spec §6.7).
 package breakglass
 
 import (
@@ -152,7 +152,7 @@ func saveCounterLocked(path string, c *memberCounter) error {
 }
 
 // CheckRateLimit returns ErrRateLimitExceeded if member has exceeded 3 opens in 24h.
-// FIND2-016. M-1: uses withCounterLock for atomic read-check.
+// . M-1: uses withCounterLock for atomic read-check.
 func CheckRateLimit(_ context.Context, member team.Member) error {
 	path := memberCounterPath(member)
 	var rateLimitErr error
@@ -178,7 +178,7 @@ func CheckRateLimit(_ context.Context, member team.Member) error {
 }
 
 // CheckCoolingPeriod returns ErrCoolingPeriod if cooling period has not elapsed.
-// FIND2-021: min 1h between close and next open. M-1: uses withCounterLock for atomic read-check.
+// min 1h between close and next open. M-1: uses withCounterLock for atomic read-check.
 func CheckCoolingPeriod(_ context.Context, member team.Member) error {
 	path := memberCounterPath(member)
 	var coolingErr error
@@ -202,7 +202,7 @@ func CheckCoolingPeriod(_ context.Context, member team.Member) error {
 // M-1: the rate-limit check, cooling-period check, and counter update are all
 // performed atomically inside a single withCounterLock call.
 func Open(ctx context.Context, member team.Member, reason string) (*BreakGlassRequest, error) {
-	// S12-10: blocked during LLM sessions.
+	// blocked during LLM sessions.
 	if isLLMSession(ctx) {
 		return nil, ErrLLMSessionBlocked
 	}
@@ -217,7 +217,7 @@ func Open(ctx context.Context, member team.Member, reason string) (*BreakGlassRe
 
 	path := memberCounterPath(member)
 	if err := withCounterLock(path, func(c *memberCounter) error {
-		// FIND2-016: rate limit — prune stale opens first (M-2).
+		// rate limit — prune stale opens first (M-2).
 		cutoff := now.Add(-24 * time.Hour)
 		pruned := c.Opens[:0]
 		for _, t := range c.Opens {
@@ -231,7 +231,7 @@ func Open(ctx context.Context, member team.Member, reason string) (*BreakGlassRe
 			return ErrRateLimitExceeded
 		}
 
-		// FIND2-021: cooling period check.
+		// cooling period check.
 		if c.LastClose != nil {
 			elapsed := now.Sub(*c.LastClose)
 			if elapsed < time.Hour {

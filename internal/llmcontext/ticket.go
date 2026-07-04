@@ -1,6 +1,6 @@
 package llmcontext
 
-// ticket.go — EPIC-05 Task 2
+// ticket.go
 //
 // Signed session ticket for tamper-resistant LLM session detection.
 //
@@ -25,7 +25,7 @@ import (
 
 const (
 	// ticketTTL is the maximum lifetime of a session ticket.
-	// EPIC-05 requirement: TTL must be ≤ 5 minutes.
+	// Requirement: TTL must be ≤ 5 minutes.
 	ticketTTL = 5 * time.Minute
 
 	// ticketIssuer is embedded in the JWT "iss" claim so forged tokens from

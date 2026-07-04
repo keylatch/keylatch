@@ -39,7 +39,7 @@ type Connection struct {
 }
 
 // TestResult carries the outcome of a connection health test.
-// S3-9: this struct MUST NOT include free-form upstream error text — status enum only.
+// this struct MUST NOT include free-form upstream error text — status enum only.
 type TestResult struct {
 	// Status is one of the fixed enum values below.
 	Status     string `json:"status"` // connected|missing|invalid|insufficient_scope|rate_limited|network_error
@@ -48,7 +48,7 @@ type TestResult struct {
 	Provider   string `json:"provider"`
 	Connection string `json:"connection,omitempty"`
 	// Markers are allowed-listed body substrings found in the response.
-	// Token-shaped substrings are stripped before inclusion (S3-9).
+	// Token-shaped substrings are stripped before inclusion.
 	Markers []string `json:"markers,omitempty"`
 }
 

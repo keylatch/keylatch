@@ -1,6 +1,6 @@
 // Package config handles loading and saving the keylatch configuration file.
 // The Config struct contains only non-secret fields — secret values live in
-// the backend, never in config.json (security invariant S05-3).
+// the backend, never in config.json.
 package config
 
 import (
@@ -21,22 +21,22 @@ type Config struct {
 	Backend          string `json:"backend"`            // "file" | "keychain" | "op" | "bw"
 	DataDir          string `json:"data_dir,omitempty"` // file backend root; default ~/.keylatch/vault
 	DefaultNamespace string `json:"default_namespace"`  // e.g. "default" or "personal"
-	// NOTE(epic-16): DefaultProviderRef is written here; keylatch run will read it to auto-populate --provider-ref.
-	DefaultProviderRef string          `json:"default_provider_ref,omitempty"` // EPIC-11: provider-ref URI stored by setup reference branch
-	Gateway            *GatewayConfig  `json:"gateway,omitempty"`              // Phase 9; absent in 0.5
-	OP                 *OPConfig       `json:"op,omitempty"`                   // Phase 2; absent in 0.5
-	BW                 *BWConfig       `json:"bw,omitempty"`                   // Phase 2
+	// NOTE: DefaultProviderRef is written here; keylatch run will read it to auto-populate --provider-ref.
+	DefaultProviderRef string          `json:"default_provider_ref,omitempty"` // provider-ref URI stored by setup reference branch
+	Gateway            *GatewayConfig  `json:"gateway,omitempty"`              // absent in 0.5
+	OP                 *OPConfig       `json:"op,omitempty"`                   // absent in 0.5
+	BW                 *BWConfig       `json:"bw,omitempty"`
 	Audit              AuditConfig     `json:"audit"`
 	UI                 UIConfig        `json:"ui"`
 	Telemetry          TelemetryConfig `json:"telemetry"`
-	// EPIC-17: operating mode selection.
+	// Operating mode selection.
 	// Valid values: "standard" | "telemetry" | "canary" | "custom". Default: "standard".
 	Mode   string            `json:"mode,omitempty"`   // operating mode (standard/telemetry/canary/custom)
 	Custom *CustomModeConfig `json:"custom,omitempty"` // custom mode feature overrides
 
 	// AllowUnverifiedSession is the permanent, config-file form of the
 	// KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 escape hatch (docker-server-security
-	// M2 hardening). When true, `keylatch get` and `keylatch run` in
+	// raw-credential session gate hardening). When true, `keylatch get` and `keylatch run` in
 	// direct/brokered runtime modes (the paths that expose a raw provider
 	// credential to the child process) no longer require a signed session
 	// ticket or a reachable keylatchd before proceeding. Gateway/proxy modes
@@ -53,18 +53,18 @@ type CustomModeConfig struct {
 	ExperimentalGated      bool `json:"experimental_gated"`
 }
 
-// GatewayConfig holds gateway connection settings (Phase 9).
+// GatewayConfig holds gateway connection settings.
 type GatewayConfig struct {
 	Endpoint string `json:"endpoint"` // e.g. http://127.0.0.1:7878
 	Mode     string `json:"mode"`     // "local" | "docker" | "hosted" | "off"
 }
 
-// OPConfig holds 1Password-specific settings (Phase 2).
+// OPConfig holds 1Password-specific settings.
 type OPConfig struct {
 	Vault string `json:"vault"` // KEYLATCH_OP_VAULT default value, e.g. "Keylatch"
 	Bin   string `json:"bin"`   // explicit op binary path; "" means PATH lookup
 
-	// Forward-compat team-mode fields (Phase 7+). Not interpreted in single-user mode.
+	// Forward-compat team-mode fields. Not interpreted in single-user mode.
 	ServiceAccountTokenRef string `json:"service_account_token_ref,omitempty"`
 	OrgCollection          string `json:"org_collection,omitempty"`
 }
@@ -81,14 +81,14 @@ func (c *OPConfig) Validate() error {
 	return nil
 }
 
-// BWConfig holds Bitwarden/Vaultwarden settings (Phase 2).
+// BWConfig holds Bitwarden/Vaultwarden settings.
 type BWConfig struct {
 	Server     string `json:"server,omitempty"` // Vaultwarden URL; empty for Bitwarden Cloud
 	Folder     string `json:"folder,omitempty"`
 	Collection string `json:"collection,omitempty"`
 	Bin        string `json:"bin"`
 
-	// Forward-compat team-mode fields (Phase 7+). Not interpreted in single-user mode.
+	// Forward-compat team-mode fields. Not interpreted in single-user mode.
 	ServiceAccountTokenRef string `json:"service_account_token_ref,omitempty"`
 	OrgCollection          string `json:"org_collection,omitempty"`
 }
@@ -179,8 +179,8 @@ func Default() Config {
 	}
 }
 
-// Load reads and parses the config file at path. Unknown fields are rejected
-// (security invariant S05-3). Returns *VersionMismatch if version != 1.
+// Load reads and parses the config file at path. Unknown fields are rejected.
+// Returns *VersionMismatch if version != 1.
 func Load(path string) (Config, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -208,7 +208,7 @@ func Load(path string) (Config, error) {
 }
 
 // Save writes c to path atomically (temp-file + rename) with mode 0o600.
-// Security invariant S05-1: all config files must have mode 0o600.
+// Security invariant: all config files must have mode 0o600.
 func Save(path string, c Config) error {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
