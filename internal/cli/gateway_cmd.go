@@ -115,6 +115,7 @@ func newGatewayUpCmd() *cobra.Command {
 		port          int
 		detach        bool
 		unsafeBindAll bool
+		listenAddr    string
 		withProxy     bool
 		proxyPort     int
 		budgetPerHour float64
@@ -154,6 +155,9 @@ func newGatewayUpCmd() *cobra.Command {
 				if unsafeBindAll {
 					childArgs = append(childArgs, "--unsafe-bind-all")
 				}
+				if listenAddr != "" {
+					childArgs = append(childArgs, "--listen="+listenAddr)
+				}
 				if budgetPerHour > 0 {
 					childArgs = append(childArgs, fmt.Sprintf("--budget-per-hour=%g", budgetPerHour))
 				}
@@ -186,7 +190,25 @@ func newGatewayUpCmd() *cobra.Command {
 				return fmt.Errorf("gateway up: signing key must be 32 bytes (run 'gateway init' first)")
 			}
 
-			bind := fmt.Sprintf("127.0.0.1:%d", port)
+			// LLM sessions never get a non-loopback bind, regardless of flags/env
+			// (fail closed). gateway.New() enforces this independently; suppressing
+			// the inputs here keeps the CLI's own messaging/printed address accurate.
+			isLLM := llmcontext.IsLLMSession(env)
+			effectiveListenAddr := listenAddr
+			bindEnv := env
+			if isLLM {
+				if unsafeBindAll {
+					fmt.Fprintln(c.ErrOrStderr(), "gateway: LLM session detected — --unsafe-bind-all ignored")
+					unsafeBindAll = false
+				}
+				if effectiveListenAddr != "" || env(gateway.EnvListenKey) != "" {
+					fmt.Fprintln(c.ErrOrStderr(), "gateway: LLM session detected — --listen/KEYLATCH_GATEWAY_LISTEN ignored")
+					effectiveListenAddr = ""
+					bindEnv = func(string) string { return "" }
+				}
+			}
+			bind, allowExternalBind := gateway.ResolveBindAddr(port, effectiveListenAddr, unsafeBindAll, bindEnv)
+			unsafeBindAll = unsafeBindAll || allowExternalBind
 
 			// Open audit logger on a best-effort basis. If the keyring is not set
 			// up (no passphrase / DEK), the gateway still starts without audit.
@@ -270,6 +292,7 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 7878, "port to listen on")
 	cmd.Flags().BoolVar(&detach, "detach", false, "run gateway as a background process")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "allow non-loopback bind (non-LLM sessions only)")
+	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7878 (Docker; non-LLM sessions only; overrides KEYLATCH_GATEWAY_LISTEN)")
 	cmd.Flags().BoolVar(&withProxy, "with-proxy", false, "also start the CONNECT proxy alongside the gateway")
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")

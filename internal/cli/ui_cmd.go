@@ -22,6 +22,7 @@ func newUICmd() *cobra.Command {
 		demo          bool
 		noOpen        bool
 		unsafeBindAll bool
+		listenAddr    string
 		scopeStr      string
 	)
 
@@ -34,10 +35,17 @@ The server binds only to 127.0.0.1 by default. A one-time bootstrap URL is
 printed to stdout; opening it in a browser exchanges the token for a session
 cookie and redirects to the main UI.
 
+Container reachability: --listen (or KEYLATCH_UI_LISTEN) explicitly opts in
+to a non-loopback bind address, e.g. for Docker port-forwarding. This does
+NOT weaken the default: it is an explicit, documented opt-in, and it is
+still refused outright in LLM sessions (see below). Recommended container
+usage: -e KEYLATCH_UI_LISTEN=0.0.0.0:7890.
+
 Security notes:
   - When CLAUDE_CODE=1 (or any LLM session signal) is set, the scope is
     locked to status-only and write endpoints are not mounted (return 404).
-  - --unsafe-bind-all is ignored in LLM sessions.
+  - --unsafe-bind-all and --listen/KEYLATCH_UI_LISTEN are both ignored in
+    LLM sessions — non-loopback binds are refused unconditionally.
   - --scope=token-minting must be explicitly requested for token minting.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
@@ -49,6 +57,14 @@ Security notes:
 				return fmt.Errorf("ui: --scope: %w", err)
 			}
 
+			// bindEnv is used only to resolve the bind address (KEYLATCH_UI_LISTEN
+			// lookup below). It must NOT replace env: opts.Env below is passed to
+			// ui.New(), which re-derives IsLLMSession from it — swapping in a
+			// no-op lookup there would incorrectly flip that check to "not an LLM
+			// session" and defeat the fail-closed guarantee (New() also enforces
+			// this independently, but the CLI's own messaging must stay accurate).
+			bindEnv := env
+
 			// LLM session ceiling: override scope to status-only.
 			if isLLM {
 				if scope > ui.ScopeStatusOnly {
@@ -59,12 +75,19 @@ Security notes:
 					fmt.Fprintln(c.ErrOrStderr(), "ui: LLM session detected — --unsafe-bind-all ignored")
 					unsafeBindAll = false
 				}
+				if listenAddr != "" || env(ui.EnvListenKey) != "" {
+					fmt.Fprintln(c.ErrOrStderr(), "ui: LLM session detected — --listen/KEYLATCH_UI_LISTEN ignored")
+					listenAddr = ""
+					// New() refuses any non-loopback bind in an LLM session
+					// regardless; suppress the env-var lookup here purely so the
+					// address we print/attempt to bind is 127.0.0.1, matching the
+					// message above.
+					bindEnv = func(string) string { return "" }
+				}
 			}
 
-			bind := fmt.Sprintf("127.0.0.1:%d", port)
-			if unsafeBindAll {
-				bind = fmt.Sprintf("0.0.0.0:%d", port)
-			}
+			bind, allowExternalBind := ui.ResolveBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
+			unsafeBindAll = unsafeBindAll || allowExternalBind
 
 			// Generate signing key.
 			signingKey := make([]byte, 32)
@@ -121,6 +144,7 @@ Security notes:
 	cmd.Flags().BoolVar(&demo, "demo", false, "run in demo mode with stub data")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "do not attempt to open browser automatically")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "bind to 0.0.0.0 (non-LLM sessions only)")
+	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7890 (Docker; non-LLM sessions only; overrides KEYLATCH_UI_LISTEN)")
 	cmd.Flags().StringVar(&scopeStr, "scope", "admin", "session scope: status-only|setup|admin|token-minting")
 
 	return cmd
