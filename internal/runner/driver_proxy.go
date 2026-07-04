@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/gateway/token"
@@ -132,10 +133,21 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	// exact leak this minimal base env exists to prevent. providerKeyDenylist
 	// blocks any --extra name that matches a well-known provider credential
 	// env var, regardless of what value is currently set for it.
+	// Resolve stderr early (normally done in Step 4 below) so the denylist
+	// warning below can be written to the caller-supplied stream.
+	stderr := req.Stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+
 	baseEnv := proxyBaseEnv()
 	for _, k := range req.ExtraEnvVars {
-		if providerKeyDenylist[k] {
-			continue // S9-15: never let --extra leak a provider credential into gateway_proxy child env
+		if isCredentialShapedName(k) {
+			// S9-15: never let --extra leak a credential-shaped var into the
+			// gateway_proxy child env — tell the operator so the omission
+			// isn't silently confusing.
+			fmt.Fprintf(stderr, "warning: --extra %q looks like a credential env var; withheld from gateway_proxy child env\n", k)
+			continue
 		}
 		if v := os.Getenv(k); v != "" {
 			baseEnv = append(baseEnv, k+"="+v)
@@ -151,14 +163,11 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 
 	childEnv := proxy.EnvInject(baseEnv, addr, authToken, d.caPath)
 
-	// Step 4: launch subprocess.
+	// Step 4: launch subprocess. stderr was already resolved above (needed
+	// for the --extra denylist warning before this point).
 	stdout := req.Stdout
 	if stdout == nil {
 		stdout = os.Stdout
-	}
-	stderr := req.Stderr
-	if stderr == nil {
-		stderr = os.Stderr
 	}
 
 	//nolint:gosec // G204: command allowlist enforcement is caller-side (DispatchRunner.Run).
@@ -221,6 +230,44 @@ var providerKeyDenylist = map[string]bool{
 	"WEAVIATE_API_KEY":          true,
 	"RESEND_API_KEY":            true,
 	"SENDGRID_API_KEY":          true,
+}
+
+// credentialSuffixes are uppercased substrings that mark an --extra var name
+// as credential-shaped, on top of the exact-name providerKeyDenylist above.
+//
+// docker-server-security hardening: providerKeyDenylist only covers ~20
+// well-known provider names — any other secret-shaped var (AWS_SECRET_ACCESS_KEY,
+// AWS_SESSION_TOKEN, NPM_TOKEN, DATABASE_URL-style secrets, a custom *_SECRET,
+// etc.) would otherwise pass straight through os.Getenv(k) into the
+// gateway_proxy child, defeating S9-15 for anything not on the fixed list.
+// This stays a denylist (not a strict allowlist) so legitimate non-secret
+// vars (PATH, LANG, NODE_ENV, MY_APP_REGION, ...) are never over-blocked.
+var credentialSuffixes = []string{
+	"_KEY",
+	"_TOKEN",
+	"_SECRET",
+	"_PASSWORD",
+	"_PASSWD",
+	"_CREDENTIAL",
+	"_CREDENTIALS",
+	"_PRIVATE_KEY",
+}
+
+// isCredentialShapedName reports whether name looks like it holds a secret —
+// either an exact match against providerKeyDenylist, or its uppercased form
+// containing one of credentialSuffixes. Used to deny --extra names on the
+// gateway_proxy path, where the child must never receive raw secrets (S9-15).
+func isCredentialShapedName(name string) bool {
+	if providerKeyDenylist[name] {
+		return true
+	}
+	upper := strings.ToUpper(name)
+	for _, suf := range credentialSuffixes {
+		if strings.Contains(upper, suf) {
+			return true
+		}
+	}
+	return false
 }
 
 // proxyBaseEnv returns the minimal base environment for the proxy child process.
