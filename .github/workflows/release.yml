@@ -51,6 +51,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+          cache: true
+          cache-dependency-path: web/bun.lock
       - uses: docker/setup-buildx-action@v3
       - name: log in to ghcr.io
         uses: docker/login-action@v3
@@ -287,15 +292,15 @@ jobs:
           jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > "$tmp" && mv "$tmp" src-tauri/tauri.conf.json
           echo "tauri.conf.json version is now: $(jq -r '.version' src-tauri/tauri.conf.json)"
 
-      - name: stage keylatchd sidecar (macOS)
+      - name: prepare keylatchd sidecar (macOS)
         if: runner.os == 'macOS'
         run: |
           GOOS=darwin GOARCH=arm64 go build -o src-tauri/binaries/keylatchd-aarch64-apple-darwin ./cmd/keylatchd
           GOOS=darwin GOARCH=amd64 go build -o src-tauri/binaries/keylatchd-x86_64-apple-darwin ./cmd/keylatchd
-      - name: stage keylatchd sidecar (Linux amd64)
+      - name: prepare keylatchd sidecar (Linux amd64)
         if: runner.os == 'Linux'
         run: go build -o src-tauri/binaries/keylatchd-x86_64-unknown-linux-gnu ./cmd/keylatchd
-      - name: stage keylatchd sidecar (Windows amd64)
+      - name: prepare keylatchd sidecar (Windows amd64)
         if: runner.os == 'Windows'
         run: go build -o src-tauri/binaries/keylatchd-x86_64-pc-windows-msvc.exe ./cmd/keylatchd
 
