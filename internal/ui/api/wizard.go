@@ -124,7 +124,6 @@ var backendMeta = map[string]struct{ display, hint string }{
 	"azure-kv":   {"Azure Key Vault", ""},
 	"doppler":    {"Doppler", ""},
 	"infisical":  {"Infisical", ""},
-	"nordpass":   {"NordPass (experimental)", ""},
 	"lastpass":   {"LastPass (legacy)", ""},
 	"keeper":     {"Keeper Commander", "Install: pip install keepercommander"},
 }
@@ -200,8 +199,8 @@ func isBackendAvailable(name, hint string) bool {
 		return true
 	case "file", "keychain", "memory":
 		return true
-	// nordpass and lastpass have no detectable CLI; always report unavailable.
-	case "nordpass", "lastpass":
+	// lastpass has no detectable CLI; always report unavailable.
+	case "lastpass":
 		return false
 	}
 	// For CLI-backed backends check the binary is in PATH.
@@ -215,8 +214,8 @@ func isBackendAvailable(name, hint string) bool {
 }
 
 // cliForBackend returns the CLI binary name for a given backend, or "" if not
-// applicable. nordpass and lastpass are handled before this call in
-// isBackendAvailable and will never reach this function.
+// applicable. lastpass is handled before this call in isBackendAvailable and
+// will never reach this function.
 func cliForBackend(name, _ string) string {
 	switch name {
 	case "op":
