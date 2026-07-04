@@ -1,0 +1,47 @@
+# .dockerignore — keep the build context small and avoid leaking local
+# state / secrets into the image build.
+#
+# CAUTION: do not exclude anything the build needs:
+#   - web/ source (excluding node_modules/dist below)
+#   - all Go source, go.mod/go.sum
+#   - scripts/sync-embedded-ui.sh
+#   - internal/ui (embed targets)
+
+# VCS / worktrees
+.git
+.gitignore
+.gitleaks.toml
+.gitleaksignore
+.worktrees
+
+# Node / bun build artifacts (rebuilt inside the image)
+web/node_modules
+web/dist
+node_modules
+dist/
+
+# Desktop shell (not part of any container image)
+src-tauri/target
+
+# Local caches / coverage / test output
+.cache
+coverage.out
+*.out
+tests/e2e/test-results
+tests/e2e/playwright-report
+test-results
+playwright-report
+
+# Editor / OS cruft
+.DS_Store
+.vscode
+.idea
+*.swp
+
+# Prebuilt local binaries — never ship a stale host binary into the image
+/keylatch
+/keylatchd
+
+# Claude / vault tooling — not part of the application
+.claude
+vault
