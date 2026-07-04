@@ -25,14 +25,14 @@ export KEYLATCH_BACKEND=<name>
 | macOS Keychain | `keychain` | macOS | Yes (system) | Yes (Touch ID) | No | Yes | — |
 | 1Password | `op` | All | Yes | Yes | Yes | No | `op` v2+ |
 | Bitwarden | `bw` | All | Yes | No | Yes | Partial | `bw` |
-| ProtonPass | `protonpass` | All | Yes | No | Yes | No | `proton-pass` |
+| ProtonPass | `proton-pass` | All | Yes | No | Yes | No | `proton-pass` |
 | Keeper | `keeper` | All | Yes | No | Yes | No | `keeper` |
 | LastPass | `lastpass` | All | Yes | No | Yes | No | `lpass` |
 | HashiCorp Vault | `vault` | All | Yes | No | Yes | No | `vault` |
-| AWS Secrets Manager | `awssm` | All | Yes (cloud) | No | Yes | No | — (AWS SDK) |
-| 1Password Connect | `opconnect` | All | Yes | No | Yes | No | — (HTTP) |
-| GCP Secret Manager | `gcpsm` | All | Yes (cloud) | No | Yes | No | — (GCP SDK) |
-| Azure Key Vault | `azurekv` | All | Yes (cloud) | No | Yes | No | — (Azure SDK) |
+| AWS Secrets Manager | `aws-sm` | All | Yes (cloud) | No | Yes | No | — (AWS SDK) |
+| 1Password Connect | `op-connect` | All | Yes | No | Yes | No | — (HTTP) |
+| GCP Secret Manager | `gcp-sm` | All | Yes (cloud) | No | Yes | No | — (GCP SDK) |
+| Azure Key Vault | `azure-kv` | All | Yes (cloud) | No | Yes | No | — (Azure SDK) |
 | Doppler | `doppler` | All | Yes (cloud) | No | Yes | No | — (HTTP) |
 | Infisical | `infisical` | All | Yes (cloud) | No | Yes | No | — (HTTP) |
 
@@ -129,14 +129,14 @@ For the remaining backends, set `KEYLATCH_BACKEND=<key>` and consult the provide
 
 | Backend | Config key | Docs |
 |---------|-----------|------|
-| ProtonPass | `protonpass` | [proton.me/pass](https://proton.me/pass) |
+| ProtonPass | `proton-pass` | [proton.me/pass](https://proton.me/pass) |
 | Keeper | `keeper` | [docs.keeper.io](https://docs.keeper.io/developer-and-api-documentation) |
 | LastPass | `lastpass` | [support.lastpass.com](https://support.lastpass.com/s/article/lastpass-command-line-application) |
 | HashiCorp Vault | `vault` | [vaultproject.io](https://developer.hashicorp.com/vault/docs) |
-| AWS Secrets Manager | `awssm` | [AWS docs](https://docs.aws.amazon.com/secretsmanager/latest/userguide/) |
-| 1Password Connect | `opconnect` | [1Password Connect docs](https://developer.1password.com/docs/connect/) |
-| GCP Secret Manager | `gcpsm` | [GCP docs](https://cloud.google.com/secret-manager/docs) |
-| Azure Key Vault | `azurekv` | [Azure docs](https://learn.microsoft.com/en-us/azure/key-vault/) |
+| AWS Secrets Manager | `aws-sm` | [AWS docs](https://docs.aws.amazon.com/secretsmanager/latest/userguide/) |
+| 1Password Connect | `op-connect` | [1Password Connect docs](https://developer.1password.com/docs/connect/) |
+| GCP Secret Manager | `gcp-sm` | [GCP docs](https://cloud.google.com/secret-manager/docs) |
+| Azure Key Vault | `azure-kv` | [Azure docs](https://learn.microsoft.com/en-us/azure/key-vault/) |
 | Doppler | `doppler` | [doppler.com/docs](https://docs.doppler.com) |
 | Infisical | `infisical` | [infisical.com/docs](https://infisical.com/docs) |
 

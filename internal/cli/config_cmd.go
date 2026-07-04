@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -85,6 +86,14 @@ func newConfigSetCmd() *cobra.Command {
 					fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", parseErr)
 					os.Exit(1)
 				}
+			}
+			if strings.ToLower(key) == "backend" {
+				canonical, ok := backend.CanonicalName(value)
+				if !ok {
+					fmt.Fprintf(c.ErrOrStderr(), "config set: unknown backend %q; valid values: %s\n", value, strings.Join(backend.KnownCanonicalNames(), ", "))
+					os.Exit(1)
+				}
+				value = canonical
 			}
 
 			if err := setField(&cfg, key, value); err != nil {

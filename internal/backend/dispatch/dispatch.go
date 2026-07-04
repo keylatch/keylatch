@@ -17,6 +17,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 )
 
 // ErrUnknownBackend is returned when the requested backend name is not
@@ -75,6 +76,11 @@ func selectBackend(ctx context.Context, cfg config.Config, env llmcontext.Lookup
 	if name == "" {
 		name = "file"
 	}
+	canonicalName, ok := backend.CanonicalName(name)
+	if !ok {
+		return nil, ErrUnknownBackend{Name: name, Known: backend.KnownCanonicalNames()}
+	}
+	name = canonicalName
 
 	// Build Settings from config fields so factory functions can decode them.
 	settings := buildSettings(name, cfg, env)
@@ -96,15 +102,16 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 	case "file":
 		dir := cfg.DataDir
 		if dir == "" && env != nil {
+			dir = env("KEYLATCH_VAULT_PATH")
+		}
+		if dir == "" && env != nil {
 			dir = env("KEYLATCH_DATA_DIR")
 		}
-		if dir == "" {
-			home, err := userHomeDir()
-			// If home-dir resolution fails here, we pass data_dir="" to the factory,
-			// which will attempt its own resolution and return a descriptive error.
-			if err == nil {
-				dir = home + "/.keylatch/vault"
-			}
+		if dir == "" && env != nil {
+			dir = paths.Vault(env)
+		}
+		if dir == "" && env == nil {
+			dir = paths.Vault(llmcontext.DefaultLookup)
 		}
 		s["data_dir"] = dir
 
@@ -127,6 +134,10 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 			s["vault"] = cfg.OP.Vault
 			s["bin"] = cfg.OP.Bin
 		}
+		if env != nil {
+			setIfEnv(s, "vault", env, "KEYLATCH_OP_VAULT")
+			setIfEnv(s, "bin", env, "KEYLATCH_OP_BIN")
+		}
 
 	case "bw":
 		s["env"] = env
@@ -136,12 +147,105 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 			s["collection"] = cfg.BW.Collection
 			s["bin"] = cfg.BW.Bin
 		}
+		if env != nil {
+			setIfEnv(s, "server", env, "KEYLATCH_BW_SERVER")
+			setIfEnv(s, "folder", env, "KEYLATCH_BW_FOLDER")
+			setIfEnv(s, "collection", env, "KEYLATCH_BW_COLLECTION")
+			setIfEnv(s, "bin", env, "KEYLATCH_BW_BIN")
+		}
+
+	case "proton-pass":
+		s["env"] = env
+		if env != nil {
+			setIfEnv(s, "vault", env, "KEYLATCH_PROTON_PASS_VAULT")
+			setIfEnv(s, "bin", env, "KEYLATCH_PROTON_PASS_BIN")
+			setIfEnv(s, "item_prefix", env, "KEYLATCH_PROTON_PASS_ITEM_PREFIX")
+		}
+
+	case "keeper":
+		if env != nil {
+			setIfEnv(s, "bin", env, "KEYLATCH_KEEPER_BIN")
+			setIfEnv(s, "account_uid", env, "KEYLATCH_KEEPER_ACCOUNT_UID")
+		}
+
+	case "lastpass":
+		if env != nil {
+			setIfEnv(s, "bin", env, "KEYLATCH_LASTPASS_BIN")
+			setIfEnv(s, "username", env, "KEYLATCH_LASTPASS_USERNAME")
+		}
+
+	case "vault":
+		if env != nil {
+			setIfEnv(s, "address", env, "KEYLATCH_VAULT_ADDR", "VAULT_ADDR")
+			setIfEnv(s, "token", env, "KEYLATCH_VAULT_TOKEN", "VAULT_TOKEN")
+			setIfEnv(s, "role_id", env, "KEYLATCH_VAULT_ROLE_ID")
+			setIfEnv(s, "secret_id", env, "KEYLATCH_VAULT_SECRET_ID")
+			setIfEnv(s, "mount", env, "KEYLATCH_VAULT_MOUNT")
+			setIfEnv(s, "kv_version", env, "KEYLATCH_VAULT_KV_VERSION")
+			setIfEnv(s, "namespace", env, "KEYLATCH_VAULT_NAMESPACE", "VAULT_NAMESPACE")
+		}
+
+	case "aws-sm":
+		if env != nil {
+			setIfEnv(s, "region", env, "KEYLATCH_AWS_SM_REGION", "AWS_REGION", "AWS_DEFAULT_REGION")
+			setIfEnv(s, "access_key_id", env, "KEYLATCH_AWS_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
+			setIfEnv(s, "secret_access_key", env, "KEYLATCH_AWS_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
+			setIfEnv(s, "force_delete", env, "KEYLATCH_AWS_SM_FORCE_DELETE")
+		}
+
+	case "gcp-sm":
+		if env != nil {
+			setIfEnv(s, "project_id", env, "KEYLATCH_GCP_PROJECT_ID", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT")
+			setIfEnv(s, "credentials_json", env, "KEYLATCH_GCP_CREDENTIALS_JSON", "GOOGLE_APPLICATION_CREDENTIALS")
+		}
+
+	case "azure-kv":
+		if env != nil {
+			setIfEnv(s, "vault_url", env, "KEYLATCH_AZURE_KV_URL", "KEYLATCH_AZURE_VAULT_URL")
+			setIfEnv(s, "tenant_id", env, "KEYLATCH_AZURE_TENANT_ID", "AZURE_TENANT_ID")
+			setIfEnv(s, "client_id", env, "KEYLATCH_AZURE_CLIENT_ID", "AZURE_CLIENT_ID")
+			setIfEnv(s, "client_secret", env, "KEYLATCH_AZURE_CLIENT_SECRET", "AZURE_CLIENT_SECRET")
+		}
+
+	case "doppler":
+		if env != nil {
+			setIfEnv(s, "token", env, "KEYLATCH_DOPPLER_TOKEN", "DOPPLER_TOKEN")
+			setIfEnv(s, "project", env, "KEYLATCH_DOPPLER_PROJECT", "DOPPLER_PROJECT")
+			setIfEnv(s, "config", env, "KEYLATCH_DOPPLER_CONFIG", "DOPPLER_CONFIG")
+			setIfEnv(s, "base_url", env, "KEYLATCH_DOPPLER_BASE_URL")
+		}
+
+	case "infisical":
+		if env != nil {
+			setIfEnv(s, "base_url", env, "KEYLATCH_INFISICAL_BASE_URL", "INFISICAL_API_URL")
+			setIfEnv(s, "client_id", env, "KEYLATCH_INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_ID")
+			setIfEnv(s, "client_secret", env, "KEYLATCH_INFISICAL_CLIENT_SECRET", "INFISICAL_CLIENT_SECRET")
+			setIfEnv(s, "workspace_id", env, "KEYLATCH_INFISICAL_WORKSPACE_ID", "INFISICAL_WORKSPACE_ID")
+			setIfEnv(s, "environment", env, "KEYLATCH_INFISICAL_ENVIRONMENT", "INFISICAL_ENVIRONMENT")
+			setIfEnv(s, "secret_path", env, "KEYLATCH_INFISICAL_SECRET_PATH", "INFISICAL_SECRET_PATH")
+		}
+
+	case "op-connect":
+		if env != nil {
+			setIfEnv(s, "connect_url", env, "KEYLATCH_OP_CONNECT_URL", "OP_CONNECT_HOST")
+			setIfEnv(s, "token", env, "KEYLATCH_OP_CONNECT_TOKEN", "OP_CONNECT_TOKEN")
+			setIfEnv(s, "vault_id", env, "KEYLATCH_OP_CONNECT_VAULT_ID", "OP_CONNECT_VAULT_ID")
+		}
 	}
 
 	return s
 }
 
-// userHomeDir is a thin wrapper for testing isolation.
-func userHomeDir() (string, error) {
-	return userHomeDirImpl()
+func setIfEnv(settings map[string]interface{}, key string, env llmcontext.Lookup, names ...string) {
+	if existing, ok := settings[key]; ok {
+		if v, ok := existing.(string); ok && v != "" {
+			return
+		}
+	}
+	for _, name := range names {
+		if v := env(name); v != "" {
+			settings[key] = v
+			return
+		}
+	}
 }

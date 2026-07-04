@@ -25,8 +25,8 @@ These variables configure the Keylatch runtime. They are read by the CLI process
 | `KEYLATCH_VAULT_PATH` | Override the file backend vault path | No | Never |
 | `KEYLATCH_NAMESPACE` | Override the default namespace (`default`) | No | Never |
 | `KEYLATCH_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | No | Never |
-| `KEYLATCH_EXPERIMENTAL` | Set to `1` to enable all experimental features, including the NordPass backend stub and the UI `/experimental` endpoint. Equivalent to setting `experimental_gated = true` in a custom-mode config (EPIC-17). | No | Never |
-| ~~`KEYLATCH_EXPERIMENTAL_BACKENDS`~~ | **Deprecated (EPIC-19) — ignored.** Previously gated the NordPass backend. Use `KEYLATCH_EXPERIMENTAL=1` instead. | No | Never |
+| `KEYLATCH_EXPERIMENTAL` | Set to `1` to enable all experimental features, including the NordPass backend stub and the UI `/experimental` endpoint. Equivalent to setting `experimental_gated = true` in a custom-mode config. | No | Never |
+| ~~`KEYLATCH_EXPERIMENTAL_BACKENDS`~~ | **Deprecated — ignored.** Previously gated the NordPass backend. Use `KEYLATCH_EXPERIMENTAL=1` instead. | No | Never |
 
 ---
 
@@ -83,6 +83,59 @@ In gateway modes, the child process receives `KEYLATCH_GATEWAY_TOKEN` and `KEYLA
 
 ---
 
+## Backend Variables
+
+These variables configure specific credential backends. They are read by the parent Keylatch process and are never inherited by child commands.
+
+| Variable | Purpose | Security-sensitive | Child-env |
+|----------|---------|-------------------|-----------|
+| `KEYLATCH_OP_BIN` | Override path to the `op` CLI binary | No | Never |
+| `KEYLATCH_OP_VAULT` | 1Password vault name | No | Never |
+| `KEYLATCH_BW_BIN` | Override path to the `bw` CLI binary | No | Never |
+| `KEYLATCH_BW_SERVER` | Bitwarden/Vaultwarden server URL | No | Never |
+| `KEYLATCH_BW_FOLDER` | Bitwarden folder filter | No | Never |
+| `KEYLATCH_BW_COLLECTION` | Bitwarden collection filter | No | Never |
+| `KEYLATCH_PROTON_PASS_BIN` | Override path to the Proton Pass CLI binary | No | Never |
+| `KEYLATCH_PROTON_PASS_VAULT` | Proton Pass vault name | No | Never |
+| `KEYLATCH_PROTON_PASS_ITEM_PREFIX` | Prefix for Proton Pass item names | No | Never |
+| `KEYLATCH_KEEPER_BIN` | Override path to Keeper Commander | No | Never |
+| `KEYLATCH_KEEPER_ACCOUNT_UID` | Keeper account UID for disambiguation | No | Never |
+| `KEYLATCH_LASTPASS_BIN` | Override path to the `lpass` CLI binary | No | Never |
+| `KEYLATCH_LASTPASS_USERNAME` | LastPass account username for disambiguation | No | Never |
+| `KEYLATCH_VAULT_ADDR` | HashiCorp Vault address | No | Never |
+| `KEYLATCH_VAULT_TOKEN` | HashiCorp Vault token | Yes | Never |
+| `KEYLATCH_VAULT_ROLE_ID` | HashiCorp Vault AppRole role ID | No | Never |
+| `KEYLATCH_VAULT_SECRET_ID` | HashiCorp Vault AppRole secret ID | Yes | Never |
+| `KEYLATCH_VAULT_MOUNT` | HashiCorp Vault KV mount | No | Never |
+| `KEYLATCH_VAULT_KV_VERSION` | HashiCorp Vault KV version (`1` or `2`) | No | Never |
+| `KEYLATCH_VAULT_NAMESPACE` | HashiCorp Vault Enterprise namespace | No | Never |
+| `KEYLATCH_AWS_SM_REGION` | AWS Secrets Manager region | No | Never |
+| `KEYLATCH_AWS_ACCESS_KEY_ID` | AWS access key ID for static credentials | Yes | Never |
+| `KEYLATCH_AWS_SECRET_ACCESS_KEY` | AWS secret access key for static credentials | Yes | Never |
+| `KEYLATCH_AWS_SM_FORCE_DELETE` | AWS Secrets Manager force-delete flag | No | Never |
+| `KEYLATCH_GCP_PROJECT_ID` | GCP project ID for Secret Manager | No | Never |
+| `KEYLATCH_GCP_CREDENTIALS_JSON` | Path to a GCP service-account JSON file | Yes | Never |
+| `KEYLATCH_AZURE_KV_URL` | Azure Key Vault URL | No | Never |
+| `KEYLATCH_AZURE_VAULT_URL` | Alias for `KEYLATCH_AZURE_KV_URL` | No | Never |
+| `KEYLATCH_AZURE_TENANT_ID` | Azure tenant ID | No | Never |
+| `KEYLATCH_AZURE_CLIENT_ID` | Azure client ID | No | Never |
+| `KEYLATCH_AZURE_CLIENT_SECRET` | Azure client secret | Yes | Never |
+| `KEYLATCH_DOPPLER_TOKEN` | Doppler API/service token | Yes | Never |
+| `KEYLATCH_DOPPLER_PROJECT` | Doppler project name | No | Never |
+| `KEYLATCH_DOPPLER_CONFIG` | Doppler config name | No | Never |
+| `KEYLATCH_DOPPLER_BASE_URL` | Doppler API base URL override | No | Never |
+| `KEYLATCH_INFISICAL_BASE_URL` | Infisical API base URL override | No | Never |
+| `KEYLATCH_INFISICAL_CLIENT_ID` | Infisical Universal Auth client ID | No | Never |
+| `KEYLATCH_INFISICAL_CLIENT_SECRET` | Infisical Universal Auth client secret | Yes | Never |
+| `KEYLATCH_INFISICAL_WORKSPACE_ID` | Infisical workspace ID | No | Never |
+| `KEYLATCH_INFISICAL_ENVIRONMENT` | Infisical environment name | No | Never |
+| `KEYLATCH_INFISICAL_SECRET_PATH` | Infisical secret path | No | Never |
+| `KEYLATCH_OP_CONNECT_URL` | 1Password Connect server URL | No | Never |
+| `KEYLATCH_OP_CONNECT_TOKEN` | 1Password Connect bearer token | Yes | Never |
+| `KEYLATCH_OP_CONNECT_VAULT_ID` | 1Password Connect vault UUID | No | Never |
+
+---
+
 ## Actor / Session Variables
 
 | Variable | Purpose | Security-sensitive | Child-env |
@@ -126,7 +179,6 @@ These variables control telemetry emission and are read by the CLI process befor
 | Variable | Purpose | Security-sensitive | Child-env |
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_RECEIPTS_PATH` | Path to the run receipts file | No | Never |
-| `KEYLATCH_OP_BIN` | Override path to the `op` CLI binary | No | Never |
 | `KEYLATCH_UI_ADDR` | Override the UI server listen address | No | Never |
 
 ---

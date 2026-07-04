@@ -13,7 +13,7 @@ defaults when a key is absent.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | string | `file` | Credential storage backend. One of `file`, `keychain`, `op`, `bw`, `protonpass`, `keeper`, `lastpass`, `vault`, `awssm`, `opconnect`, `gcpsm`, `azurekv`, `doppler`, `infisical`. |
+| `backend` | string | `file` | Credential storage backend. One of `file`, `keychain`, `op`, `bw`, `proton-pass`, `keeper`, `lastpass`, `vault`, `aws-sm`, `op-connect`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`. |
 | `mode` | string | `standard` | **Operating mode** — controls telemetry, canary injection, and experimental gates. One of `standard`, `telemetry`, `canary`, `custom`. See [Operating Modes](./operating-modes.md) for the full reference. |
 | `audit.enabled` | bool | `true` | Whether to write a tamper-evident audit log. Disabling is not recommended in production. |
 | `audit.retention_days` | int | `30` | Number of days to retain rotated audit log files. Valid range: 1–3650. Rotated files older than this threshold are deleted by the retention sweep. |

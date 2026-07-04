@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -426,36 +427,36 @@ func checkCosignInstalled(probe kexec.Probe) Check {
 // after a run completes. The check:
 //  1. Pings keylatchd on the default UI address.
 //  2. If keylatchd is not running: reports [WARN] F3 with start hint.
-//  3. If keylatchd is running: queries /v1/retention-canary (a memory inspection
-//     endpoint added in T-12-03) with a generated canary token. If keylatchd
+//  3. If the runtime monitor is running: queries /v1/retention-canary (a memory
+//     inspection endpoint) with a generated canary token. If the monitor
 //     reports the canary is absent from live memory, the check passes.
 //
-// When the /v1/retention-canary endpoint is not present (pre-T-12-03 keylatchd),
-// the check reports [WARN] F3 with an upgrade hint rather than failing.
+// When the /v1/retention-canary endpoint is not present, the check reports
+// a warning with an upgrade hint rather than failing.
 func checkPlaintextRetention(env llmcontext.Lookup) Check {
 	return func(ctx context.Context) Status {
 		const checkName = "F3 plaintext_retention"
 		const section = "daemon"
 
-		// Resolve keylatchd address.
+		// Resolve runtime monitor address.
 		addr := "127.0.0.1:7890"
 		if v := env("KEYLATCH_UI_ADDR"); v != "" {
 			addr = v
 		}
 
-		// Step 1: check if keylatchd is running.
+		// Step 1: check if the runtime monitor is running.
 		pingURL := "http://" + addr + "/health"
 		client := &http.Client{Timeout: 800 * time.Millisecond}
 		resp, err := client.Get(pingURL) //nolint:noctx // short-timeout probe
 		if err != nil {
-			// keylatchd not reachable.
+			// Runtime monitor is not reachable.
 			return Status{
 				Name:    checkName,
 				Section: section,
 				OK:      true,
 				Warn:    true,
-				Detail:  "F3 plaintext retention: keylatchd not running — start keylatchd for heap-monitoring",
-				Fix:     "Run `keylatch ui` in the background to enable heap-monitoring checks.",
+				Detail:  "F3 plaintext retention: runtime monitor is not running; heap-monitoring check skipped",
+				Fix:     "Run `keylatch ui` in the background to enable runtime heap-monitoring checks.",
 				Tags:    []string{"daemon", "retention"},
 			}
 		}
@@ -541,13 +542,12 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 		// they store keys in the OS credential store. Skip the file check.
 		cfgPath := paths.Config(env)
 		if cfg, err := config.Load(cfgPath); err == nil {
-			switch cfg.Backend {
-			case "keychain", "op", "bw", "secret-service", "wincred":
+			if canonical, ok := backend.CanonicalName(cfg.Backend); ok && canonical != "file" {
 				return Status{
 					Name:    "F1 bootstrap.keyring",
 					Section: "environment",
 					OK:      true,
-					Detail:  fmt.Sprintf("keyring managed by %s backend (no keyring.json needed)", cfg.Backend),
+					Detail:  fmt.Sprintf("keyring managed by %s backend (no keyring.json needed)", canonical),
 					Tags:    []string{"bootstrap", "keyring"},
 				}
 			}
@@ -663,7 +663,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"environment", checkPathsConfig(env)},
 		{"environment", checkPathsVault(env)},
 		{"environment", checkPathsAudit(env)},
-		// EPIC-17: operating mode check.
+		// Operating mode check.
 		{"environment", checkOperatingMode(env)},
 		{"backends", checkBackendSelected(env)},
 		{"backends", checkBackendKeychain(probe)},
@@ -677,7 +677,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"backends", checkBackendFile(env)},
 		{"daemon", checkExternalDocker(env, probe)},
 		{"daemon", checkExternalSOPS(probe)},
-		// EPIC-10: external PM CLI checks (op, aws, vault) — skipped when no
+		// External password-manager CLI checks (op, aws, vault) — skipped when no
 		// --provider-ref connections are configured.
 		{"external", checkExternalOP(env, probe)},
 		{"external", checkExternalAWSSM(env, probe)},
@@ -690,7 +690,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"daemon", checkGatewayRunning(env)},
 		// T-12-03: F3 — plaintext retention after run.
 		{"daemon", checkPlaintextRetention(env)},
-		// EPIC-33: I3 — integration markers.
+		// Integration-marker checks.
 		{"environment", checkIntegrationMarkers()},
 	}
 }
