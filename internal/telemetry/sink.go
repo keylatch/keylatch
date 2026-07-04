@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	goruntime "runtime"
 	"strconv"
@@ -68,18 +69,44 @@ type RemoteSink struct {
 	backoffs []time.Duration
 }
 
+const defaultTelemetryEndpoint = "https://telemetry.keylatch.dev/v1/events"
+
 // newRemoteSink creates a RemoteSink pointing at the production endpoint.
 // The endpoint can be overridden by KEYLATCH_TELEMETRY_URL — used by CI canary
 // scans to redirect events to a local mock server.
+//
+// Input validation (docker-server-security hardening pass): the override
+// MUST use the https scheme. Telemetry events are best-effort/anonymised,
+// but they still traverse the network unauthenticated from the CLI's point
+// of view — silently downgrading to plaintext HTTP (e.g. via a misconfigured
+// or spoofed env var) would let a local attacker intercept or redirect
+// telemetry traffic. A malformed or non-https override is ignored — the
+// sink falls back to the hardcoded production endpoint rather than erroring,
+// since telemetry must never block or fail a command.
 func newRemoteSink() *RemoteSink {
-	endpoint := "https://telemetry.keylatch.dev/v1/events"
+	endpoint := defaultTelemetryEndpoint
 	if override := os.Getenv("KEYLATCH_TELEMETRY_URL"); override != "" {
-		endpoint = override
+		if isValidTelemetryURL(override) {
+			endpoint = override
+		}
+		// Invalid/non-https override: silently keep the production default.
+		// (Telemetry failures must never surface to the user — see Sink's
+		// interface doc comment — so this is a silent fallback, not an error.)
 	}
 	return &RemoteSink{
 		endpoint: endpoint,
 		client:   &http.Client{Timeout: 5 * time.Second},
 	}
+}
+
+// isValidTelemetryURL reports whether raw is an https:// URL with a
+// non-empty host. http:// (and any other scheme) is rejected.
+func isValidTelemetryURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "https" && u.Host != ""
 }
 
 // Emit dispatches the event asynchronously in a goroutine. It returns

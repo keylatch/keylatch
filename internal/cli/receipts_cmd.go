@@ -147,6 +147,8 @@ func runReceiptsTailFollow(c *cobra.Command) error {
 	addr := os.Getenv("KEYLATCH_UI_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:7890"
+	} else if err := validateHostPort(addr); err != nil {
+		return fmt.Errorf("receipts tail: KEYLATCH_UI_ADDR: %w", err)
 	}
 	url := "http://" + addr + "/v1/receipts/stream"
 

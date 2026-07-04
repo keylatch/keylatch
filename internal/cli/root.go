@@ -705,14 +705,23 @@ func newRunCmd() *cobra.Command {
 			pidPath := paths.GatewayPID(env)
 
 			// gatewayAdapter implements GatewayTypedServerStarter / GatewaySDKServerStarter.
-			gatewayAddr := gatewayRunAddr(env)
+			gatewayAddr, addrErr := gatewayRunAddr(env)
+			if addrErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", addrErr)
+				os.Exit(exitcode.UserError)
+			}
 			gatewaySrv := &gatewayServerAdapter{
 				addr:    gatewayAddr,
 				pidPath: pidPath,
 			}
 
 			// Proxy server address for gateway_proxy mode.
-			proxySrv := &proxy.Server{Addr: proxyRunAddr(env)}
+			proxyAddr, proxyAddrErr := proxyRunAddr(env)
+			if proxyAddrErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", proxyAddrErr)
+				os.Exit(exitcode.UserError)
+			}
+			proxySrv := &proxy.Server{Addr: proxyAddr}
 			// proxyLiveness reports whether the proxy daemon is running, based on ~/.keylatch/proxy.pid.
 			proxyLiveness := func() bool {
 				running, _, _ := proxyLiveness(env)
@@ -1015,7 +1024,11 @@ func runDryRun(c *cobra.Command, connectionName string, command []string, mode r
 	// Build the env_added list (names only — no real values for sensitive vars).
 	switch mode {
 	case runtime.RuntimeGatewayTyped, runtime.RuntimeGatewaySDK:
-		gatewayAddr := gatewayRunAddr(env)
+		gatewayAddr, addrErr := gatewayRunAddr(env)
+		if addrErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", addrErr)
+			os.Exit(exitcode.UserError)
+		}
 		plan.EnvAdded = append(plan.EnvAdded,
 			"KEYLATCH_GATEWAY_URL=<resolved: http://"+gatewayAddr+">",
 			"KEYLATCH_GATEWAY_TOKEN=<would-be-issued scope:"+tmpl.Provider+".*, ttl:1h>",
@@ -1272,20 +1285,28 @@ func (a *gatewayServerAdapter) Running() bool {
 
 // gatewayRunAddr resolves the gateway listen address.
 // Priority: KEYLATCH_GATEWAY_ADDR env var → 127.0.0.1:7878 default.
-func gatewayRunAddr(env llmcontext.Lookup) string {
+// Returns a clear error if KEYLATCH_GATEWAY_ADDR is set but not valid host:port.
+func gatewayRunAddr(env llmcontext.Lookup) (string, error) {
 	if v := env("KEYLATCH_GATEWAY_ADDR"); v != "" {
-		return v
+		if err := validateHostPort(v); err != nil {
+			return "", fmt.Errorf("KEYLATCH_GATEWAY_ADDR: %w", err)
+		}
+		return v, nil
 	}
-	return "127.0.0.1:7878"
+	return "127.0.0.1:7878", nil
 }
 
 // proxyRunAddr resolves the proxy listen address.
 // Priority: KEYLATCH_PROXY_ADDR env var → 127.0.0.1:7879 default.
-func proxyRunAddr(env llmcontext.Lookup) string {
+// Returns a clear error if KEYLATCH_PROXY_ADDR is set but not valid host:port.
+func proxyRunAddr(env llmcontext.Lookup) (string, error) {
 	if v := env("KEYLATCH_PROXY_ADDR"); v != "" {
-		return v
+		if err := validateHostPort(v); err != nil {
+			return "", fmt.Errorf("KEYLATCH_PROXY_ADDR: %w", err)
+		}
+		return v, nil
 	}
-	return "127.0.0.1:7879"
+	return "127.0.0.1:7879", nil
 }
 
 // mapCustomConfig converts a config.CustomModeConfig pointer to a
