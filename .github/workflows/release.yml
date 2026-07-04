@@ -195,6 +195,84 @@ jobs:
             dist/**/*.sig
             dist/**/*.pem
 
+  container-supply-chain:
+    # Container-image counterpart to the `sbom` + `cosign-sign` jobs above,
+    # which only cover the CLI archives/blobs. goreleaser's `build-cli` job
+    # already builds and pushes the multi-arch images + manifest list
+    # (see .goreleaser.yml `dockers` / `docker_manifests`); this job scans,
+    # signs, and attests the pushed OCI image itself.
+    needs: [build-cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: resolve image reference
+        id: image
+        run: |
+          # goreleaser's {{ .Version }} template strips the leading 'v' —
+          # mirror that here (same pattern used by desktop-bundles job above).
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "ref=ghcr.io/keylatch/keylatch:${version}" >> "$GITHUB_OUTPUT"
+      - name: install trivy
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+      - name: install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+      - name: trivy scan (linux/amd64)
+        run: |
+          trivy image --platform linux/amd64 --severity CRITICAL,HIGH \
+            --ignore-unfixed --exit-code 1 \
+            "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}-amd64"
+      - name: trivy scan (linux/arm64)
+        run: |
+          trivy image --platform linux/arm64 --severity CRITICAL,HIGH \
+            --ignore-unfixed --exit-code 1 \
+            "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}-arm64"
+      - name: sign container image (keyless OIDC)
+        run: cosign sign --yes "${{ steps.image.outputs.ref }}"
+      - name: generate image SBOM
+        run: |
+          mkdir -p dist/sbom
+          syft scan "${{ steps.image.outputs.ref }}" \
+            --output cyclonedx-json=dist/sbom/keylatch-image-${{ github.ref_name }}.cdx.json
+      - name: attest image SBOM
+        run: |
+          cosign attest --yes \
+            --predicate dist/sbom/keylatch-image-${{ github.ref_name }}.cdx.json \
+            --type cyclonedx \
+            "${{ steps.image.outputs.ref }}"
+      - name: verify image signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ steps.image.outputs.ref }}"
+      - name: verify image attestation
+        run: |
+          cosign verify-attestation \
+            --type cyclonedx \
+            --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${{ steps.image.outputs.ref }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-sbom
+          path: dist/sbom/keylatch-image-*.json
+
   manifest:
     needs: [build-cli, sbom, cosign-sign]
     runs-on: ubuntu-latest
@@ -402,7 +480,7 @@ jobs:
           if-no-files-found: warn
 
   publish:
-    needs: [build-cli, sbom, release-gates, cosign-sign, manifest, desktop-bundles, provenance]
+    needs: [build-cli, sbom, release-gates, cosign-sign, manifest, desktop-bundles, provenance, container-supply-chain]
     runs-on: ubuntu-latest
     steps:
       - name: assert at least one desktop bundle succeeded

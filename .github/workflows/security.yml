@@ -75,6 +75,22 @@ jobs:
       - name: govulncheck
         run: govulncheck ./...
 
+  web-audit:
+    # Web dependency vulnerability audit — the govulncheck job above covers
+    # the Go module graph; this covers the web/ (Vite/bun) dependency tree.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+          cache: true
+          cache-dependency-path: web/bun.lock
+      - name: bun install
+        run: cd web && bun install --frozen-lockfile
+      - name: bun audit
+        run: cd web && bun audit
+
   integration-keychain:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
