@@ -32,9 +32,9 @@ a per-process override.
 > only and does not yet honor `custom.experimental_gated`. This is a known limitation. See the
 > feature table below for details.
 
-> **Deprecated**: `KEYLATCH_EXPERIMENTAL_BACKENDS=1` was previously used to gate the NordPass
-> backend. It is now **ignored**. Update any shell profiles or CI scripts to use
-> `KEYLATCH_EXPERIMENTAL=1` instead.
+> **Deprecated**: `KEYLATCH_EXPERIMENTAL_BACKENDS=1` was previously used to gate the (now
+> removed) NordPass backend stub. It is now **ignored**. Update any shell profiles or CI
+> scripts to use `KEYLATCH_EXPERIMENTAL=1` instead.
 
 ---
 
@@ -42,9 +42,13 @@ a per-process override.
 
 | Feature | Gate | Status | Notes |
 |---------|------|--------|-------|
-| NordPass backend stub | `KEYLATCH_EXPERIMENTAL=1` | Discovery-gated | All methods return `ErrUnavailable`; no official NordPass CLI/API contract confirmed yet |
 | UI `/v1/config/experimental` endpoint | `KEYLATCH_EXPERIMENTAL=1` only | Active | Returns `{"experimental": true}` when `KEYLATCH_EXPERIMENTAL=1`. **Known limitation**: this endpoint reads the env var directly and does not consult `custom.experimental_gated`. Users relying solely on custom mode config will see `{"experimental": false}`. Setting `KEYLATCH_EXPERIMENTAL=1` alongside `custom.experimental_gated: true` works correctly. |
 | Beta runtime modes | `KEYLATCH_EXPERIMENTAL=1` | Planned | Future additions will be listed here when they enter beta |
+
+> **Removed**: the NordPass backend stub (`internal/backend/nordpass`) was never wired into
+> `internal/backend/all` or the backend catalog, so it could never actually be selected even
+> with `KEYLATCH_EXPERIMENTAL=1` set. The package has been removed rather than half-wired; a
+> future NordPass backend would need a confirmed CLI/API contract and full catalog wiring.
 
 ---
 

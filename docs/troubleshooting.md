@@ -130,7 +130,7 @@ ls -la ~/.keylatch/audit.log
 chmod 0600 ~/.keylatch/audit.log
 
 # Or override the path
-export KEYLATCH_AUDIT__PATH=/tmp/keylatch-audit.log
+export KEYLATCH_AUDIT_PATH=/tmp/keylatch-audit.log
 ```
 
 ---

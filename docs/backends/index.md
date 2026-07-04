@@ -59,8 +59,9 @@ export KEYLATCH_VAULT_PATH=/custom/path/vault
 ```
 
 The `file` backend is suitable for CI headless use. The vault is encrypted at rest
-(XChaCha20-Poly1305; AES-256-GCM when `KEYLATCH_FIPS=1`) and requires no external
-services. See [backends/file.md](file.md) for full security invariants.
+(XChaCha20-Poly1305; AES-256-GCM in FIPS builds compiled with `-tags=fips`) and
+requires no external services. See [backends/file.md](file.md) for full security
+invariants.
 
 ---
 

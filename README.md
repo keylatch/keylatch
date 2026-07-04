@@ -425,13 +425,40 @@ The desktop app currently ships for **Linux** (AppImage/.deb); macOS and Windows
 
 ## Docker
 
+The image ships **only the `keylatch` CLI** — there is no bundled `keylatchd`
+sidecar or desktop shell in the container. It runs as the `nonroot` user
+(UID 65532), so credential/config paths must live under that user's home,
+not `/root`. Use `KEYLATCH_CONFIG_DIR` to point at a writable, persisted
+location:
+
 ```bash
 # Build locally
 docker build -t keylatch:dev .
 
-# Run
-docker run --rm -v ~/.keylatch:/root/.keylatch keylatch:dev doctor --json
+# Run a one-off command against a persisted config/vault volume
+docker run --rm \
+  -e KEYLATCH_CONFIG_DIR=/home/nonroot/.keylatch \
+  -v keylatch-data:/home/nonroot/.keylatch \
+  keylatch:dev doctor --json
 ```
+
+To reach the browser UI from outside the container, opt in to a non-loopback
+listen address explicitly (refused automatically inside LLM sessions):
+
+```bash
+docker run --rm \
+  -e KEYLATCH_CONFIG_DIR=/home/nonroot/.keylatch \
+  -v keylatch-data:/home/nonroot/.keylatch \
+  -e KEYLATCH_UI_LISTEN=0.0.0.0:7890 \
+  -p 7890:7890 \
+  keylatch:dev ui
+```
+
+**What works in-container:** the `file` backend, and cloud backends reachable
+over plain HTTPS (`aws-sm`, `vault`/HashiCorp Vault). **What does not work:**
+any backend that shells out to a CLI tool the distroless image does not ship
+— `op`, `bw`, `keychain`, `lastpass`, `keeper`, `proton-pass`. Use those
+backends from a native install instead.
 
 The image uses `distroless/static:nonroot` at runtime (~2 MiB). No shell, no libc.
 

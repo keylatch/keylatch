@@ -36,19 +36,45 @@ Verify the checksum against the `.sha256` file published alongside each release.
 
 ## Docker
 
-The `keylatchd` sidecar is available as a minimal image:
+The `keylatch` CLI is available as a minimal image. **It ships only the CLI —
+there is no `keylatchd` sidecar binary or desktop shell in the container.**
 
 ```bash
 docker pull ghcr.io/keylatch/keylatch:latest
 ```
 
-Run as a sidecar bound to loopback only:
+The image runs as the `nonroot` user (UID 65532, distroless), so credential
+and config paths must live under that user's home directory, not `/root`.
+Point `KEYLATCH_CONFIG_DIR` at a persisted volume:
 
 ```bash
-docker run --rm -p 127.0.0.1:7890:7890 \
-  -v "$HOME/.keylatch:/root/.keylatch" \
-  ghcr.io/keylatch/keylatch:latest
+docker run --rm \
+  -e KEYLATCH_CONFIG_DIR=/home/nonroot/.keylatch \
+  -v keylatch-data:/home/nonroot/.keylatch \
+  ghcr.io/keylatch/keylatch:latest doctor --json
 ```
+
+To use the browser UI, opt in to a non-loopback listen address explicitly and
+publish the port — the entrypoint requires a subcommand (running the image
+with no subcommand just prints `--help` and exits):
+
+```bash
+docker run --rm \
+  -e KEYLATCH_CONFIG_DIR=/home/nonroot/.keylatch \
+  -v keylatch-data:/home/nonroot/.keylatch \
+  -e KEYLATCH_UI_LISTEN=0.0.0.0:7890 \
+  -p 7890:7890 \
+  ghcr.io/keylatch/keylatch:latest ui
+```
+
+`KEYLATCH_UI_LISTEN` refuses to bind a non-loopback address automatically
+when an LLM session is detected inside the container.
+
+**What works in-container:** the `file` backend, and cloud backends reachable
+over plain HTTPS (`aws-sm`, `vault`). **What does not work:** any CLI-driven
+backend the distroless image does not ship a binary for — `op`, `bw`,
+`keychain`, `lastpass`, `keeper`, `proton-pass`. Use a native install for
+those.
 
 ## Verify the installation
 
