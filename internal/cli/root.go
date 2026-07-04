@@ -471,7 +471,7 @@ func newGetCmd() *cobra.Command {
 		// see RequireVerifiedSession for the full rationale and the escape
 		// hatch (env var or config field).
 		env := llmcontext.DefaultLookup
-		if verErr := RequireVerifiedSession(env, daemon.IsRunning, true, configAllowsUnverifiedSession(env)); verErr != nil {
+		if verErr := RequireVerifiedSession(env, true, configAllowsUnverifiedSession(env)); verErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 			os.Exit(exitcode.SecurityBlock)
 		}
@@ -574,7 +574,7 @@ func newRunCmd() *cobra.Command {
 			// RequireVerifiedSession for the full rationale and the escape
 			// hatch (KEYLATCH_ALLOW_UNVERIFIED_SESSION / config field).
 			runEnv := llmcontext.DefaultLookup
-			if verErr := RequireVerifiedSession(runEnv, daemon.IsRunning, runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
+			if verErr := RequireVerifiedSession(runEnv, runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 				os.Exit(exitcode.SecurityBlock)
 			}

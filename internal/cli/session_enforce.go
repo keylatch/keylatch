@@ -39,22 +39,36 @@ import (
 // allow the command to proceed:
 //
 //   - a signed session ticket (KEYLATCH_LLM_TICKET is present), or
-//   - a reachable keylatchd (daemonUp() == true)
+//   - keylatchd's authenticated IPC socket explicitly confirmed this PID is
+//     an active, tracked session (llmcontext.SignalDaemonActive, via
+//     KEYLATCH_DAEMON_SOCKET).
 //
-// If neither is present, the command fails closed with exitcode.SecurityBlock
-// UNLESS the operator has explicitly opted out via
-// KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 or the config.json
+// Note what is deliberately NOT corroboration: a bare, unauthenticated
+// reachability check against keylatchd's HTTP health endpoint (daemon.
+// IsRunning — GET 127.0.0.1:7890/health) used to be accepted here as a third
+// corroboration path. That check is session/PID-unbound — ANY local process
+// can satisfy it merely by starting a listener on that port (e.g. `keylatch
+// ui --port 7890 --no-open &`), which would defeat M2's fail-closed intent
+// (the exact spoof-to-human bypass M2 exists to close). It has been removed;
+// keylatchd only helps here if it is actually tracking this specific session
+// via its authenticated IPC socket (SignalDaemonActive) — merely being
+// reachable is not enough.
+//
+// If neither the ticket nor SignalDaemonActive is present, the command fails
+// closed with exitcode.SecurityBlock UNLESS the operator has explicitly
+// opted out via KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 or the config.json
 // "allow_unverified_session" field (see configAllowsUnverifiedSession) —
 // either one restores the previous unrestricted behavior for that path.
 //
 // Human operators are not meant to trip this in normal use: a human running
-// `keylatch get`/`keylatch run --runtime direct_brokered` by hand, without
-// keylatchd running and without ever having enabled the escape hatch, WILL be
-// asked to start keylatchd, obtain a ticket, or flip the opt-out — this is the
-// intended tradeoff (fail closed on an unauthenticated raw-credential path)
-// and is why the opt-out exists as a first-class, permanent config field, not
-// just an env var a human would have to remember every session.
-const requireVerifiedSessionHint = "Start keylatchd (`keylatch ui` or `keylatch gateway up`), provide a session ticket (KEYLATCH_LLM_TICKET), or set KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (or allow_unverified_session in config) to restore unverified access."
+// `keylatch get`/`keylatch run --runtime direct_brokered` by hand, without a
+// keylatchd that is actively tracking this session and without ever having
+// enabled the escape hatch, WILL be asked to provide a session ticket or flip
+// the opt-out — this is the intended tradeoff (fail closed on an
+// unauthenticated raw-credential path) and is why the opt-out exists as a
+// first-class, permanent config field, not just an env var a human would
+// have to remember every session.
+const requireVerifiedSessionHint = "Provide a signed session ticket (KEYLATCH_LLM_TICKET), or set KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (or allow_unverified_session in config) to restore unverified access. Note: keylatchd only helps if it is actively tracking this session via its IPC socket (KEYLATCH_DAEMON_SOCKET) — merely being reachable is not sufficient corroboration."
 
 // RequireVerifiedSession enforces M2 for raw-credential-exposure paths.
 //
@@ -73,11 +87,7 @@ const requireVerifiedSessionHint = "Start keylatchd (`keylatch ui` or `keylatch 
 // Returns a non-nil error with actionable guidance when the command must fail
 // closed; returns nil when it is safe to proceed to the command's existing
 // (IsLLMSession-based) guards.
-//
-// daemonUp is injected for testability; production callers pass
-// daemon.IsRunning. A nil daemonUp is treated as "keylatchd is not reachable"
-// (fail closed) — production call sites MUST always pass a real function.
-func RequireVerifiedSession(env llmcontext.Lookup, daemonUp func() bool, rawCredentialExposure bool, configAllowsUnverified bool) error {
+func RequireVerifiedSession(env llmcontext.Lookup, rawCredentialExposure bool, configAllowsUnverified bool) error {
 	if !rawCredentialExposure {
 		// Gateway/proxy mode (or a command that never returns a raw value):
 		// the child/caller never receives anything but a scoped session
@@ -105,16 +115,10 @@ func RequireVerifiedSession(env llmcontext.Lookup, daemonUp func() bool, rawCred
 		return nil
 	}
 
-	// Positive corroboration 3: keylatchd itself is reachable (local health
-	// check, independent of the KEYLATCH_DAEMON_SOCKET IPC path above).
-	if daemonUp != nil && daemonUp() {
-		return nil
-	}
-
 	return fmt.Errorf(
 		"keylatch: this command exposes a raw credential value and no session "+
-			"corroboration was found (no signed session ticket, keylatchd "+
-			"unreachable) — refusing to proceed (fail closed). %s",
+			"corroboration was found (no signed session ticket, keylatchd not "+
+			"actively tracking this session) — refusing to proceed (fail closed). %s",
 		requireVerifiedSessionHint)
 }
 
