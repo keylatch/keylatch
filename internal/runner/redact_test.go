@@ -1,10 +1,15 @@
 package runner_test
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/runner"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRedact_OpenAIKey verifies that OpenAI API key shapes are redacted.
@@ -127,6 +132,76 @@ func TestRedact_Boundary(t *testing.T) {
 	if strings.Contains(endOut, "sk-AbCdEfGhIjKlMnOpQrStUv") {
 		t.Errorf("pattern at end not redacted: %s", endOut)
 	}
+}
+
+// TestRedact_GitHubTokens verifies classic and fine-grained GitHub PATs are redacted.
+func TestRedact_GitHubTokens(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"classic", `token=ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AB`, "[REDACTED:github-pat-classic]"},
+		{"fine-grained", `token=github_pat_AbCdEfGhIjKlMnOpQrStUvWx`, "[REDACTED:github-pat-fine-grained]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out := string(runner.Redact([]byte(tc.input)))
+			assert.Contains(t, out, tc.want)
+		})
+	}
+}
+
+// TestRedact_AWSAccessKey verifies AWS access key IDs are redacted.
+func TestRedact_AWSAccessKey(t *testing.T) {
+	t.Parallel()
+	input := `AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE`
+	out := string(runner.Redact([]byte(input)))
+	assert.NotContains(t, out, "AKIAIOSFODNN7EXAMPLE")
+	assert.Contains(t, out, "[REDACTED:aws-access-key]")
+}
+
+// TestRedact_SlackTokens verifies Slack bot/user tokens are redacted.
+func TestRedact_SlackTokens(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"bot", `token=xoxb-EXAMPLE-NOT-A-REAL-TOKEN-FIXTURE`, "[REDACTED:slack-bot-token]"},
+		{"user", `token=xoxp-EXAMPLE-NOT-A-REAL-TOKEN-FIXTURE`, "[REDACTED:slack-user-token]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out := string(runner.Redact([]byte(tc.input)))
+			assert.Contains(t, out, tc.want)
+		})
+	}
+}
+
+// TestRedactionPatternsJSON_MatchesGoTable is the L3 parity guard: it fails
+// the build if packaging/redaction-patterns.json (consumed by the bash
+// substring scanner packaging/ci/scan-no-secret-in-storage.sh) drifts from
+// internal/runner's redactionDefs table (the single source of truth). Run
+// `go generate ./internal/runner` to regenerate the JSON after editing
+// redact.go.
+func TestRedactionPatternsJSON_MatchesGoTable(t *testing.T) {
+	t.Parallel()
+
+	jsonPath := filepath.Join("..", "..", "packaging", "redaction-patterns.json")
+	data, err := os.ReadFile(jsonPath) //nolint:gosec // G304: fixed, repo-relative test fixture path
+	require.NoError(t, err, "read %s", jsonPath)
+
+	var got []string
+	require.NoError(t, json.Unmarshal(data, &got))
+
+	want := runner.RedactionPrefixes()
+	assert.Equal(t, want, got,
+		"packaging/redaction-patterns.json is out of sync with internal/runner's redactionDefs table — run `go generate ./internal/runner`")
 }
 
 // FuzzRedact asserts that Redact never panics on arbitrary input.
