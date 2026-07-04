@@ -6,20 +6,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-)
 
-// N1: redactionPatterns contains the full set of credential prefix patterns
-// from packaging/redaction-patterns.json. These are loaded at compile time
-// as a literal rather than via //go:embed (which disallows ".." path traversal).
-// Any change to packaging/redaction-patterns.json must be reflected here.
-var redactionPatterns = []string{
-	"sk-",
-	"ghp_",
-	"github_pat_",
-	"AKIA",
-	"xoxb-",
-	"xoxp-",
-}
+	"github.com/keylatch/keylatch/internal/runner"
+)
 
 const subscriberBufferCap = 8
 
@@ -276,14 +265,22 @@ func convertToSecurityEvent(raw interface{}, kind, severity string) *SecurityEve
 }
 
 // scrub removes any credential or canary patterns from a string (S14-6).
-// N1: applies all patterns from redaction-patterns.json (loaded at init),
-// plus the compile-time canary value.
+//
+// docker-server-security hardening (L3): this used to carry its own
+// hand-maintained copy of the credential-prefix list, with a comment
+// requiring it be kept in sync with packaging/redaction-patterns.json by
+// hand — a THIRD copy of that table, alongside internal/runner/redact.go's
+// redactionDefs (the single source of truth) and the JSON file itself
+// (generated from redactionDefs via `go generate ./internal/runner`). This
+// now consumes runner.RedactionPrefixes() directly so there is nothing left
+// to drift: see TestScrub_MatchesRunnerRedactionPrefixes for the parity
+// guard covering this consumer.
 func scrub(s string) string {
 	const canary = "KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF"
 	if strings.Contains(s, canary) {
 		return "[REDACTED]"
 	}
-	for _, pattern := range redactionPatterns {
+	for _, pattern := range runner.RedactionPrefixes() {
 		if strings.Contains(s, pattern) {
 			return "[REDACTED]"
 		}
