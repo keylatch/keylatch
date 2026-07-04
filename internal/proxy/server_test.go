@@ -85,14 +85,20 @@ func freeProxyPort(t *testing.T) int {
 }
 
 // newTestProxy creates a proxy.Server with the given profile and vault stub,
-// starts it on a free port, and returns the port + a cancel func.
-func newTestProxy(t *testing.T, profile proxy.ProxyProfile, vault proxy.ProxyVaultReader) (int, context.CancelFunc) {
+// starts it on a free port, and returns the port, its M1 caller-auth token
+// (callers must set "Proxy-Authorization: Bearer <token>" on every request),
+// and a cancel func.
+func newTestProxy(t *testing.T, profile proxy.ProxyProfile, vault proxy.ProxyVaultReader) (int, string, context.CancelFunc) {
 	t.Helper()
 	port := freeProxyPort(t)
 	srv := &proxy.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
 		Profile: profile,
 		Vault:   vault,
+	}
+	token, err := srv.EnsureToken()
+	if err != nil {
+		t.Fatalf("EnsureToken: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -101,7 +107,7 @@ func newTestProxy(t *testing.T, profile proxy.ProxyProfile, vault proxy.ProxyVau
 		}
 	}()
 	time.Sleep(80 * time.Millisecond)
-	return port, cancel
+	return port, token, cancel
 }
 
 // TestProxyServer_HostNotAllowed verifies 403 for hosts outside the allowlist (S-RM-6).
@@ -119,7 +125,7 @@ func TestProxyServer_HostNotAllowed(t *testing.T) {
 		Hosts: []string{"allowed.example.com"},
 	}
 	vault := &proxyVaultStub{values: map[string][]byte{}}
-	port, cancel := newTestProxy(t, profile, vault)
+	port, token, cancel := newTestProxy(t, profile, vault)
 	defer cancel()
 
 	// Use the proxy to reach a host that is NOT in the allowlist.
@@ -127,6 +133,7 @@ func TestProxyServer_HostNotAllowed(t *testing.T) {
 	req, _ := http.NewRequest("GET", proxyURL+"/api/test", nil)
 	req.Host = "not-allowed.example.com"
 	req.Header.Set("Host", "not-allowed.example.com")
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -168,14 +175,18 @@ func TestProxyServer_AuthorizationStripped(t *testing.T) {
 			},
 		},
 	}
-	port, cancel := newTestProxy(t, profile, &proxyVaultStub{values: map[string][]byte{}})
+	port, token, cancel := newTestProxy(t, profile, &proxyVaultStub{values: map[string][]byte{}})
 	defer cancel()
 
-	// Make a request with a caller-supplied Authorization header.
+	// Make a request with a caller-supplied Authorization header, plus the
+	// M1 caller-auth token in Proxy-Authorization (a distinct header — see
+	// server.go's proxyAuthHeader doc comment for why the two must not be
+	// conflated).
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	req, _ := http.NewRequest("GET", proxyURL+"/api/test", nil)
 	req.Host = upstreamHost
 	req.Header.Set("Authorization", "Bearer caller-supplied-token-must-be-stripped")
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -230,13 +241,14 @@ func TestProxyServer_CredentialInjectedFromVault(t *testing.T) {
 		"myapi/api_key": []byte(providerCred),
 	}}
 
-	port, cancel := newTestProxy(t, profile, vault)
+	port, token, cancel := newTestProxy(t, profile, vault)
 	defer cancel()
 
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	req, _ := http.NewRequest("POST", proxyURL+"/api/test", strings.NewReader(`{}`))
 	req.Host = upstreamHost
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
