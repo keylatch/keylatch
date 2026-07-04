@@ -1,6 +1,7 @@
 // Package file implements the envelope-encrypted file backend.
-// v1.0.0: Set uses xchacha20-poly1305 AEAD (or aes-256-gcm when KEYLATCH_FIPS=1).
-// Plaintext and base64 write paths are removed (T-02-02, S-INV-1).
+// v1.0.0: Set uses xchacha20-poly1305 AEAD (or aes-256-gcm when built with
+// the -tags=fips build tag). Plaintext and base64 write paths are removed
+// (T-02-02, S-INV-1).
 package file
 
 import (

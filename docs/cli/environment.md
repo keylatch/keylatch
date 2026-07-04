@@ -66,6 +66,7 @@ In gateway modes, the child process receives `KEYLATCH_GATEWAY_TOKEN` and `KEYLA
 | Variable | Purpose | Security-sensitive | Child-env |
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_GATEWAY_ADDR` | Gateway listen address override | No | Never |
+| `KEYLATCH_GATEWAY_LISTEN` | Explicit non-loopback bind address for `keylatch gateway up` (e.g. `0.0.0.0:7878`), for Docker/container reachability. Opt-in only — an alternative to `--unsafe-bind-all` that lets the operator pick the exact advertised address. Precedence: `--listen` flag > `KEYLATCH_GATEWAY_LISTEN` > default (`--unsafe-bind-all` → `0.0.0.0:<port>`, else `127.0.0.1:<port>`). Still refused (fail-closed) when an LLM session is detected — see `internal/gateway/bind_resolve.go`. | No | Never |
 | `KEYLATCH_GATEWAY_CONFIG` | Gateway config file path | No | Never |
 | `KEYLATCH_GATEWAY_DIR` | Gateway state directory | No | Never |
 | `KEYLATCH_GATEWAY_LOG` | Gateway log file path | No | Never |
@@ -195,6 +196,7 @@ These variables control telemetry emission and are read by the CLI process befor
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_RECEIPTS_PATH` | Path to the run receipts file | No | Never |
 | `KEYLATCH_UI_ADDR` | Override the UI server listen address | No | Never |
+| `KEYLATCH_UI_LISTEN` | Explicit non-loopback bind address for `keylatch ui` (e.g. `0.0.0.0:7890`), for Docker/container reachability. Opt-in only — an alternative to `--unsafe-bind-all` that lets the operator pick the exact advertised address. Precedence: `--listen` flag > `KEYLATCH_UI_LISTEN` > default (`--unsafe-bind-all` → `0.0.0.0:<port>`, else `127.0.0.1:<port>`). Still refused (fail-closed) when an LLM session is detected — see `internal/ui/bind_resolve.go`. | No | Never |
 
 ---
 

@@ -40,7 +40,7 @@ No credential value is ever written to disk in plaintext or base64 form.
 Prior to EPIC-03 the `file` backend could write credentials as base64-encoded
 plaintext. CRIT-01 closed this gap:
 
-- All writes go through XChaCha20-Poly1305 AEAD (or AES-256-GCM under `KEYLATCH_FIPS=1`).
+- All writes go through XChaCha20-Poly1305 AEAD (or AES-256-GCM when built with the `-tags=fips` build tag).
 - The base64 write path is removed from `FileBackend.Set` (`T-02-02`).
 - `SetVersioned`/`GetVersioned` fail closed without a keyring (`T-02-03`).
 - `bootstrap` initializes the platform keyring so the file backend can operate
