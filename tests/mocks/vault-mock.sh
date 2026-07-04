@@ -1,5 +1,5 @@
 #!/bin/sh
-# vault-mock.sh — mock HashiCorp Vault CLI for EPIC-10 integration tests.
+# vault-mock.sh — mock HashiCorp Vault CLI for external-reference integration tests.
 #
 # Simulates `vault kv get -field=<field> <path>` and returns a canary value.
 # Also handles `vault token lookup` for doctor external checks.

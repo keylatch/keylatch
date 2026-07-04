@@ -1,5 +1,5 @@
 #!/bin/sh
-# op-mock.sh — mock 1Password CLI for EPIC-10 integration tests.
+# op-mock.sh — mock 1Password CLI for external-reference integration tests.
 #
 # Simulates `op read --no-newline op://...` and exits 0 with a canary value.
 # All other invocations exit 1 to guard against unexpected usage.

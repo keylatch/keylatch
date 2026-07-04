@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-external-ref-roundtrip.sh — EPIC-10 integration test.
+# test-external-ref-roundtrip.sh — integration test.
 #
 # Verifies end-to-end behaviour of external-store references (op://, aws-sm://, hashivault://)
 # using mock binaries injected via PATH. No real 1Password / AWS / Vault credentials
@@ -8,7 +8,7 @@
 # What is tested:
 #   1. `keylatch connect --provider-ref` stores the URI verbatim (not plaintext).
 #   2. The mock binary is invoked by the resolver and returns the canary value.
-#   3. The canary does NOT appear in the child process environment (S-EXT-3).
+#   3. The canary does NOT appear in the child process environment.
 #   4. In a simulated LLM session (CLAUDE_CODE=1), the resolver is blocked (exit 2).
 #
 # Requirements: go, bash 4+, standard POSIX tools.
@@ -102,14 +102,14 @@ reset_data() {
 # ─── Test: connect stores URI (not plaintext) ─────────────────────────────────
 #
 # We can test this without a real connection test (which requires a live API)
-# by checking the vault files directly. Since EPIC-10 stores the URI verbatim,
+# by checking the vault files directly. Since the resolver stores the URI verbatim,
 # the file must contain the URI string, not the canary value.
 
 test_uri_stored_not_plaintext() {
   local scheme="$1" uri="$2" canary="$3"
   log "[$scheme] checking vault contains URI not plaintext..."
   if grep -rqF "$canary" "$DATA_DIR" 2>/dev/null; then
-    fail "[$scheme] plaintext canary found in vault — URI not stored verbatim (S-EXT-3)"
+    fail "[$scheme] plaintext canary found in vault — URI not stored verbatim"
   fi
   pass "[$scheme] vault does not contain plaintext canary"
 }
@@ -160,7 +160,7 @@ test_resolver_with_mocks() {
   fi
 }
 
-# ─── Test: canary does NOT appear in child env (S-EXT-3) ─────────────────────
+# ─── Test: canary does NOT appear in child env ────────────────────────────────
 #
 # This verifies that resolved values are not leaked into the child environment.
 # We run a simple env dump command and check that none of the canaries appear.
@@ -171,10 +171,10 @@ test_canary_not_in_env() {
   env_dump="$(env)"
   for canary in "$OP_CANARY" "$AWSSM_CANARY" "$VAULT_CANARY"; do
     if echo "$env_dump" | grep -qF "$canary"; then
-      fail "canary '$canary' found in child environment — S-EXT-3 violation"
+      fail "canary '$canary' found in child environment"
     fi
   done
-  pass "canary values are not present in child environment (S-EXT-3)"
+  pass "canary values are not present in child environment"
 }
 
 # ─── Test: LLM session blocks (simulated via CLAUDE_CODE=1) ──────────────────
@@ -193,7 +193,7 @@ test_llm_session_unit() {
 
 # ─── run all tests ────────────────────────────────────────────────────────────
 
-log "starting EPIC-10 external reference roundtrip tests"
+log "starting external reference roundtrip tests"
 log "mock binaries: $MOCK_BIN_DIR"
 log ""
 
@@ -210,5 +210,5 @@ test_canary_not_in_env
 test_llm_session_unit
 
 log ""
-log "All EPIC-10 external reference roundtrip tests passed."
+log "All external reference roundtrip tests passed."
 exit 0

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-env-docs.sh — T-08-03 (EPIC-08)
+# lint-env-docs.sh
 #
 # Asserts that every KEYLATCH_* env var read in the production Go source has an
 # entry in docs/cli/environment.md.

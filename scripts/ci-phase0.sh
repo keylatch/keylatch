@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Phase-0 CI gate — SC0-11
-# Runs all checks required for a clean Phase-0 build.
+# CI gate — runs all checks required for a clean build.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -23,4 +22,4 @@ echo "==> hook test harness"
 bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh
 
 echo ""
-echo "All Phase-0 checks passed."
+echo "All checks passed."

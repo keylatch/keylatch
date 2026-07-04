@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-s-inv-4a-no-canary-leak.sh — EPIC-05 Task 3 (S-INV-4a)
+# test-s-inv-4a-no-canary-leak.sh — canary leak detection test.
 #
 # Canary leak detection for the gateway_typed runtime path.
 #
@@ -7,7 +7,7 @@
 # in any output channel (stdout, stderr, audit log, or a simulated HTTP mock
 # log) when `keylatch run --runtime gateway_typed` is invoked in an LLM session.
 #
-# S-INV-4a invariant: no raw credential bytes may reach any output channel
+# Invariant: no raw credential bytes may reach any output channel
 # during a gateway_typed run in an LLM session.
 #
 # Exit codes:
@@ -111,9 +111,9 @@ log "Credential enrolled"
 # Verify the canary is NOT in plaintext in the data dir.
 if grep -r --include="*.json" --include="*.kv" --include="*.bin" \
     "$CANARY_VALUE" "$KEYLATCH_DATA_DIR" 2>/dev/null | grep -v "^Binary"; then
-  fail "S-INV-1 violated: canary value found in plaintext in data directory"
+  fail "canary value found in plaintext in data directory"
 fi
-pass "Canary not in plaintext in data dir (S-INV-1)"
+pass "Canary not in plaintext in data dir"
 
 # ─── start gateway ────────────────────────────────────────────────────────────
 
@@ -204,8 +204,8 @@ else
 fi
 
 if [[ "$LEAK_FOUND" -ne 0 ]]; then
-  fail "S-INV-4a violated: canary bytes escaped to one or more output channels"
+  fail "canary bytes escaped to one or more output channels"
 fi
 
-pass "S-INV-4a: no canary bytes found in any output channel"
-log "All S-INV-4a checks passed."
+pass "no canary bytes found in any output channel"
+log "All canary leak checks passed."

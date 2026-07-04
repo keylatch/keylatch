@@ -1,5 +1,5 @@
 #!/bin/sh
-# aws-sm-mock.sh — mock AWS CLI for EPIC-10 integration tests.
+# aws-sm-mock.sh — mock AWS CLI for external-reference integration tests.
 #
 # Simulates `aws secretsmanager get-secret-value` and returns a canary SecretString.
 # All other invocations exit 1.

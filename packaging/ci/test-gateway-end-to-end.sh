@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-gateway-end-to-end.sh — EPIC-04 Task 5
+# test-gateway-end-to-end.sh
 #
 # End-to-end gateway integration test using an in-process memory backend.
 # Verifies: gateway init → token create → request proxied → token revoke.

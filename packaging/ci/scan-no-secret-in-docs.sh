@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scan-no-secret-in-docs.sh — S-INV-10 gate.
+# scan-no-secret-in-docs.sh — documentation secret-leak gate.
 # Rejects any documentation or example file that contains a plaintext --field value
 # for a sensitive field, or any real-looking API key (e.g. sk-* patterns).
 #

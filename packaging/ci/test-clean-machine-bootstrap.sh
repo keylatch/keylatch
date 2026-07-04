@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-clean-machine-bootstrap.sh — EPIC-11 Task 3
+# test-clean-machine-bootstrap.sh
 #
 # Clean-machine smoke test for the bootstrap onboarding flow.
 #

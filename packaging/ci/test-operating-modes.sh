@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-operating-modes.sh — EPIC-17 Task 7
+# test-operating-modes.sh
 #
 # Integration test for the four operating modes (standard, telemetry, canary, custom).
 # For each mode, the test runs `keylatch run --mode <mode> anthropic -- env` against

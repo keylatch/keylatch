@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-callmeta-fields.sh — T-13-06
+# lint-callmeta-fields.sh
 #
 # Asserts that every JSON key in the callMeta struct in cmd_call.go is
 # covered by the callMetaAllowedFields map in the same file.

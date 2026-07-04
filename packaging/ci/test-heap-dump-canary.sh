@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-heap-dump-canary.sh — T-12-03
+# test-heap-dump-canary.sh
 #
 # CI canary check: verify that keylatchd does not retain plaintext credential
 # in process memory after a run completes.

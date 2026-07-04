@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # packaging/ci/lint-ipc-methods.sh
 #
-# S14-8 CI lint: verify the IPC method allow-list.
+# CI lint: verify the IPC method allow-list.
 #
 # Checks:
 #   1. internal/sidecar/ipc/handlers.go: exactly 5 handlers registered,
@@ -21,7 +21,7 @@ REPO_ROOT="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 HANDLERS_GO="${REPO_ROOT}/internal/sidecar/ipc/handlers.go"
 IPC_RS="${REPO_ROOT}/src-tauri/src/ipc.rs"
 
-# The canonical 5-method allow-list (S14-8).
+# The canonical 5-method allow-list.
 ALLOWED_METHODS=(
   "Health"
   "MintBootstrapToken"
@@ -54,13 +54,13 @@ if [[ -f "$HANDLERS_GO" ]]; then
 
   go_count=${#go_registrations[@]}
   if [[ $go_count -ne $EXPECTED_COUNT ]]; then
-    echo "ERROR: handlers.go has ${go_count} registered handlers, expected ${EXPECTED_COUNT} (S14-8)"
+    echo "ERROR: handlers.go has ${go_count} registered handlers, expected ${EXPECTED_COUNT}"
     ERRORS=$((ERRORS + 1))
   fi
 
   for method in "${go_registrations[@]}"; do
     if ! contains "$method" "${ALLOWED_METHODS[@]}"; then
-      echo "ERROR: handlers.go registers disallowed method '${method}' (S14-8)"
+      echo "ERROR: handlers.go registers disallowed method '${method}'"
       ERRORS=$((ERRORS + 1))
     fi
   done
@@ -93,13 +93,13 @@ if [[ -f "$IPC_RS" ]]; then
 
   rs_count=${#rs_variants[@]}
   if [[ $rs_count -ne $EXPECTED_COUNT ]]; then
-    echo "ERROR: IpcMethod enum in ipc.rs has ${rs_count} variants, expected ${EXPECTED_COUNT} (S14-8)"
+    echo "ERROR: IpcMethod enum in ipc.rs has ${rs_count} variants, expected ${EXPECTED_COUNT}"
     ERRORS=$((ERRORS + 1))
   fi
 
   for variant in "${rs_variants[@]}"; do
     if ! contains "$variant" "${ALLOWED_METHODS[@]}"; then
-      echo "ERROR: IpcMethod variant '${variant}' not in allow-list (S14-8)"
+      echo "ERROR: IpcMethod variant '${variant}' not in allow-list"
       ERRORS=$((ERRORS + 1))
     fi
   done
