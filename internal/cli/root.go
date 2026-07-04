@@ -440,9 +440,31 @@ func newGetCmd() *cobra.Command {
 	cmd.Flags().Bool("masked", false, "return masked value (safe in LLM sessions)")
 
 	// notImplementedGetHandler is value-bearing but not yet implemented.
-	// GuardLLMSession will block in LLM sessions (exit 2).
-	// Outside LLM sessions it exits OperationFailed (5) via os.Exit.
-	notImpl := Handler(func(_ context.Context, _ HandlerArgs) (Result, error) {
+	// GuardLLMSession (applied by AsValueBearing, below) wraps this handler
+	// and runs FIRST: a detected LLM session (positive signals) is hard-
+	// blocked there with the "Blocked in LLM session" message (exit 2) and
+	// never reaches this inner handler at all — no escape hatch applies.
+	//
+	// Only once GuardLLMSession has passed (SignalNone, or the session
+	// verification checks below) do we reach the M2 raw-credential-path
+	// corroboration check. This ordering matters for messaging correctness:
+	// M2's message advertises the KEYLATCH_ALLOW_UNVERIFIED_SESSION escape
+	// hatch, but that hatch has no effect on GuardLLMSession's hard block —
+	// so a genuinely detected LLM session must never see the M2 message.
+	//
+	// M2: raw-credential-path corroboration (fail closed). `get`
+	// (non-masked) always returns a raw credential value, so
+	// rawCredentialExposure is unconditionally true here — this applies to
+	// SignalNone sessions (no LLM signals detected at all), which is the
+	// spoof-to-human case this check exists to close. Gateway/proxy `run` is
+	// the only path left unaffected — see RequireVerifiedSession for the
+	// full rationale and the escape hatch (env var or config field).
+	notImpl := Handler(func(_ context.Context, hArgs HandlerArgs) (Result, error) {
+		env := llmcontext.DefaultLookup
+		if verErr := RequireVerifiedSession(env, true, configAllowsUnverifiedSession(env)); verErr != nil {
+			fmt.Fprintf(hArgs.Stderr, "%v\n", verErr)
+			return Result{ExitCode: exitcode.SecurityBlock}, nil
+		}
 		os.Exit(exitcode.OperationFailed)
 		return Result{}, nil // unreachable
 	})
@@ -460,20 +482,6 @@ func newGetCmd() *cobra.Command {
 				fmt.Fprintf(stdout, "**** = ****\n")
 			}
 			return nil
-		}
-
-		// M2: raw-credential-path corroboration (fail closed). `get`
-		// (non-masked) always returns a raw credential value, so
-		// rawCredentialExposure is unconditionally true here — this applies
-		// to EVERY session, including one with no LLM signals at all
-		// (SignalNone), which is the spoof-to-human case this check exists
-		// to close. Gateway/proxy `run` is the only path left unaffected —
-		// see RequireVerifiedSession for the full rationale and the escape
-		// hatch (env var or config field).
-		env := llmcontext.DefaultLookup
-		if verErr := RequireVerifiedSession(env, true, configAllowsUnverifiedSession(env)); verErr != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
-			os.Exit(exitcode.SecurityBlock)
 		}
 
 		hArgs := handlerArgsFromCmd(c, args)
