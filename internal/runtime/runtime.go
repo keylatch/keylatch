@@ -49,3 +49,29 @@ func IsRemovedMode(mode string) (hint string, removed bool) {
 	hint, removed = removedModes[mode]
 	return hint, removed
 }
+
+// IsRawCredentialMode reports whether m injects a raw provider credential
+// directly into the child process environment, as opposed to the gateway/proxy
+// modes where the child only ever receives a scoped keylatch session token
+// (DeliveryKeylatchSessionToken) and never sees the actual secret value.
+//
+// docker-server-security hardening (M2 raw-credential scoping): this is the
+// exact boundary internal/cli's RequireVerifiedSession uses to decide whether
+// a command needs positive session corroboration before proceeding — gateway
+// mode gives an unverified/spoofed session nothing of value, so it is left
+// unrestricted; direct/brokered modes hand over the real secret, so those
+// paths fail closed by default.
+//
+// Unrecognized mode strings return false: DispatchRunner has no driver
+// registered for an unknown mode, so no credential of any shape reaches the
+// child regardless — the existing mode validation (isKnownMode in
+// internal/cli) is what surfaces a clear, actionable error for a typo'd
+// --runtime value instead of a confusing security-block message.
+func IsRawCredentialMode(m RuntimeMode) bool {
+	switch m {
+	case RuntimeDirectBrokered, RuntimeDirectClassicSandboxed:
+		return true
+	default:
+		return false
+	}
+}

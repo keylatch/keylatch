@@ -3,64 +3,130 @@ package cli
 import (
 	"fmt"
 
+	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 )
 
-// session_enforce.go — M2: default signed-ticket enforcement (fail closed).
+// session_enforce.go — M2: raw-credential-path corroboration (fail closed).
 //
-// Problem: IsLLMSession's legacy env-var heuristic (S0-S6, e.g. CLAUDE_CODE=1)
-// is entirely within the classified process's own control. It is spoofable
-// in both directions: an actual LLM agent could unset every known signal to
-// look like a human terminal, or an unrelated script could set CLAUDE_CODE=1
-// to look like an agent. Historically, `keylatch get`/`keylatch run` trusted
-// this heuristic alone whenever no stronger signal (a signed ticket, or a
-// keylatchd IPC verdict) was present.
+// Problem: a naive "gate every LLM-heuristic session" rule (the original M2
+// shape) only refused when llmcontext.ClassifySession(env) reported
+// SignalHeuristic — i.e. the ONLY reason a session looked like an LLM session
+// was the spoofable env-var heuristic (S0-S6). SignalNone (no signal at all)
+// was always a no-op. But every one of the heuristic's signals is entirely
+// within the classified process's own control: an actual LLM agent could
+// UNSET every known signal to present as SignalNone and sail straight through
+// — the exact spoof-to-human attack this hardening pass exists to close.
 //
-// Fix: when llmcontext.ClassifySession(env) reports SignalHeuristic — i.e.
-// the ONLY reason a session looks like an LLM session is the spoofable
-// heuristic, with no ticket and no daemon corroboration either way — value-
-// bearing commands (get, run) now refuse to proceed by default UNLESS
-// keylatchd itself is reachable (daemonUp() == true), in which case the
-// existing per-command guards (GuardLLMSession / GuardRuntime) remain the
-// authority, exactly as before.
+// Fix (this file): stop gating on the *session classification* and instead
+// gate on *what the command is about to hand the child process*. Only two
+// CLI entry points ever expose a raw provider credential value to something
+// outside keylatchd's control:
 //
-// Human sessions (ClassifySession == SignalNone) are never affected — this
-// function is a no-op for them. Sessions verified via ticket or daemon IPC
-// (SignalTicket / SignalDaemonActive / SignalDaemonError) are also left
-// untouched here: those are already handled by the existing IsLLMSession-based
-// guards, which will legitimately mask/block them because IsLLMSession==true.
+//   - `keylatch get` (prints the raw value to stdout)
+//   - `keylatch run` in direct/brokered runtime modes — see
+//     runtime.IsRawCredentialMode — which inject the raw secret into the
+//     child process environment.
 //
-// Escape hatch: KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (llmcontext.EnvAllowUnverifiedSession)
-// restores the pre-M2 behavior unconditionally.
-const requireVerifiedSessionHint = "Start keylatchd (`keylatch ui` or `keylatch gateway up`) so sessions can be verified, or set KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 to restore the previous heuristic-only behavior."
+// `keylatch run` in gateway/proxy modes is deliberately NOT gated here: the
+// child never receives anything but a scoped keylatch session token in that
+// mode (runtime.DeliveryKeylatchSessionToken) — a spoofed-human session gains
+// nothing by evading detection, so there is nothing to fail closed on.
+//
+// On a raw-exposure path, RequireVerifiedSession now requires POSITIVE
+// corroboration — regardless of what ClassifySession says — before it will
+// allow the command to proceed:
+//
+//   - a signed session ticket (KEYLATCH_LLM_TICKET is present), or
+//   - a reachable keylatchd (daemonUp() == true)
+//
+// If neither is present, the command fails closed with exitcode.SecurityBlock
+// UNLESS the operator has explicitly opted out via
+// KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 or the config.json
+// "allow_unverified_session" field (see configAllowsUnverifiedSession) —
+// either one restores the previous unrestricted behavior for that path.
+//
+// Human operators are not meant to trip this in normal use: a human running
+// `keylatch get`/`keylatch run --runtime direct_brokered` by hand, without
+// keylatchd running and without ever having enabled the escape hatch, WILL be
+// asked to start keylatchd, obtain a ticket, or flip the opt-out — this is the
+// intended tradeoff (fail closed on an unauthenticated raw-credential path)
+// and is why the opt-out exists as a first-class, permanent config field, not
+// just an env var a human would have to remember every session.
+const requireVerifiedSessionHint = "Start keylatchd (`keylatch ui` or `keylatch gateway up`), provide a session ticket (KEYLATCH_LLM_TICKET), or set KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (or allow_unverified_session in config) to restore unverified access."
 
-// RequireVerifiedSession enforces M2 for value-bearing command entry points
-// (get, run). Returns a non-nil error with actionable guidance when the
-// command must fail closed; returns nil when it is safe to proceed to the
-// command's existing (IsLLMSession-based) guards.
+// RequireVerifiedSession enforces M2 for raw-credential-exposure paths.
+//
+// rawCredentialExposure must be true only when the calling command is about
+// to hand a raw provider secret to something outside keylatchd's control —
+// `get` always passes true; `run` passes runtime.IsRawCredentialMode(mode).
+// Gateway/proxy `run` modes must pass false: this function is then a no-op
+// and every session (human or LLM, verified or not) proceeds unaffected,
+// because the child in those modes never sees a raw secret.
+//
+// configAllowsUnverified should be the resolved value of config.json's
+// allow_unverified_session field (see configAllowsUnverifiedSession) — a
+// second, permanent way for an operator to opt out of this check, alongside
+// the KEYLATCH_ALLOW_UNVERIFIED_SESSION env var.
+//
+// Returns a non-nil error with actionable guidance when the command must fail
+// closed; returns nil when it is safe to proceed to the command's existing
+// (IsLLMSession-based) guards.
 //
 // daemonUp is injected for testability; production callers pass
 // daemon.IsRunning. A nil daemonUp is treated as "keylatchd is not reachable"
 // (fail closed) — production call sites MUST always pass a real function.
-func RequireVerifiedSession(env llmcontext.Lookup, daemonUp func() bool) error {
-	if env(llmcontext.EnvAllowUnverifiedSession) == "1" {
-		return nil // explicit operator escape hatch — restores old behavior
-	}
-
-	if llmcontext.ClassifySession(env) != llmcontext.SignalHeuristic {
-		// Either not an LLM session at all (human, unaffected), or the
-		// verdict is already corroborated by a ticket or keylatchd IPC —
-		// the existing guards handle those cases correctly.
+func RequireVerifiedSession(env llmcontext.Lookup, daemonUp func() bool, rawCredentialExposure bool, configAllowsUnverified bool) error {
+	if !rawCredentialExposure {
+		// Gateway/proxy mode (or a command that never returns a raw value):
+		// the child/caller never receives anything but a scoped session
+		// token or masked output. An unverified/spoofed session gains
+		// nothing here, so there is nothing to gate.
 		return nil
 	}
 
+	if env(llmcontext.EnvAllowUnverifiedSession) == "1" || configAllowsUnverified {
+		return nil // explicit operator escape hatch (env or config) — restores old behavior
+	}
+
+	// Positive corroboration 1 & 2: a signed session ticket is present, or
+	// keylatchd's IPC explicitly confirmed this PID as active. Ticket
+	// presence here is the same presence-only fast path
+	// llmcontext.ClassifySession uses for SignalTicket — full cryptographic
+	// verification requires keylatchd's in-memory signing key and happens
+	// elsewhere (llmcontext.VerifyTicket); it is a corroborating signal, not
+	// a policy decision on its own (existing IsLLMSession-based guards remain
+	// the authority for what the ticket permits). SignalDaemonError (IPC
+	// configured but the query failed) is deliberately NOT treated as
+	// corroboration — an error is not confirmation.
+	switch llmcontext.ClassifySession(env) {
+	case llmcontext.SignalTicket, llmcontext.SignalDaemonActive:
+		return nil
+	}
+
+	// Positive corroboration 3: keylatchd itself is reachable (local health
+	// check, independent of the KEYLATCH_DAEMON_SOCKET IPC path above).
 	if daemonUp != nil && daemonUp() {
-		// keylatchd is reachable — treat as before, downstream guards decide.
 		return nil
 	}
 
 	return fmt.Errorf(
-		"keylatch: LLM session detected via unverified environment signals only "+
-			"(no signed session ticket, keylatchd unreachable) — refusing to proceed "+
-			"(fail closed). %s", requireVerifiedSessionHint)
+		"keylatch: this command exposes a raw credential value and no session "+
+			"corroboration was found (no signed session ticket, keylatchd "+
+			"unreachable) — refusing to proceed (fail closed). %s",
+		requireVerifiedSessionHint)
+}
+
+// configAllowsUnverifiedSession loads config.json and reports whether the
+// operator has permanently opted out of RequireVerifiedSession's fail-closed
+// behavior via the "allow_unverified_session" field. Any load error (missing
+// file, version mismatch, malformed JSON) is treated as "not opted out" —
+// this helper fails closed, matching RequireVerifiedSession's own contract.
+func configAllowsUnverifiedSession(env llmcontext.Lookup) bool {
+	cfg, err := config.Load(paths.Config(env))
+	if err != nil {
+		return false
+	}
+	return cfg.AllowUnverifiedSession
 }

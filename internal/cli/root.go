@@ -462,12 +462,16 @@ func newGetCmd() *cobra.Command {
 			return nil
 		}
 
-		// M2: default signed-ticket enforcement (fail closed). See
-		// RequireVerifiedSession — no-op for human sessions and for
-		// ticket/daemon-corroborated LLM sessions (GuardLLMSession handles
-		// those below); only refuses when detection is heuristic-only AND
-		// keylatchd is unreachable.
-		if verErr := RequireVerifiedSession(llmcontext.DefaultLookup, daemon.IsRunning); verErr != nil {
+		// M2: raw-credential-path corroboration (fail closed). `get`
+		// (non-masked) always returns a raw credential value, so
+		// rawCredentialExposure is unconditionally true here — this applies
+		// to EVERY session, including one with no LLM signals at all
+		// (SignalNone), which is the spoof-to-human case this check exists
+		// to close. Gateway/proxy `run` is the only path left unaffected —
+		// see RequireVerifiedSession for the full rationale and the escape
+		// hatch (env var or config field).
+		env := llmcontext.DefaultLookup
+		if verErr := RequireVerifiedSession(env, daemon.IsRunning, true, configAllowsUnverifiedSession(env)); verErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 			os.Exit(exitcode.SecurityBlock)
 		}
@@ -560,11 +564,17 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			// Guard 1b (M2): default signed-ticket enforcement (fail closed).
+			// Guard 1b (M2): raw-credential-path corroboration (fail closed).
 			// Skipped for --dry-run above (never decrypts a credential).
-			// See RequireVerifiedSession for the full rationale and the
-			// KEYLATCH_ALLOW_UNVERIFIED_SESSION escape hatch.
-			if verErr := RequireVerifiedSession(llmcontext.DefaultLookup, daemon.IsRunning); verErr != nil {
+			// rawCredentialExposure is true only for direct/brokered runtime
+			// modes (runtime.IsRawCredentialMode) — the modes that inject the
+			// actual secret into the child env. Gateway/proxy modes never
+			// expose a raw secret (child gets a scoped session token only),
+			// so this is a no-op for them regardless of session verdict. See
+			// RequireVerifiedSession for the full rationale and the escape
+			// hatch (KEYLATCH_ALLOW_UNVERIFIED_SESSION / config field).
+			runEnv := llmcontext.DefaultLookup
+			if verErr := RequireVerifiedSession(runEnv, daemon.IsRunning, runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 				os.Exit(exitcode.SecurityBlock)
 			}
