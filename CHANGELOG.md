@@ -7,9 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Canonical backend-name catalog** (`internal/backend/catalog.go`). Backend identifiers are now normalized to a single canonical form at every entry point (dispatch settings resolution, bootstrap config validation, `config` CLI): `awssm`/`aws-secrets` → `aws-sm`, `protonpass` → `proton-pass`, `hashivault` → `vault`, `opconnect` → `op-connect`, `gcpsm` → `gcp-sm`, `azurekv`/`azure-keyvault` → `azure-kv`. Old aliases are still accepted as input for backwards compatibility, but `config.json` should persist the canonical name going forward.
+- Per-backend environment-variable wiring for the external/cloud backends (`vault`, `aws-sm`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`, `op-connect`), including fallback to each provider's own conventional env vars (e.g. `VAULT_ADDR`, `AWS_REGION`, `AZURE_TENANT_ID`) when the `KEYLATCH_*`-prefixed var and config field are both unset. See [Environment Variables](docs/cli/environment.md#backend-variables).
+- `embedded_ui` build tag: release builds (`goreleaser`, GitHub Actions) now embed the real web UI bundle via `go:embed` when compiled with `-tags embedded_ui`; source/dev builds without the tag continue to serve a diagnostic fallback page.
+
+### Changed
+
+- **Setup wizard is now resumable.** `keylatch setup` no longer aborts when `~/.keylatch/config.json` already exists with an incomplete backend — it repairs/continues onboarding instead of requiring a manual reset.
+- Removed OS-daemon auto-spawn (launchd/systemd) plumbing from the setup wizard in favor of starting the local gateway directly in step 3 ("Gateway setup"). No user-facing change to the wizard's step count or flow, only to how the gateway process is brought up.
+
+### Removed
+
+- **NordPass backend stub removed** (`internal/backend/nordpass`). The stub was never imported by `internal/backend/all` or listed in the backend catalog, so it could never actually be selected — even with `KEYLATCH_EXPERIMENTAL=1` set. Removed rather than half-wired; see [Experimental Features](docs/experimental.md) for the removal note. No functional change for any user, since the backend was already unreachable.
+
 ### Fixed
 
 - Documentation: the README "Desktop app" section and `docs/` no longer describe the desktop app as macOS/Windows/Linux. Corrected to match the MVP — the desktop app ships for Linux; macOS/Windows are deferred (use the CLI's `keylatch ui`).
+- Documentation: corrected config-vs-env precedence claims across `docs/configuration.md`, `docs/cli/environment.md`, and `docs/troubleshooting.md` — precedence differs per subsystem (backend selection is config-over-env; operating mode is env-over-config) rather than a single global rule. Removed two dead documented variables with no code reader (`KEYLATCH_AUDIT__ENABLED`, `KEYLATCH_GATEWAY__ENDPOINT`) and fixed a typo'd variable name (`KEYLATCH_AUDIT__PATH` → `KEYLATCH_AUDIT_PATH`).
+- Documentation: `docs/cli/environment.md` now documents previously-undocumented active variables (`KEYLATCH_DAEMON_SOCKET`, proxy child-injected `KEYLATCH_SESSION_TOKEN`/`KEYLATCH_CA_CERT`, `KEYLATCH_PKCS11_PIN`, Windows `KEYLATCH_IPC_KEY`) and the non-`KEYLATCH_*` provider aliases accepted by cloud backends. Marked `KEYLATCH_DAEMON_STATE_PATH` deprecated (no remaining code reader). Corrected the proxy-mode child-env summary, which previously claimed no `KEYLATCH_*` vars are forwarded and listed `SHELL` in the base env (`internal/runner/driver_proxy.go` does not include `SHELL`).
+- Documentation: Docker instructions (`README.md`, `docs/installation.md`) previously showed mounting `~/.keylatch` to `/root/.keylatch`, which does not work — the image runs as the distroless `nonroot` user (UID 65532), not root. Corrected to use `KEYLATCH_CONFIG_DIR=/home/nonroot/.keylatch` with a matching volume mount, documented the new `KEYLATCH_UI_LISTEN` opt-in for reaching the browser UI from outside the container, replaced a broken example that published a port without passing a subcommand (the entrypoint just prints `--help` and exits), and corrected `docs/installation.md` calling the image a "`keylatchd` sidecar image" — it ships only the `keylatch` CLI. Documented which backends actually work inside the distroless container (file, `aws-sm`, `vault`) versus which require a CLI binary the image doesn't ship (`op`, `bw`, `keychain`, `lastpass`, `keeper`, `proton-pass`).
+- Documentation: `docs/getting-started.md` setup-wizard step labels were stale (`[3/5] Daemon setup...`, `[5/5] Open Keylatch app (optional)...`) — updated to match current CLI output (`[3/5] Gateway setup...`, `[5/5] Open Keylatch UI (optional)...`).
+
+### Security
+
+- Gateway proxy mode (`gateway_proxy`) now enforces caller authentication and signed session tickets by default for the local MITM proxy, closing a gap where an unauthenticated caller on the loopback proxy port could act as the child process. A `KEYLATCH_ALLOW_UNVERIFIED_SESSION` escape hatch is available for environments that cannot yet adopt signed tickets. **Potentially breaking**: direct `keylatch get`/`keylatch run` users without a running `keylatchd` should verify their setup still authenticates correctly after upgrading.
+- Container images are now scanned and signed in CI as part of the release pipeline (image vulnerability scanning + cosign signing), in addition to the existing CLI-archive/SBOM signing.
 
 ## [0.9.4] - 2026-06-24
 
