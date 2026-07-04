@@ -1,4 +1,4 @@
-// Package cli — Phase 9 gateway subcommands.
+// Package cli contains gateway subcommands.
 package cli
 
 import (
@@ -32,7 +32,7 @@ import (
 func newGatewayCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gateway",
-		Short: "Manage the local typed provider gateway (Phase 9)",
+		Short: "Manage the local typed provider gateway",
 	}
 	cmd.AddCommand(newGatewayInitCmd())
 	cmd.AddCommand(newGatewayUpCmd())

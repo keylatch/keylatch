@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-phase3 test-canary test-canary-meta test-hook test-prop test-bench ci test-integration-examples
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples
 
 ## build: compile all packages
 build:
@@ -29,8 +29,8 @@ test-e2e-op:
 test-e2e-bw:
 	go test -v -tags=e2e_bw ./cmd/keylatch/ -run TestE2E_BW
 
-## test-phase3: run all Phase 3 package tests with race detection
-test-phase3:
+## test-core-packages: run core package tests with race detection
+test-core-packages:
 	go test -race -count=1 \
 		./internal/registry/... \
 		./internal/connections/... \
@@ -60,8 +60,8 @@ test-prop:
 test-bench:
 	go test -bench=. -benchmem ./internal/backend/keychain/... ./internal/crypto/... ./internal/audit/...
 
-## test-phase10: run all Phase 10 tests (Go + web, requires bun)
-test-phase10:
+## test-ui: run browser UI tests (Go + web, requires bun)
+test-ui:
 	go test -race -count=1 \
 		./internal/ui/... \
 		./internal/cli/...
@@ -69,11 +69,10 @@ test-phase10:
 
 ## build-web: build the SPA for embedding
 build-web:
-	cd web && bun run build
-	@bash web/scripts/verify-bundle.sh
+	bash scripts/sync-embedded-ui.sh
 
-## test-phase12: run all Phase 12 team governance tests with race detection
-test-phase12:
+## test-team: run team governance tests with race detection
+test-team:
 	go test -race -count=1 \
 		./internal/team/... \
 		./internal/policy/... \
@@ -81,11 +80,10 @@ test-phase12:
 		./internal/grant/... \
 		./internal/ui/api/... \
 		./internal/cli/... \
-		-run "TestPhase12|TestTeam|TestTwoPerson|TestSharedSecret|TestOrg|TestCI|TestSimulate|TestBreak|TestSCIM|TestAudit|TestBuildCI|TestBuildTeam|TestAdminHandler|TestAdminApprovals|TestOrgCompose|TestEnvSep|TestInventory|TestReview|TestRegist|TestExplain|TestRiskReport|TestInviteBundle|TestTeamNotConfigured" \
 		-v
 
-## test-phase12-e2e: run Phase 12 E2E multi-member tests
-test-phase12-e2e:
+## test-team-e2e: run team E2E multi-member tests
+test-team-e2e:
 	go test -race -count=1 \
 		./cmd/keylatch/ \
 		-run "TestTeamE2E|TestTwoPersonApprovalE2E|TestSharedSecretE2E|TestTeamNotConfiguredE2E|TestInviteBundle|TestOrgPolicy_Integration" \
