@@ -3,6 +3,7 @@ package file
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,6 +18,15 @@ import (
 // Returns backend.ErrNotFound if the metadata file does not exist.
 func getMetaFromDisk(root, path string) (vmeta.Meta, error) {
 	p := metadataPath(root, path)
+
+	// Path-traversal guard (S-INV-11 / S-FIND-23) — mirrors the guard in
+	// file.go's Set/Delete. Metadata reads/writes go through metadataPath
+	// rather than FileBackend.Set/Delete's own guard, so a path containing
+	// "../" segments must be defended here independently.
+	if !strings.HasPrefix(filepath.Clean(p), filepath.Clean(root)+string(filepath.Separator)) {
+		return vmeta.Meta{}, fmt.Errorf("file backend: path escapes vault root")
+	}
+
 	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -36,6 +46,11 @@ func getMetaFromDisk(root, path string) (vmeta.Meta, error) {
 // temp file + fsync + rename. Uses mode 0o600 (S4-2).
 func (fb *FileBackend) SetMeta(_ context.Context, path string, m vmeta.Meta) error {
 	p := metadataPath(fb.dir, path)
+
+	// Path-traversal guard (S-INV-11 / S-FIND-23) — see getMetaFromDisk.
+	if !strings.HasPrefix(filepath.Clean(p), filepath.Clean(fb.dir)+string(filepath.Separator)) {
+		return fmt.Errorf("file backend: path escapes vault root")
+	}
 
 	if err := ensureDir(p); err != nil {
 		return err
@@ -91,4 +106,24 @@ func (fb *FileBackend) ListMeta(_ context.Context, prefix string) ([]vmeta.Meta,
 		return metas[i].Path < metas[j].Path
 	})
 	return metas, nil
+}
+
+// ZeroKeyring zeroes the DEK bytes held by the attached keyring, if any (L2:
+// docker-server-security hardening). Safe to call on a backend with no
+// keyring attached (Open, not OpenWithKeyring) — no-op in that case. Safe to
+// call multiple times (Keyring.Zero is idempotent).
+//
+// Deliberately NOT wired into Close(): internal/backend/dispatch.Select
+// caches backend instances per-process (sync.Once), so the same *FileBackend
+// can legitimately be Close()'d by an intermediate existence-check and then
+// reused for the real operation later in the same process — zeroing at every
+// Close() would corrupt the DEK for that later reuse. Only call ZeroKeyring
+// when certain no further Get/Set call will occur against this backend
+// instance in this process (e.g. right before the CLI process exits — see
+// internal/cli's closeAndZeroBackend helper, used on the run command's
+// terminal exit paths).
+func (fb *FileBackend) ZeroKeyring() {
+	if fb.keyring != nil {
+		fb.keyring.Zero()
+	}
 }

@@ -324,6 +324,8 @@ func (fb *FileBackend) GetMeta(ctx context.Context, path string) (vmeta.Meta, er
 }
 
 // Close is idempotent — the file backend holds no OS resources beyond the mutex.
+// See ZeroKeyring (internal/backend/file/meta.go) for why Close does not
+// zero the attached keyring's DEKs.
 func (fb *FileBackend) Close() error {
 	return nil
 }

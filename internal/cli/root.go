@@ -815,7 +815,7 @@ func newRunCmd() *cobra.Command {
 						fmt.Fprintf(c.ErrOrStderr(), ". %s", rte.Fix)
 					}
 					fmt.Fprintln(c.ErrOrStderr())
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					exitCode := rte.ExitCode
 					if exitCode == 0 {
 						exitCode = exitcode.OperationFailed
@@ -825,23 +825,23 @@ func newRunCmd() *cobra.Command {
 				if errors.Is(runErr, runner.ErrCommandNotAllowed) {
 					// P1.2: actionable allowlist error.
 					printAllowlistError(c, connectionName, command, tmpl.AllowedCommandPrefixes)
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.SecurityBlock)
 				}
 				if errors.Is(runErr, runner.ErrGuardDenied) {
 					WriteGuardRuntimeError(c.ErrOrStderr(), mode)
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.SecurityBlock)
 				}
 				if errors.Is(runErr, runtime.ErrModeRemoved) {
 					// T-10-03: removed mode returns exit 5 with hint.
 					fmt.Fprintf(c.ErrOrStderr(), "error: %v\n", runErr)
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.RuntimeNotAvailable)
 				}
 				if errors.Is(runErr, backend.ErrNotFound) {
 					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: credential not found — run 'keylatch connect %s' first\n", connectionName)
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.Missing)
 				}
 				if errors.Is(runErr, runner.ErrGatewayNotRunning) {
@@ -851,14 +851,14 @@ func newRunCmd() *cobra.Command {
 					selfPath, pathErr := os.Executable()
 					if pathErr != nil {
 						fmt.Fprintln(c.ErrOrStderr(), "Error: gateway is not running — run 'keylatch gateway up' first")
-						_ = b.Close()
+						_ = closeAndZeroBackend(b)
 						os.Exit(exitcode.OperationFailed)
 					}
 					spawnCmd := exec.CommandContext(context.Background(), selfPath, "gateway", "up", "--detach")
 					spawnCmd.Stderr = c.ErrOrStderr()
 					if spawnErr := spawnCmd.Run(); spawnErr != nil {
 						fmt.Fprintf(c.ErrOrStderr(), "Error: could not start gateway: %v\n", spawnErr)
-						_ = b.Close()
+						_ = closeAndZeroBackend(b)
 						os.Exit(exitcode.OperationFailed)
 					}
 
@@ -872,7 +872,7 @@ func newRunCmd() *cobra.Command {
 					}
 					if _, alive := gateway.IsRunning(pidPath); !alive {
 						fmt.Fprintln(c.ErrOrStderr(), "Error: gateway did not start in time — run 'keylatch gateway up' manually")
-						_ = b.Close()
+						_ = closeAndZeroBackend(b)
 						os.Exit(exitcode.OperationFailed)
 					}
 
@@ -882,16 +882,16 @@ func newRunCmd() *cobra.Command {
 					elapsed = time.Since(start)
 					if runErr != nil {
 						fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
-						_ = b.Close()
+						_ = closeAndZeroBackend(b)
 						os.Exit(exitcode.OperationFailed)
 					}
 				} else if errors.Is(runErr, runner.ErrProxyNotRunning) {
 					fmt.Fprintln(c.ErrOrStderr(), runErr.Error())
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.OperationFailed)
 				} else {
 					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
-					_ = b.Close()
+					_ = closeAndZeroBackend(b)
 					os.Exit(exitcode.OperationFailed)
 				}
 			}
@@ -903,7 +903,7 @@ func newRunCmd() *cobra.Command {
 				fmt.Fprintf(c.ErrOrStderr(), "x %s — exit %d (%s)\n", connectionName, receipt.ExitCode, elapsed.Round(time.Millisecond))
 			}
 
-			_ = b.Close()
+			_ = closeAndZeroBackend(b)
 			os.Exit(receipt.ExitCode)
 			return nil
 		},
@@ -1134,6 +1134,25 @@ func parseRunArgs(args []string) (string, []string, error) {
 		return "", nil, nil
 	}
 	return args[0], args[1:], nil
+}
+
+// closeAndZeroBackend closes b and, if it holds decrypted key material in
+// memory (currently: only the file backend's attached keyring), zeroes it
+// (L2: docker-server-security hardening).
+//
+// Only call this at a command's TERMINAL exit point (immediately before
+// os.Exit / process end) — internal/backend/dispatch.Select caches backend
+// instances per-process (sync.Once), so the same instance can legitimately
+// be Close()'d by an intermediate existence check and then reused for the
+// real operation later in the same process. Zeroing at a non-terminal
+// Close() would corrupt the DEK for that later reuse. See
+// file.FileBackend.Close's doc comment for the full rationale.
+func closeAndZeroBackend(b backend.Backend) error {
+	err := b.Close()
+	if z, ok := b.(interface{ ZeroKeyring() }); ok {
+		z.ZeroKeyring()
+	}
+	return err
 }
 
 // loadConnectionBackend loads the config and backend for the given connection name.
