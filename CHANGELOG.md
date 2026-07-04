@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Gateway proxy mode (`gateway_proxy`) now enforces caller authentication and signed session tickets by default for the local MITM proxy, closing a gap where an unauthenticated caller on the loopback proxy port could act as the child process. A `KEYLATCH_ALLOW_UNVERIFIED_SESSION` escape hatch is available for environments that cannot yet adopt signed tickets. **Potentially breaking**: direct `keylatch get`/`keylatch run` users without a running `keylatchd` should verify their setup still authenticates correctly after upgrading.
+- Gateway proxy mode (`gateway_proxy`) now enforces per-session bearer authentication by default on the local MITM proxy, closing a gap where an unauthenticated caller on the loopback proxy port could act as the child process. Scoped to `gateway_proxy` runs.
+- Stronger enforcement for unverified LLM sessions on `keylatch get`/`keylatch run`. **Potentially breaking**: direct `keylatch get`/`keylatch run` users without a running `keylatchd` should verify their setup still authenticates correctly after upgrading.
 - Container images are now scanned and signed in CI as part of the release pipeline (image vulnerability scanning + cosign signing), in addition to the existing CLI-archive/SBOM signing.
 
 ## [0.9.4] - 2026-06-24
