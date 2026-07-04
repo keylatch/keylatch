@@ -35,7 +35,7 @@ func TestStoreConnectAndRetrieve(t *testing.T) {
 
 	const path = "default/ai/openrouter/api_key"
 
-	// Store a credential at the canonical path (S-FIND-23).
+	// Store a credential at the canonical path.
 	err := store.Set(ctx, path, []byte("sk-or-test-key"), backend.Meta{})
 	require.NoError(t, err)
 

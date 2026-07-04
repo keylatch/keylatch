@@ -32,7 +32,7 @@ func newTestBundle(version int64, expiresIn time.Duration) *orgpolicy.OrgBundle 
 
 func writeBundleFile(t *testing.T, dir string, b *orgpolicy.OrgBundle) string {
 	t.Helper()
-	data, err := json.MarshalIndent(b, "", "  ")
+	data, err := json.MarshalIndent(b, "", " ")
 	if err != nil {
 		t.Fatalf("marshal bundle: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestInstall_MonotonicVersion(t *testing.T) {
 	}
 	orgpolicy.SignBundle(b1)
 	p1 := filepath.Join(dir, "bundle-old.json")
-	data, _ := json.MarshalIndent(b1, "", "  ")
+	data, _ := json.MarshalIndent(b1, "", " ")
 	_ = os.WriteFile(p1, data, 0o600)
 
 	err := orgpolicy.Install(ctx, p1, "cosign-pub")
@@ -146,7 +146,7 @@ func TestActive_NilWhenExpired(t *testing.T) {
 		AllowedEnvelope: orgpolicy.AllowedEnvelope{},
 	}
 	orgpolicy.SignBundle(b)
-	data, _ := json.MarshalIndent(b, "", "  ")
+	data, _ := json.MarshalIndent(b, "", " ")
 	_ = os.WriteFile(filepath.Join(dir, "active.json"), data, 0o600)
 
 	active := orgpolicy.Active(ctx)

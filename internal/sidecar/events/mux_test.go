@@ -95,7 +95,7 @@ func TestMuxStop(t *testing.T) {
 }
 
 func TestCanaryScrubbedFromUpstreamEvent(t *testing.T) {
-	// The canary must not appear in any emitted event after scrubbing (S14-6).
+	// The canary must not appear in any emitted event after scrubbing.
 	mux := events.NewMux()
 	ch := mux.Subscribe()
 	defer mux.Unsubscribe(ch)
@@ -126,17 +126,17 @@ func TestCanaryScrubbedFromUpstreamEvent(t *testing.T) {
 		}
 		// Canary must be scrubbed.
 		if strings.Contains(ev.Approval.ApprovalID, canary) {
-			t.Errorf("S14-6 FAIL: canary found in ApprovalEvent.ApprovalID: %q",
+			t.Errorf("FAIL: canary found in ApprovalEvent.ApprovalID: %q",
 				ev.Approval.ApprovalID)
 		}
-		t.Log("S14-6: canary scrubbed from ApprovalEvent")
+		t.Log("canary scrubbed from ApprovalEvent")
 	case <-time.After(2 * time.Second):
 		t.Log("no event received within timeout — scrubbing test skipped for this run")
 	}
 }
 
 func TestEventStructFieldsValueFree(t *testing.T) {
-	// Verify that all fields in the event structs are value-free (S14-6).
+	// Verify that all fields in the event structs are value-free.
 	// This is a structural check; the CI lint enforces it per-field.
 	ev := events.ApprovalEvent{
 		ApprovalID:   "approval-123",
@@ -153,7 +153,7 @@ func TestEventStructFieldsValueFree(t *testing.T) {
 	for _, field := range fields {
 		for _, pattern := range credPatterns {
 			if strings.Contains(field, pattern) {
-				t.Errorf("S14-6: ApprovalEvent field contains credential pattern %q: %q", pattern, field)
+				t.Errorf("ApprovalEvent field contains credential pattern %q: %q", pattern, field)
 			}
 		}
 	}

@@ -42,7 +42,7 @@ func writeMCPConfig(t *testing.T, path string) {
 			"other":    map[string]any{"command": "other-tool"},
 		},
 	}
-	data, _ := json.MarshalIndent(cfg, "", "  ")
+	data, _ := json.MarshalIndent(cfg, "", " ")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,6 @@
 package cli_test
 
-// removed_commands_test.go — T-10-04 / S-INV-4b
+// removed_commands_test.go
 //
 // Regression tests asserting that keylatch inject and --runtime direct_classic
 // do not exist in v1.0.0.
@@ -32,25 +32,25 @@ func findCmd(root *cobra.Command, usePrefix string) *cobra.Command {
 }
 
 // TestInjectCommandNotRegistered verifies that the inject command is not
-// registered in the cobra root command tree (S-INV-4b).
+// registered in the cobra root command tree.
 func TestInjectCommandNotRegistered(t *testing.T) {
 	root := cli.NewRootCommand()
 	cmd := findCmd(root, "inject ")
 	if cmd != nil {
-		t.Error("S-INV-4b: 'keylatch inject' must not be registered in v1.0.0 — command still exists")
+		t.Error("'keylatch inject' must not be registered in v1.0.0 — command still exists")
 	}
 }
 
 // TestDirectClassicNotInAllModes verifies that direct_classic is absent from
-// runtime.AllModes (S-INV-4b, T-10-03). direct_classic_sandboxed is intentionally
-// present — it was reinstated as a new sibling mode in EPIC-24.
+// runtime.AllModes. direct_classic_sandboxed is intentionally
+// present — it was reinstated as a new sibling mode.
 func TestDirectClassicNotInAllModes(t *testing.T) {
 	// Only direct_classic is permanently removed; direct_classic_sandboxed is active.
 	forbidden := []runtime.RuntimeMode{"direct_classic"}
 	for _, mode := range forbidden {
 		for _, m := range runtime.AllModes {
 			if m == mode {
-				t.Errorf("S-INV-4b: runtime.AllModes still contains permanently removed mode %q", mode)
+				t.Errorf("runtime.AllModes still contains permanently removed mode %q", mode)
 			}
 		}
 	}
@@ -71,7 +71,7 @@ func TestInjectCommandRemoved(t *testing.T) {
 			}
 			err := cmd.Run()
 			if err == nil {
-				t.Errorf("S-INV-4b: 'keylatch inject' with env=%q exited 0 — expected non-zero", env)
+				t.Errorf("'keylatch inject' with env=%q exited 0 — expected non-zero", env)
 			}
 		})
 	}
@@ -88,10 +88,10 @@ func TestDirectClassicRuntimeRemoved(t *testing.T) {
 	out, _ := cmd.CombinedOutput()
 	exitCode := cmd.ProcessState.ExitCode()
 	if exitCode != exitcode.RuntimeNotAvailable {
-		t.Errorf("S-INV-4b: expected exit %d (RuntimeNotAvailable), got %d; output: %s",
+		t.Errorf("expected exit %d (RuntimeNotAvailable), got %d; output: %s",
 			exitcode.RuntimeNotAvailable, exitCode, out)
 	}
 	if !strings.Contains(string(out), "gateway_typed") {
-		t.Errorf("S-INV-4b: expected hint to use gateway_typed in output, got: %s", out)
+		t.Errorf("expected hint to use gateway_typed in output, got: %s", out)
 	}
 }

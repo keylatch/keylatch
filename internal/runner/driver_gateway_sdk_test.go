@@ -95,7 +95,7 @@ func TestGatewaySDKDriver_SessionTokenPresent(t *testing.T) {
 }
 
 // TestGatewaySDKDriver_ProviderAPIKeyAbsent verifies the provider API key is
-// NOT present in the child environment (security invariant S9-15 analogue).
+// NOT present in the child environment (same security invariant as direct injection).
 func TestGatewaySDKDriver_ProviderAPIKeyAbsent(t *testing.T) {
 	const fakeKey = "sk-FAKE-OPENAI-KEY-MUST-NOT-LEAK"
 	t.Setenv("OPENAI_API_KEY", fakeKey)

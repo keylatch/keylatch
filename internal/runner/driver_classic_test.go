@@ -3,7 +3,7 @@ package runner_test
 // driver_classic_test.go — shared test helpers for the runner package.
 //
 // The direct_classic and direct_classic_sandboxed drivers were removed in
-// v1.0.0 (T-10-03). The test stubs that exercised those drivers have been
+// v1.0.0. The test stubs that exercised those drivers have been
 // deleted. This file retains only the shared infrastructure helpers used by
 // other test files in this package (classicMockBackend, classicSecretPath).
 
@@ -93,7 +93,7 @@ func (m *classicMockBackend) DeleteVersioned(_ context.Context, _ string, _ int)
 // classicSecretPath mirrors the lookup path used by brokeredDriver and
 // dispatch tests. Returns the canonical four-segment path format.
 //
-// S-FIND-23 (T-03-01): uses canonical "namespace/category/provider/field"
+// Uses canonical "namespace/category/provider/field"
 // format (e.g. "default/ai/myapi/api_key"). The account segment from the
 // legacy format is dropped — v1.0.0 has no existing users with legacy entries.
 // The "category" parameter should be the provider's category (e.g. "ai").

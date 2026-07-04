@@ -1,6 +1,6 @@
 package bw
 
-// T-13-02 unit test: verify that bwField.zero() wipes Value bytes and that
+// Unit test: verify that bwField.zero() wipes Value bytes and that
 // evictCacheEntry zeroes the cached item before deletion.
 
 import (

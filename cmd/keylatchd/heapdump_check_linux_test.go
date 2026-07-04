@@ -2,7 +2,7 @@
 
 package main
 
-// heapdump_check_linux_test.go — tests for EPIC-12 heap-dump canary scanner.
+// heapdump_check_linux_test.go — tests for heap-dump canary scanner.
 
 import (
 	"bytes"

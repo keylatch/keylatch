@@ -1,7 +1,7 @@
 // Package integration_test — auto-update integration tests.
 //
 // Tests the UpdateManager's cosign verification, TOCTOU protection,
-// and fresh-install state machine (SC14-2, SC14-9, SC14-15, SC14-18).
+// and fresh-install state machine.
 package integration_test
 
 import (
@@ -42,7 +42,7 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// TestAutoUpdatePositive verifies: SC14-2
+// TestAutoUpdatePositive verifies the positive auto-update path.
 // Manifest found, artifact downloaded, SHA256 verified, apply staged.
 func TestAutoUpdatePositive(t *testing.T) {
 	// Create a test artifact.
@@ -70,8 +70,8 @@ func TestAutoUpdatePositive(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// SC14-2: the manifest is found and the artifact is downloaded.
-	t.Logf("SC14-2: test manifest server at %s", server.URL)
+	// The manifest is found and the artifact is downloaded.
+	t.Logf("test manifest server at %s", server.URL)
 
 	resp, err := http.Get(server.URL + "/manifest.json")
 	if err != nil {
@@ -102,13 +102,13 @@ func TestAutoUpdatePositive(t *testing.T) {
 
 	actualHash := hashBytes(artBuf)
 	if actualHash != artifactHash {
-		t.Errorf("SC14-2: SHA256 mismatch: got %s, want %s", actualHash, artifactHash)
+		t.Errorf("SHA256 mismatch: got %s, want %s", actualHash, artifactHash)
 	}
 
-	t.Log("SC14-2: auto-update positive test passed")
+	t.Log("auto-update positive test passed")
 }
 
-// TestAutoUpdateNegativeTamperedBinary verifies: SC14-9
+// TestAutoUpdateNegativeTamperedBinary verifies the tampered-binary rejection path.
 // Tampered binary → VerifySignature error; staged dir cleared.
 func TestAutoUpdateNegativeTamperedBinary(t *testing.T) {
 	stageDir := t.TempDir()
@@ -145,13 +145,13 @@ func TestAutoUpdateNegativeTamperedBinary(t *testing.T) {
 	}
 	actualHash := sha256.Sum256(data)
 	if actualHash == originalHash {
-		t.Error("SC14-9 FAIL: hash should not match original after tampering")
+		t.Error("FAIL: hash should not match original after tampering")
 	}
 
-	t.Log("SC14-9: tampered binary detected by hash mismatch — VerifySignature would fail")
+	t.Log("tampered binary detected by hash mismatch — VerifySignature would fail")
 }
 
-// TestTOCTOURace verifies: SC14-15 / FIND2-007
+// TestTOCTOURace verifies TOCTOU protection during apply.
 // Staged file overwritten between VerifySignature and ApplyUpdate →
 // ErrHashDriftAfterVerify → staged dir deleted → SecurityEvent.
 func TestTOCTOURace(t *testing.T) {
@@ -196,11 +196,11 @@ func TestTOCTOURace(t *testing.T) {
 	}
 	currentHash := sha256.Sum256(currentData)
 
-	// FIND2-007: the ApplyUpdate re-hash step would detect this drift.
+	// The ApplyUpdate re-hash step would detect this drift.
 	if currentHash == verifiedHash {
-		t.Error("SC14-15 FAIL: hash should have drifted after TOCTOU overwrite")
+		t.Error("FAIL: hash should have drifted after TOCTOU overwrite")
 	} else {
-		t.Log("SC14-15 / FIND2-007: hash drift detected — ApplyUpdate would return ErrHashDriftAfterVerify")
+		t.Log("hash drift detected — ApplyUpdate would return ErrHashDriftAfterVerify")
 	}
 
 	// Simulate cleanup: delete staged dir.
@@ -211,10 +211,10 @@ func TestTOCTOURace(t *testing.T) {
 		t.Error("staged dir should be deleted after TOCTOU detection")
 	}
 
-	t.Log("SC14-15 / FIND2-007: TOCTOU race test passed — staged dir cleaned up")
+	t.Log("TOCTOU race test passed — staged dir cleaned up")
 }
 
-// TestFreshInstallFailureStateMachine verifies: SC14-18 / FIND2-015
+// TestFreshInstallFailureStateMachine verifies the fresh-install failure state machine.
 // First update heartbeat-missing → "fresh-install-update-failed" state →
 // urgent notification → ApplyUpdate blocked.
 func TestFreshInstallFailureStateMachine(t *testing.T) {
@@ -264,14 +264,14 @@ func TestFreshInstallFailureStateMachine(t *testing.T) {
 		t.Fatal("state field missing in config")
 	}
 	if state != "fresh-install-update-failed" {
-		t.Errorf("SC14-18 FAIL: expected state 'fresh-install-update-failed', got %q", state)
+		t.Errorf("FAIL: expected state 'fresh-install-update-failed', got %q", state)
 	}
 
 	// Verify ApplyUpdate would be blocked (simulated by state check).
 	applyBlocked := state == "fresh-install-update-failed"
 	if !applyBlocked {
-		t.Error("SC14-18 FAIL: ApplyUpdate should be blocked in fresh-install-update-failed state")
+		t.Error("FAIL: ApplyUpdate should be blocked in fresh-install-update-failed state")
 	}
 
-	t.Log("SC14-18 / FIND2-015: fresh-install failure state machine test passed")
+	t.Log("fresh-install failure state machine test passed")
 }

@@ -1,9 +1,10 @@
 package cli
 
 // session_enforce_internal_test.go — white-box tests for
-// configAllowsUnverifiedSession, the config.json half of the M2
-// escape hatch (docker-server-security hardening). Package cli (not
-// cli_test) because configAllowsUnverifiedSession is unexported.
+// configAllowsUnverifiedSession, the config.json half of the
+// raw-credential session gate's escape hatch (docker-server-security
+// hardening). Package cli (not cli_test) because
+// configAllowsUnverifiedSession is unexported.
 
 import (
 	"path/filepath"

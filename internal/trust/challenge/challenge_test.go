@@ -41,7 +41,7 @@ func TestBytes_Determinism(t *testing.T) {
 	b1 := c.Bytes()
 	b2 := c.Bytes()
 	if string(b1) != string(b2) {
-		t.Errorf("Bytes() is not deterministic:\n  call1: %s\n  call2: %s", b1, b2)
+		t.Errorf("Bytes() is not deterministic:\n call1: %s\n call2: %s", b1, b2)
 	}
 }
 

@@ -93,7 +93,7 @@ func TestInstall_ClaudeCode_IdempotentWithExistingSettings(t *testing.T) {
 			},
 		},
 	}
-	data, _ := json.MarshalIndent(initial, "", "  ")
+	data, _ := json.MarshalIndent(initial, "", " ")
 	require.NoError(t, os.WriteFile(filepath.Join(settingsDir, "settings.json"), data, 0o600))
 
 	_, err := guard.Install(guard.AgentClaudeCode, opts)
@@ -138,7 +138,7 @@ func TestInstall_ClaudeCode_MigratesLegacyKeylatchHook(t *testing.T) {
 			},
 		},
 	}
-	data, _ := json.MarshalIndent(legacy, "", "  ")
+	data, _ := json.MarshalIndent(legacy, "", " ")
 	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
 
 	// Re-install must repair the broken legacy format in place, without
@@ -197,7 +197,7 @@ func TestInstall_ClaudeCode_EmptyLegacyHooksArray(t *testing.T) {
 	// receive the new hook in object format.
 	settingsDir := filepath.Join(dir, ".claude")
 	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
-	data, _ := json.MarshalIndent(map[string]any{"hooks": []any{}}, "", "  ")
+	data, _ := json.MarshalIndent(map[string]any{"hooks": []any{}}, "", " ")
 	settingsPath := filepath.Join(settingsDir, "settings.json")
 	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
 
@@ -230,7 +230,7 @@ func TestInstall_ClaudeCode_NonMigratableLegacyHooksPreserved(t *testing.T) {
 			map[string]any{"command": "/usr/local/bin/eventless-hook.sh"},
 		},
 	}
-	data, _ := json.MarshalIndent(initial, "", "  ")
+	data, _ := json.MarshalIndent(initial, "", " ")
 	settingsPath := filepath.Join(settingsDir, "settings.json")
 	require.NoError(t, os.WriteFile(settingsPath, data, 0o600))
 

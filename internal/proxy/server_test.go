@@ -85,7 +85,7 @@ func freeProxyPort(t *testing.T) int {
 }
 
 // newTestProxy creates a proxy.Server with the given profile and vault stub,
-// starts it on a free port, and returns the port, its M1 caller-auth token
+// starts it on a free port, and returns the port, its proxy caller-auth token
 // (callers must set "Proxy-Authorization: Bearer <token>" on every request),
 // and a cancel func.
 func newTestProxy(t *testing.T, profile proxy.ProxyProfile, vault proxy.ProxyVaultReader) (int, string, context.CancelFunc) {
@@ -179,7 +179,7 @@ func TestProxyServer_AuthorizationStripped(t *testing.T) {
 	defer cancel()
 
 	// Make a request with a caller-supplied Authorization header, plus the
-	// M1 caller-auth token in Proxy-Authorization (a distinct header — see
+	// proxy caller-auth token in Proxy-Authorization (a distinct header — see
 	// server.go's proxyAuthHeader doc comment for why the two must not be
 	// conflated).
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", port)

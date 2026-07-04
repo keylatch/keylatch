@@ -64,7 +64,7 @@ func TestSelfApproval_Blocked(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// S12-9: self-approval must be blocked.
+	// self-approval must be blocked.
 	err = approval.Approve(ctx, req, requester, newProof())
 	if err != approval.ErrSelfApproval {
 		t.Errorf("self-approval: got %v, want ErrSelfApproval", err)

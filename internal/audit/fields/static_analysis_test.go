@@ -1,7 +1,7 @@
-// static_analysis_test.go — T6-07
+// static_analysis_test.go
 // Walks all Go source files and checks that any literal string keys in
 // audit.Event{Extra: map[string]any{...}} struct field initializers are
-// present in the SafeLogFields allowlist for at least one action (S5-2).
+// present in the SafeLogFields allowlist for at least one action.
 //
 // This is a best-effort static check over literal map keys inside `Extra:`
 // field values only. Computed string keys and keys starting with "_" are
@@ -22,7 +22,7 @@ import (
 
 // TestNoUnallowlistedExtraKeys walks Go source files under the repo root and
 // verifies that any literal string keys in `Extra: map[string]any{...}` struct
-// field initializers are present in the SafeLogFields allowlist (S5-2).
+// field initializers are present in the SafeLogFields allowlist.
 func TestNoUnallowlistedExtraKeys(t *testing.T) {
 	root, err := findModuleRoot()
 	if err != nil {
@@ -40,7 +40,7 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"old_kek_type": "passphrase", "new_kek_type": "keychain",
 			"term": 1, "token_type": "jwt", "ttl": 300, "policy_id": "p1",
 			"recipient_hmac": "abc", "delegate_type": "viewer",
-			// Phase 13 broker keys (FIND2-012 — actor/session IDs HMAC-hashed).
+			// broker keys (actor/session IDs HMAC-hashed).
 			"provider": "openai", "exchange_strategy": "oauth_refresh",
 			"actor_hmac": "aabbcc", "session_id_hmac": "ddeeff",
 			"namespace": "default", "capability": "chat",
@@ -52,24 +52,24 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"allowed_hosts_count": 3,
 			"connection":          "tcp", "runtime_requested": "direct_run",
 			"llm_session_signal": true, "blocked_by": "llm_session_gate",
-			// gateway_call keys (Epic 07 — T04 proxy deny audit).
+			// gateway_call keys (proxy deny audit).
 			"reason": "ssrf_denied", "host": "api.example.com", "error": "capability_mismatch",
-			// proxy lifecycle keys (Epic 18 — proxy.started / proxy.stopped).
+			// proxy lifecycle keys (proxy.started / proxy.stopped).
 			"port": 8888, "pid": os.Getpid(),
-			// T-13-07: audit_rotate cross-file chain continuity keys.
+			// audit_rotate cross-file chain continuity keys.
 			"rotated_to": "/path/to/log.1", "rotated_from": "/path/to/log.1",
 			"prev_file_hmac": "abcdef0123456789",
-			// EPIC-09 child-env hygiene keys (T-09-01).
+			// child-env hygiene keys.
 			"runtime":       "gateway_typed",
 			"stripped_vars": "KEYLATCH_BACKEND", "clean_env": false,
 			"preserved_vars": "PATH,HOME", "stripped_count": 5,
-			// EPIC-24 sandbox action keys.
+			// sandbox action keys.
 			"executable":        "/usr/bin/myapp",
 			"executable_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 			"expected":          "aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000",
 			"actual":            "bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111",
 			"denied_paths":      "/home/user/.keylatch",
-			// Phase 13 broker dry-run and token revocation keys.
+			// broker dry-run and token revocation keys.
 			"command":                       "node x.js",
 			"policy_decision":               "allow",
 			"token_id":                      "tok_abc123",
@@ -150,7 +150,7 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 				if !allAllowedKeys[key] {
 					pos := fset.Position(kvElt.Pos())
 					violations = append(violations,
-						pos.String()+": Extra key \""+key+"\" not in SafeLogFields allowlist (S5-2)")
+						pos.String()+": Extra key \""+key+"\" not in SafeLogFields allowlist")
 				}
 			}
 			return true

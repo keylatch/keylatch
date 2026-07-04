@@ -1,9 +1,9 @@
 package cli_test
 
-// sinv2_commands_test.go — EPIC-05 Task 1 (S-INV-2)
+// sinv2_commands_test.go
 //
-// TestSINV2_AllSixCommands verifies the six commands listed in the S-INV-2
-// coverage table in guard.go. Each sub-test exercises command-tree or guard
+// TestSINV2_AllSixCommands verifies the six commands listed in the
+// LLM-session guard coverage table in guard.go. Each sub-test exercises command-tree or guard
 // behaviour without requiring a real backend or vault.
 //
 // Classification:
@@ -11,7 +11,7 @@ package cli_test
 //   - keylatch describe     → allowed (no raw value exposed)
 //   - keylatch list         → allowed (no raw value exposed)
 //   - keylatch run          → allowed in gateway path (no raw value returned to agent)
-//   - keylatch inject       → command not found (removed in v1.0.0, T-10-02)
+//   - keylatch inject       → command not found (removed in v1.0.0)
 //   - keylatch direct_classic → RuntimeNotAvailable (exit 5) for removed mode
 //
 // Note: commands that call os.Exit inside their RunE (like `get` without --masked)
@@ -33,9 +33,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSINV2_AllSixCommands covers the S-INV-2 call-site table in guard.go.
+// TestSINV2_AllSixCommands covers the LLM-session guard call-site table in guard.go.
 func TestSINV2_AllSixCommands(t *testing.T) {
-	// S-INV-2-1: keylatch get — blocked in LLM session via GuardLLMSession.
+	// keylatch get — blocked in LLM session via GuardLLMSession.
 	// The production code path (root.Execute → get RunE → vbh.Invoke) calls
 	// os.Exit(2) after GuardLLMSession returns, which cannot be intercepted in
 	// unit tests. We test the guard itself — this is the enforcement boundary.
@@ -63,12 +63,12 @@ func TestSINV2_AllSixCommands(t *testing.T) {
 		assert.Equal(t, exitcode.SecurityBlock, res.ExitCode,
 			"get must return SecurityBlock (exit 2) in LLM session")
 		assert.Empty(t, stdout.String(),
-			"S0-1: get must not write to stdout when blocked in LLM session")
+			"get must not write to stdout when blocked in LLM session")
 		assert.Contains(t, stderr.String(), "Blocked in LLM session",
 			"get must write block message to stderr in LLM session")
 	})
 
-	// S-INV-2-2: keylatch describe — allowed (metadata only, no raw credential value).
+	// keylatch describe — allowed (metadata only, no raw credential value).
 	// The command is registered and not wrapped by GuardLLMSession.
 	t.Run("describe_allowed_in_llm_session", func(t *testing.T) {
 		t.Parallel()
@@ -85,7 +85,7 @@ func TestSINV2_AllSixCommands(t *testing.T) {
 		assert.Equal(t, "describe", describeCmd.Name())
 	})
 
-	// S-INV-2-3: keylatch list — allowed (enumerates keys, never reads values).
+	// keylatch list — allowed (enumerates keys, never reads values).
 	t.Run("list_allowed_in_llm_session", func(t *testing.T) {
 		t.Setenv("CLAUDE_CODE", "1")
 		t.Setenv("KEYLATCH_BACKEND", "file")
@@ -106,7 +106,7 @@ func TestSINV2_AllSixCommands(t *testing.T) {
 			"list must not be blocked by GuardLLMSession")
 	})
 
-	// S-INV-2-4: keylatch run via gateway_typed — allowed in LLM session.
+	// keylatch run via gateway_typed — allowed in LLM session.
 	// GuardRuntime permits all four v1.0.0 modes. We verify structural properties
 	// and the mode being present in AllModes.
 	t.Run("run_gateway_typed_allowed_in_llm_session", func(t *testing.T) {
@@ -137,28 +137,28 @@ func TestSINV2_AllSixCommands(t *testing.T) {
 		assert.Equal(t, exitcode.OK, code)
 	})
 
-	// S-INV-2-5: keylatch inject — command not registered (removed in v1.0.0, T-10-02).
+	// keylatch inject — command not registered (removed in v1.0.0).
 	t.Run("inject_not_registered", func(t *testing.T) {
 		t.Parallel()
 		root := cli.NewRootCommand()
 		cmd := findCmd(root, "inject ")
-		assert.Nil(t, cmd, "inject must not be registered in v1.0.0 (T-10-02)")
+		assert.Nil(t, cmd, "inject must not be registered in v1.0.0")
 	})
 
-	// S-INV-2-6: keylatch run --runtime direct_classic — mode removed in v1.0.0 (T-10-03).
+	// keylatch run --runtime direct_classic — mode removed in v1.0.0.
 	// The production path calls os.Exit(5) after IsRemovedMode returns true.
 	// We verify the IsRemovedMode contract here; exec-based coverage is in
 	// removed_commands_test.go.
 	t.Run("direct_classic_runtime_removed", func(t *testing.T) {
 		t.Parallel()
 		hint, removed := runtime.IsRemovedMode("direct_classic")
-		assert.True(t, removed, "direct_classic must be reported as removed (T-10-03)")
+		assert.True(t, removed, "direct_classic must be reported as removed")
 		assert.NotEmpty(t, hint, "removed mode hint must be non-empty and point to gateway_typed")
 
 		// Mode must also be absent from AllModes.
 		for _, m := range runtime.AllModes {
 			assert.NotEqual(t, runtime.RuntimeMode("direct_classic"), m,
-				"direct_classic must be removed from runtime.AllModes (T-10-03)")
+				"direct_classic must be removed from runtime.AllModes")
 		}
 
 		// The exit code for removed modes is RuntimeNotAvailable (5).
@@ -168,7 +168,7 @@ func TestSINV2_AllSixCommands(t *testing.T) {
 }
 
 // TestSINV2_Get_StdoutEmpty verifies that no bytes reach stdout when get is
-// blocked in an LLM session. This is S-INV-2 invariant S0-1.
+// blocked in an LLM session.
 func TestSINV2_Get_StdoutEmpty(t *testing.T) {
 	t.Parallel()
 	inner := cli.Handler(func(_ context.Context, _ cli.HandlerArgs) (cli.Result, error) {
@@ -191,11 +191,11 @@ func TestSINV2_Get_StdoutEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, exitcode.SecurityBlock, res.ExitCode)
 	assert.Empty(t, stdout.String(),
-		"S0-1 violated: stdout must be empty when get is blocked in LLM session")
+		"security invariant violated: stdout must be empty when get is blocked in LLM session")
 }
 
 // TestSINV2_Get_MaskedNotBlocked verifies that get --masked is never blocked
-// by GuardLLMSession even in an LLM session (safe path per S0-5).
+// by GuardLLMSession even in an LLM session (safe path).
 func TestSINV2_Get_MaskedNotBlocked(t *testing.T) {
 	t.Setenv("CLAUDE_CODE", "1")
 

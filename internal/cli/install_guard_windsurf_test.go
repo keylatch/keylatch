@@ -1,7 +1,7 @@
 package cli_test
 
 // install_guard_windsurf_test.go tests the Windsurf and Antigravity
-// install-guard paths that print shell-rc instructions (EPIC-25).
+// install-guard paths that print shell-rc instructions.
 
 import (
 	"bytes"

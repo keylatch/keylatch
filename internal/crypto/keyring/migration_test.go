@@ -27,8 +27,8 @@ func makeTestPassphraseKEK(t *testing.T, passphrase string) kek.KEK {
 	return k
 }
 
-// phase5FixtureBytes returns a schema version 1 keyring JSON with a single active term.
-func phase5FixtureBytes(t *testing.T, wrappedDEK []byte) []byte {
+// legacyFixtureBytes returns a schema version 1 keyring JSON with a single active term.
+func legacyFixtureBytes(t *testing.T, wrappedDEK []byte) []byte {
 	t.Helper()
 	kf := map[string]any{
 		"schema_version": 1,
@@ -53,9 +53,9 @@ func phase5FixtureBytes(t *testing.T, wrappedDEK []byte) []byte {
 	return b
 }
 
-// TestMigration_Phase11CanOpenPhase5 verifies that a Phase 5 schema version 1 keyring
-// can be opened by the Phase 11 Open function.
-func TestMigration_Phase11CanOpenPhase5(t *testing.T) {
+// TestMigration_OpensLegacySchemaKeyring verifies that a legacy schema version 1 keyring
+// can be opened by the current Open function.
+func TestMigration_OpensLegacySchemaKeyring(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "keyring.json")
 
@@ -70,7 +70,7 @@ func TestMigration_Phase11CanOpenPhase5(t *testing.T) {
 		t.Fatalf("Wrap: %v", err)
 	}
 
-	fixture := phase5FixtureBytes(t, wrapped)
+	fixture := legacyFixtureBytes(t, wrapped)
 	if err := os.WriteFile(path, fixture, 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestMigration_Phase11CanOpenPhase5(t *testing.T) {
 	pp2 := makeTestPassphraseKEK(t, "migration-test")
 	kr, err := keyring.Open(path, pp2)
 	if err != nil {
-		t.Fatalf("Open returned error on Phase 5 fixture: %v", err)
+		t.Fatalf("Open returned error on legacy fixture: %v", err)
 	}
 	if kr == nil {
 		t.Fatal("Open returned nil keyring")
@@ -94,7 +94,7 @@ func TestMigration_Phase11CanOpenPhase5(t *testing.T) {
 	}
 }
 
-// TestMigration_RoundTrip verifies that a Phase 5 fixture can be opened and
+// TestMigration_RoundTrip verifies that a legacy fixture can be opened and
 // DEK recovered correctly (round-trip).
 func TestMigration_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
@@ -111,7 +111,7 @@ func TestMigration_RoundTrip(t *testing.T) {
 		t.Fatalf("Wrap: %v", err)
 	}
 
-	fixture := phase5FixtureBytes(t, wrapped)
+	fixture := legacyFixtureBytes(t, wrapped)
 	if err := os.WriteFile(path, fixture, 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}

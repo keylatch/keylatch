@@ -1,6 +1,6 @@
 package cli
 
-// receipts_cmd_test.go — EPIC-16 tests for `keylatch receipts list` and
+// receipts_cmd_test.go — tests for `keylatch receipts list` and
 // `keylatch receipts tail`.
 //
 // TestReceipts_List_JSON   — `--json` flag produces a JSON array with correct schema.

@@ -86,7 +86,7 @@ func TestDispatch_ErrorPaths(t *testing.T) {
 		t.Errorf("unregistered: %q", resp.Error)
 	}
 
-	// Handler error must be masked as internal_error (S14-8).
+	// Handler error must be masked as internal_error.
 	reg.Register(MethodHealth, func(_ context.Context, _ any, _ *FrameWriter) (any, error) {
 		return nil, errors.New("secret detail")
 	})
@@ -100,7 +100,7 @@ func TestRegister_DisallowedPanics(t *testing.T) {
 	t.Parallel()
 	defer func() {
 		if recover() == nil {
-			t.Error("Register of a disallowed method must panic (S14-8)")
+			t.Error("Register of a disallowed method must panic")
 		}
 	}()
 	NewMethodRegistry().Register("NotAllowed", func(_ context.Context, _ any, _ *FrameWriter) (any, error) {
@@ -138,7 +138,7 @@ func TestOpenSystemBrowser_Validation(t *testing.T) {
 	if _, err := h(ctx, map[string]any{"other": "x"}, nil); err == nil {
 		t.Error("missing url must error")
 	}
-	// Rejected schemes (S14-2 / M8) — must fail BEFORE any browser launch.
+	// Rejected schemes — must fail BEFORE any browser launch.
 	for _, bad := range []string{
 		"file:///etc/passwd",
 		"ftp://host/x",

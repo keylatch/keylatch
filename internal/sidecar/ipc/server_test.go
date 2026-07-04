@@ -83,7 +83,7 @@ func TestServer_ListenRoundTrip(t *testing.T) {
 	}
 	conn.Close()
 
-	// Bad-HMAC frame: connection must be dropped without a response (S14-8).
+	// Bad-HMAC frame: connection must be dropped without a response.
 	conn2, err := net.Dial("unix", sockPath)
 	if err != nil {
 		t.Fatalf("second dial: %v", err)

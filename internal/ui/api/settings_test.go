@@ -1,6 +1,6 @@
 package api_test
 
-// T-13-05 integration test: server-validated approval-ttl endpoint.
+// integration test: server-validated approval-ttl endpoint.
 
 import (
 	"bytes"
@@ -43,7 +43,7 @@ func TestSettingsGet_ReturnsDefaults(t *testing.T) {
 	}
 }
 
-// TestSettingsPut_ClampsTTLToMax is the key T-13-05 assertion:
+// TestSettingsPut_ClampsTTLToMax is the key assertion:
 // submitting 999999 seconds returns ≤ approval_ttl_max_seconds.
 func TestSettingsPut_ClampsTTLToMax(t *testing.T) {
 	t.Parallel()
@@ -159,7 +159,7 @@ func TestSettingsPut_MissingField(t *testing.T) {
 }
 
 // TestSettings_ModeRadioPersists verifies that PUT operating_mode round-trips through
-// the settings store (EPIC-27).
+// the settings store.
 func TestSettings_ModeRadioPersists(t *testing.T) {
 	t.Parallel()
 
@@ -232,7 +232,7 @@ func TestSettings_InvalidModeReturns400(t *testing.T) {
 }
 
 // TestSettings_ApprovalPolicyPerConnectionOverride verifies that PUT approval_policy
-// persists and the GET response reflects the update (EPIC-27).
+// persists and the GET response reflects the update.
 func TestSettings_ApprovalPolicyPerConnectionOverride(t *testing.T) {
 	t.Parallel()
 
@@ -345,7 +345,7 @@ func TestSettings_TelemetryAndExperimentalRoundTrip(t *testing.T) {
 }
 
 // Settings_AdvancedToggleHidesByDefault is covered by TestUI_AdvancedToggle_RoundTrips
-// (advanced_mode defaults to false). This test makes the canonical EPIC-27 assertion explicit.
+// (advanced_mode defaults to false). This test makes the canonical assertion explicit.
 func TestSettings_AdvancedToggleHidesByDefault(t *testing.T) {
 	t.Parallel()
 

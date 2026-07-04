@@ -16,6 +16,6 @@ func assertPrivateFileMode(t *testing.T, path string) {
 		t.Fatalf("stat: %v", err)
 	}
 	if info.Mode().Perm() != 0o600 {
-		t.Errorf("keyring file mode = %04o, want 0600 (S5-19)", info.Mode().Perm())
+		t.Errorf("keyring file mode = %04o, want 0600", info.Mode().Perm())
 	}
 }

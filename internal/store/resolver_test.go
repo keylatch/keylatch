@@ -1,6 +1,6 @@
 package store_test
 
-// resolver_test.go — T-05-01 (EPIC-05) tests for URI dispatch.
+// resolver_test.go — tests for URI dispatch.
 //
 // Tests cover:
 //   - op:// → resolveOP calls `op read --no-newline op://...`

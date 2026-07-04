@@ -97,7 +97,7 @@ func TestPassphraseKEKType(t *testing.T) {
 }
 
 func TestPassphraseZeroedAfterDerive(t *testing.T) {
-	// S5-6: passphrase must be zeroed after PassphraseKEK returns.
+	// Passphrase must be zeroed after PassphraseKEK returns.
 	passphrase := []byte("zero-me-after-derive")
 	salt := make([]byte, 32)
 
@@ -109,7 +109,7 @@ func TestPassphraseZeroedAfterDerive(t *testing.T) {
 	// The passphrase slice should be all zeros.
 	for i, b := range passphrase {
 		if b != 0 {
-			t.Errorf("passphrase[%d] = %02x, want 0x00 (S5-6: passphrase not zeroed)", i, b)
+			t.Errorf("passphrase[%d] = %02x, want 0x00 (passphrase not zeroed)", i, b)
 		}
 	}
 }

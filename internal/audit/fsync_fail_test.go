@@ -1,7 +1,7 @@
-// fsync_fail_test.go — T6-06
+// fsync_fail_test.go
 // Verifies that a failed fsync during Logger.Log rolls back the in-memory
 // chain state (seq and prevHMAC) so the next successful Log call uses the
-// same sequence number (SC5-FIND-022 / ErrAuditFsyncFailed).
+// same sequence number (ErrAuditFsyncFailed).
 package audit
 
 import (
@@ -56,7 +56,7 @@ func TestAuditFsyncFailureRollback(t *testing.T) {
 	l.mu.Unlock()
 
 	if seqAfterFail != 0 {
-		t.Errorf("seq = %d after fsync failure, want 0 (SC5-FIND-022: rollback violated)", seqAfterFail)
+		t.Errorf("seq = %d after fsync failure, want 0 (rollback violated)", seqAfterFail)
 	}
 
 	// prevHMAC after rollback should be the empty string (initial state).
@@ -83,6 +83,6 @@ func TestAuditFsyncFailureRollback(t *testing.T) {
 
 	// The successful event uses seq=1 (since seq was rolled back to 0 after failure).
 	if seqAfterSuccess != 1 {
-		t.Errorf("seq = %d after successful Log, want 1 (SC5-FIND-022: rollback must keep seq at 0)", seqAfterSuccess)
+		t.Errorf("seq = %d after successful Log, want 1 (rollback must keep seq at 0)", seqAfterSuccess)
 	}
 }

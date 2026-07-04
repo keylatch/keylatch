@@ -139,7 +139,7 @@ func TestGenerateInstructionIncludesMCPBlock(t *testing.T) {
 	assert.Contains(t, snippet, "Limitations")
 }
 
-// TestGenerateInstructionContainsLimitationsSection verifies S3-14/FIND-012:
+// TestGenerateInstructionContainsLimitationsSection verifies
 // the Limitations section is always present.
 func TestGenerateInstructionContainsLimitationsSection(t *testing.T) {
 	ctx := context.Background()
@@ -212,7 +212,7 @@ func TestProfileFilesForPresets(t *testing.T) {
 	}
 }
 
-// TestProfileFilesContainNoSecretValues verifies S3-8: profile files use only
+// TestProfileFilesContainNoSecretValues verifies profile files use only
 // placeholder values, never actual secrets.
 func TestProfileFilesContainNoSecretValues(t *testing.T) {
 	ctx := context.Background()

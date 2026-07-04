@@ -69,11 +69,11 @@ func TestInferPriority(t *testing.T) {
 }
 
 func TestInferNeverEmpty(t *testing.T) {
-	// Regardless of the env, Infer must never return empty Name (S8-6).
+	// Regardless of the env, Infer must never return empty Name.
 	empty := mockLookup(map[string]string{})
 	a := actor.Infer(empty)
 	if a.Name == "" {
-		t.Error("Infer returned empty Name — violates S8-6")
+		t.Error("Infer returned empty Name — violates ")
 	}
 }
 

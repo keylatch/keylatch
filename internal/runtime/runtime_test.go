@@ -12,11 +12,11 @@ import (
 )
 
 func TestAllModesCount(t *testing.T) {
-	// EPIC-24: direct_classic_sandboxed reinstated as a new sibling mode.
+	// direct_classic_sandboxed reinstated as a new sibling mode.
 	// direct_classic remains permanently removed.
 	// Five modes: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy,
 	// direct_classic_sandboxed.
-	assert.Len(t, runtime.AllModes, 5, "AllModes must contain exactly 5 runtime modes after EPIC-24")
+	assert.Len(t, runtime.AllModes, 5, "AllModes must contain exactly 5 runtime modes")
 }
 
 func TestAllModesUnique(t *testing.T) {
@@ -35,7 +35,7 @@ func TestNoUnrestrictedMode(t *testing.T) {
 	}
 }
 
-// TestIsRawCredentialMode is the M2 raw-exposure boundary internal/cli's
+// TestIsRawCredentialMode is the raw-credential session gate's raw-exposure boundary internal/cli's
 // RequireVerifiedSession relies on to decide which `run` invocations need
 // session corroboration. Only direct/brokered modes inject a raw provider
 // secret into the child process; gateway/proxy modes only ever hand over a

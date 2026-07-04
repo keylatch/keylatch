@@ -68,7 +68,7 @@ func TestBootstrap_FreshHome(t *testing.T) {
 	configFile := paths.Config(env)
 	assertMode(t, configFile, 0o600, false)
 
-	// Keyring files must exist with mode 0o600 (T-02-04).
+	// Keyring files must exist with mode 0o600.
 	krPath := paths.KeyringPath(env)
 	assertMode(t, krPath, 0o600, false)
 
@@ -223,7 +223,7 @@ func TestBootstrap_ForceReinit(t *testing.T) {
 }
 
 // TestBootstrap_PassphraseEnvIgnored verifies that KEYLATCH_PASSPHRASE has no
-// effect on bootstrap. S-FIND-12: the passphrase env var must not be used.
+// effect on bootstrap. the passphrase env var must not be used.
 func TestBootstrap_PassphraseEnvIgnored(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)

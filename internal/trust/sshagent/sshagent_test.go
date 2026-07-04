@@ -175,7 +175,7 @@ func TestSSHAgentAdapter_HasCapWrap_RSA_False(t *testing.T) {
 }
 
 // TestSSHAgentAdapter_RequirePresence_HMACRootID verifies that when HMACFunc is set,
-// PresenceProof.RootID is HMAC'd and does NOT equal the raw adapter ID (S11-3 C-4).
+// PresenceProof.RootID is HMAC'd and does NOT equal the raw adapter ID.
 func TestSSHAgentAdapter_RequirePresence_HMACRootID(t *testing.T) {
 	sockPath, fp, cleanup := startInProcessAgent(t)
 	defer cleanup()
@@ -203,7 +203,7 @@ func TestSSHAgentAdapter_RequirePresence_HMACRootID(t *testing.T) {
 		t.Fatalf("RequirePresence: %v", err)
 	}
 	if proof.RootID == rawID {
-		t.Error("PresenceProof.RootID should not equal raw adapter ID (S11-3)")
+		t.Error("PresenceProof.RootID should not equal raw adapter ID")
 	}
 	if proof.RootID == "" {
 		t.Error("PresenceProof.RootID should not be empty")

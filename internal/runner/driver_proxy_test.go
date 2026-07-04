@@ -216,7 +216,7 @@ func TestProxyDriver_ProviderKeyAbsent_Canary(t *testing.T) {
 // --extra names matching a well-known provider credential env var are
 // denied, even though --extra is normally honored for arbitrary names.
 // This closes the gap where --extra OPENAI_API_KEY would otherwise leak the
-// real parent-process secret into the gateway_proxy child (defeating S9-15).
+// real parent-process secret into the gateway_proxy child (defeating this guarantee).
 //
 // MY_APP_REGION (not MY_CUSTOM_TOKEN — that now matches the pattern-based
 // _TOKEN suffix denylist added below and is covered by

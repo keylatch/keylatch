@@ -21,8 +21,8 @@ func TestDefault(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", c.UI.Bind)
 }
 
-// TestDefault_AllowUnverifiedSessionDefaultsFalse covers the M2 config-file
-// escape hatch (docker-server-security hardening): it must default to false
+// TestDefault_AllowUnverifiedSessionDefaultsFalse covers the raw-credential
+// session gate's config-file escape hatch (docker-server-security hardening): it must default to false
 // (fail closed) so a fresh install never silently opts out of session
 // corroboration on raw-credential paths.
 func TestDefault_AllowUnverifiedSessionDefaultsFalse(t *testing.T) {
@@ -72,7 +72,7 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 func TestLoad_UnknownFieldsRejected(t *testing.T) {
 	tmp := t.TempDir()
 	p := filepath.Join(tmp, "config.json")
-	// Write a config with an unknown field (simulates S05-7 canary test).
+	// Write a config with an unknown field (canary test for unknown-field rejection).
 	data := `{"version":1,"backend":"file","default_namespace":"default","audit":{"enabled":true,"max_size_bytes":5242880},"ui":{"bind":"127.0.0.1"},"KEYLATCH_CANARY_DO_NOT_LEAK_0xDEADBEEF":"canary"}`
 	require.NoError(t, os.WriteFile(p, []byte(data), 0o600))
 

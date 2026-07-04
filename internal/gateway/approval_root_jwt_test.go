@@ -107,7 +107,7 @@ func TestGateway_TwoPerson_LLMSession_Missing_403(t *testing.T) {
 }
 
 // TestGateway_TwoPerson_LLMSession_Present_Allowed verifies that llm_session=true +
-// two_person=true + ApprovalRootHMAC set → passes the two-person gate (S11-19 exception).
+// two_person=true + ApprovalRootHMAC set → passes the two-person gate (exception).
 func TestGateway_TwoPerson_LLMSession_Present_Allowed(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)

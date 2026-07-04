@@ -1,6 +1,6 @@
 package cli_test
 
-// keyring_passphrase_test.go — S-FIND-12
+// keyring_passphrase_test.go
 //
 // Tests asserting that KEYLATCH_PASSPHRASE is not accepted by keyring init
 // and that keyring init requires a TTY or stdin pipe.
@@ -34,7 +34,7 @@ func stdinToDevNull(t *testing.T) {
 
 // TestKeyringInit_PassphraseEnvIgnored verifies that setting KEYLATCH_PASSPHRASE
 // and running keyring init without a TTY or stdin pipe exits with an error
-// containing "not supported" (S-FIND-12). The env-var value must never appear
+// containing "not supported". The env-var value must never appear
 // in any output — proving the env var was never read as a passphrase source.
 func TestKeyringInit_PassphraseEnvIgnored(t *testing.T) {
 	const envPassphrase = "super-secret-DEADBEEF-passphrase"
@@ -74,7 +74,7 @@ func TestKeyringInit_PassphraseEnvIgnored(t *testing.T) {
 
 // TestKeyringInit_RequiresTTYOrStdin verifies that keyring init exits with an
 // error when stdin is neither a TTY nor a pipe, and that the error message
-// references TTY or stdin pipe as the expected input source (S-FIND-12).
+// references TTY or stdin pipe as the expected input source.
 func TestKeyringInit_RequiresTTYOrStdin(t *testing.T) {
 	// stdin is /dev/null — neither a TTY nor a named pipe.
 	stdinToDevNull(t)

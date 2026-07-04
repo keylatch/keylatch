@@ -1,6 +1,6 @@
 /**
  * FieldInput tests — validates URI validation logic and mode toggle behaviour.
- * T-14-06: client-side validation matches server-side RefURIPattern.
+ * client-side validation matches server-side RefURIPattern.
  */
 
 import { render, screen, fireEvent } from '@testing-library/react'

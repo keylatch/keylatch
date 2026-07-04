@@ -26,7 +26,7 @@ func newEvent(action string) export.AuditEvent {
 }
 
 func TestExport_NeverBlocks_UnreachableEndpoint(t *testing.T) {
-	// S12-14: Export to unreachable endpoint must not block.
+	// Export to unreachable endpoint must not block.
 	e := export.New(export.AdapterSplunk, "http://192.0.2.1:9999/unreachable", "test-team-id")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -45,7 +45,7 @@ func TestExport_NeverBlocks_UnreachableEndpoint(t *testing.T) {
 	case <-done:
 		// OK — Export returned without blocking.
 	case <-time.After(time.Second):
-		t.Error("Export blocked for > 1s — S12-14 violated")
+		t.Error("Export blocked for > 1s — violated")
 	}
 }
 

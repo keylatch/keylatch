@@ -1,6 +1,6 @@
 package store_test
 
-// dispatch_uri_test.go — EPIC-10 dispatch URI tests using real mock binaries on PATH.
+// dispatch_uri_test.go — dispatch URI tests using real mock binaries on PATH.
 //
 // Unlike resolver_test.go (which uses in-process mockRunner), these tests inject
 // actual shell scripts on PATH via t.Setenv. This validates that the full

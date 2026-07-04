@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFIND011_BootstrapTokenNeverInURLAfterExchange verifies that the bootstrap
+// TestBootstrapTokenNeverInURLAfterExchange verifies that the bootstrap
 // token does not appear in any URL after the initial /__bootstrap?b=... exchange.
 //
-// FIND-011: the token appears ONLY in the initial URL. After the 303 redirect,
+// the token appears ONLY in the initial URL. After the 303 redirect,
 // it must never appear in the Location header, cookies, or response bodies.
-func TestFIND011_BootstrapTokenNeverInURLAfterExchange(t *testing.T) {
+func TestBootstrapTokenNeverInURLAfterExchange(t *testing.T) {
 	t.Parallel()
 
 	k := make([]byte, 32)
@@ -50,25 +50,25 @@ func TestFIND011_BootstrapTokenNeverInURLAfterExchange(t *testing.T) {
 	srv.TestServeHTTP(rec, req)
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 
-	// FIND-011: the Location header must NOT contain the bootstrap token.
+	// the Location header must NOT contain the bootstrap token.
 	location := rec.Header().Get("Location")
 	assert.NotContains(t, location, token,
-		"FIND-011: bootstrap token must not appear in redirect Location URL")
+		"bootstrap token must not appear in redirect Location URL")
 
 	// The cookie values must not contain the bootstrap token.
 	for _, c := range rec.Result().Cookies() {
 		assert.NotContains(t, c.Value, token,
-			"FIND-011: cookie %s must not contain bootstrap token", c.Name)
+			"cookie %s must not contain bootstrap token", c.Name)
 	}
 
 	// The response body must not contain the bootstrap token.
 	assert.NotContains(t, rec.Body.String(), token,
-		"FIND-011: response body must not contain bootstrap token after exchange")
+		"response body must not contain bootstrap token after exchange")
 }
 
-// TestFIND011_SecondBootstrapAttemptRejected verifies that replaying the
+// TestSecondBootstrapAttemptRejected verifies that replaying the
 // bootstrap token returns 401, preventing token reuse.
-func TestFIND011_SecondBootstrapAttemptRejected(t *testing.T) {
+func TestSecondBootstrapAttemptRejected(t *testing.T) {
 	t.Parallel()
 
 	k := make([]byte, 32)
@@ -96,5 +96,5 @@ func TestFIND011_SecondBootstrapAttemptRejected(t *testing.T) {
 	rec2 := httptest.NewRecorder()
 	srv.TestServeHTTP(rec2, req2)
 	assert.Equal(t, http.StatusUnauthorized, rec2.Code,
-		"FIND-011: replayed bootstrap token must be rejected")
+		"replayed bootstrap token must be rejected")
 }

@@ -52,8 +52,8 @@ func TestKEKAdapter_WrapUnwrapRoundTrip(t *testing.T) {
 
 	dek := []byte("this-is-a-32-byte-dek-padded!!!!") // 32 bytes
 
-	// Save the expected plaintext before Wrap zeroes dek in place (S11-1
-	// security requirement: Wrap zeros the caller's dek slice via defer).
+	// Save the expected plaintext before Wrap zeroes dek in place (Wrap
+	// zeros the caller's dek slice via defer).
 	wantDEK := string(dek)
 
 	wrapped, err := a1.Wrap(context.Background(), dek)

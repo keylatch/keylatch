@@ -12,10 +12,9 @@ import (
 	kexec "github.com/keylatch/keylatch/internal/exec"
 )
 
-// TestFIND3007_Get_ExactlyOneValueRead verifies that Get produces exactly one
+// TestGet_ExactlyOneValueRead verifies that Get produces exactly one
 // value-read call (the getOneValue call with -w for the specific service+account).
-// FIND3-007 / S1-13 / SC1-15a
-func TestFIND3007_Get_ExactlyOneValueRead(t *testing.T) {
+func TestGet_ExactlyOneValueRead(t *testing.T) {
 	secBin := "/usr/bin/security"
 	const kPath = "/tmp/find3-test.keychain-db"
 
@@ -72,13 +71,12 @@ func TestFIND3007_Get_ExactlyOneValueRead(t *testing.T) {
 	}
 
 	if valueReadCount != 1 {
-		t.Errorf("FIND3-007: Get produced %d value-read calls, want exactly 1", valueReadCount)
+		t.Errorf("Get produced %d value-read calls, want exactly 1", valueReadCount)
 	}
 }
 
-// TestFIND3007_List_ZeroValueReads verifies that List produces zero value-read calls.
-// FIND3-007 / S1-6 / S1-13 / SC1-15b
-func TestFIND3007_List_ZeroValueReads(t *testing.T) {
+// TestList_ZeroValueReads verifies that List produces zero value-read calls.
+func TestList_ZeroValueReads(t *testing.T) {
 	secBin := "/usr/bin/security"
 	const kPath = "/tmp/find3-list-test.keychain-db"
 
@@ -120,7 +118,7 @@ func TestFIND3007_List_ZeroValueReads(t *testing.T) {
 
 	// List is only allowed one -w call: for the manifest item itself.
 	// The manifest IS a keychain item retrieved with -w, but it's metadata.
-	// Per FIND3-007: List must produce ZERO value-bearing item reads.
+	// List must produce ZERO value-bearing item reads.
 	// The manifest read with -w is acceptable (it's the manifest, not a secret value).
 	// We count only calls with -w AND a service that is NOT keylatch-_manifest.
 	valueReadCount := 0
@@ -141,13 +139,12 @@ func TestFIND3007_List_ZeroValueReads(t *testing.T) {
 	}
 
 	if valueReadCount != 0 {
-		t.Errorf("FIND3-007: List produced %d non-manifest value-read calls, want 0", valueReadCount)
+		t.Errorf("List produced %d non-manifest value-read calls, want 0", valueReadCount)
 	}
 }
 
-// TestFIND3007_GetMeta_ZeroValueReads verifies that GetMeta produces zero value-read calls.
-// FIND3-007 / S1-6 / S1-13 / SC1-15c
-func TestFIND3007_GetMeta_ZeroValueReads(t *testing.T) {
+// TestGetMeta_ZeroValueReads verifies that GetMeta produces zero value-read calls.
+func TestGetMeta_ZeroValueReads(t *testing.T) {
 	secBin := "/usr/bin/security"
 	const kPath = "/tmp/find3-getmeta-test.keychain-db"
 
@@ -171,9 +168,9 @@ func TestFIND3007_GetMeta_ZeroValueReads(t *testing.T) {
 
 	ctx := context.Background()
 	_, err = b.GetMeta(ctx, "default/openrouter/api_key")
-	// Phase 4: Keychain backend returns ErrNotSupported for GetMeta since
-	// Phase 4 metadata lives in the file backend only. ErrNotSupported is
-	// still a zero-value-read call, so the FIND3-007 invariant holds.
+	// Keychain backend returns ErrNotSupported for GetMeta since versioned
+	// metadata lives in the file backend only. ErrNotSupported is still a
+	// zero-value-read call, so the invariant holds.
 	if err != nil && !errors.Is(err, backend.ErrNotSupported) {
 		t.Errorf("GetMeta: %v", err)
 	}
@@ -197,6 +194,6 @@ func TestFIND3007_GetMeta_ZeroValueReads(t *testing.T) {
 	}
 
 	if valueReadCount != 0 {
-		t.Errorf("FIND3-007: GetMeta produced %d non-manifest value-read calls, want 0", valueReadCount)
+		t.Errorf("GetMeta produced %d non-manifest value-read calls, want 0", valueReadCount)
 	}
 }

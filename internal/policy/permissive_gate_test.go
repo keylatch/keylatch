@@ -6,10 +6,10 @@ import (
 	"github.com/keylatch/keylatch/internal/policy"
 )
 
-// TestPermissiveGate_FIND005 verifies FIND-005 invariants:
-//  1. permissive mode + LLM session panics (Check must panic)
-//  2. unsetting CI does NOT bypass the panic
-//  3. non-LLM sessions with permissive mode work fine
+// TestPermissiveGate_LLMSessionPanics verifies invariants:
+// 1. permissive mode + LLM session panics (Check must panic)
+// 2. unsetting CI does NOT bypass the panic
+// 3. non-LLM sessions with permissive mode work fine
 func TestPermissiveGate_LLMSessionPanics(t *testing.T) {
 	p := policy.Policy{
 		SchemaVersion: 1,
@@ -28,7 +28,7 @@ func TestPermissiveGate_LLMSessionPanics(t *testing.T) {
 		p.Check(policy.Request{LLMSession: true, Capability: "inject"})
 	}()
 	if !panicked {
-		t.Error("FIND-005: permissive+LLM session must panic")
+		t.Error("permissive+LLM session must panic")
 	}
 }
 
@@ -55,7 +55,7 @@ func TestPermissiveGate_NoCI_StillPanics(t *testing.T) {
 		p.Check(policy.Request{LLMSession: true, Capability: "inject"})
 	}()
 	if !panicked {
-		t.Error("FIND-005: permissive+LLM session must panic even with CI unset")
+		t.Error("permissive+LLM session must panic even with CI unset")
 	}
 }
 
@@ -75,7 +75,7 @@ func TestPermissiveGate_NonLLM_Works(t *testing.T) {
 		Capability: "inject",
 	})
 	if !d.Allow {
-		t.Error("FIND-005: permissive mode with non-LLM session should allow")
+		t.Error("permissive mode with non-LLM session should allow")
 	}
 }
 

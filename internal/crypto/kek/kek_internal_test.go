@@ -455,7 +455,7 @@ func TestKEKAdapter_Attest_Error(t *testing.T) {
 
 func TestKEKAdapter_Wrap_ZeroesDEK(t *testing.T) {
 	t.Parallel()
-	// Wrap must zero the dek slice in-place (S11-1).
+	// Wrap must zero the dek slice in-place.
 	k := &mockKEK{id: "id", kekType: "passphrase"}
 	a := AsRootOfTrust(k)
 	dek := []byte("this-is-a-32-byte-dek-padded!!!!")
@@ -465,7 +465,7 @@ func TestKEKAdapter_Wrap_ZeroesDEK(t *testing.T) {
 	}
 	for i, b := range dek {
 		if b != 0 {
-			t.Errorf("dek[%d] = 0x%02x after Wrap, want 0 (S11-1)", i, b)
+			t.Errorf("dek[%d] = 0x%02x after Wrap, want 0", i, b)
 		}
 	}
 }

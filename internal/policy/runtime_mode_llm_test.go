@@ -10,9 +10,9 @@ import (
 // TestRuntimeModeLLM_S817 tests the full matrix:
 // 4 actors × 4 capabilities × 5 runtimes with LLMSession=true.
 //
-// Expected outcomes (S8-9 read-class always denied; inject varies by runtime):
-//   - read/export/_.reveal/_.dump: always denied regardless of runtime.
-//   - inject: depends on rule.LLMSessions[runtime] setting.
+// Expected outcomes (read-class always denied; inject varies by runtime):
+// - read/export/_.reveal/_.dump: always denied regardless of runtime.
+// - inject: depends on rule.LLMSessions[runtime] setting.
 func TestRuntimeModeLLM_S817(t *testing.T) {
 	actors := []string{
 		"claude-code",
@@ -55,7 +55,7 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 		Rules:         []policy.Rule{ruleWithLLMSessions},
 	}
 
-	// --- Read-class capabilities: always denied for LLM sessions (S8-9) ---
+	// --- Read-class capabilities: always denied for LLM sessions ---
 	for _, actor := range actors {
 		for _, cap := range readClassCaps {
 			for _, rt := range runtimes {
@@ -67,12 +67,12 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 					Runtime:    rt,
 				})
 				if d.Allow {
-					t.Errorf("S8-9/S8-17: actor=%s cap=%s runtime=%s: expected deny, got allow (reason=%q)",
+					t.Errorf("actor=%s cap=%s runtime=%s: expected deny, got allow (reason=%q)",
 						actor, cap, rt, d.Reason)
 				}
 				// Verify stable reason string.
 				if d.Reason != "read-class capabilities are denied in LLM sessions" {
-					t.Errorf("S8-9: stable reason mismatch for cap=%s: got %q", cap, d.Reason)
+					t.Errorf("stable reason mismatch for cap=%s: got %q", cap, d.Reason)
 				}
 			}
 		}
@@ -105,14 +105,14 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 			})
 
 			if d.Allow != exp.wantAllow {
-				t.Errorf("S8-17: actor=%s runtime=%s inject: Allow=%v, want %v (reason=%q)",
+				t.Errorf("actor=%s runtime=%s inject: Allow=%v, want %v (reason=%q)",
 					actor, exp.runtime, d.Allow, exp.wantAllow, d.Reason)
 			}
 			if exp.wantApproval && !d.ApprovalRequired {
-				t.Errorf("S8-17: actor=%s runtime=%s: expected ApprovalRequired=true", actor, exp.runtime)
+				t.Errorf("actor=%s runtime=%s: expected ApprovalRequired=true", actor, exp.runtime)
 			}
 			if exp.wantDenyReason != "" && !strings.Contains(d.Reason, exp.wantDenyReason) {
-				t.Errorf("S8-17: actor=%s runtime=%s deny reason mismatch: got %q, want substring %q",
+				t.Errorf("actor=%s runtime=%s deny reason mismatch: got %q, want substring %q",
 					actor, exp.runtime, d.Reason, exp.wantDenyReason)
 			}
 		}

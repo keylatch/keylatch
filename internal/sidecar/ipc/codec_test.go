@@ -82,7 +82,7 @@ func TestMethodRegistryRejectsUnregistered(t *testing.T) {
 }
 
 func TestAllowedMethodsCount(t *testing.T) {
-	// The allow-list must have exactly 5 entries (S14-8).
+	// The allow-list must have exactly 5 entries.
 	// We verify by registering all 5 and confirming no panic.
 	reg := ipc.NewMethodRegistry()
 	noop := ipc.HandlerFunc(func(ctx context.Context, _ any, _ *ipc.FrameWriter) (any, error) {
@@ -94,7 +94,7 @@ func TestAllowedMethodsCount(t *testing.T) {
 	reg.Register(ipc.MethodShutdown, noop)
 	reg.Register(ipc.MethodOpenSystemBrowser, noop)
 	// If we get here without panic, the allow-list has at least 5 entries.
-	t.Log("all 5 allowed methods registered without panic (S14-8)")
+	t.Log("all 5 allowed methods registered without panic")
 }
 
 func TestRegisterDisallowedMethodPanics(t *testing.T) {

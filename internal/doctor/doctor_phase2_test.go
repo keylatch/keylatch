@@ -15,7 +15,7 @@ import (
 const canaryBWSession = "KEYLATCH_CANARY_BW_SESSION_0xDEADBEEF"
 
 // TestDoctor_BWSession_NotInOutput verifies that BW_SESSION value never appears
-// in any doctor check output (S2-7).
+// in any doctor check output.
 func TestDoctor_BWSession_NotInOutput(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
@@ -48,13 +48,13 @@ func TestDoctor_BWSession_NotInOutput(t *testing.T) {
 	require.NoError(t, err)
 	reportStr := string(b)
 
-	// S2-7: BW_SESSION value must never appear in doctor output.
+	// BW_SESSION value must never appear in doctor output.
 	assert.NotContains(t, reportStr, canaryBWSession,
 		"BW_SESSION canary must not appear in doctor output")
 }
 
 // TestDoctor_OPServiceAccountToken_NotInOutput verifies that OP_SERVICE_ACCOUNT_TOKEN
-// value never appears in any doctor check output (S2-7).
+// value never appears in any doctor check output.
 func TestDoctor_OPServiceAccountToken_NotInOutput(t *testing.T) {
 	const canaryOPToken = "KEYLATCH_CANARY_OP_TOKEN_0xDEADBEEF"
 
@@ -89,13 +89,13 @@ func TestDoctor_OPServiceAccountToken_NotInOutput(t *testing.T) {
 	require.NoError(t, err)
 	reportStr := string(b)
 
-	// S2-7: OP_SERVICE_ACCOUNT_TOKEN value must never appear in output.
+	// OP_SERVICE_ACCOUNT_TOKEN value must never appear in output.
 	assert.NotContains(t, reportStr, canaryOPToken,
 		"OP_SERVICE_ACCOUNT_TOKEN canary must not appear in doctor output")
 }
 
 // TestDoctor_OPBackend_ErrUnavailable_HintPresent verifies that when op binary
-// is missing, the doctor hint directs user to install it (SC2-6).
+// is missing, the doctor hint directs user to install it.
 func TestDoctor_OPBackend_ErrUnavailable_HintPresent(t *testing.T) {
 	_, env := bootstrappedHome(t)
 

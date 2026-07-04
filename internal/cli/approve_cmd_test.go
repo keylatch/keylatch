@@ -141,7 +141,7 @@ func TestApproveCmd_Flags(t *testing.T) {
 	}
 }
 
-// TestApprove_Success is the named test from the Epic spec.
+// TestApprove_Success is the canonical named test for the approve success path.
 func TestApprove_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)

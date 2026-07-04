@@ -1,14 +1,14 @@
 package audit_test
 
-// T-13-07: audit log rotation cross-file chain continuity test.
+// audit log rotation cross-file chain continuity test.
 //
 // Verifies that:
-//  1. The old file ends with a "rotation" sentinel event (ActionAuditRotate).
-//  2. The new file starts with a "rotation-continued" sentinel event (ActionAuditRotate).
-//  3. Both files pass VerifyChain independently (chain is valid in each file).
-//  4. The prev_file_hmac stored in the new file's first Extra equals the HMAC
-//     of the last raw line of the old file, computed with the chain MAC key
-//     derived from the audit salt — linking the two files.
+// 1. The old file ends with a "rotation" sentinel event (ActionAuditRotate).
+// 2. The new file starts with a "rotation-continued" sentinel event (ActionAuditRotate).
+// 3. Both files pass VerifyChain independently (chain is valid in each file).
+// 4. The prev_file_hmac stored in the new file's first Extra equals the HMAC
+// of the last raw line of the old file, computed with the chain MAC key
+// derived from the audit salt — linking the two files.
 
 import (
 	"context"
@@ -126,7 +126,7 @@ func TestAuditChainContinuityAcrossRotation(t *testing.T) {
 	}
 
 	if prevFileHMAC != expectedPrevFileHMAC {
-		t.Errorf("cross-file HMAC mismatch:\n  computed from old last line = %s\n  new prev_file_hmac         = %s",
+		t.Errorf("cross-file HMAC mismatch:\n computed from old last line = %s\n new prev_file_hmac = %s",
 			expectedPrevFileHMAC, prevFileHMAC)
 	}
 }

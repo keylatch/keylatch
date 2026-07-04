@@ -11,7 +11,7 @@ import (
 	"github.com/keylatch/keylatch/internal/grant"
 )
 
-// canaryKey is the Phase 8 canary value that must never appear in grant output.
+// canaryKey is the canary value that must never appear in grant output.
 const canaryKey = "KEYLATCH_CANARY_PHASE8_0xDEADBEEF"
 
 // tempEnv returns a Lookup that uses a temp dir for all keylatch paths.
@@ -194,7 +194,7 @@ func TestFind_Expiry(t *testing.T) {
 		Capability: g.Capability,
 	})
 	if ok || found != nil {
-		t.Error("Find should return nil for expired grant (S8-3)")
+		t.Error("Find should return nil for expired grant")
 	}
 }
 
@@ -223,12 +223,12 @@ func TestFind_RevokedNotReturned(t *testing.T) {
 		Capability: g.Capability,
 	})
 	if ok || found != nil {
-		t.Error("Find should return nil for revoked grant (S8-4)")
+		t.Error("Find should return nil for revoked grant")
 	}
 }
 
 // TestFind_S8_12_LLMGrantDeniedForReadClass verifies that grants issued
-// from an LLM session are denied for read-class capabilities (FIND-001/S8-12).
+// from an LLM session are denied for read-class capabilities.
 func TestFind_S8_12_LLMGrantDeniedForReadClass(t *testing.T) {
 	dir := t.TempDir()
 	llmEnv := func(k string) string {
@@ -264,7 +264,7 @@ func TestFind_S8_12_LLMGrantDeniedForReadClass(t *testing.T) {
 			Capability: cap,
 		})
 		if ok || found != nil {
-			t.Errorf("Find with read-class cap %q should return nil for LLM-issued grant (S8-12)", cap)
+			t.Errorf("Find with read-class cap %q should return nil for LLM-issued grant", cap)
 		}
 	}
 

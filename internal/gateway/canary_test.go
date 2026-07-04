@@ -19,7 +19,7 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
-// canaryValue is the Phase 9 canary secret. Must NEVER appear in responses,
+// canaryValue is the gateway canary secret. Must NEVER appear in responses,
 // headers, audit logs, or gateway log output.
 const canaryValue = "KEYLATCH_CANARY_PHASE9_GATEWAY_0xDEADBEEF"
 
@@ -86,7 +86,7 @@ func TestCanary_NeverLeaksInResponse(t *testing.T) {
 	}
 
 	port := freePort(t)
-	// We can't easily inject custom templates into New() in Phase 9 (routes come from registry.List()).
+	// We can't easily inject custom templates into New() (routes come from registry.List()).
 	// So we use the regular server and test with real registry routes.
 	// The canary test principle: any credential in the mock backend MUST NOT appear in the client response.
 	// We test this via the redact package directly here, and via server integration below.

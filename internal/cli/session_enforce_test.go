@@ -25,7 +25,7 @@ func TestRequireVerifiedSession_GatewayMode_UnaffectedRegardlessOfSession(t *tes
 	assert.NoError(t, err)
 }
 
-// --- Raw-exposure paths (rawCredentialExposure=true): the M2 gate itself ---
+// --- Raw-exposure paths (rawCredentialExposure=true): the raw-credential session gate itself ---
 
 func TestRequireVerifiedSession_HumanNonLLMSession_GatewayUnaffected(t *testing.T) {
 	t.Parallel()
@@ -38,7 +38,7 @@ func TestRequireVerifiedSession_HumanNonLLMSession_GatewayUnaffected(t *testing.
 
 func TestRequireVerifiedSession_SignalNone_DirectRun_BlockedWithoutCorroboration(t *testing.T) {
 	t.Parallel()
-	// This is the spoof-to-human hole M2 closes: no LLM signal at all
+	// This is the spoof-to-human hole the raw-credential session gate closes: no LLM signal at all
 	// (SignalNone) on a raw-exposure path (direct/brokered run, or get), with
 	// no ticket, no daemon-tracked session, and no escape hatch — must fail
 	// closed.
@@ -57,12 +57,13 @@ func TestRequireVerifiedSession_HeuristicOnly_DirectRun_FailsClosed(t *testing.T
 
 func TestRequireVerifiedSession_ReachableUnauthenticatedDaemon_IsNotABypass(t *testing.T) {
 	t.Parallel()
-	// Regression test for the fixed M2 hole: a bare, unauthenticated
-	// reachability check against keylatchd's HTTP health endpoint
-	// (daemon.IsRunning) used to be accepted as corroboration on its own.
-	// That check is session/PID-unbound — ANY local process could satisfy
-	// it merely by starting a listener on the daemon's port (e.g. `keylatch
-	// ui --port 7890 --no-open &`), defeating M2's fail-closed intent. There
+	// Regression test for the fixed hole in the raw-credential session gate: a
+	// bare, unauthenticated reachability check against keylatchd's HTTP
+	// health endpoint (daemon.IsRunning) used to be accepted as corroboration
+	// on its own. That check is session/PID-unbound — ANY local process could
+	// satisfy it merely by starting a listener on the daemon's port (e.g.
+	// `keylatch ui --port 7890 --no-open &`), defeating that gate's
+	// fail-closed intent. There
 	// is no longer a daemonUp parameter at all: RequireVerifiedSession no
 	// longer has any way to accept "a listener is reachable" as
 	// corroboration. With no ticket, no SignalDaemonActive (i.e. no

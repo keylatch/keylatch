@@ -30,7 +30,7 @@ func TestUICmd_Flags(t *testing.T) {
 	assert.NotNil(t, uiCmd.Flags().Lookup("scope"))
 }
 
-// TestApproveCmd_Registered verifies approve is registered unconditionally (Epic 23).
+// TestApproveCmd_Registered verifies approve is registered unconditionally.
 func TestApproveCmd_Registered(t *testing.T) {
 	t.Parallel()
 	root := cli.NewRootCommand()
@@ -39,7 +39,7 @@ func TestApproveCmd_Registered(t *testing.T) {
 	assert.Equal(t, "approve", cmd.Name())
 }
 
-// TestDenyCmd_Registered verifies deny is registered unconditionally (Epic 23).
+// TestDenyCmd_Registered verifies deny is registered unconditionally.
 func TestDenyCmd_Registered(t *testing.T) {
 	t.Parallel()
 	root := cli.NewRootCommand()
@@ -54,7 +54,7 @@ func TestApproveCmd_RegisteredWithoutExperimental(t *testing.T) {
 	root := cli.NewRootCommand()
 	cmd, _, err := root.Find([]string{"approve"})
 	require.NoError(t, err)
-	// Epic 23: approve is unconditionally registered — not behind experimental gate.
+	// approve is unconditionally registered — not behind experimental gate.
 	assert.Equal(t, "approve", cmd.Name())
 }
 
@@ -64,7 +64,7 @@ func TestDenyCmd_RegisteredWithoutExperimental(t *testing.T) {
 	root := cli.NewRootCommand()
 	cmd, _, err := root.Find([]string{"deny"})
 	require.NoError(t, err)
-	// Epic 23: deny is unconditionally registered — not behind experimental gate.
+	// deny is unconditionally registered — not behind experimental gate.
 	assert.Equal(t, "deny", cmd.Name())
 }
 

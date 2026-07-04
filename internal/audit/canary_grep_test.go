@@ -1,6 +1,6 @@
 // canary_grep_test.go — T6-01
 // Tests that AEAD-encrypted canary tokens never appear in plaintext in the
-// audit log (S5-1, S5-18, SC5-FIND-006).
+// audit log.
 package audit
 
 import (
@@ -68,10 +68,10 @@ func TestCanaryNeverPlaintextInAuditLogWhitebox(t *testing.T) {
 
 	// The canary string must NOT appear anywhere in the raw log file.
 	if bytes.Contains(raw, []byte(canaryToken)) {
-		t.Errorf("canary token found in plaintext in audit log (S5-1 / FIND-006 violated)")
+		t.Errorf("canary token found in plaintext in audit log")
 	}
 
-	// VerifyChain in header-only mode (auditDEK=nil) must pass (FIND3-008).
+	// VerifyChain in header-only mode (auditDEK=nil) must pass.
 	report, err := VerifyChain(auditPath, saltBytes, nil)
 	if err != nil {
 		t.Fatalf("VerifyChain (header-only): %v", err)

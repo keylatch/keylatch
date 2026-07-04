@@ -115,7 +115,7 @@ func TestServerWiring_HostOverrideBlocker_XForwardedHostRejected(t *testing.T) {
 // TestServerWiring_HealthEndpointUnaffected asserts that /health (a gateway-
 // internal route) is NOT wrapped by the auth/host blocker middlewares — it
 // must remain reachable without authentication, since it is a value-free
-// liveness probe per S9-9.
+// liveness probe.
 func TestServerWiring_HealthEndpointUnaffected(t *testing.T) {
 	baseURL, cancel := startTestServer(t)
 	defer cancel()

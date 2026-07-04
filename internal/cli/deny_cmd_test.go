@@ -108,7 +108,7 @@ func TestApproveAndDenyCmd_ErrorCodes(t *testing.T) {
 
 // ---- deny single-token named tests ----
 
-// TestDeny_Success is the named test from the Epic spec.
+// TestDeny_Success is the canonical named test for the deny success path.
 func TestDeny_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)

@@ -17,7 +17,7 @@ const canaryBW = "KEYLATCH_CANARY_BW_0xDEADBEEF"
 
 // TestSessionRedaction_CanaryAbsentFromAllSurfaces verifies that BW_SESSION
 // never appears on any observable surface: error strings, output, or args.
-// S2-7: session must be in env, not args.
+// Session must be passed via env, not args.
 func TestSessionRedaction_CanaryAbsentFromAllSurfaces(t *testing.T) {
 	fixture := testdataBytes(t, "item_get_openrouter.json")
 	key := argKey(fakeBWBin, "get", "item", "openrouter")
@@ -43,21 +43,21 @@ func TestSessionRedaction_CanaryAbsentFromAllSurfaces(t *testing.T) {
 
 	calls := runner.CallsCopy()
 
-	// S2-7: assert canary does NOT appear in any arg.
+	// Assert canary does NOT appear in any arg.
 	for _, c := range calls {
 		for _, arg := range c.Args {
 			assert.NotEqual(t, canaryBW, arg,
-				"S2-7: canary BW_SESSION must not appear in subprocess args")
+				"canary BW_SESSION must not appear in subprocess args")
 			assert.False(t, strings.Contains(arg, canaryBW),
-				"S2-7: canary BW_SESSION must not be embedded in any arg")
+				"canary BW_SESSION must not be embedded in any arg")
 		}
 	}
 
-	// S2-7: assert --session flag is absent from all calls.
+	// Assert --session flag is absent from all calls.
 	for _, c := range calls {
 		for _, arg := range c.Args {
 			assert.False(t, strings.HasPrefix(arg, "--session"),
-				"S2-7: --session flag must not appear in subprocess args")
+				"--session flag must not appear in subprocess args")
 		}
 	}
 }
@@ -136,7 +136,7 @@ func TestSessionRedaction_ListError_SessionAbsent(t *testing.T) {
 }
 
 // TestSessionRedaction_CanaryInListFixture_AbsentFromEntries verifies that
-// canary values in list fixtures are NOT returned in entry metadata (S2-3).
+// canary values in list fixtures are NOT returned in entry metadata.
 func TestSessionRedaction_CanaryInListFixture_AbsentFromEntries(t *testing.T) {
 	fixture := testdataBytes(t, "item_list_keylatch.json")
 	key := argKey(fakeBWBin, "list", "items", "--search=keylatch")
@@ -168,7 +168,7 @@ func TestSessionRedaction_CanaryInListFixture_AbsentFromEntries(t *testing.T) {
 }
 
 // TestSessionRedaction_ErrUnavailable_HintContainsBrew verifies fail-closed
-// behavior: ErrUnavailable contains actionable hint. (S2-5)
+// behavior: ErrUnavailable contains actionable hint.
 func TestSessionRedaction_ErrUnavailable_HintContainsBrew(t *testing.T) {
 	if kexec.Resolve("bw") != "" {
 		t.Skip("bw binary found in PATH — skipping unavailable test")

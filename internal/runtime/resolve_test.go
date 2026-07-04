@@ -103,7 +103,7 @@ func TestResolve_FallbackHierarchyOrder(t *testing.T) {
 }
 
 // TestResolve_ClassicSandboxedNotRemoved verifies that direct_classic_sandboxed
-// is no longer a removed mode after EPIC-24 reinstated it.
+// is no longer a removed mode.
 // Requesting it on a template that does not list it in Supported returns
 // ErrModeNotSupported (not ErrModeRemoved).
 func TestResolve_ClassicSandboxedNotRemoved(t *testing.T) {
@@ -119,13 +119,13 @@ func TestResolve_ClassicSandboxedNotRemoved(t *testing.T) {
 	require.Error(t, err)
 	// Must be ErrModeNotSupported (provider doesn't list it), NOT ErrModeRemoved.
 	assert.True(t, errors.Is(err, runtime.ErrModeNotSupported),
-		"direct_classic_sandboxed is active (EPIC-24); template that omits it returns ErrModeNotSupported")
+		"direct_classic_sandboxed is active; template that omits it returns ErrModeNotSupported")
 	assert.False(t, errors.Is(err, runtime.ErrModeRemoved),
 		"direct_classic_sandboxed must not return ErrModeRemoved — it is no longer removed")
 }
 
 // TestResolve_RemovedDirectClassicReturnsErrModeRemoved verifies that
-// requesting direct_classic (removed in T-10-03) returns ErrModeRemoved.
+// requesting direct_classic (removed) returns ErrModeRemoved.
 func TestResolve_RemovedDirectClassicReturnsErrModeRemoved(t *testing.T) {
 	tmpl := buildTmpl(
 		registry.RuntimeGatewayTyped,
@@ -138,5 +138,5 @@ func TestResolve_RemovedDirectClassicReturnsErrModeRemoved(t *testing.T) {
 	_, err := runtime.Resolve(context.Background(), req, tmpl)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, runtime.ErrModeRemoved),
-		"direct_classic must return ErrModeRemoved after T-10-03")
+		"direct_classic must return ErrModeRemoved")
 }

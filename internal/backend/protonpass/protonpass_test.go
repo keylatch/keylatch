@@ -61,7 +61,7 @@ func TestProtonPassGet_NotFound(t *testing.T) {
 }
 
 func TestProtonPassGet_Locked(t *testing.T) {
-	// S2-9: inject a raw stderr that contains a sensitive URL; verify it does NOT
+	// Inject a raw stderr that contains a sensitive URL; verify it does NOT
 	// appear in the returned error but that ErrLocked IS returned.
 	rawStderr := "not authenticated to server at https://api.proton.me"
 	key := argKey(fakeProtonBin, "item", "get", "keylatch/default/secret", "--output", "json")
@@ -74,9 +74,9 @@ func TestProtonPassGet_Locked(t *testing.T) {
 	b := openWithRunner(t, runner)
 	_, _, err := b.Get(context.Background(), "default/secret")
 	require.Error(t, err)
-	// S2-9: raw stderr phrase must not appear in the error.
+	// Raw stderr phrase must not appear in the error.
 	assert.True(t, errors.Is(err, backend.ErrLocked), "expected ErrLocked, got: %v", err)
-	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated (S2-9)")
+	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated")
 	// Auth hint must be present.
 	assert.Contains(t, err.Error(), "pass-cli auth login")
 }
@@ -142,7 +142,7 @@ func TestProtonPassSet_Locked(t *testing.T) {
 	err := b.Set(context.Background(), "default/db/password", []byte("value"), backend.Meta{})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, backend.ErrLocked), "expected ErrLocked, got: %v", err)
-	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated (S2-9)")
+	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated")
 }
 
 func TestProtonPassDelete_HappyPath(t *testing.T) {
@@ -191,7 +191,7 @@ func TestProtonPassList_ReturnsMetadataOnly(t *testing.T) {
 	// Should only include keylatch/ prefixed items (2 out of 3).
 	assert.Len(t, entries, 2)
 
-	// S2-3: no value bytes in entries.
+	// No value bytes in entries.
 	for _, e := range entries {
 		assert.Empty(t, e.Accessor, "accessor must be empty in list output")
 		assert.NotContains(t, e.Path, "CANARY")

@@ -1,5 +1,5 @@
-// zero_test.go — T6-02
-// Verifies that Keyring.Zero() wipes all DEK backing arrays (S5-5).
+// zero_test.go
+// Verifies that Keyring.Zero() wipes all DEK backing arrays.
 package keyring
 
 import (
@@ -102,7 +102,7 @@ func TestDEKZeroedAfterUse(t *testing.T) {
 	// Verify the backing array is zeroed via the slice we still hold.
 	for i, b := range activeDEK {
 		if b != 0 {
-			t.Errorf("DEK byte[%d] = 0x%02x after Zero() (S5-5 violated)", i, b)
+			t.Errorf("DEK byte[%d] = 0x%02x after Zero()", i, b)
 		}
 	}
 }

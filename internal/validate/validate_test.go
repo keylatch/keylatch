@@ -94,7 +94,7 @@ func TestStrictModeFailsOnUnknownKeys(t *testing.T) {
 	ctx := context.Background()
 	store := newMockStore()
 
-	// Seed a connection metadata entry at the canonical path (S-FIND-23).
+	// Seed a connection metadata entry at the canonical path.
 	metaPath := "default/ai/openrouter/meta"
 	require.NoError(t, store.Set(ctx, metaPath, []byte(`{"provider":"openrouter","account":"default","namespace":"default","runtime":"gateway_sdk","status":"untested","fields":["api_key"]}`), backend.Meta{Path: metaPath}))
 
@@ -130,7 +130,7 @@ func TestOverbroadScopesProducesWarning(t *testing.T) {
 	// openrouter does not have OverbroadScopes in our template, so use a
 	// provider that has them. For testing, we test the direct path with sentry.
 	// (sentry also has no OverbroadScopes in our template, so we test the
-	//  mechanism by verifying the issue type rather than testing a specific provider.)
+	// mechanism by verifying the issue type rather than testing a specific provider.)
 
 	// This test verifies that if issues are returned, warnings are non-fatal.
 	issues, err := ValidateConnection(ctx, "default", "openrouter", "default", store)

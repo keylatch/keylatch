@@ -1,6 +1,6 @@
 package cli_test
 
-// S4-8 tests: destroy-version and rollback must be blocked in LLM sessions
+// Tests: destroy-version and rollback must be blocked in LLM sessions
 // and must not modify the vault when blocked.
 
 import (
@@ -15,7 +15,7 @@ import (
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
-// TestDestroyVersion_BlockedInLLMSession verifies S4-8: destroy-version returns
+// TestDestroyVersion_BlockedInLLMSession verifies that destroy-version returns
 // an error in an LLM session and does NOT destroy any version.
 func TestDestroyVersion_BlockedInLLMSession(t *testing.T) {
 	dir := t.TempDir()
@@ -58,11 +58,11 @@ func TestDestroyVersion_BlockedInLLMSession(t *testing.T) {
 	// Vault must NOT have been modified: v1 must still be accessible.
 	_, _, getErr := vault.GetVersion(ctx, path, 1, cfg, env)
 	if getErr != nil {
-		t.Errorf("S4-8 violated: vault was modified — v1 should still be live, got: %v", getErr)
+		t.Errorf("security invariant violated: vault was modified — v1 should still be live, got: %v", getErr)
 	}
 }
 
-// TestRollback_BlockedInLLMSession verifies S4-8: rollback returns an error in
+// TestRollback_BlockedInLLMSession verifies that rollback returns an error in
 // an LLM session and does NOT create a new version.
 func TestRollback_BlockedInLLMSession(t *testing.T) {
 	dir := t.TempDir()
@@ -108,6 +108,6 @@ func TestRollback_BlockedInLLMSession(t *testing.T) {
 		t.Fatalf("GetMeta: %v", metaErr)
 	}
 	if m.CurrentVersion != 2 {
-		t.Errorf("S4-8 violated: vault was modified — CurrentVersion should be 2, got %d", m.CurrentVersion)
+		t.Errorf("security invariant violated: vault was modified — CurrentVersion should be 2, got %d", m.CurrentVersion)
 	}
 }

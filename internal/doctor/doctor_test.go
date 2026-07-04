@@ -159,7 +159,7 @@ func TestRun_FreshHome_NoPaths(t *testing.T) {
 }
 
 func TestRun_CanaryNotInOutput(t *testing.T) {
-	// S05-7: the canary must never appear in any check output.
+	// the canary must never appear in any check output.
 	_, env := bootstrappedHome(t)
 	probe := newMockProbe()
 

@@ -1,6 +1,6 @@
 package cli_test
 
-// set_cmd_test.go verifies S4-6: secret values must not be passed as positional
+// set_cmd_test.go verifies that secret values must not be passed as positional
 // arguments to the set command.
 
 import (
@@ -37,7 +37,7 @@ func TestSetCmd_S4_6_RejectsPositionalValue(t *testing.T) {
 
 	err := root.Execute()
 	if err == nil {
-		t.Error("expected an error when passing secret value as positional arg (S4-6), got nil")
+		t.Error("expected an error when passing secret value as positional arg, got nil")
 	}
 
 	// Error message should mention the argument problem (cobra's ExactArgs error).
@@ -54,6 +54,6 @@ func TestSetCmd_S4_6_RejectsPositionalValue(t *testing.T) {
 		return
 	}
 	if len(metas) != 0 {
-		t.Errorf("S4-6 violated: set command wrote to vault despite positional arg rejection, found %d meta entries", len(metas))
+		t.Errorf("security invariant violated: set command wrote to vault despite positional arg rejection, found %d meta entries", len(metas))
 	}
 }

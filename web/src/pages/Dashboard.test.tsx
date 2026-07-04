@@ -181,7 +181,7 @@ describe('Dashboard — receipt feed', () => {
   })
 })
 
-// ── EPIC-16 canonical test suite ─────────────────────────────────────────────
+// ── canonical test suite ─────────────────────────────────────────────
 
 describe('Dashboard_FetchesOnMount', () => {
   beforeEach(() => {
@@ -328,7 +328,7 @@ describe('Dashboard_NeverRendersCredential', () => {
     vi.unstubAllGlobals()
   })
 
-  it('never renders credential value fields in the DOM (S-RM-9)', async () => {
+  it('never renders credential value fields in the DOM', async () => {
     const canary = 'sk-test-canary-credential-value-should-never-appear'
     mockFetchReceipts.mockResolvedValueOnce([
       makeReceipt({ provider: canary.slice(0, 8) }), // use only the non-secret prefix

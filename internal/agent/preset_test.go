@@ -134,7 +134,7 @@ func TestDiffShowsExactChanges(t *testing.T) {
 	assert.NotEmpty(t, diff.Modified, "diff must detect modified files")
 }
 
-// TestDryRunProducesNoWrites verifies S3-7: DryRun=true writes no files.
+// TestDryRunProducesNoWrites verifies DryRun=true writes no files.
 func TestDryRunProducesNoWrites(t *testing.T) {
 	tmpHome := withTempHome(t)
 	ctx := context.Background()
@@ -205,7 +205,7 @@ func TestHealthCheckReturnsValidStatus(t *testing.T) {
 	assert.NotEmpty(t, status.Detail)
 }
 
-// TestWriteGuardErrUndeclaredWritePath verifies S3-11: writing to an undeclared
+// TestWriteGuardErrUndeclaredWritePath verifies writing to an undeclared
 // path returns ErrUndeclaredWritePath.
 func TestWriteGuardErrUndeclaredWritePath(t *testing.T) {
 	withTempHome(t)
@@ -220,7 +220,7 @@ func TestWriteGuardErrUndeclaredWritePath(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUndeclaredWritePath)
 }
 
-// TestWriteGuardErrSecretInContent verifies S3-8: content containing
+// TestWriteGuardErrSecretInContent verifies content containing
 // KEYLATCH_MCP_TOKEN is rejected.
 func TestWriteGuardErrSecretInContent(t *testing.T) {
 	tmpHome := withTempHome(t)

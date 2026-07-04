@@ -127,7 +127,7 @@ func TestChain_HardwareOnly_NoPassphrase(t *testing.T) {
 	chain := fallback.NewChain(specs)
 
 	// RequiredRootTypes = [RootSecureEnclave] but only passphrase is in specs.
-	// FIND2-003: passphrase must not be selected when hardware is required.
+	// passphrase must not be selected when hardware is required.
 	_, _, err := chain.Resolve(context.Background(), fallback.Operation{
 		Kind:               fallback.OperationWrap,
 		InteractiveAllowed: true,

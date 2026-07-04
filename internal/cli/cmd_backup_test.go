@@ -40,7 +40,7 @@ func (m *mockBackupStore) Get(_ context.Context, path string) ([]byte, backend.M
 }
 
 // TestBackupLLMSessionBlocked verifies that backup is blocked (returns error)
-// when run in an LLM session (T-12-02 guard).
+// when run in an LLM session.
 func TestBackupLLMSessionBlocked(t *testing.T) {
 	t.Setenv("CLAUDE_CODE", "1")
 
@@ -135,7 +135,6 @@ func TestWriteBackupToFile_NonEmpty(t *testing.T) {
 // TestBackup_HumanTerminal_Succeeds verifies that writeBackupToFile succeeds
 // for a human-terminal session with a passphrase-derived KEK and a mock store.
 // Uses --passphrase-file to bypass TTY requirement in non-interactive tests.
-// EPIC-30 T-12-02 canonical test name.
 func TestBackup_HumanTerminal_Succeeds(t *testing.T) {
 	t.Parallel()
 
@@ -179,7 +178,6 @@ func TestBackup_HumanTerminal_Succeeds(t *testing.T) {
 
 // TestBackup_DecryptableWithPassphrase verifies the full backup round-trip:
 // write an encrypted archive, read the header, and decrypt the credential entry.
-// EPIC-30 T-12-02 canonical test name.
 func TestBackup_DecryptableWithPassphrase(t *testing.T) {
 	t.Parallel()
 

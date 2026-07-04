@@ -469,7 +469,7 @@ func TestRegister_KeyCommands(t *testing.T) {
 	t.Parallel()
 	root := cli.NewRootCommand()
 	expectedCmds := []string{
-		// v1.0.0: "inject" removed (T-10-02); direct_classic removed (T-10-03).
+		// v1.0.0: "inject" removed; direct_classic removed.
 		"setup", "connect", "agent", "doctor", "ui", "bootstrap",
 		"get", "get-masked", "list", "status", "run",
 		"gateway", "team", "policy", "grant", "actors", "audit",

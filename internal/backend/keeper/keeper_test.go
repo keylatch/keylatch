@@ -62,7 +62,7 @@ func TestKeeperGet_NotFound(t *testing.T) {
 }
 
 func TestKeeperGet_NotLoggedIn(t *testing.T) {
-	// S2-9: inject raw stderr with a sensitive phrase; verify it does NOT appear in
+	// Inject raw stderr with a sensitive phrase; verify it does NOT appear in
 	// the returned error but that ErrLocked IS returned.
 	rawStderr := "error: not authenticated to vault server at https://keepersecurity.com"
 	key := argKey(fakeKeeperBin, "get", "--format=json", "keylatch/default/secret")
@@ -76,8 +76,8 @@ func TestKeeperGet_NotLoggedIn(t *testing.T) {
 	_, _, err := b.Get(context.Background(), "default/secret")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, backend.ErrLocked), "expected ErrLocked, got: %v", err)
-	// S2-9: raw stderr must not be propagated.
-	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated (S2-9)")
+	// Raw stderr must not be propagated.
+	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated")
 	// Auth hint must be present.
 	assert.Contains(t, err.Error(), "keeper login")
 }
@@ -135,7 +135,7 @@ func TestKeeperSet_Locked(t *testing.T) {
 	err := b.Set(context.Background(), "default/db/password", []byte("value"), backend.Meta{})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, backend.ErrLocked), "expected ErrLocked, got: %v", err)
-	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated (S2-9)")
+	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated")
 }
 
 func TestKeeperDelete_HappyPath(t *testing.T) {
@@ -194,7 +194,7 @@ func TestKeeperList_MetadataOnly(t *testing.T) {
 	// Should only include keylatch/ prefixed items (2 out of 3).
 	assert.Len(t, entries, 2)
 
-	// S2-3: no secret values in entries — only metadata.
+	// No secret values in entries — only metadata.
 	for _, e := range entries {
 		assert.NotContains(t, e.Path, "other-app")
 		assert.NotEmpty(t, e.Accessor, "accessor (record_uid) should be set")

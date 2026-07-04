@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNoBlocklistField verifies S0-9: Connection has no blocklist/denylist field.
+// TestNoBlocklistField verifies that Connection has no blocklist/denylist field.
 func TestNoBlocklistField(t *testing.T) {
 	tp := reflect.TypeOf(runner.Connection{})
 	blocklisted := []string{"Blocklist", "DenyList", "Deny", "Block", "Denied"}
@@ -16,7 +16,7 @@ func TestNoBlocklistField(t *testing.T) {
 		fieldName := tp.Field(i).Name
 		for _, forbidden := range blocklisted {
 			assert.NotEqual(t, forbidden, fieldName,
-				"Connection must not have a %q field (S0-9: allowlist-only)", forbidden)
+				"Connection must not have a %q field (allowlist-only)", forbidden)
 		}
 	}
 }

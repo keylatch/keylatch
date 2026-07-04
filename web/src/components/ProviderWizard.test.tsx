@@ -1,10 +1,10 @@
 /**
- * ProviderWizard tests — T-14-03.
+ * ProviderWizard tests — .
  *
  * Tests:
- *   - Step navigation: pick provider → see fields → back to picker
- *   - Mixed-mode payload: one direct field + one reference field
- *   - Validation: error shown when required direct field is empty
+ * - Step navigation: pick provider → see fields → back to picker
+ * - Mixed-mode payload: one direct field + one reference field
+ * - Validation: error shown when required direct field is empty
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'

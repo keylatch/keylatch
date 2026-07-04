@@ -8,7 +8,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 )
 
-// TestLLMSession_FIND001 verifies that two tokens identical except for LLMSession
+// TestLLMSession_ReadClassBlocked verifies that two tokens identical except for LLMSession
 // behave differently for read-class routes.
 func TestLLMSession_ReadClassBlocked(t *testing.T) {
 	key := make([]byte, 32)

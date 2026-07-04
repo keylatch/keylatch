@@ -1,6 +1,6 @@
 package main_test
 
-// Phase 0.5 end-to-end test scenarios.
+// end-to-end test scenarios.
 // These tests build the keylatch binary (via TestMain in main_e2e_test.go)
 // and run full CLI scenarios with HOME=t.TempDir().
 
@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestE2E_Bootstrap_DryRunJSON — SC05-1: dry-run produces a JSON plan with
+// TestE2E_Bootstrap_DryRunJSON — dry-run produces a JSON plan with
 // Done=false for every step and writes nothing to disk.
 func TestE2E_Bootstrap_DryRunJSON(t *testing.T) {
 	homeDir := t.TempDir()
@@ -49,7 +49,7 @@ func TestE2E_Bootstrap_DryRunJSON(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Bootstrap_WritesFiles — SC05-2: bootstrap creates all required files
+// TestE2E_Bootstrap_WritesFiles — bootstrap creates all required files
 // with correct modes.
 func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 	homeDir := t.TempDir()
@@ -72,7 +72,7 @@ func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Bootstrap_Idempotent — SC05-3: running bootstrap twice produces all-noop.
+// TestE2E_Bootstrap_Idempotent — running bootstrap twice produces all-noop.
 func TestE2E_Bootstrap_Idempotent(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
@@ -96,7 +96,7 @@ func TestE2E_Bootstrap_Idempotent(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Doctor_JSON — SC05-4: doctor --json reports OverallOK=true after bootstrap.
+// TestE2E_Doctor_JSON — doctor --json reports OverallOK=true after bootstrap.
 func TestE2E_Doctor_JSON(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
@@ -124,7 +124,7 @@ func TestE2E_Doctor_JSON(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_NoHardcodedPaths — SC05-5: no generated file contains a hardcoded path.
+// TestE2E_NoHardcodedPaths — no generated file contains a hardcoded path.
 func TestE2E_NoHardcodedPaths(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
@@ -153,7 +153,7 @@ func TestE2E_NoHardcodedPaths(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestE2E_Completion_Zsh — SC05-6: completion zsh output starts with #compdef keylatch.
+// TestE2E_Completion_Zsh — completion zsh output starts with #compdef keylatch.
 func TestE2E_Completion_Zsh(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
@@ -169,7 +169,7 @@ func TestE2E_Completion_Zsh(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Doctor_ExitsZero — SC05-7: doctor does not exit 2 (blocking failures) when OverallOK.
+// TestE2E_Doctor_ExitsZero — doctor does not exit 2 (blocking failures) when OverallOK.
 // Warnings (exit 1) are informational and do not constitute failures. After bootstrap in an
 // isolated temp home the doctor reports several informational warnings (gateway not running,
 // hook not installed, etc.) so exit 1 is the expected steady-state exit code.
@@ -185,7 +185,7 @@ func TestE2E_Doctor_ExitsZero(t *testing.T) {
 	assert.NotEqual(t, 2, code, "doctor must not exit 2 (blocking failures) after bootstrap — warnings (exit 1) are acceptable")
 }
 
-// TestE2E_ConfigSet_Backend — SC05-8: config set backend persists atomically.
+// TestE2E_ConfigSet_Backend — config set backend persists atomically.
 func TestE2E_ConfigSet_Backend(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
@@ -214,7 +214,7 @@ func TestE2E_ConfigSet_Backend(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_ConfigSet_CredentialKeyRejected — SC05-9: config set <credential-like-key> exits 1.
+// TestE2E_ConfigSet_CredentialKeyRejected — config set <credential-like-key> exits 1.
 func TestE2E_ConfigSet_CredentialKeyRejected(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
@@ -232,7 +232,7 @@ func TestE2E_ConfigSet_CredentialKeyRejected(t *testing.T) {
 		"error message should redirect to keylatch set: %s", combined)
 }
 
-// TestE2E_GoVet — SC05-10: go vet ./... passes.
+// TestE2E_GoVet — go vet ./... passes.
 func TestE2E_GoVet(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping go vet in short mode")

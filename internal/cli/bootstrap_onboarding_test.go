@@ -1,14 +1,14 @@
 package cli_test
 
-// bootstrap_onboarding_test.go — EPIC-11 bootstrap onboarding tests.
+// bootstrap_onboarding_test.go — bootstrap onboarding tests.
 //
 // Tests:
 //   - TestSetup_LocalBranch_Stdin         — local branch: ResolveStdinFields accepts key=value pairs
 //   - TestSetup_ReferenceBranch_OpURI     — reference branch: ValidateProviderRefURI accepts op:// URI
 //   - TestSetup_NonTTY_NoStdin_Fails      — setup command registered with --non-interactive flag
-//   - TestRun_FirstRunGuard_NoBootstrap   — EPIC-11 guard 1: BootstrapMissing error class + code 7
-//   - TestRun_FirstRunGuard_NoConnection  — EPIC-11 guard 2: SecretNotFound error class + code 6
-//   - TestRun_FirstRunGuard_RuntimeUnavailable — EPIC-11 guard 3: RuntimeNotAvailable error + code 5
+//   - TestRun_FirstRunGuard_NoBootstrap   — guard 1: BootstrapMissing error class + code 7
+//   - TestRun_FirstRunGuard_NoConnection  — guard 2: SecretNotFound error class + code 6
+//   - TestRun_FirstRunGuard_RuntimeUnavailable — guard 3: RuntimeNotAvailable error + code 5
 
 import (
 	"testing"

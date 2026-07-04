@@ -75,9 +75,9 @@ func TestDoctorHandler_RouteRegistered(t *testing.T) {
 
 // TestDoctorHandler_ExitZeroWhenHealthy asserts the tri-state exit-code contract (W-06):
 //
-//	healthy=true,  warnings=false → exit==0
-//	healthy=true,  warnings=true  → exit==1
-//	healthy=false                 → exit==2
+//	healthy=true, warnings=false → exit==0
+//	healthy=true, warnings=true → exit==1
+//	healthy=false → exit==2
 //
 // The doctor runs real checks in the test environment, so the exact outcome
 // depends on the machine state. We assert only the contract, not a fixed

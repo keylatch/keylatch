@@ -87,7 +87,7 @@ func setupTestKey(t *testing.T) func(data []byte) []byte {
 	}
 }
 
-// TestUnsignedBundleRejected verifies FIND-008: a bundle without a .sig file
+// TestUnsignedBundleRejected verifies that a bundle without a .sig file
 // is rejected with ErrUnsignedRegistryBundle when AllowUnsigned=false.
 func TestUnsignedBundleRejected(t *testing.T) {
 	data := testBundleJSON(t)
@@ -97,7 +97,7 @@ func TestUnsignedBundleRejected(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnsignedRegistryBundle, "unsigned bundle must be rejected")
 }
 
-// TestTamperedBundleRejected verifies FIND-008: a bundle whose data has been
+// TestTamperedBundleRejected verifies that a bundle whose data has been
 // modified after signing is rejected with ErrUnsignedRegistryBundle.
 func TestTamperedBundleRejected(t *testing.T) {
 	sign := setupTestKey(t)
@@ -120,7 +120,7 @@ func TestTamperedBundleRejected(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnsignedRegistryBundle, "tampered bundle must be rejected")
 }
 
-// TestAllowUnsignedOutsideLLMSession verifies FIND-008: AllowUnsigned=true is
+// TestAllowUnsignedOutsideLLMSession verifies that AllowUnsigned=true is
 // accepted when not inside an LLM session.
 func TestAllowUnsignedOutsideLLMSession(t *testing.T) {
 	// Ensure no LLM session signals are set.
@@ -137,7 +137,7 @@ func TestAllowUnsignedOutsideLLMSession(t *testing.T) {
 	assert.NotEmpty(t, bundle.Templates)
 }
 
-// TestAllowUnsignedBlockedInsideLLMSession verifies FIND-008: AllowUnsigned=true
+// TestAllowUnsignedBlockedInsideLLMSession verifies that AllowUnsigned=true
 // is blocked inside an LLM session.
 func TestAllowUnsignedBlockedInsideLLMSession(t *testing.T) {
 	// Simulate LLM session.
@@ -189,7 +189,7 @@ func TestAuditLogContainsRegistryLoadAction(t *testing.T) {
 	assert.False(t, events[1].Time.IsZero())
 }
 
-// TestValidSignedBundleLoadsSuccessfully verifies FIND-008: a properly signed
+// TestValidSignedBundleLoadsSuccessfully verifies that a properly signed
 // bundle loads without error when AllowUnsigned=false.
 func TestValidSignedBundleLoadsSuccessfully(t *testing.T) {
 	t.Setenv("CLAUDE_CODE", "")

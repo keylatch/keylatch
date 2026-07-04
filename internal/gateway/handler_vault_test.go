@@ -293,7 +293,7 @@ func TestGatewayVault_CredentialReachesUpstream(t *testing.T) {
 	defer upstream.Close()
 
 	// Vault returns the credential at the path the openrouter route uses.
-	// The path is "default/ai/openrouter/api_key" (canonical S-FIND-23 format).
+	// The path is "default/ai/openrouter/api_key" (canonical format).
 	// openrouter's first injection rule source is "api_key".
 	vault := &stubVaultReader{
 		values: map[string][]byte{
@@ -535,7 +535,7 @@ func TestGatewayUp_ResolvesAEADCredential(t *testing.T) {
 		t.Fatalf("OpenWithKeyring: %v", err)
 	}
 
-	// Write credential at canonical path (S-FIND-23, T-03-01).
+	// Write credential at canonical path.
 	const credPath = "default/ai/openrouter/api_key"
 	if err := fb.Set(context.Background(), credPath, []byte(credValue), backend.Meta{}); err != nil {
 		t.Fatalf("Set credential: %v", err)
@@ -617,7 +617,7 @@ func TestGatewayUp_ResolvesAEADCredential(t *testing.T) {
 }
 
 // TestGatewayAuth_OnVaultLock_FlushesCache verifies that OnVaultLock returns
-// no error and results in Exchange returning ErrVaultLocked (FIND2-004).
+// no error and results in Exchange returning ErrVaultLocked.
 func TestGatewayAuth_OnVaultLock_FlushesCache(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)

@@ -89,7 +89,7 @@ func TestVaultUnlock_ExchangeProceeds(t *testing.T) {
 }
 
 func TestVaultLock_FlushSynchronous(t *testing.T) {
-	// After OnVaultLock returns, the cache must be empty (FIND2-004).
+	// After OnVaultLock returns, the cache must be empty.
 	b := newTestBroker(t)
 	ctx := context.Background()
 

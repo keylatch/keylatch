@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestFIND004AllowlistRejections verifies FIND-004: the per-template allowlist
+// TestAllowlistRejections verifies that the per-template allowlist
 // rejects dangerous commands while permitting safe ones.
 // Uses the specific allowlist from the plan: ["node script.js", "tsx scripts/"]
-func TestFIND004AllowlistRejections(t *testing.T) {
+func TestAllowlistRejections(t *testing.T) {
 	// Specific allowlist per plan spec — more restrictive than just "node ".
 	allowlist := []string{"node script.js", "tsx scripts/"}
 
@@ -47,9 +47,9 @@ func TestFIND004AllowlistRejections(t *testing.T) {
 	}
 }
 
-// TestFIND004EmptyAllowlistRejectsEverything verifies that an empty allowlist
+// TestEmptyAllowlistRejectsEverything verifies that an empty allowlist
 // denies every command, including seemingly safe ones.
-func TestFIND004EmptyAllowlistRejectsEverything(t *testing.T) {
+func TestEmptyAllowlistRejectsEverything(t *testing.T) {
 	commands := []string{
 		"node script.js",
 		"tsx main.ts",

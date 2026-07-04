@@ -224,9 +224,9 @@ func TestInitKeyring(t *testing.T) {
 	}
 }
 
-// TestPhase5ValuesOpaqueWithoutKeyring verifies that values written through the
-// encrypted backend are not readable as plaintext (S5-1).
-func TestPhase5ValuesOpaqueWithoutKeyring(t *testing.T) {
+// TestEncryptedValuesOpaqueOnDisk verifies that values written through the
+// encrypted backend are not readable as plaintext.
+func TestEncryptedValuesOpaqueOnDisk(t *testing.T) {
 	dir := t.TempDir()
 	kr, k := buildKeyring(t, dir, envelope.XChaCha20Poly1305)
 	defer kr.Zero()

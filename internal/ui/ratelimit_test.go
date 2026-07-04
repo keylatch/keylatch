@@ -9,7 +9,7 @@ import (
 
 // TestBootstrapRateLimit_SixthRequestReturns429 verifies that after 5 failed
 // requests from the same IP, the sixth returns 429 Too Many Requests.
-// This implements T-13-01 acceptance criterion.
+// This implements acceptance criterion.
 func TestBootstrapRateLimit_SixthRequestReturns429(t *testing.T) {
 	t.Parallel()
 

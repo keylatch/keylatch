@@ -63,7 +63,7 @@ func TestLastPassGet_NotFound(t *testing.T) {
 }
 
 func TestLastPassGet_NotLoggedIn(t *testing.T) {
-	// S2-9: inject raw stderr with a sensitive phrase; verify it does NOT appear
+	// Inject raw stderr with a sensitive phrase; verify it does NOT appear
 	// in the returned error but that ErrLocked IS returned.
 	rawStderr := "Please login via `lpass login --trust` to authenticate to server at lastpass.com"
 	key := argKey(fakeLpassBin, "show", "--json", "--field=Password", "keylatch/default/secret")
@@ -77,8 +77,8 @@ func TestLastPassGet_NotLoggedIn(t *testing.T) {
 	_, _, err := b.Get(context.Background(), "default/secret")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, backend.ErrLocked), "expected ErrLocked, got: %v", err)
-	// S2-9: raw stderr must not be propagated.
-	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated (S2-9)")
+	// Raw stderr must not be propagated.
+	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated")
 	// Auth hint must be present.
 	assert.Contains(t, err.Error(), "lpass login")
 }
@@ -114,7 +114,7 @@ func TestLastPassSet_Locked(t *testing.T) {
 	err := b.Set(context.Background(), "default/db/password", []byte("value"), backend.Meta{})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, backend.ErrLocked), "expected ErrLocked, got: %v", err)
-	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated (S2-9)")
+	assert.NotContains(t, err.Error(), rawStderr, "raw stderr must not be propagated")
 }
 
 func TestLastPassDelete_HappyPath(t *testing.T) {

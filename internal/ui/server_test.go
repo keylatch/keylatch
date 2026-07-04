@@ -88,7 +88,7 @@ func TestServer_BootstrapHandler(t *testing.T) {
 	assert.Equal(t, http.StatusSeeOther, rec.Code, "bootstrap should redirect with 303")
 	// Token must not appear in redirect Location
 	location := rec.Header().Get("Location")
-	assert.NotContains(t, location, "b=", "FIND-011: token must not appear in redirect URL")
+	assert.NotContains(t, location, "b=", "token must not appear in redirect URL")
 }
 
 func TestServer_BootstrapConsumedOnce(t *testing.T) {

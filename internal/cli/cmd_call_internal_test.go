@@ -67,7 +67,7 @@ func TestBuildCallMeta_NoAction(t *testing.T) {
 	}
 }
 
-// TestCallMetaAllowlist verifies T-13-06: every JSON key in callMeta appears
+// TestCallMetaAllowlist verifies every JSON key in callMeta appears
 // in callMetaAllowedFields, and callMetaFilteredFields drops unknown keys.
 func TestCallMetaAllowlist(t *testing.T) {
 	t.Parallel()

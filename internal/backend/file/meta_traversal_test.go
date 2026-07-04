@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFileBackend_MetaPathTraversalRejected verifies L1: GetMeta and SetMeta
+// TestFileBackend_MetaPathTraversalRejected verifies that GetMeta and SetMeta
 // reject path-traversal inputs with the same "escapes vault root" guard used
-// by Set/Delete (S-INV-11 / S-FIND-23). Metadata reads/writes go through
+// by Set/Delete. Metadata reads/writes go through
 // metadataPath rather than FileBackend.Set/Delete, so this must be defended
 // independently.
 func TestFileBackend_MetaPathTraversalRejected(t *testing.T) {

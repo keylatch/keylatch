@@ -173,7 +173,7 @@ func TestPushReceiptsHandler_BadBody(t *testing.T) {
 
 // TestReceiptsPOST_RejectsForeignUID verifies that POST /v1/receipts is rejected
 // with 401 when the X-Keylatch-IPC-Secret header is absent or incorrect
-// (S-INV-12 peer-cred check). This prevents foreign UIDs or unprivileged
+// (peer-cred check). This prevents foreign UIDs or unprivileged
 // processes from injecting fake receipts into the UI dashboard.
 func TestReceiptsPOST_RejectsForeignUID(t *testing.T) {
 	t.Parallel()
@@ -220,7 +220,7 @@ func TestReceiptsPOST_RejectsForeignUID(t *testing.T) {
 	})
 }
 
-// ── EPIC-16 canonical test suite ─────────────────────────────────────────────
+// ── canonical test suite ─────────────────────────────────────────────
 
 // TestReceipts_GETJSON verifies basic JSON response shape for GET /v1/receipts.
 func TestReceipts_GETJSON(t *testing.T) {
@@ -361,7 +361,7 @@ func TestReceipts_SSEEmitsOnPush(t *testing.T) {
 }
 
 // TestReceipts_NeverContainsCredentialBytes verifies that the GET /v1/receipts
-// response only contains the approved projected fields (S-RM-9). The canary is
+// response only contains the approved projected fields. The canary is
 // injected as the Provider value — a projected field — to confirm the projection
 // pipeline is active and actually serving data. It then verifies that no
 // unapproved credential-key names appear in the response body.
@@ -400,10 +400,10 @@ func TestReceipts_NeverContainsCredentialBytes(t *testing.T) {
 	assert.True(t, strings.Contains(body, canary),
 		"canary injected as provider slug must appear in projected response — handler returned no data")
 
-	// No credential-key names must appear in any serialised key position (S-RM-9).
+	// No credential-key names must appear in any serialised key position.
 	for _, kw := range []string{`"value":`, `"secret":`, `"password":`, `"api_key":`, `"credential_value":`} {
 		assert.False(t, strings.Contains(body, kw),
-			"credential field key %q must not appear in receipt JSON (S-RM-9)", kw)
+			"credential field key %q must not appear in receipt JSON", kw)
 	}
 
 	// Additionally verify the response only contains the approved projected keys.
@@ -424,12 +424,12 @@ func TestReceipts_NeverContainsCredentialBytes(t *testing.T) {
 	}
 	for key := range receiptMap {
 		assert.True(t, approvedSet[key],
-			"receipt response contains unexpected key %q — only approved projected fields permitted (S-RM-9)", key)
+			"receipt response contains unexpected key %q — only approved projected fields permitted", key)
 	}
 }
 
 // TestReceipts_NoCredentialValues verifies that no credential field values appear
-// in the response body (S-RM-9 compliance).
+// in the response body.
 func TestReceipts_NoCredentialValues(t *testing.T) {
 	t.Parallel()
 	store := api.NewReceiptStore(100)

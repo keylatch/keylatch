@@ -36,7 +36,7 @@ func TestGenerateCompose_LocalhostPortBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Must bind to 127.0.0.1 only (S9-10).
+	// Must bind to 127.0.0.1 only.
 	if !strings.Contains(string(data), "127.0.0.1:7878:7878") {
 		t.Errorf("expected localhost port binding 127.0.0.1:7878:7878, got:\n%s", data)
 	}
@@ -75,7 +75,7 @@ func TestGenerateCompose_RootlessUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Must specify a non-root user (S9-10).
+	// Must specify a non-root user.
 	if !strings.Contains(string(data), "nonroot") {
 		t.Errorf("expected nonroot user directive:\n%s", data)
 	}
@@ -89,7 +89,7 @@ func TestGenerateCompose_SecurityOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Must include no-new-privileges (S9-10).
+	// Must include no-new-privileges.
 	if !strings.Contains(string(data), "no-new-privileges") {
 		t.Errorf("expected no-new-privileges security opt:\n%s", data)
 	}
@@ -107,7 +107,7 @@ func TestGenerateCompose_NoNetworkHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// S9-10: no --network host.
+	// No --network host.
 	if strings.Contains(string(data), "network_mode: host") {
 		t.Errorf("must not use host network mode:\n%s", data)
 	}

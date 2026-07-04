@@ -80,9 +80,9 @@ func TestFormat_FullOutput(t *testing.T) {
 	cmderr.Format(&buf, e)
 	got := buf.String()
 
-	want := "Error: could not write file\n  Cause: disk is full\n  Fix:   free up disk space\n  Docs:  keylatch.dev/errors/write-fail\n"
+	want := "Error: could not write file\n Cause: disk is full\n Fix: free up disk space\n Docs: keylatch.dev/errors/write-fail\n"
 	if got != want {
-		t.Errorf("Format() full output:\ngot:  %q\nwant: %q", got, want)
+		t.Errorf("Format() full output:\ngot: %q\nwant: %q", got, want)
 	}
 }
 
@@ -93,9 +93,9 @@ func TestFormat_NoCause(t *testing.T) {
 	cmderr.Format(&buf, e)
 	got := buf.String()
 
-	want := "Error: something failed\n  Fix:   try again\n  Docs:  keylatch.dev/errors/retry\n"
+	want := "Error: something failed\n Fix: try again\n Docs: keylatch.dev/errors/retry\n"
 	if got != want {
-		t.Errorf("Format() no-cause output:\ngot:  %q\nwant: %q", got, want)
+		t.Errorf("Format() no-cause output:\ngot: %q\nwant: %q", got, want)
 	}
 }
 
@@ -107,9 +107,9 @@ func TestFormat_NoHint(t *testing.T) {
 	cmderr.Format(&buf, e)
 	got := buf.String()
 
-	want := "Error: connection failed\n  Cause: network timeout\n  Docs:  keylatch.dev/errors/conn-fail\n"
+	want := "Error: connection failed\n Cause: network timeout\n Docs: keylatch.dev/errors/conn-fail\n"
 	if got != want {
-		t.Errorf("Format() no-hint output:\ngot:  %q\nwant: %q", got, want)
+		t.Errorf("Format() no-hint output:\ngot: %q\nwant: %q", got, want)
 	}
 }
 
@@ -121,9 +121,9 @@ func TestFormat_NoCode(t *testing.T) {
 	cmderr.Format(&buf, e)
 	got := buf.String()
 
-	want := "Error: access denied\n  Cause: permission denied\n  Fix:   check permissions\n"
+	want := "Error: access denied\n Cause: permission denied\n Fix: check permissions\n"
 	if got != want {
-		t.Errorf("Format() no-code output:\ngot:  %q\nwant: %q", got, want)
+		t.Errorf("Format() no-code output:\ngot: %q\nwant: %q", got, want)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestFormat_SummaryOnly(t *testing.T) {
 
 	want := "Error: bare error\n"
 	if got != want {
-		t.Errorf("Format() summary-only output:\ngot:  %q\nwant: %q", got, want)
+		t.Errorf("Format() summary-only output:\ngot: %q\nwant: %q", got, want)
 	}
 }
 

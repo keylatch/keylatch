@@ -1,8 +1,8 @@
 package cli
 
-// cmd_connect_provider_ref_test.go — EPIC-10: tests for the --provider-ref flag behavior.
+// cmd_connect_provider_ref_test.go — tests for the --provider-ref flag behavior.
 //
-// Design: EPIC-10 changed --provider-ref to store the URI verbatim (deferred
+// Design: --provider-ref stores the URI verbatim (deferred
 // resolution) rather than resolving plaintext at connect time.
 //
 // Tests:
