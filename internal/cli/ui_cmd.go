@@ -6,10 +6,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
 
+	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/ui"
 	"github.com/spf13/cobra"
@@ -86,7 +88,11 @@ Security notes:
 				}
 			}
 
-			bind, allowExternalBind := ui.ResolveBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
+			bind, allowExternalBind, bindErr := resolveAndValidateUIBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
+			if bindErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "ui: %v\n", bindErr)
+				os.Exit(exitcode.UserError)
+			}
 			unsafeBindAll = unsafeBindAll || allowExternalBind
 
 			// Generate signing key.
@@ -148,6 +154,22 @@ Security notes:
 	cmd.Flags().StringVar(&scopeStr, "scope", "admin", "session scope: status-only|setup|admin|token-minting")
 
 	return cmd
+}
+
+// resolveAndValidateUIBindAddr wraps ui.ResolveBindAddr with the same
+// validateHostPort check used for KEYLATCH_GATEWAY_ADDR/KEYLATCH_PROXY_ADDR
+// (docker-server-security hardening), so a malformed --listen/
+// KEYLATCH_UI_LISTEN value produces a clean exitcode.UserError message here
+// instead of a raw net.Listen error surfacing later inside ui.New()/Serve().
+//
+// Kept as a standalone, side-effect-free function (rather than inlined in
+// RunE) so it can be unit tested without starting a real server.
+func resolveAndValidateUIBindAddr(port int, listenAddr string, unsafeBindAll bool, bindEnv llmcontext.Lookup) (bind string, allowExternal bool, err error) {
+	bind, allowExternal = ui.ResolveBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
+	if err := validateHostPort(bind); err != nil {
+		return "", false, err
+	}
+	return bind, allowExternal, nil
 }
 
 // openBrowser attempts to open url in the system browser. Best-effort.

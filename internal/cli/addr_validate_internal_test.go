@@ -85,3 +85,63 @@ func TestProxyRunAddr_ValidatesEnvOverride(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "KEYLATCH_PROXY_ADDR")
 }
+
+// TestResolveAndValidateUIBindAddr covers FIX 4 (docker-server-security):
+// --listen / KEYLATCH_UI_LISTEN must be routed through the same
+// validateHostPort used for KEYLATCH_GATEWAY_ADDR/KEYLATCH_PROXY_ADDR.
+func TestResolveAndValidateUIBindAddr(t *testing.T) {
+	t.Parallel()
+
+	// Default (no --listen, no env override): always valid.
+	bind, allowExternal, err := resolveAndValidateUIBindAddr(7890, "", false, func(string) string { return "" })
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:7890", bind)
+	assert.False(t, allowExternal)
+
+	// Valid --listen flag.
+	bind, allowExternal, err = resolveAndValidateUIBindAddr(7890, "0.0.0.0:7890", false, func(string) string { return "" })
+	require.NoError(t, err)
+	assert.Equal(t, "0.0.0.0:7890", bind)
+	assert.True(t, allowExternal)
+
+	// Malformed --listen flag: clean error, no fallback to a default bind.
+	_, _, err = resolveAndValidateUIBindAddr(7890, "not-a-valid-addr", false, func(string) string { return "" })
+	require.Error(t, err)
+
+	// Malformed KEYLATCH_UI_LISTEN env override (no --listen flag set).
+	_, _, err = resolveAndValidateUIBindAddr(7890, "", false, func(k string) string {
+		if k == "KEYLATCH_UI_LISTEN" {
+			return "bad::addr"
+		}
+		return ""
+	})
+	require.Error(t, err)
+}
+
+// TestResolveAndValidateGatewayBindAddr covers FIX 4 (docker-server-security):
+// --listen / KEYLATCH_GATEWAY_LISTEN must be routed through the same
+// validateHostPort used for KEYLATCH_GATEWAY_ADDR/KEYLATCH_PROXY_ADDR.
+func TestResolveAndValidateGatewayBindAddr(t *testing.T) {
+	t.Parallel()
+
+	bind, allowExternal, err := resolveAndValidateGatewayBindAddr(7878, "", false, func(string) string { return "" })
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:7878", bind)
+	assert.False(t, allowExternal)
+
+	bind, allowExternal, err = resolveAndValidateGatewayBindAddr(7878, "0.0.0.0:7878", false, func(string) string { return "" })
+	require.NoError(t, err)
+	assert.Equal(t, "0.0.0.0:7878", bind)
+	assert.True(t, allowExternal)
+
+	_, _, err = resolveAndValidateGatewayBindAddr(7878, "not-a-valid-addr", false, func(string) string { return "" })
+	require.Error(t, err)
+
+	_, _, err = resolveAndValidateGatewayBindAddr(7878, "", false, func(k string) string {
+		if k == "KEYLATCH_GATEWAY_LISTEN" {
+			return "bad::addr"
+		}
+		return ""
+	})
+	require.Error(t, err)
+}

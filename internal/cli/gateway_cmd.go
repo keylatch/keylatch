@@ -156,6 +156,14 @@ func newGatewayUpCmd() *cobra.Command {
 					childArgs = append(childArgs, "--unsafe-bind-all")
 				}
 				if listenAddr != "" {
+					// docker-server-security: validate --listen up front so a
+					// malformed value fails immediately in the parent, rather
+					// than surfacing later as a raw net.Listen error inside the
+					// detached child.
+					if err := validateHostPort(listenAddr); err != nil {
+						fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", err)
+						os.Exit(exitcode.UserError)
+					}
 					childArgs = append(childArgs, "--listen="+listenAddr)
 				}
 				if budgetPerHour > 0 {
@@ -207,7 +215,11 @@ func newGatewayUpCmd() *cobra.Command {
 					bindEnv = func(string) string { return "" }
 				}
 			}
-			bind, allowExternalBind := gateway.ResolveBindAddr(port, effectiveListenAddr, unsafeBindAll, bindEnv)
+			bind, allowExternalBind, bindErr := resolveAndValidateGatewayBindAddr(port, effectiveListenAddr, unsafeBindAll, bindEnv)
+			if bindErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", bindErr)
+				os.Exit(exitcode.UserError)
+			}
 			unsafeBindAll = unsafeBindAll || allowExternalBind
 
 			// Open audit logger on a best-effort basis. If the keyring is not set
@@ -298,6 +310,23 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
 	return cmd
+}
+
+// resolveAndValidateGatewayBindAddr wraps gateway.ResolveBindAddr with the
+// same validateHostPort check used for KEYLATCH_GATEWAY_ADDR/
+// KEYLATCH_PROXY_ADDR (docker-server-security hardening), so a malformed
+// --listen/KEYLATCH_GATEWAY_LISTEN value produces a clean exitcode.UserError
+// message here instead of a raw net.Listen error surfacing later inside
+// gateway.New()/Serve().
+//
+// Kept as a standalone, side-effect-free function (rather than inlined in
+// RunE) so it can be unit tested without starting a real server.
+func resolveAndValidateGatewayBindAddr(port int, listenAddr string, unsafeBindAll bool, bindEnv llmcontext.Lookup) (bind string, allowExternal bool, err error) {
+	bind, allowExternal = gateway.ResolveBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
+	if err := validateHostPort(bind); err != nil {
+		return "", false, err
+	}
+	return bind, allowExternal, nil
 }
 
 // --- gateway down ---
