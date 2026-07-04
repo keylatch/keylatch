@@ -118,6 +118,18 @@ func TestCallCmd_Registered(t *testing.T) {
 	assert.Equal(t, "call", cmd.Name())
 }
 
+// TestHealthCmd_Registered verifies the `health` subcommand is registered
+// with exactly that name — a parallel packaging lane's Dockerfile HEALTHCHECK
+// references ["/keylatch","health"] directly (distroless images have no
+// shell), so the command name is load-bearing.
+func TestHealthCmd_Registered(t *testing.T) {
+	t.Parallel()
+	root := cli.NewRootCommand()
+	cmd, _, err := root.Find([]string{"health"})
+	require.NoError(t, err)
+	assert.Equal(t, "health", cmd.Name())
+}
+
 // TestGatewayRunAddr_Default verifies the default gateway address is 127.0.0.1:7878.
 func TestGatewayRunAddr_Default(t *testing.T) {
 	t.Parallel()
