@@ -461,6 +461,16 @@ func newGetCmd() *cobra.Command {
 			return nil
 		}
 
+		// M2: default signed-ticket enforcement (fail closed). See
+		// RequireVerifiedSession — no-op for human sessions and for
+		// ticket/daemon-corroborated LLM sessions (GuardLLMSession handles
+		// those below); only refuses when detection is heuristic-only AND
+		// keylatchd is unreachable.
+		if verErr := RequireVerifiedSession(llmcontext.DefaultLookup, daemon.IsRunning); verErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
+			os.Exit(exitcode.SecurityBlock)
+		}
+
 		hArgs := handlerArgsFromCmd(c, args)
 		res, err := vbh.Invoke(c.Context(), hArgs)
 		if err != nil {
@@ -547,6 +557,15 @@ func newRunCmd() *cobra.Command {
 					runDryRun(c, connName, cmd, mode, modeFlag, approvalJWT, jsonOutEarly)
 					return nil
 				}
+			}
+
+			// Guard 1b (M2): default signed-ticket enforcement (fail closed).
+			// Skipped for --dry-run above (never decrypts a credential).
+			// See RequireVerifiedSession for the full rationale and the
+			// KEYLATCH_ALLOW_UNVERIFIED_SESSION escape hatch.
+			if verErr := RequireVerifiedSession(llmcontext.DefaultLookup, daemon.IsRunning); verErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
+				os.Exit(exitcode.SecurityBlock)
 			}
 
 			// Guard 2: keyring must exist — if not, keylatch has never been bootstrapped.

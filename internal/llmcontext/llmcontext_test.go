@@ -146,6 +146,58 @@ func TestReasons_EmptyIsNotNil(t *testing.T) {
 	assert.Len(t, r, 0)
 }
 
+func TestClassifySession_Tiers(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		env      map[string]string
+		expected llmcontext.SessionSignal
+	}{
+		{"none set", map[string]string{}, llmcontext.SignalNone},
+		{"ticket present", map[string]string{"KEYLATCH_LLM_TICKET": "abc"}, llmcontext.SignalTicket},
+		{"ticket takes priority over heuristic", map[string]string{
+			"KEYLATCH_LLM_TICKET": "abc",
+			"CLAUDE_CODE":         "1",
+		}, llmcontext.SignalTicket},
+		{"heuristic only", map[string]string{"CLAUDE_CODE": "1"}, llmcontext.SignalHeuristic},
+		// queryDaemonLLMSession's own fail-closed contract returns (active:
+		// true, err: nil) for network errors (see ipc_client.go) rather than
+		// a non-nil error, so an unreachable socket classifies as
+		// SignalDaemonActive here, not SignalDaemonError. SignalDaemonError
+		// is reserved for a future queryDaemonLLMSession implementation that
+		// surfaces a real error instead of folding it into active=true.
+		{"daemon socket set but unreachable — fails closed as SignalDaemonActive", map[string]string{
+			"KEYLATCH_DAEMON_SOCKET": "/nonexistent/socket/path/for/test",
+		}, llmcontext.SignalDaemonActive},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := llmcontext.ClassifySession(lookup(tc.env))
+			assert.Equal(t, tc.expected, got)
+		})
+	}
+}
+
+func TestClassifySession_MatchesIsLLMSession(t *testing.T) {
+	t.Parallel()
+	cases := []map[string]string{
+		{},
+		{"CLAUDE_CODE": "1"},
+		{"KEYLATCH_LLM_TICKET": "abc"},
+		{"CREDENTIALS_LLM_SESSION": "0"},
+	}
+	for _, env := range cases {
+		l := lookup(env)
+		isLLM := llmcontext.IsLLMSession(l)
+		signal := llmcontext.ClassifySession(l)
+		assert.Equal(t, isLLM, signal != llmcontext.SignalNone, "IsLLMSession/ClassifySession invariant broken for %v", env)
+	}
+}
+
 func TestSignals_CanonicalList(t *testing.T) {
 	t.Parallel()
 	keys := make(map[string]bool)

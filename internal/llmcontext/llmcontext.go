@@ -11,6 +11,84 @@ type Lookup func(string) string
 // DefaultLookup resolves from the process environment.
 var DefaultLookup Lookup = func(k string) string { return os.Getenv(k) }
 
+// EnvAllowUnverifiedSession is the explicit escape hatch for M2 (default
+// signed-ticket enforcement, docker-server-security hardening pass).
+//
+// By default, `keylatch get`/`keylatch run` fail closed when a session is
+// classified as SignalHeuristic (see ClassifySession) — i.e. the ONLY reason
+// IsLLMSession returned true is the legacy env-var heuristic (S0-S6), which
+// is entirely within the classified process's own control (an agent can
+// unset it to look human; a script can set it to look like an agent) and is
+// not corroborated by a signed ticket or a live keylatchd.
+//
+// Setting KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 restores the pre-M2 behavior:
+// the heuristic alone is trusted, matching the original IsLLMSession
+// contract. llmcontext itself never fails closed on this — it only exposes
+// the classification; internal/cli's session-enforcement helper is what
+// consumes this env var to decide whether to refuse a command.
+const EnvAllowUnverifiedSession = "KEYLATCH_ALLOW_UNVERIFIED_SESSION"
+
+// SessionSignal classifies *how* IsLLMSession reached its verdict, so callers
+// that need stronger assurance than a plain bool (M2: default signed-ticket
+// enforcement) can distinguish a verified/corroborated detection from a bare,
+// spoofable heuristic match.
+type SessionSignal int
+
+const (
+	// SignalNone: no tier detected an LLM session. IsLLMSession returns false.
+	SignalNone SessionSignal = iota
+	// SignalTicket: KEYLATCH_LLM_TICKET is present (Priority 1). Presence-only
+	// fast path — see IsLLMSession's doc comment. Full cryptographic
+	// verification is VerifyTicket, which requires keylatchd's in-memory
+	// signing key and is not performed by this classification.
+	SignalTicket
+	// SignalDaemonActive: keylatchd IPC (KEYLATCH_DAEMON_SOCKET) explicitly
+	// confirmed active=true for this PID (Priority 2).
+	SignalDaemonActive
+	// SignalDaemonError: keylatchd IPC was configured but the query failed
+	// (network error, timeout, bad schema). IsLLMSession fails closed here
+	// (treats as true) just like SignalDaemonActive, but this is NOT an
+	// actual daemon-corroborated verdict — it is distinguished so callers
+	// doing stronger verification (M2) can tell the two apart.
+	SignalDaemonError
+	// SignalHeuristic: none of the above fired conclusively — IsLLMSession's
+	// "true" verdict (if any) came entirely from the legacy env-var signals
+	// (S0-S6). This is the only tier that is fully spoofable by the very
+	// process being classified.
+	SignalHeuristic
+)
+
+// ClassifySession runs the same three-tier detection IsLLMSession uses, but
+// returns which tier produced the verdict instead of collapsing it to a
+// bool. Invariant: IsLLMSession(env) == (ClassifySession(env) != SignalNone).
+func ClassifySession(env Lookup) SessionSignal {
+	// Priority 1: signed session ticket (presence-only fast path).
+	if env("KEYLATCH_LLM_TICKET") != "" {
+		return SignalTicket
+	}
+
+	// Priority 2: keylatchd IPC query.
+	if socketPath := env(daemonSocketEnvKey); socketPath != "" {
+		active, err := queryDaemonLLMSession(socketPath, currentPID())
+		if err != nil {
+			return SignalDaemonError
+		}
+		if active {
+			return SignalDaemonActive
+		}
+		// Daemon explicitly said "not active" — fall through to env-var
+		// signals, mirroring IsLLMSession.
+	}
+
+	// Priority 3: environment-variable signals (original behaviour, S0-S6).
+	for _, sig := range Signals {
+		if matches(sig, env(sig.EnvKey)) {
+			return SignalHeuristic
+		}
+	}
+	return SignalNone
+}
+
 // IsLLMSession returns true if the current process is running inside an LLM-driven session.
 //
 // Detection runs in three priority tiers (EPIC-05):
@@ -38,38 +116,7 @@ var DefaultLookup Lookup = func(k string) string { return os.Getenv(k) }
 // S0-3: CREDENTIALS_LLM_SESSION=0 is the only explicit false value for the
 // generic manual flag. Other non-empty values are treated as active sessions.
 func IsLLMSession(env Lookup) bool {
-	// Priority 1: signed session ticket.
-	// A non-empty KEYLATCH_LLM_TICKET means a keylatchd-issued ticket is present.
-	// Its presence is sufficient to return true (fail-closed on the fast path).
-	// Full cryptographic verification (VerifyTicket) is the caller's concern when
-	// they need to TRUST the ticket, not when they want to BLOCK on it.
-	if env("KEYLATCH_LLM_TICKET") != "" {
-		return true
-	}
-
-	// Priority 2: keylatchd IPC query.
-	// Ask the daemon if the current PID is registered as an LLM session.
-	// Only runs when KEYLATCH_DAEMON_SOCKET is set (daemon is available).
-	if socketPath := env(daemonSocketEnvKey); socketPath != "" {
-		active, err := queryDaemonLLMSession(socketPath, currentPID())
-		if err != nil {
-			// Fail closed: network/parse error → assume LLM session.
-			return true
-		}
-		if active {
-			return true
-		}
-		// Daemon explicitly says not active — fall through to env-var signals.
-		// This allows env-var signals to still fire even if daemon says "not active".
-	}
-
-	// Priority 3: environment-variable signals (original behaviour, S0–S6).
-	for _, sig := range Signals {
-		if matches(sig, env(sig.EnvKey)) {
-			return true
-		}
-	}
-	return false
+	return ClassifySession(env) != SignalNone
 }
 
 func matches(sig Signal, value string) bool {
