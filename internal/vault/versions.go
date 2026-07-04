@@ -265,7 +265,7 @@ func RotateValue(
 	}
 
 	// Emit ActionWrite audit event after successful write (mirrors vault.Set).
-	// Credential value bytes are NEVER included in the event (S-RM-9).
+	// Credential value bytes are NEVER included in the event.
 	emitVaultEvent(ctx, audit.Event{
 		Timestamp: now,
 		Action:    audit.ActionWrite,

@@ -163,7 +163,7 @@ func TestConnect_ProviderRef_StoresURIOnly(t *testing.T) {
 		t.Fatal("api_key not set")
 	}
 	if string(val) == resolvedPlaintext {
-		t.Errorf("plaintext was stored — URI must be stored instead (security invariant S-EXT-3)")
+		t.Errorf("plaintext was stored — URI must be stored instead")
 	}
 	if string(val) != uri {
 		t.Errorf("stored value = %q, want URI %q", val, uri)

@@ -81,7 +81,7 @@ type ExecRequest struct {
 }
 
 // RuntimeReceipt is the value-free record emitted for every execution path
-// including errors (S-RM-9). It never contains credential bytes.
+// including errors. It never contains credential bytes.
 type RuntimeReceipt struct {
 	Runtime         string        `json:"runtime"`
 	Provider        string        `json:"provider"`

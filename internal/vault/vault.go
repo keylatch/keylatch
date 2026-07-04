@@ -54,7 +54,7 @@ func errorClassExtra(err error) map[string]any {
 // Returns backend.ErrNotFound if the path is absent.
 //
 // Emits ActionRead audit event on success and failure.
-// The credential value is NEVER included in the event (S-RM-9).
+// The credential value is NEVER included in the event.
 func Get(ctx context.Context, path string, cfg config.Config, env llmcontext.Lookup) ([]byte, error) {
 	b, err := dispatch.Select(ctx, cfg, env)
 	if err != nil {
@@ -77,7 +77,7 @@ func Get(ctx context.Context, path string, cfg config.Config, env llmcontext.Loo
 }
 
 // Set writes value at path via the configured backend.
-// The credential value is NEVER included in the audit event (S-RM-9).
+// The credential value is NEVER included in the audit event.
 //
 // Emits ActionWrite audit event on success and failure.
 func Set(ctx context.Context, path string, value []byte, meta backend.Meta, cfg config.Config, env llmcontext.Lookup) error {
@@ -147,7 +147,7 @@ func List(ctx context.Context, prefix string, cfg config.Config, env llmcontext.
 	}
 	extra["count"] = len(entries)
 	// prefix is a namespace fragment (e.g. "default/ai/"), not a credential
-	// value, so it is safe to log as Path for audit correlation (S-RM-9).
+	// value, so it is safe to log as Path for audit correlation.
 	emitVaultEvent(ctx, audit.Event{
 		Timestamp: time.Now(),
 		Action:    audit.ActionList,

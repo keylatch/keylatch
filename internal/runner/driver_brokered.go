@@ -42,7 +42,7 @@ type BrokerExchanger interface {
 // brokeredDriver reads the root credential from vault, exchanges it for a
 // short-lived token via the broker, injects it into the child environment,
 // and execs the subprocess. Root credential bytes are zeroed immediately
-// after Exchange returns (S-RM-3).
+// after Exchange returns.
 type brokeredDriver struct {
 	vault  backend.Backend
 	broker BrokerExchanger
@@ -106,7 +106,7 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 		}
 		return receipt, fmt.Errorf("direct_brokered: read credential: %w", err)
 	}
-	// Step 3: zero root credential after Exchange returns (S-RM-3).
+	// Step 3: zero root credential after Exchange returns.
 	defer zeroSlice(rootCredential)
 
 	// Exchange root credential for a short-lived token.

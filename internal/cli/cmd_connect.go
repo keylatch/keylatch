@@ -517,8 +517,8 @@ func newListCmd() *cobra.Command {
 // --provider-ref defers resolution to runtime. The URI is
 // written to the vault verbatim so the resolver can be invoked each time the
 // credential is needed. This upholds two security invariants:
-//   - S-EXT-3: the external store is the authoritative source; no plaintext copy lives in keylatch.
-//   - S-EXT-4: rotation in the upstream PM is picked up automatically on next use.
+//   - The external store is the authoritative source; no plaintext copy lives in keylatch.
+//   - Rotation in the upstream PM is picked up automatically on next use.
 //
 // Each flag has the format "field-name=uri" where uri is one of:
 //   - op://vault/item/field

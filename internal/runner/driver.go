@@ -10,7 +10,7 @@ import (
 
 // Driver is the per-mode execution handler. Each runtime mode registers one
 // Driver in a DispatchRunner. Run must emit a RuntimeReceipt on every path
-// including errors (S-RM-9).
+// including errors.
 type Driver interface {
 	Run(ctx context.Context, req ExecRequest, tmpl registry.ConnectionTemplate) (RuntimeReceipt, error)
 }
@@ -54,7 +54,7 @@ var _ Dispatcher = DispatchRunner{}
 //  4. Driver lookup — returns ErrUnknownRuntime if no driver is registered.
 //  5. Driver.Run — executes the subprocess.
 //
-// A RuntimeReceipt is returned on every path including errors (S-RM-9).
+// A RuntimeReceipt is returned on every path including errors.
 func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceipt, error) {
 	cap := req.Capability
 	if cap == "" {

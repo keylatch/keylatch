@@ -116,7 +116,7 @@ With --follow, connects to the keylatchd SSE endpoint (/v1/receipts/stream) and
 prints each incoming receipt as a JSON line. Press Ctrl-C to stop.
 
 The gateway address is read from KEYLATCH_UI_ADDR (default 127.0.0.1:7890).
-Credential values are never emitted (S-RM-9).`,
+Credential values are never emitted.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if follow {
 				return runReceiptsTailFollow(c)

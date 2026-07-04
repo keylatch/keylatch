@@ -88,13 +88,13 @@ func filesIn(t *testing.T, dir string) []string {
 	return paths
 }
 
-// TestGoldenPath_Phase3 verifies the complete user journey:
+// TestGoldenPath_FullUserJourney verifies the complete user journey:
 // 1. Bootstrap fresh HOME / XDG_RUNTIME_DIR.
 // 2. Connect openrouter with a canary api_key via in-memory MockBackend.
 // 3. Run `agent setup claude-code --mode mcp --dry-run` → assert no file writes.
 // 4. Assert GenerateMCPConfig is well-formed JSON with command:"keylatch".
 // 5. Assert no canary byte, no KEYLATCH_MCP_TOKEN, no absolute paths leak.
-func TestGoldenPath_Phase3(t *testing.T) {
+func TestGoldenPath_FullUserJourney(t *testing.T) {
 	ctx := context.Background()
 
 	// --- Step 1: Bootstrap fresh HOME and XDG_RUNTIME_DIR ---

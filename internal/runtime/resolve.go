@@ -10,7 +10,7 @@ import (
 )
 
 // ErrModeNotSupported is returned when the caller requests a runtime mode
-// that is not listed in the provider template's supported set (S-RM-8).
+// that is not listed in the provider template's supported set.
 var ErrModeNotSupported = errors.New("runtime: requested mode not supported by provider")
 
 // ResolveRequest carries the caller-supplied context for mode selection.
@@ -48,7 +48,7 @@ const (
 //  1. Removed modes check — if RequestedMode is in removedModes, return ErrModeRemoved.
 //  2. Explicit caller request — if RequestedMode is set, it must appear in
 //     tmpl.RuntimeSupport.Supported or ErrModeNotSupported is returned
-//     (no silent downgrade, S-RM-8).
+//     (no silent downgrade).
 //  3. Provider preferred mode — tmpl.RuntimeSupport.Preferred.
 //  4. Fallback hierarchy: gateway_typed → gateway_sdk → direct_brokered → gateway_proxy.
 //

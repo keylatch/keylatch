@@ -23,7 +23,7 @@ var binaryPath string
 
 func TestMain(m *testing.M) {
 	// Initialise the global provider registry from embedded YAML templates so
-	// unit-style tests in this package (e.g. TestGoldenPath_Phase3) can perform
+	// unit-style tests in this package (e.g. TestGoldenPath_FullUserJourney) can perform
 	// registry lookups without relying on PersistentPreRunE.
 	if err := registry.InitFromConfig(context.Background(), func(key string) string {
 		return os.Getenv(key)

@@ -1,7 +1,7 @@
 // Package proxy implements the gateway_proxy runtime: a local HTTP/HTTPS
 // intercepting proxy that injects provider credentials transparently.
 //
-// Security invariants (S-RM-6):
+// Security invariants:
 //   - Hosts not in the profile allowlist receive 403.
 //   - Routes not in profile allowlist receive 403.
 //   - Caller-supplied Authorization headers are stripped before forwarding.
@@ -216,7 +216,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // routeHandler handles plain HTTP requests:
-//  1. Enforce host allowlist (S-RM-6).
+//  1. Enforce host allowlist.
 //  2. Strip caller-supplied Authorization header.
 //  3. Fetch credential from vault.
 //  4. Forward to upstream; stream response back.
@@ -233,7 +233,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 1b: SSRF re-resolution guard (S-RM-6 / W2).
+	// Step 1b: SSRF re-resolution guard.
 	// Re-resolve the hostname on every request when the profile requires it.
 	if s.Profile.SSRF.ResolveAndVerifyEachRequest {
 		if err := s.ssrfCheck(host); err != nil {
@@ -246,7 +246,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 	// Step 2: strip caller-supplied Authorization header.
 	r.Header.Del("Authorization")
 
-	// Step 3: find matching route — deny if none matches (S-RM-6 fail-closed).
+	// Step 3: find matching route — deny if none matches (fail-closed).
 	route := s.matchRoute(r)
 	if route == nil {
 		s.auditDeny(r.Context(), "route_not_allowed", r.URL.Path)
@@ -351,7 +351,7 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SSRF re-resolution guard (S-RM-6 / W2).
+	// SSRF re-resolution guard.
 	if s.Profile.SSRF.ResolveAndVerifyEachRequest {
 		if err := s.ssrfCheck(host); err != nil {
 			s.auditDeny(r.Context(), "ssrf_denied", host)
@@ -550,8 +550,8 @@ func (s *Server) httpClient() *http.Client {
 	return s.client
 }
 
-// ssrfCheck resolves host to IPs and verifies none fall within denied private ranges
-// (S-RM-6 / W2). Returns a non-nil error if any resolved IP is in a denied range.
+// ssrfCheck resolves host to IPs and verifies none fall within denied private ranges.
+// Returns a non-nil error if any resolved IP is in a denied range.
 func (s *Server) ssrfCheck(host string) error {
 	addrs, err := net.LookupHost(host)
 	if err != nil {

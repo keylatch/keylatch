@@ -11,9 +11,9 @@
 // testable via mock runners. Full native SDK integration is planned for v1.1.0.
 //
 // Security invariants:
-//   - S-EXT-1: plaintext bytes are returned to the caller, never written to disk.
-//   - S-EXT-2: CLI binaries are resolved from PATH; absolute paths may be injected for testing.
-//   - S-EXT-3: only the requested field/key is extracted; no bulk exports.
+//   - Plaintext bytes are returned to the caller, never written to disk.
+//   - CLI binaries are resolved from PATH; absolute paths may be injected for testing.
+//   - Only the requested field/key is extracted; no bulk exports.
 package store
 
 import (
@@ -170,7 +170,7 @@ func (r *Resolver) resolveOP(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("op read: runner error: %w", err)
 	}
 	if exitCode != 0 {
-		// S-EXT-2: never echo full stderr (may contain session info).
+		// Never echo full stderr (may contain session info).
 		hint := classifyOPError(string(stderr))
 		return nil, fmt.Errorf("op read exited %d: %s", exitCode, hint)
 	}

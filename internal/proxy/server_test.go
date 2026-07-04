@@ -110,7 +110,7 @@ func newTestProxy(t *testing.T, profile proxy.ProxyProfile, vault proxy.ProxyVau
 	return port, token, cancel
 }
 
-// TestProxyServer_HostNotAllowed verifies 403 for hosts outside the allowlist (S-RM-6).
+// TestProxyServer_HostNotAllowed verifies 403 for hosts outside the allowlist.
 func TestProxyServer_HostNotAllowed(t *testing.T) {
 	// Upstream that should NOT be reachable.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -78,7 +78,7 @@ func TestDispatchRunner_DriverReceiptPropagated(t *testing.T) {
 }
 
 // TestDispatchRunner_DriverErrorPropagated verifies that a Driver error is
-// returned alongside a populated RuntimeReceipt (S-RM-9).
+// returned alongside a populated RuntimeReceipt.
 func TestDispatchRunner_DriverErrorPropagated(t *testing.T) {
 	driverErr := errors.New("driver: subprocess exec failed")
 	stub := &stubDriver{
@@ -96,7 +96,7 @@ func TestDispatchRunner_DriverErrorPropagated(t *testing.T) {
 	receipt, err := dr.Run(context.Background(), req)
 	require.Error(t, err)
 	assert.Equal(t, driverErr, err)
-	// Receipt is still populated even on error (S-RM-9).
+	// Receipt is still populated even on error.
 	assert.Equal(t, "openrouter", receipt.Provider)
 	assert.Equal(t, 1, receipt.ExitCode)
 }
