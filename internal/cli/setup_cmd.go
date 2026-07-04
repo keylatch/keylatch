@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
@@ -32,11 +33,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	launchdLabel     = "io.keylatch.keylatchd"
-	launchdPlistName = launchdLabel + ".plist"
-)
-
 // stdinScannerFn constructs a new bufio.Scanner over os.Stdin.
 // Declared as a var so tests can replace it with a scanner over a pipe or
 // bytes.Buffer without touching os.Stdin at package-init time.
@@ -47,7 +43,7 @@ var stdinScannerFn = func() *bufio.Scanner {
 }
 
 var (
-	scannerOnce   sync.Once
+	scannerOnce   = &sync.Once{}
 	sharedScanner *bufio.Scanner
 )
 
@@ -80,21 +76,17 @@ func platformBackend() (name, desc string) {
 	case "darwin":
 		return "keychain", "macOS Keychain"
 	case "linux":
-		// Prefer secret-service when GNOME is present.
-		if os.Getenv("GNOME_DESKTOP_SESSION_ID") != "" || os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
-			return "secret-service", "GNOME Secret Service"
-		}
 		return "file", "encrypted file (~/.keylatch/)"
 	case "windows":
-		return "wincred", "Windows Credential Manager"
+		return "file", "encrypted file (~/.keylatch/)"
 	default:
 		return "file", "encrypted file (~/.keylatch/)"
 	}
 }
 
 // newSetupCmd returns the `keylatch setup` wizard command.
-// Epic 26: restructured into 5 named steps with [N/5] progress output.
-// §2.4: --from-env, --stdin-field, --non-interactive, --headless flags preserved.
+// The setup wizard uses five named steps with [N/5] progress output.
+// Automation flags keep setup deterministic for CI and scripts.
 func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -103,9 +95,9 @@ func newSetupCmd() *cobra.Command {
 
   [1/5] Detect platform       — detect OS, recommend the best secret backend
   [2/5] Backend setup         — confirm and configure the credential backend
-  [3/5] Spawn daemon          — ensure keylatchd is running
+  [3/5] Start gateway         — initialise and start the local gateway
   [4/5] Connect provider      — connect your first API key provider
-  [5/5] Open app (optional)   — launch Keylatch.app (macOS)
+  [5/5] Open UI (optional)    — launch the browser UI
 
 Non-interactive / headless usage:
 
@@ -152,7 +144,9 @@ Exit codes:
 
 			force, _ := c.Flags().GetBool("force")
 
-			// Detect existing config.
+			// Detect existing config. Non-interactive callers keep the old
+			// idempotent behavior, but interactive setup must be resumable:
+			// a config file alone does not mean onboarding is complete.
 			cfgPath := paths.Config(llmcontext.DefaultLookup)
 			if !force {
 				if cfg, err := config.Load(cfgPath); err == nil && cfg.Backend != "" {
@@ -161,8 +155,7 @@ Exit codes:
 						fmt.Fprintln(c.ErrOrStderr(), `{"ok":true,"note":"already configured"}`)
 						return nil
 					}
-					fmt.Fprintln(c.OutOrStdout(), "You're already set up. Run `keylatch doctor` to verify.")
-					return nil
+					fmt.Fprintf(c.OutOrStdout(), "Existing Keylatch config found (backend=%s). Continuing setup to verify and repair onboarding.\n\n", cfg.Backend)
 				}
 			}
 
@@ -184,7 +177,7 @@ Exit codes:
 					return nil
 				}
 				if backend == "" {
-					fmt.Fprintln(c.ErrOrStderr(), "Error: --non-interactive requires --backend (file|keychain|op|bw) or KEYLATCH_BACKEND env var.")
+					fmt.Fprintln(c.ErrOrStderr(), "Error: --non-interactive requires --backend or KEYLATCH_BACKEND env var.")
 					os.Exit(exitcode.UserError)
 					return nil
 				}
@@ -218,10 +211,10 @@ Exit codes:
 					return err
 				}
 
-				// Step 2b: Operating mode choice (EPIC-17).
+				// Step 2b: Operating mode choice.
 				setupStepModeChoice(c, advanced)
 
-				// Step 3: Spawn daemon.
+				// Step 3: Initialise and start gateway.
 				if !noDaemonStart {
 					setupStep3SpawnDaemon(c)
 				}
@@ -229,7 +222,7 @@ Exit codes:
 				// Step 4: Connect provider.
 				setupStep4ConnectProvider(c)
 
-				// Step 5: Open app (optional).
+				// Step 5: Open browser UI (optional).
 				setupStep5OpenApp(c)
 
 				return nil
@@ -251,13 +244,13 @@ Exit codes:
 		},
 	}
 	cmd.Flags().Bool("force", false, "re-run setup even if already configured")
-	cmd.Flags().String("backend", "", "credential backend: file, keychain (macOS only), op, bw")
+	cmd.Flags().String("backend", "", "credential backend (for example: file, keychain, op, bw, vault, aws-sm)")
 	cmd.Flags().Bool("headless", false, "headless mode: no prompts, JSON result on stderr, deterministic exit codes")
 	cmd.Flags().Bool("non-interactive", false, "fail instead of prompting when required fields are missing")
 	cmd.Flags().Bool("from-env", false, "read field values from KEYLATCH_<FIELD_NAME> environment variables")
 	cmd.Flags().StringArray("stdin-field", nil, "supply a field value as key=value (may be repeated)")
 	cmd.Flags().Bool("advanced", false, "show all backend options and advanced configuration (audit dir, signing key, ports, telemetry)")
-	cmd.Flags().Bool("no-daemon-start", false, "skip daemon start in step 3 (useful in CI or restricted environments)")
+	cmd.Flags().Bool("no-daemon-start", false, "skip gateway start in step 3 (useful in CI or restricted environments)")
 	cmd.Flags().String("config", "", "path to keylatch.yaml config file")
 	cmd.Flags().String("telemetry", "", "telemetry setting: on|off")
 	return cmd
@@ -267,9 +260,12 @@ Exit codes:
 // writes JSON result to stderr, returns deterministic exit codes.
 // §2.4 headless submode.
 func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
-	backend, _ := c.Flags().GetString("backend")
-	if backend == "" {
-		backend = "file"
+	selectedBackend, _ := c.Flags().GetString("backend")
+	if selectedBackend == "" {
+		selectedBackend = "file"
+	}
+	if canonical, ok := backend.CanonicalName(selectedBackend); ok {
+		selectedBackend = canonical
 	}
 
 	writeHeadlessResult := func(ok bool, backend string, errMsg string) {
@@ -280,21 +276,21 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 
 	_, err := bootstrap.Run(ctx, bootstrap.Options{
 		DryRun:  false,
-		Backend: backend,
+		Backend: selectedBackend,
 		Env:     llmcontext.DefaultLookup,
 	})
 	if err != nil {
-		writeHeadlessResult(false, backend, err.Error())
+		writeHeadlessResult(false, selectedBackend, err.Error())
 		os.Exit(exitcode.OperationFailed)
 		return nil
 	}
 
 	// Initialize the audit keyring for the file backend (best-effort, non-blocking).
-	if backend == "file" {
+	if selectedBackend == "file" {
 		initAuditKeyring()
 	}
 
-	writeHeadlessResult(true, backend, "")
+	writeHeadlessResult(true, selectedBackend, "")
 	return nil
 }
 
@@ -385,6 +381,12 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		}
 	}
 
+	canonical, ok := backend.CanonicalName(chosen)
+	if !ok {
+		return "", fmt.Errorf("unknown backend %q (valid: %s)", chosen, strings.Join(backend.KnownCanonicalNames(), ", "))
+	}
+	chosen = canonical
+
 	fmt.Fprintf(c.OutOrStdout(), "  Configuring backend %q...\n", chosen)
 
 	_, err := bootstrap.Run(ctx, bootstrap.Options{
@@ -412,8 +414,28 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		}
 		if initErr := kb.Init(ctx, "default"); initErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain-init: %v\n", initErr)
-			return "", fmt.Errorf("keychain init: %w", initErr)
+			fmt.Fprintln(c.ErrOrStderr(), "  macOS Keychain may be locked or unavailable in this terminal.")
+			fmt.Fprintf(c.OutOrStdout(), "  Use encrypted file backend instead? (Y/n): ")
+			ans := strings.ToLower(strings.TrimSpace(readLine()))
+			if ans == "" || ans == "y" || ans == "yes" {
+				chosen = "file"
+				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
+				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
+					DryRun:  false,
+					Backend: chosen,
+					Env:     llmcontext.DefaultLookup,
+				}); fallbackErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
+					return "", fmt.Errorf("keychain init failed (%w); fallback bootstrap failed: %w", initErr, fallbackErr)
+				}
+			} else {
+				return "", fmt.Errorf("keychain init: %w", initErr)
+			}
 		}
+	}
+
+	if err := persistSetupBackend(chosen); err != nil {
+		return "", err
 	}
 
 	// For the file backend, also initialize the audit keyring (best-effort).
@@ -436,6 +458,19 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 
 	fmt.Fprintf(c.OutOrStdout(), "  Backend %q configured.\n\n", chosen)
 	return chosen, nil
+}
+
+func persistSetupBackend(chosen string) error {
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	cfg, loadErr := config.Load(cfgPath)
+	if loadErr != nil {
+		cfg = config.Default()
+	}
+	cfg.Backend = chosen
+	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
+		return fmt.Errorf("persist backend %q: %w", chosen, saveErr)
+	}
+	return nil
 }
 
 // setupPromptBasicBackend shows the standard 4-option backend menu.
@@ -487,16 +522,20 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	fmt.Fprintln(c.OutOrStdout(), "    2)  keychain        — macOS Keychain (macOS only)")
 	fmt.Fprintln(c.OutOrStdout(), "    3)  op              — 1Password CLI")
 	fmt.Fprintln(c.OutOrStdout(), "    4)  bw              — Bitwarden CLI")
-	fmt.Fprintln(c.OutOrStdout(), "    5)  secret-service  — GNOME Secret Service (Linux)")
-	fmt.Fprintln(c.OutOrStdout(), "    6)  wincred         — Windows Credential Manager")
-	fmt.Fprintln(c.OutOrStdout(), "    7)  vault           — HashiCorp Vault")
-	fmt.Fprintln(c.OutOrStdout(), "    8)  doppler         — Doppler secrets manager")
-	fmt.Fprintln(c.OutOrStdout(), "    9)  aws-secrets     — AWS Secrets Manager")
-	fmt.Fprintln(c.OutOrStdout(), "    10) azure-keyvault  — Azure Key Vault")
+	fmt.Fprintln(c.OutOrStdout(), "    5)  proton-pass     — Proton Pass CLI")
+	fmt.Fprintln(c.OutOrStdout(), "    6)  keeper          — Keeper Commander CLI")
+	fmt.Fprintln(c.OutOrStdout(), "    7)  lastpass        — LastPass CLI")
+	fmt.Fprintln(c.OutOrStdout(), "    8)  vault           — HashiCorp Vault")
+	fmt.Fprintln(c.OutOrStdout(), "    9)  aws-sm          — AWS Secrets Manager")
+	fmt.Fprintln(c.OutOrStdout(), "    10) gcp-sm          — GCP Secret Manager")
+	fmt.Fprintln(c.OutOrStdout(), "    11) azure-kv        — Azure Key Vault")
+	fmt.Fprintln(c.OutOrStdout(), "    12) doppler         — Doppler secrets manager")
+	fmt.Fprintln(c.OutOrStdout(), "    13) infisical       — Infisical")
+	fmt.Fprintln(c.OutOrStdout(), "    14) op-connect      — 1Password Connect")
 	fmt.Fprintln(c.OutOrStdout())
 
-	// Advanced port, audit, and key configuration will be added in a future phase
-	// when bootstrap.Options gains the corresponding fields.
+	// Advanced port, audit, and key configuration are owned by dedicated
+	// commands once setup has created the baseline config.
 
 	// Telemetry opt-in: --telemetry off skips prompt; otherwise ask (default NO).
 	telemetryFlag, _ := c.Flags().GetString("telemetry")
@@ -521,8 +560,10 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 
 	advancedMap := map[string]string{
 		"1": "file", "2": "keychain", "3": "op", "4": "bw",
-		"5": "secret-service", "6": "wincred", "7": "vault",
-		"8": "doppler", "9": "aws-secrets", "10": "azure-keyvault",
+		"5": "proton-pass", "6": "keeper", "7": "lastpass",
+		"8": "vault", "9": "aws-sm", "10": "gcp-sm",
+		"11": "azure-kv", "12": "doppler", "13": "infisical",
+		"14": "op-connect",
 	}
 	fmt.Fprintf(c.OutOrStdout(), "  Choose backend [recommended: %s, enter number]: ", recommended)
 	choice := strings.TrimSpace(readLine())
@@ -532,19 +573,17 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 		return recommended, chosenTelemetry
 	}
 
-	// Validate that the chosen backend is supported by bootstrap.Run.
-	// Backends in the menu that are planned for a future release are not yet wired.
-	supported := map[string]bool{"file": true, "keychain": true, "op": true, "bw": true, "secret-service": true}
-	if !supported[chosen] {
-		fmt.Fprintf(c.ErrOrStderr(), "  Error: backend %q is planned for a future release and not yet available — use one of: file, keychain, op, bw, secret-service\n", chosen)
+	canonical, ok := backend.CanonicalName(chosen)
+	if !ok {
+		fmt.Fprintf(c.ErrOrStderr(), "  Error: backend %q is not available in this build.\n", chosen)
 		fmt.Fprintf(c.OutOrStdout(), "  Using recommended backend %q.\n", recommended)
 		return recommended, chosenTelemetry
 	}
 
-	return chosen, chosenTelemetry
+	return canonical, chosenTelemetry
 }
 
-// setupStepModeChoice prompts the user to select an operating mode (EPIC-17).
+// setupStepModeChoice prompts the user to select an operating mode.
 //
 // Basic (non-advanced) prompt shows standard and telemetry.
 // If the user picks "advanced", all four modes are shown.
@@ -607,68 +646,38 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 	fmt.Fprintln(c.OutOrStdout())
 }
 
-// setupStep3SpawnDaemon handles [3/5] — ensure keylatchd is running.
+// setupStep3SpawnDaemon handles [3/5] — initialise and start the gateway.
 func setupStep3SpawnDaemon(c *cobra.Command) {
-	fmt.Fprintln(c.OutOrStdout(), "[3/5] Daemon setup...")
+	fmt.Fprintln(c.OutOrStdout(), "[3/5] Gateway setup...")
 	fmt.Fprintln(c.OutOrStdout())
 
-	switch runtime.GOOS {
-	case "darwin":
-		setupSpawnDaemonDarwin(c)
-	case "linux":
-		setupSpawnDaemonLinux(c)
-	default:
-		fmt.Fprintln(c.OutOrStdout(), "  Daemon auto-start is not supported on this platform.")
-		fmt.Fprintln(c.OutOrStdout(), "  Start keylatchd manually to use gateway features.")
+	self, err := os.Executable()
+	if err != nil {
+		self = "keylatch"
 	}
+
+	initCmd := exec.Command(self, "gateway", "init")
+	initCmd.Stdout = c.OutOrStdout()
+	initCmd.Stderr = c.ErrOrStderr()
+	if err := initCmd.Run(); err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  gateway init: %v\n", err)
+		fmt.Fprintln(c.ErrOrStderr(), "  You can retry later with: keylatch gateway init")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
+
+	upCmd := exec.Command(self, "gateway", "up", "--detach")
+	upCmd.Stdout = c.OutOrStdout()
+	upCmd.Stderr = c.ErrOrStderr()
+	if err := upCmd.Run(); err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  gateway up: %v\n", err)
+		fmt.Fprintln(c.ErrOrStderr(), "  You can retry later with: keylatch gateway up --detach")
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
+	fmt.Fprintln(c.OutOrStdout(), "  Gateway ready.")
 
 	fmt.Fprintln(c.OutOrStdout())
-}
-
-// setupSpawnDaemonDarwin handles daemon launch on macOS via launchd.
-func setupSpawnDaemonDarwin(c *cobra.Command) {
-	// When Keylatch.app is running it owns the keylatchd lifecycle; starting
-	// the launchd service too would make both compete for port 7890.
-	if desktopAppRunning() {
-		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: managed by Keylatch.app (skipping launchd)")
-		return
-	}
-	plistPath := os.ExpandEnv("$HOME/Library/LaunchAgents/" + launchdPlistName)
-	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
-		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: not installed (launchd plist missing)")
-		fmt.Fprintln(c.OutOrStdout(), "  To install: keylatch gateway install")
-		return
-	}
-
-	// Try to load/start via launchctl.
-	cmd := exec.Command("launchctl", "load", "-w", plistPath)
-	if err := cmd.Run(); err != nil {
-		// May already be loaded — try start.
-		startCmd := exec.Command("launchctl", "start", launchdLabel)
-		if startErr := startCmd.Run(); startErr != nil {
-			fmt.Fprintf(c.OutOrStdout(), "  Daemon state: could not start (%v)\n", startErr)
-			fmt.Fprintf(c.OutOrStdout(), "  To start manually: launchctl start %s\n", launchdLabel)
-			fmt.Fprintln(c.OutOrStdout(), "  Note: gateway features (AI agent credential injection) will not work until keylatchd is running.")
-			return
-		}
-	}
-	fmt.Fprintln(c.OutOrStdout(), "  Daemon state: running (via launchd)")
-}
-
-// setupSpawnDaemonLinux handles daemon launch on Linux via systemd user service.
-func setupSpawnDaemonLinux(c *cobra.Command) {
-	// Check if systemd is available.
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		fmt.Fprintln(c.OutOrStdout(), "  Daemon state: systemd not detected")
-		fmt.Fprintln(c.OutOrStdout(), "  Start manually: keylatchd &")
-		return
-	}
-
-	// Print the systemd enable command — do not run automatically.
-	fmt.Fprintln(c.OutOrStdout(), "  To enable keylatchd via systemd:")
-	fmt.Fprintln(c.OutOrStdout(), "    systemctl --user enable --now keylatchd")
-	fmt.Fprintln(c.OutOrStdout(), "  Or start directly: keylatchd &")
-	fmt.Fprintln(c.OutOrStdout(), "  Note: gateway features (AI agent credential injection) will not work until keylatchd is running.")
 }
 
 // setupStep4ConnectProvider handles [4/5] — interactive provider picker.
@@ -739,11 +748,11 @@ func setupStep4ConnectProvider(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout())
 }
 
-// setupStep5OpenApp handles [5/5] — offer to open the desktop app (optional, default N).
+// setupStep5OpenApp handles [5/5] — offer to open the browser UI (optional, default N).
 func setupStep5OpenApp(c *cobra.Command) {
-	fmt.Fprintln(c.OutOrStdout(), "[5/5] Open Keylatch app (optional)...")
+	fmt.Fprintln(c.OutOrStdout(), "[5/5] Open Keylatch UI (optional)...")
 	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintf(c.OutOrStdout(), "  Open Keylatch.app? (y/N): ")
+	fmt.Fprintf(c.OutOrStdout(), "  Open browser UI now? (y/N): ")
 
 	ans := readLine()
 	ans = strings.ToLower(strings.TrimSpace(ans))
@@ -754,36 +763,18 @@ func setupStep5OpenApp(c *cobra.Command) {
 		return
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
-		cmd := exec.Command("open", "/Applications/Keylatch.app")
-		if err := cmd.Start(); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  Could not open Keylatch.app: %v\n", err)
-			fmt.Fprintln(c.OutOrStdout(), "  Open manually from /Applications/Keylatch.app")
-		} else {
-			fmt.Fprintln(c.OutOrStdout(), "  Keylatch.app opened.")
-		}
-	case "linux":
-		// Try xdg-open for Linux desktop launchers.
-		if path, err := exec.LookPath("xdg-open"); err == nil {
-			cmd := exec.Command(path, "keylatch://open")
-			if err := cmd.Start(); err != nil {
-				fmt.Fprintln(c.OutOrStdout(), "  Could not open app via xdg-open.")
-			} else {
-				fmt.Fprintln(c.OutOrStdout(), "  App launch requested.")
-			}
-		} else {
-			fmt.Fprintln(c.OutOrStdout(), "  Desktop app not available on this Linux setup.")
-		}
-	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", "keylatch:")
-		if err := cmd.Start(); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "  Could not open app: %v\n", err)
-		} else {
-			fmt.Fprintln(c.OutOrStdout(), "  App launch requested.")
-		}
-	default:
-		fmt.Fprintln(c.OutOrStdout(), "  App launch not supported on this platform.")
+	self, err := os.Executable()
+	if err != nil {
+		self = "keylatch"
+	}
+	cmd := exec.Command(self, "ui")
+	cmd.Stdout = c.OutOrStdout()
+	cmd.Stderr = c.ErrOrStderr()
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  Could not start browser UI: %v\n", err)
+		fmt.Fprintln(c.OutOrStdout(), "  Start it manually with: keylatch ui --no-open")
+	} else {
+		fmt.Fprintln(c.OutOrStdout(), "  Browser UI starting.")
 	}
 
 	fmt.Fprintln(c.OutOrStdout())
@@ -806,7 +797,7 @@ func printSetupSuccess(c *cobra.Command) {
 // external provider-reference URI. Returns "local", "reference", or an error if
 // the user chose to quit.
 //
-// EPIC-11 (Task 1): top-level branch inserted before the 5-step wizard.
+// The storage branch lets users choose local encrypted storage or an external reference.
 func setupPromptStorageBranch(c *cobra.Command) (string, error) {
 	fmt.Fprintln(c.OutOrStdout(), "How would you like to store credentials?")
 	fmt.Fprintln(c.OutOrStdout(), "  local     — encrypt and store the secret locally (AEAD)")
@@ -841,7 +832,7 @@ func setupPromptStorageBranch(c *cobra.Command) (string, error) {
 //  3. Attempt a dry-run resolution to verify the external CLI is reachable.
 //  4. On success: print a confirmation message and next-step hint.
 //
-// EPIC-11 (Task 1): reference branch — defers resolution to runtime.
+// Reference branch: store a provider URI and resolve it at runtime.
 func setupRunReferenceBranch(c *cobra.Command, ctx context.Context) error {
 	fmt.Fprintln(c.OutOrStdout(), "Reference mode: Keylatch will store a URI and resolve it at runtime.")
 	fmt.Fprintln(c.OutOrStdout(), "Supported URI schemes: op://, aws-sm://, hashivault://")

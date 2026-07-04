@@ -159,11 +159,11 @@ func TestPlatformBackend_CurrentPlatform(t *testing.T) {
 			t.Errorf("expected 'keychain' on darwin, got: %q", name)
 		}
 	case "windows":
-		if name != "wincred" {
-			t.Errorf("expected 'wincred' on windows, got: %q", name)
+		if name != "file" {
+			t.Errorf("expected 'file' on windows, got: %q", name)
 		}
 	}
-	// Linux can vary depending on GNOME detection; just check name is non-empty.
+	// Linux defaults to file until a Linux keyring backend is fully registered.
 }
 
 // --- readFieldFromStdin ---
