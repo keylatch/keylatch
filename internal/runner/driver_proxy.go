@@ -245,10 +245,10 @@ var providerKeyDenylist = map[string]bool{
 // (APIKEY, DBPASSWORD) and separated names (OPENAI_API_KEY, MY_TOKEN) are
 // caught, while a middle match like FOO_TOKEN_BAR is not over-blocked. A
 // pathological benign name that happens to end in one of these words (e.g.
-// MONKEY -> KEY) is withheld too; that is the safe direction for a security
-// denylist and the caller is warned by name, so it stays a denylist (not a
-// strict allowlist) and ordinary vars (PATH, LANG, NODE_ENV, MY_APP_REGION,
-// AWS_REGION, ...) are never blocked.
+// MONKEY -> KEY, or SPIN -> PIN) is withheld too; that is the safe direction
+// for a security denylist and the caller is warned by name, so it stays a
+// denylist (not a strict allowlist) and ordinary vars (PATH, LANG, NODE_ENV,
+// MY_APP_REGION, AWS_REGION, ...) are never blocked.
 var credentialWords = []string{
 	"KEY",
 	"TOKEN",
@@ -257,6 +257,7 @@ var credentialWords = []string{
 	"PASSWD",
 	"CREDENTIAL",
 	"CREDENTIALS",
+	"PIN",
 }
 
 // isCredentialShapedName reports whether name looks like it holds a secret —

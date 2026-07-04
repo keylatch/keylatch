@@ -29,6 +29,8 @@ func TestIsCredentialShapedName(t *testing.T) {
 		{"SERVICE_CREDENTIALS", true},
 		{"TLS_PRIVATE_KEY", true},
 		{"lowercase_api_key", true}, // matching is case-insensitive
+		{"SOME_PIN", true},          // FIX 2: PIN added to credentialWords (e.g. KEYLATCH_PKCS11_PIN)
+		{"KEYLATCH_PKCS11_PIN", true},
 
 		// Glued compounds with no separator — the underscore-required matcher
 		// missed these (the review Medium); a whole-word suffix must catch them.
@@ -36,6 +38,7 @@ func TestIsCredentialShapedName(t *testing.T) {
 		{"DBPASSWORD", true},
 		{"APITOKEN", true},
 		{"MYSECRET", true},
+		{"SPIN", true}, // FIX 2: HasSuffix("PIN") over-blocks names ending in "SPIN" too — acceptable direction for a denylist
 
 		// Benign — must pass through.
 		{"PATH", false},
