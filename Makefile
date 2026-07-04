@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
 
 ## build: compile all packages
 build:
@@ -88,6 +88,20 @@ test-team-e2e:
 		./cmd/keylatch/ \
 		-run "TestTeamE2E|TestTwoPersonApprovalE2E|TestSharedSecretE2E|TestTeamNotConfiguredE2E|TestInviteBundle|TestOrgPolicy_Integration" \
 		-v
+
+## docker-build: build the local (source) Dockerfile image, stamping version metadata
+## NOTE: does not run/push the image — see README for `docker run` usage.
+docker-build:
+	docker build \
+		--build-arg VERSION=$$(git describe --tags --always --dirty 2>/dev/null || echo dev) \
+		--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
+		--build-arg BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+		-t keylatch:dev \
+		.
+
+## govulncheck: scan all packages for known Go vulnerabilities
+govulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 ## test-integration-examples: smoke-test all integration example scripts (syntax + dry-run)
 test-integration-examples:
