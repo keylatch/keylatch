@@ -209,6 +209,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - uses: sigstore/cosign-installer@v3
       - name: log in to ghcr.io
         uses: docker/login-action@v3
@@ -223,7 +224,6 @@ jobs:
           # mirror that here (same pattern used by desktop-bundles job above).
           version="${GITHUB_REF_NAME#v}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "ref=ghcr.io/keylatch/keylatch:${version}" >> "$GITHUB_OUTPUT"
       - name: install trivy
         run: |
           curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
@@ -234,6 +234,8 @@ jobs:
             | sh -s -- -b /usr/local/bin
       - name: trivy scan (linux/amd64)
         run: |
+          # Trivy needs a resolvable single-arch image, so this scans the
+          # concrete per-arch tags rather than the manifest-list digest below.
           trivy image --platform linux/amd64 --severity CRITICAL,HIGH \
             --ignore-unfixed --exit-code 1 \
             "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}-amd64"
@@ -242,32 +244,77 @@ jobs:
           trivy image --platform linux/arm64 --severity CRITICAL,HIGH \
             --ignore-unfixed --exit-code 1 \
             "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}-arm64"
-      - name: sign container image (keyless OIDC)
-        run: cosign sign --yes "${{ steps.image.outputs.ref }}"
-      - name: generate image SBOM
+      - name: resolve manifest-list digests
+        # Users `docker pull` the multi-arch manifest-list tags (:{version} and
+        # :latest), not the per-arch tags scanned above — so signing/attesting
+        # must target the manifest-list digest for `cosign verify` on those
+        # tags to succeed. `docker buildx imagetools inspect` (no --raw)
+        # prints the manifest list's own "Digest:" line.
+        id: digest
         run: |
+          set -euo pipefail
+          version_tag="ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}"
+          latest_tag="ghcr.io/keylatch/keylatch:latest"
+          version_digest=$(docker buildx imagetools inspect "$version_tag" | awk '/^Digest:/{print $2; exit}')
+          latest_digest=$(docker buildx imagetools inspect "$latest_tag" | awk '/^Digest:/{print $2; exit}')
+          if [ -z "$version_digest" ] || [ -z "$latest_digest" ]; then
+            echo "::error::failed to resolve manifest-list digest for ${version_tag} or ${latest_tag}"
+            exit 1
+          fi
+          echo "version_digest=${version_digest}" >> "$GITHUB_OUTPUT"
+          echo "latest_digest=${latest_digest}" >> "$GITHUB_OUTPUT"
+          # :{version} and :latest reference the same per-arch manifests within
+          # a release, so they normally share one digest — dedupe so we don't
+          # sign/attest the identical digest twice.
+          digests="${version_digest}"
+          if [ "${latest_digest}" != "${version_digest}" ]; then
+            digests="${digests} ${latest_digest}"
+          fi
+          echo "digests=${digests}" >> "$GITHUB_OUTPUT"
+      - name: sign container manifest-list (keyless OIDC)
+        run: |
+          set -euo pipefail
+          for d in ${{ steps.digest.outputs.digests }}; do
+            cosign sign --yes "ghcr.io/keylatch/keylatch@${d}"
+          done
+      - name: generate image SBOM (manifest-list digest)
+        run: |
+          set -euo pipefail
           mkdir -p dist/sbom
-          syft scan "${{ steps.image.outputs.ref }}" \
-            --output cyclonedx-json=dist/sbom/keylatch-image-${{ github.ref_name }}.cdx.json
-      - name: attest image SBOM
+          for d in ${{ steps.digest.outputs.digests }}; do
+            short="${d#sha256:}"
+            syft scan "ghcr.io/keylatch/keylatch@${d}" \
+              --output cyclonedx-json=dist/sbom/keylatch-image-${{ github.ref_name }}-${short:0:12}.cdx.json
+          done
+      - name: attest image SBOM (manifest-list digest)
         run: |
-          cosign attest --yes \
-            --predicate dist/sbom/keylatch-image-${{ github.ref_name }}.cdx.json \
-            --type cyclonedx \
-            "${{ steps.image.outputs.ref }}"
-      - name: verify image signature
+          set -euo pipefail
+          for d in ${{ steps.digest.outputs.digests }}; do
+            short="${d#sha256:}"
+            cosign attest --yes \
+              --predicate "dist/sbom/keylatch-image-${{ github.ref_name }}-${short:0:12}.cdx.json" \
+              --type cyclonedx \
+              "ghcr.io/keylatch/keylatch@${d}"
+          done
+      - name: verify manifest-list signature (as pulled by tag)
         run: |
-          cosign verify \
-            --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            "${{ steps.image.outputs.ref }}"
-      - name: verify image attestation
+          set -euo pipefail
+          for ref in "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}" "ghcr.io/keylatch/keylatch:latest"; do
+            cosign verify \
+              --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${ref}"
+          done
+      - name: verify manifest-list attestation (as pulled by tag)
         run: |
-          cosign verify-attestation \
-            --type cyclonedx \
-            --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            "${{ steps.image.outputs.ref }}"
+          set -euo pipefail
+          for ref in "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}" "ghcr.io/keylatch/keylatch:latest"; do
+            cosign verify-attestation \
+              --type cyclonedx \
+              --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${ref}"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: image-sbom
