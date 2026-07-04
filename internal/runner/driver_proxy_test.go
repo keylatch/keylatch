@@ -211,3 +211,33 @@ func TestProxyDriver_ProviderKeyAbsent_Canary(t *testing.T) {
 	assert.NotContains(t, outBuf.String(), canaryKey,
 		"canary provider key must not appear in child process environment (gateway_proxy mode)")
 }
+
+// TestProxyDriver_ExtraEnvVars_DenylistsProviderKeys verifies that operator
+// --extra names matching a well-known provider credential env var are
+// denied, even though --extra is normally honored for arbitrary names.
+// This closes the gap where --extra OPENAI_API_KEY would otherwise leak the
+// real parent-process secret into the gateway_proxy child (defeating S9-15).
+func TestProxyDriver_ExtraEnvVars_DenylistsProviderKeys(t *testing.T) {
+	const realSecret = "sk-real-parent-secret-must-not-leak-via-extra"
+	t.Setenv("OPENAI_API_KEY", realSecret)
+	t.Setenv("MY_CUSTOM_TOKEN", "custom-value-should-pass-through")
+
+	d, _ := newProxyDriverForTest(t)
+
+	var outBuf strings.Builder
+	req := runner.ExecRequest{
+		ConnectionSlug: "testprovider",
+		Command:        []string{"sh", "-c", "printenv OPENAI_API_KEY; printenv MY_CUSTOM_TOKEN"},
+		ExtraEnvVars:   []string{"OPENAI_API_KEY", "MY_CUSTOM_TOKEN"},
+		Stdout:         &outBuf,
+		Stderr:         &strings.Builder{},
+	}
+
+	_, err := d.Run(context.Background(), req, proxyTmpl())
+	require.NoError(t, err)
+
+	assert.NotContains(t, outBuf.String(), realSecret,
+		"--extra must not be able to leak a known provider credential env var into the child")
+	assert.Contains(t, outBuf.String(), "custom-value-should-pass-through",
+		"--extra must still pass through non-denylisted names")
+}

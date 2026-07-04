@@ -88,16 +88,34 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 		capability = req.ConnectionSlug + ".inject"
 	}
 
-	jwtStr, _, err := token.Mint(token.TokenSpec{
+	// Mint a scoped JWT for audit/revocation tracking (gateway token store).
+	// This is independent of the proxy's own caller-auth bearer token (M1,
+	// below): the JWT records who/what was authorized to run this capability;
+	// the caller-auth token is what the child must present back to the proxy
+	// listener to prove it is the process we intended to authorize.
+	if _, _, err := token.Mint(token.TokenSpec{
 		Actor:        actor,
 		Capabilities: []string{capability},
 		TTL:          ttl,
 		LLMSession:   false, // proxy mode is always non-LLM (CLI-invoked)
 		SigningKey:   d.signingKey,
 		StorePath:    d.storePath,
-	})
-	if err != nil {
+	}); err != nil {
 		return receipt, fmt.Errorf("gateway_proxy: mint session token: %w", err)
+	}
+
+	// M1: the value injected into the child's KEYLATCH_SESSION_TOKEN env var
+	// is the proxy's own per-session caller-auth bearer token — this is what
+	// the child must present as "Proxy-Authorization: Bearer <token>" on
+	// every request to the proxy listener. Without this, any same-user
+	// process could reach 127.0.0.1:7879 and drive credential injection.
+	var authToken string
+	if d.server != nil {
+		var tokenErr error
+		authToken, tokenErr = d.server.EnsureToken()
+		if tokenErr != nil {
+			return receipt, fmt.Errorf("gateway_proxy: mint caller-auth token: %w", tokenErr)
+		}
 	}
 
 	// Step 3: build child env with proxy vars injected.
@@ -106,8 +124,19 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	// We add only essential PATH and minimal runtime vars.
 	// T-08-02: --extra vars are appended on top of the minimal base even when
 	// CleanEnv is not set, because the proxy driver is always minimally clean.
+	//
+	// docker-server-security hardening: --extra is an operator/CLI-controlled
+	// list of env var NAMES to copy from the parent process into the child.
+	// Without a denylist, an operator could pass --extra OPENAI_API_KEY (or
+	// any other provider credential var) and silently defeat S9-15 — the
+	// exact leak this minimal base env exists to prevent. providerKeyDenylist
+	// blocks any --extra name that matches a well-known provider credential
+	// env var, regardless of what value is currently set for it.
 	baseEnv := proxyBaseEnv()
 	for _, k := range req.ExtraEnvVars {
+		if providerKeyDenylist[k] {
+			continue // S9-15: never let --extra leak a provider credential into gateway_proxy child env
+		}
 		if v := os.Getenv(k); v != "" {
 			baseEnv = append(baseEnv, k+"="+v)
 		}
@@ -120,7 +149,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 		addr = "127.0.0.1:7879"
 	}
 
-	childEnv := proxy.EnvInject(baseEnv, addr, jwtStr, d.caPath)
+	childEnv := proxy.EnvInject(baseEnv, addr, authToken, d.caPath)
 
 	// Step 4: launch subprocess.
 	stdout := req.Stdout
@@ -157,6 +186,41 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 		return receipt, fmt.Errorf("gateway_proxy: exec: %w", runErr)
 	}
 	return receipt, nil
+}
+
+// providerKeyDenylist lists well-known provider credential env var names that
+// --extra (req.ExtraEnvVars) must never be allowed to copy from the parent
+// process into a gateway_proxy child, no matter what the operator requests.
+//
+// This mirrors the env var names in internal/allow's envVarRules (kept as a
+// local, duplicated list rather than an import: internal/allow is read-only
+// for this change per file-ownership constraints, and its exported surface —
+// Suggest() — is a heuristic "which provider is likely configured" helper,
+// not a name-only lookup table suitable for a security denylist. If
+// internal/allow later exposes the raw name list, this should be
+// consolidated to avoid drift between the two.
+var providerKeyDenylist = map[string]bool{
+	"OPENAI_API_KEY":            true,
+	"ANTHROPIC_API_KEY":         true,
+	"GITHUB_TOKEN":              true,
+	"STRIPE_SECRET_KEY":         true,
+	"SLACK_BOT_TOKEN":           true,
+	"OPENROUTER_API_KEY":        true,
+	"GOOGLE_API_KEY":            true,
+	"AZURE_OPENAI_API_KEY":      true,
+	"COHERE_API_KEY":            true,
+	"MISTRAL_API_KEY":           true,
+	"GEMINI_API_KEY":            true,
+	"HUGGINGFACE_TOKEN":         true,
+	"REPLICATE_API_TOKEN":       true,
+	"ELEVENLABS_API_KEY":        true,
+	"CLOUDFLARE_API_TOKEN":      true,
+	"SUPABASE_SERVICE_ROLE_KEY": true,
+	"TURSO_AUTH_TOKEN":          true,
+	"PINECONE_API_KEY":          true,
+	"WEAVIATE_API_KEY":          true,
+	"RESEND_API_KEY":            true,
+	"SENDGRID_API_KEY":          true,
 }
 
 // proxyBaseEnv returns the minimal base environment for the proxy child process.
