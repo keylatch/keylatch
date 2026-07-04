@@ -30,11 +30,20 @@ func TestIsCredentialShapedName(t *testing.T) {
 		{"TLS_PRIVATE_KEY", true},
 		{"lowercase_api_key", true}, // matching is case-insensitive
 
+		// Glued compounds with no separator — the underscore-required matcher
+		// missed these (the review Medium); a whole-word suffix must catch them.
+		{"APIKEY", true},
+		{"DBPASSWORD", true},
+		{"APITOKEN", true},
+		{"MYSECRET", true},
+
 		// Benign — must pass through.
 		{"PATH", false},
 		{"LANG", false},
 		{"NODE_ENV", false},
 		{"MY_APP_REGION", false},
+		{"AWS_REGION", false},
+		{"HOME", false},
 	}
 	for _, tc := range cases {
 		got := isCredentialShapedName(tc.name)

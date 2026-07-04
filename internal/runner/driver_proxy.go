@@ -232,38 +232,44 @@ var providerKeyDenylist = map[string]bool{
 	"SENDGRID_API_KEY":          true,
 }
 
-// credentialSuffixes are uppercased substrings that mark an --extra var name
+// credentialWords are uppercased trailing words that mark an --extra var name
 // as credential-shaped, on top of the exact-name providerKeyDenylist above.
 //
 // docker-server-security hardening: providerKeyDenylist only covers ~20
 // well-known provider names — any other secret-shaped var (AWS_SECRET_ACCESS_KEY,
-// AWS_SESSION_TOKEN, NPM_TOKEN, DATABASE_URL-style secrets, a custom *_SECRET,
-// etc.) would otherwise pass straight through os.Getenv(k) into the
-// gateway_proxy child, defeating S9-15 for anything not on the fixed list.
-// This stays a denylist (not a strict allowlist) so legitimate non-secret
-// vars (PATH, LANG, NODE_ENV, MY_APP_REGION, ...) are never over-blocked.
-var credentialSuffixes = []string{
-	"_KEY",
-	"_TOKEN",
-	"_SECRET",
-	"_PASSWORD",
-	"_PASSWD",
-	"_CREDENTIAL",
-	"_CREDENTIALS",
-	"_PRIVATE_KEY",
+// AWS_SESSION_TOKEN, NPM_TOKEN, a custom *_SECRET, etc.) would otherwise pass
+// straight through os.Getenv(k) into the gateway_proxy child, defeating S9-15
+// for anything not on the fixed list.
+//
+// Matched as a SUFFIX of the uppercased name, so both glued compounds
+// (APIKEY, DBPASSWORD) and separated names (OPENAI_API_KEY, MY_TOKEN) are
+// caught, while a middle match like FOO_TOKEN_BAR is not over-blocked. A
+// pathological benign name that happens to end in one of these words (e.g.
+// MONKEY -> KEY) is withheld too; that is the safe direction for a security
+// denylist and the caller is warned by name, so it stays a denylist (not a
+// strict allowlist) and ordinary vars (PATH, LANG, NODE_ENV, MY_APP_REGION,
+// AWS_REGION, ...) are never blocked.
+var credentialWords = []string{
+	"KEY",
+	"TOKEN",
+	"SECRET",
+	"PASSWORD",
+	"PASSWD",
+	"CREDENTIAL",
+	"CREDENTIALS",
 }
 
 // isCredentialShapedName reports whether name looks like it holds a secret —
 // either an exact match against providerKeyDenylist, or its uppercased form
-// containing one of credentialSuffixes. Used to deny --extra names on the
+// ending in one of credentialWords. Used to deny --extra names on the
 // gateway_proxy path, where the child must never receive raw secrets (S9-15).
 func isCredentialShapedName(name string) bool {
 	if providerKeyDenylist[name] {
 		return true
 	}
 	upper := strings.ToUpper(name)
-	for _, suf := range credentialSuffixes {
-		if strings.Contains(upper, suf) {
+	for _, w := range credentialWords {
+		if strings.HasSuffix(upper, w) {
 			return true
 		}
 	}
