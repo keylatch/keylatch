@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/config"
@@ -88,7 +89,12 @@ func TestBuildSettings_FileBackendFallsBackToConfigDirVault(t *testing.T) {
 
 func assertSetting(t *testing.T, settings map[string]interface{}, key, want string) {
 	t.Helper()
-	if got, _ := settings[key].(string); got != want {
+	// Path-valued settings are built with filepath.Join, so they use the OS
+	// separator (backslashes on Windows). Compare in slash form so the
+	// forward-slash `want` fixtures hold on every platform; ToSlash is a
+	// no-op for non-path values.
+	got, _ := settings[key].(string)
+	if filepath.ToSlash(got) != want {
 		t.Fatalf("settings[%q] = %q, want %q", key, got, want)
 	}
 }
