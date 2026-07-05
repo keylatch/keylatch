@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -45,6 +46,9 @@ func TestCheckHealth_BootstrappedAndReadable_Healthy(t *testing.T) {
 
 func TestCheckHealth_UnreadableConfig_Unhealthy(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("directory mode 0o000 does not deny owner access on Windows; a permission-denied stat cannot be reliably simulated")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("running as root — permission bits are not enforced")
 	}
