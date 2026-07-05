@@ -572,21 +572,6 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			// Guard 1b (raw-credential session gate): raw-credential-path corroboration (fail closed).
-			// Skipped for --dry-run above (never decrypts a credential).
-			// rawCredentialExposure is true only for direct/brokered runtime
-			// modes (runtime.IsRawCredentialMode) — the modes that inject the
-			// actual secret into the child env. Gateway/proxy modes never
-			// expose a raw secret (child gets a scoped session token only),
-			// so this is a no-op for them regardless of session verdict. See
-			// RequireVerifiedSession for the full rationale and the escape
-			// hatch (KEYLATCH_ALLOW_UNVERIFIED_SESSION / config field).
-			runEnv := llmcontext.DefaultLookup
-			if verErr := RequireVerifiedSession(runEnv, runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
-				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
-				os.Exit(exitcode.SecurityBlock)
-			}
-
 			// Guard 2: keyring must exist — if not, keylatch has never been bootstrapped.
 			_, statErr := os.Stat(paths.KeyringPath(llmcontext.DefaultLookup))
 			if statErr != nil {
@@ -620,6 +605,22 @@ func newRunCmd() *cobra.Command {
 					// Any other error (e.g. ErrProviderNotFound, backend init failure) is
 					// left for the primary run path to handle with richer context.
 				}
+			}
+
+			// Guard 3b (raw-credential session gate): raw-credential-path corroboration (fail closed).
+			// Runs AFTER the bootstrap (Guard 2) and connection (Guard 3) checks so a
+			// first-run user gets the actionable "bootstrap"/"setup" errors (exit 7 / 6)
+			// rather than a fail-closed message — before setup there is no credential to
+			// protect. Skipped for --dry-run (handled earlier, never decrypts).
+			// rawCredentialExposure is true only for direct/brokered runtime modes
+			// (runtime.IsRawCredentialMode) — the modes that inject the actual secret
+			// into the child env; gateway/proxy modes never expose a raw secret, so this
+			// is a no-op for them regardless of session verdict. See RequireVerifiedSession
+			// for the escape hatch (KEYLATCH_ALLOW_UNVERIFIED_SESSION / allow_unverified_session).
+			runEnv := llmcontext.DefaultLookup
+			if verErr := RequireVerifiedSession(runEnv, runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
+				os.Exit(exitcode.SecurityBlock)
 			}
 
 			// Validate mode early and suggest closest match on typo.
