@@ -384,30 +384,26 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 	}
 }
 
-// TestE2E_GuardRuntime_DirectBrokered_GatedInLLMSession verifies that
-// direct_brokered — a raw-credential mode that GuardRuntime itself allows in
-// LLM sessions — is nonetheless gated by the raw-credential session gate in a detected LLM session absent
-// corroboration or the escape hatch.
-func TestE2E_GuardRuntime_DirectBrokered_GatedInLLMSession(t *testing.T) {
+// TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate verifies that on a
+// clean (un-bootstrapped) machine a raw-credential run mode surfaces the
+// actionable BootstrapMissing error (exit 7) rather than the raw-credential
+// session gate's fail-closed message: the onboarding guards (bootstrap, then
+// connection) run before the session gate, so a first-run user is told to
+// bootstrap, not to provide session corroboration. Before setup there is no
+// credential to protect, so the session gate has nothing to gate here.
+//
+// The session gate's own fail-closed behavior for raw-credential exposure is
+// covered end-to-end by the `get` tests above (which do not depend on
+// bootstrap) and exhaustively at the unit level in
+// internal/cli/session_enforce_test.go.
+func TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
 		"run", "--runtime", "direct_brokered", "aws-prod", "--", "./deploy.sh")
 
-	assert.Equal(t, 2, code, "direct_brokered must be the raw-credential session gate-gated in a detected LLM session absent opt-out; stderr: %s", stderr)
-	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
-}
-
-// TestE2E_GuardRuntime_DirectBrokered_OptOutProceedsPastGate verifies that the
-// escape hatch lets a detected LLM session past the raw-credential session gate for direct_brokered —
-// GuardRuntime already allows the mode, so the only remaining gate is the raw-credential session gate.
-func TestE2E_GuardRuntime_DirectBrokered_OptOutProceedsPastGate(t *testing.T) {
-	homeDir := t.TempDir()
-	_, stderr, code := runKeylatch(t,
-		rawCredGateOptOut(map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir}),
-		"run", "--runtime", "direct_brokered", "aws-prod", "--", "./deploy.sh")
-
-	assert.NotEqual(t, 2, code, "direct_brokered must proceed past the raw-credential session gate once opted out; stderr: %s", stderr)
+	assert.Equal(t, 7, code, "raw run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
+	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
 
 // TestE2E_GuardRuntime_DirectClassicRemoved verifies that the permanently removed
@@ -426,43 +422,24 @@ func TestE2E_GuardRuntime_DirectClassicRemoved(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_GuardRuntime_SandboxedGatedInLLMSession verifies the policy
-// override chosen for the the raw-credential session gate hardening pass: GuardRuntime itself still
-// *allows* direct_classic_sandboxed as a mode in LLM sessions (the OS sandbox
-// boundary is real and unchanged), but the raw-credential session gate's raw-credential gate
-// (RequireVerifiedSession) supersedes that allowance — direct_classic_sandboxed
-// is a raw-credential mode (runtime.IsRawCredentialMode), so it is gated
-// exactly like direct_brokered: fail-closed absent corroboration or the
-// escape hatch, and free to proceed once KEYLATCH_ALLOW_UNVERIFIED_SESSION=1
-// (or config) is set. This supersedes the old "sandboxed always allowed in
-// LLM session" expectation — sandboxed still requires corroboration/opt-out
-// under the raw-credential session gate.
-func TestE2E_GuardRuntime_SandboxedGatedInLLMSession(t *testing.T) {
+// TestE2E_Run_SandboxedBootstrapPrecedesSessionGate verifies that
+// direct_classic_sandboxed (a raw-credential mode) also surfaces the
+// BootstrapMissing error (exit 7) on a clean machine, ahead of the
+// raw-credential session gate — same onboarding-first ordering as
+// direct_brokered. The session gate's raw-credential fail-closed behavior
+// (which supersedes GuardRuntime's allowance of sandboxed in LLM sessions once
+// a machine is set up) is covered by the get-path e2e tests and the
+// session_enforce unit tests.
+func TestE2E_Run_SandboxedBootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
 		"run", "--runtime", "direct_classic_sandboxed",
 		"openrouter", "--", "node", "x.js")
 
-	// Without opt-out: the raw-credential session gate fails closed (exit 2), even though GuardRuntime
-	// alone would have allowed this mode.
-	assert.Equal(t, 2, code,
-		"direct_classic_sandboxed must be the raw-credential session gate-gated in an LLM session absent opt-out; stderr: %s", stderr)
-	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
-
-	homeDir2 := t.TempDir()
-	_, stderr2, code2 := runKeylatch(t,
-		rawCredGateOptOut(map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir2}),
-		"run", "--runtime", "direct_classic_sandboxed",
-		"openrouter", "--", "node", "x.js")
-
-	// With the escape hatch: proceeds past the raw-credential session gate. Must NOT be SecurityBlock (2)
-	// and must NOT be RuntimeNotAvailable (5) — the mode is active,
-	// not removed.
-	assert.NotEqual(t, 2, code2,
-		"direct_classic_sandboxed must proceed past the raw-credential session gate once opted out; stderr: %s", stderr2)
-	assert.NotEqual(t, 5, code2,
-		"direct_classic_sandboxed must not return RuntimeNotAvailable — mode is active; stderr: %s", stderr2)
+	assert.Equal(t, 7, code,
+		"raw sandboxed run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
+	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
 
 // TestE2E_InjectBlockedInLLMSession verifies C-2: keylatch inject returns a non-zero
@@ -483,32 +460,20 @@ func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_GuardRuntime_NonLLMBaseline verifies that GuardRuntime itself never
-// blocks a SignalNone (non-LLM) session for any mode — but the raw-credential session gate's
-// raw-credential gate is independent of session classification and still
-// fail-closes a raw mode (direct_classic_sandboxed) for SignalNone absent
-// corroboration or the escape hatch. This is the "unset every signal" case
-// the raw-credential session gate exists to close: the old "non-LLM sessions are never blocked" invariant
-// held for GuardRuntime alone, but no longer holds once the raw-credential session gate is layered in for
-// raw-credential modes.
-func TestE2E_GuardRuntime_NonLLMBaseline(t *testing.T) {
+// TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate verifies that a
+// SignalNone (non-LLM) session running a raw-credential mode on a clean machine
+// also gets BootstrapMissing (exit 7) first — the onboarding guards precede the
+// session gate for every session class. The session gate's SignalNone
+// fail-closed behavior (the "unset every signal" spoof-to-human case it exists
+// to close) is verified end-to-end by the get-path tests above and unit-tested
+// in internal/cli/session_enforce_test.go.
+func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
 		"run", "--runtime", "direct_classic_sandboxed", "openrouter", "--", "node", "x.js")
 
-	// Without opt-out: the raw-credential session gate gates the raw mode even for SignalNone.
-	assert.Equal(t, 2, code,
-		"the raw-credential session gate must gate a raw-credential mode even for a SignalNone (non-LLM) session absent opt-out; stderr: %s", stderr)
-	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
-
-	homeDir2 := t.TempDir()
-	_, _, code2 := runKeylatch(t,
-		rawCredGateOptOut(map[string]string{"HOME": homeDir2}),
-		"run", "--runtime", "direct_classic_sandboxed", "openrouter", "--", "node", "x.js")
-
-	// With the escape hatch: proceeds past the raw-credential session gate (GuardRuntime never blocked
-	// SignalNone sessions to begin with).
-	assert.NotEqual(t, 2, code2,
-		"direct_classic_sandboxed must proceed past the raw-credential session gate once opted out, for a SignalNone session too")
+	assert.Equal(t, 7, code,
+		"raw run before bootstrap must exit 7 (BootstrapMissing) for a SignalNone session too, ahead of the session gate; stderr: %s", stderr)
+	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
