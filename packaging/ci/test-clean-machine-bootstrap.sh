@@ -86,6 +86,14 @@ KEYLATCH_DATA_DIR="$(mktemp -d)"
 export KEYLATCH_CONFIG_DIR="$KEYLATCH_DATA_DIR"
 log "Isolated data directory: $KEYLATCH_DATA_DIR"
 
+# This smoke test drives the bootstrap/onboarding flow with the direct_brokered
+# runtime (a raw-credential mode), which is subject to the raw-credential
+# session gate. As an automated, non-interactive CI run it is an unverified
+# session (no signed ticket, no keylatchd), so opt out of that gate explicitly
+# — this test validates onboarding exit codes (7 → 6 → 5/0), not session
+# verification (which is covered by dedicated unit/e2e tests).
+export KEYLATCH_ALLOW_UNVERIFIED_SESSION=1
+
 # Convenience wrapper: capture both stdout and stderr, allow non-zero exit.
 run_keylatch() {
   "$KEYLATCH_BIN" "$@" 2>&1 || true
