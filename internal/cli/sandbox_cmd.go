@@ -1,4 +1,4 @@
-// Package cli — Epic 22: sandbox subcommand tree.
+// Package cli — sandbox subcommand tree.
 package cli
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSandboxCmd returns the `sandbox` subcommand group (Epic 22).
+// newSandboxCmd returns the `sandbox` subcommand group.
 func newSandboxCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
@@ -35,7 +35,7 @@ type sandboxDoctorOutput struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
-// newSandboxDoctorCmd returns the `sandbox doctor` subcommand (Epic 22 T05).
+// newSandboxDoctorCmd returns the `sandbox doctor` subcommand.
 func newSandboxDoctorCmd() *cobra.Command {
 	var useJSON bool
 	cmd := &cobra.Command{
@@ -120,7 +120,7 @@ func buildSandboxDoctorOutput(platform string) sandboxDoctorOutput {
 	}
 }
 
-// newSandboxRunCmd returns the `sandbox run` subcommand (Epic 22 T06).
+// newSandboxRunCmd returns the `sandbox run` subcommand.
 func newSandboxRunCmd() *cobra.Command {
 	var connection string
 	cmd := &cobra.Command{

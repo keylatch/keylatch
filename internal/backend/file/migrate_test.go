@@ -11,7 +11,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend/file"
 )
 
-// setFlatFile creates a pre-Phase-4 flat layout entry for testing migration.
+// setFlatFile creates a legacy flat layout entry for testing migration.
 func setFlatFile(t *testing.T, dir, canonical string, value []byte) {
 	t.Helper()
 	p := filepath.Join(dir, filepath.FromSlash(canonical))
@@ -26,7 +26,7 @@ func setFlatFile(t *testing.T, dir, canonical string, value []byte) {
 
 // TestMigrateIfFlat_FlatFileMigratedOnFirstGet verifies that 5 flat-layout
 // entries are lazily migrated the first time GetVersioned is called.
-// Requires a keyring-backed backend (T-02-03).
+// Requires a keyring-backed backend.
 func TestMigrateIfFlat_FlatFileMigratedOnFirstGet(t *testing.T) {
 	dir := t.TempDir()
 
@@ -76,7 +76,7 @@ func TestMigrateIfFlat_FlatFileMigratedOnFirstGet(t *testing.T) {
 	}
 }
 
-// TestMigrateIfFlat_CrashBetweenValueWriteAndMeta verifies S4-5: if the write
+// TestMigrateIfFlat_CrashBetweenValueWriteAndMeta verifies that if the write
 // crashes after SetVersioned but before SetMeta, the flat file is still present.
 func TestMigrateIfFlat_CrashBetweenValueWriteAndMeta(t *testing.T) {
 	dir := t.TempDir()
@@ -100,10 +100,10 @@ func TestMigrateIfFlat_CrashBetweenValueWriteAndMeta(t *testing.T) {
 		t.Fatalf("expected crash error, got: %v", migrateErr)
 	}
 
-	// Flat file must still be present (S4-5).
+	// Flat file must still be present.
 	flatPath := filepath.Join(dir, filepath.FromSlash(canonical), "value.enc")
 	if _, statErr := os.Stat(flatPath); os.IsNotExist(statErr) {
-		t.Error("flat file was removed after crash — S4-5 violated")
+		t.Error("flat file was removed after crash — must be preserved on rollback")
 	}
 
 	// The metadata file must NOT be present (versioned write was rolled back).

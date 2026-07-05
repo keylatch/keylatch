@@ -1,7 +1,7 @@
 // Package events defines the value-free event types sent over the IPC channel
 // from the keylatchd sidecar to the Tauri desktop shell.
 //
-// Security invariant S14-6: NEVER add fields that carry credential values,
+// Security invariant: NEVER add fields that carry credential values,
 // tokens, request bodies, or any other sensitive material. All fields must be
 // value-free identifiers, counts, timestamps, or HMAC-derived labels.
 //
@@ -93,6 +93,6 @@ type SecurityEvent struct {
 	Kind string `cbor:"kind"`
 	// Timestamp is when the event was detected. // security-reviewed: 2026-05-14
 	Timestamp time.Time `cbor:"timestamp"`
-	// AuditRef is the Phase 5 audit log entry ID for correlation. // security-reviewed: 2026-05-14
+	// AuditRef is the audit log entry ID for correlation. // security-reviewed: 2026-05-14
 	AuditRef string `cbor:"audit_ref"`
 }

@@ -1,6 +1,6 @@
 package llmcontext
 
-// ipc_client.go — EPIC-05 Task 2
+// ipc_client.go
 //
 // Lightweight UDS HTTP client for querying keylatchd's LLM session endpoint.
 //
@@ -17,7 +17,7 @@ package llmcontext
 // The socket path is read from the KEYLATCH_DAEMON_SOCKET env var.
 // If that var is not set, the IPC check is skipped (no daemon running).
 //
-// S0-7: this file imports only stdlib packages. No github.com/keylatch/keylatch/internal/* deps.
+// This file imports only stdlib packages. No github.com/keylatch/keylatch/internal/* deps.
 
 import (
 	"context"
@@ -38,7 +38,7 @@ const daemonSocketEnvKey = "KEYLATCH_DAEMON_SOCKET"
 const daemonIPCTimeout = 250 * time.Millisecond
 
 // LLMSessionResponse is the response body from GET /v1/llm-session.
-// _schema is load-bearing for EPIC-21 and EPIC-23 — must be "v1".
+// _schema is load-bearing for the session contract — must be "v1".
 type LLMSessionResponse struct {
 	Schema string `json:"_schema"` // always "v1"
 	Active bool   `json:"active"`

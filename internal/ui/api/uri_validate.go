@@ -8,14 +8,14 @@ import (
 
 // RefURIPattern is the canonical regex for valid provider-reference URIs.
 // It is kept as a named constant so the frontend can import the equivalent
-// string via the /api/provider-templates endpoint (T-14-06).
+// string via the /api/provider-templates endpoint.
 //
 // Pattern breakdown:
-//   - Scheme: op | aws-sm | hashivault
-//   - Must have :// followed by at least two non-slash characters (vault segment)
-//   - Then a literal '/' separator
-//   - Then at least one more non-slash character (item segment)
-//   - Minimum valid form: op://vault/item
+// - Scheme: op | aws-sm | hashivault
+// - Must have :// followed by at least two non-slash characters (vault segment)
+// - Then a literal '/' separator
+// - Then at least one more non-slash character (item segment)
+// - Minimum valid form: op://vault/item
 const RefURIPattern = `^(op|aws-sm|hashivault)://[^/][^/]*/[^/].*`
 
 var refURIRe = regexp.MustCompile(RefURIPattern)

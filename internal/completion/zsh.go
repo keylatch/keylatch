@@ -19,8 +19,8 @@ func generateZsh(root *cobra.Command) (string, error) {
 	fmt.Fprintf(&sb, "# Source this file or place it in a directory on $fpath.\n\n")
 
 	fmt.Fprintf(&sb, "_%s() {\n", root.Name())
-	fmt.Fprintf(&sb, "  local state\n")
-	fmt.Fprintf(&sb, "  _arguments -C \\\n")
+	fmt.Fprintf(&sb, " local state\n")
+	fmt.Fprintf(&sb, " _arguments -C \\\n")
 
 	// Root persistent flags.
 	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
@@ -29,32 +29,32 @@ func generateZsh(root *cobra.Command) (string, error) {
 		}
 		usage := strings.ReplaceAll(f.Usage, "'", `'\''`)
 		if f.Shorthand != "" {
-			fmt.Fprintf(&sb, "    '(-%s --%s)'{-%s,--%s}'[%s]' \\\n",
+			fmt.Fprintf(&sb, " '(-%s --%s)'{-%s,--%s}'[%s]' \\\n",
 				f.Shorthand, f.Name, f.Shorthand, f.Name, usage)
 		} else {
-			fmt.Fprintf(&sb, "    '--%s[%s]' \\\n", f.Name, usage)
+			fmt.Fprintf(&sb, " '--%s[%s]' \\\n", f.Name, usage)
 		}
 	})
 
 	// Subcommand dispatcher.
 	subs := subcommandNames(root)
 	if len(subs) > 0 {
-		fmt.Fprintf(&sb, "    '1: :(%s)' \\\n", strings.Join(subs, " "))
-		fmt.Fprintf(&sb, "    '*::arg:->args'\n")
-		fmt.Fprintf(&sb, "\n  case $state in\n")
-		fmt.Fprintf(&sb, "    args)\n")
-		fmt.Fprintf(&sb, "      case $words[1] in\n")
+		fmt.Fprintf(&sb, " '1: :(%s)' \\\n", strings.Join(subs, " "))
+		fmt.Fprintf(&sb, " '*::arg:->args'\n")
+		fmt.Fprintf(&sb, "\n case $state in\n")
+		fmt.Fprintf(&sb, " args)\n")
+		fmt.Fprintf(&sb, " case $words[1] in\n")
 		for _, sub := range root.Commands() {
 			if sub.Hidden {
 				continue
 			}
 			writeZshSubcommand(&sb, sub)
 		}
-		fmt.Fprintf(&sb, "      esac\n")
-		fmt.Fprintf(&sb, "    ;;\n")
-		fmt.Fprintf(&sb, "  esac\n")
+		fmt.Fprintf(&sb, " esac\n")
+		fmt.Fprintf(&sb, " ;;\n")
+		fmt.Fprintf(&sb, " esac\n")
 	} else {
-		fmt.Fprintf(&sb, "    '*: :_files'\n")
+		fmt.Fprintf(&sb, " '*: :_files'\n")
 	}
 
 	fmt.Fprintf(&sb, "}\n\n")
@@ -65,8 +65,8 @@ func generateZsh(root *cobra.Command) (string, error) {
 
 // writeZshSubcommand writes the case arm for a subcommand.
 func writeZshSubcommand(sb *strings.Builder, cmd *cobra.Command) {
-	fmt.Fprintf(sb, "        %s)\n", cmd.Name())
-	fmt.Fprintf(sb, "          _arguments \\\n")
+	fmt.Fprintf(sb, " %s)\n", cmd.Name())
+	fmt.Fprintf(sb, " _arguments \\\n")
 
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		if f.Hidden {
@@ -75,17 +75,17 @@ func writeZshSubcommand(sb *strings.Builder, cmd *cobra.Command) {
 		usage := strings.ReplaceAll(f.Usage, "'", `'\''`)
 		// Special-case: --runtime flag gets explicit value completions.
 		if f.Name == "runtime" {
-			fmt.Fprintf(sb, "            '--runtime[%s]:%s:%s' \\\n",
+			fmt.Fprintf(sb, " '--runtime[%s]:%s:%s' \\\n",
 				usage, "runtime mode", runtimeModeCompletion)
 			return
 		}
 		if f.Shorthand != "" {
-			fmt.Fprintf(sb, "            '(-%s --%s)'{-%s,--%s}'[%s]' \\\n",
+			fmt.Fprintf(sb, " '(-%s --%s)'{-%s,--%s}'[%s]' \\\n",
 				f.Shorthand, f.Name, f.Shorthand, f.Name, usage)
 		} else {
-			fmt.Fprintf(sb, "            '--%s[%s]' \\\n", f.Name, usage)
+			fmt.Fprintf(sb, " '--%s[%s]' \\\n", f.Name, usage)
 		}
 	})
-	fmt.Fprintf(sb, "            '*: :_files'\n")
-	fmt.Fprintf(sb, "          ;;\n")
+	fmt.Fprintf(sb, " '*: :_files'\n")
+	fmt.Fprintf(sb, " ;;\n")
 }

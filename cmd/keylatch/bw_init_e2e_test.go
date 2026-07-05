@@ -10,8 +10,8 @@
 //	make test-e2e-bw
 //
 // Prerequisites:
-//   - Docker and docker-compose installed
-//   - docker-compose.vaultwarden.yml in the repo root
+// - Docker and docker-compose installed
+// - docker-compose.vaultwarden.yml in the repo root
 package main
 
 import (

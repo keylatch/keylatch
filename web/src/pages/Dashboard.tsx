@@ -17,7 +17,7 @@ import type { Receipt } from '../api/receipts'
  * - Pending approvals banner (role="alert").
  * - ConnectionCard grid.
  * - Activity timeline: receipt feed wired to /v1/receipts + /v1/receipts/stream SSE.
- * - No secret values rendered (canary-safe, S-RM-9).
+ * - No secret values rendered (canary-safe).
  * - 5-second polling fallback when EventSource is unavailable.
  * - Polling pauses when document is hidden (Page Visibility API).
  */
@@ -241,7 +241,7 @@ export function Dashboard() {
         )}
       </section>
 
-      {/* Activity timeline (value-free, S-RM-9) */}
+      {/* Activity timeline (value-free) */}
       <section aria-label="Recent activity" className="space-y-3">
         <p className="text-base font-semibold text-foreground">Recent Activity</p>
         <Card className="divide-y divide-border overflow-hidden">

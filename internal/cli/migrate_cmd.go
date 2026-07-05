@@ -1,6 +1,6 @@
 // Package cli implements the keylatch command-line interface.
 // migrate_cmd.go implements `keylatch migrate cipher --to <alg>`.
-// T5-07: re-encrypts all vault values under a new algorithm atomically.
+// Re-encrypts all vault values under a new algorithm atomically.
 package cli
 
 import (

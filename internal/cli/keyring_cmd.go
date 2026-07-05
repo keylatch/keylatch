@@ -1,6 +1,6 @@
 package cli
 
-// keyring_cmd.go implements the Phase 5 keyring management CLI commands.
+// keyring_cmd.go implements the keyring management CLI commands.
 
 import (
 	"bytes"
@@ -88,7 +88,7 @@ func newKeyringInitCmd() *cobra.Command {
 				gcmLeaseSize = 1024
 			}
 
-			// keyring.New handles atomic write (S5-19): temp file + fsync + rename.
+			// keyring.New handles atomic write: temp file + fsync + rename.
 			// This eliminates the divergent CLI init path (Warning 7).
 			if err := keyring.NewWithSalt(krPath, k, alg, gcmLeaseSize, salt); err != nil {
 				return fmt.Errorf("keyring init: %w", err)
@@ -158,16 +158,16 @@ func newKeyringRotateKEKCmd() *cobra.Command {
 }
 
 // newKeyringDestroyTermCmd implements `keylatch keyring destroy-term <n>`.
-// S5-8: blocked in LLM sessions.
+// Blocked in LLM sessions.
 func newKeyringDestroyTermCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "destroy-term <n>",
 		Short: "Permanently destroy a retired DEK term (irreversible)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// S5-8: block in LLM sessions.
+			// Block in LLM sessions.
 			if llmcontext.IsLLMSession(os.Getenv) {
-				return fmt.Errorf("destroy-term: blocked in LLM session (S5-8)")
+				return fmt.Errorf("destroy-term: blocked in LLM session")
 			}
 
 			termStr := args[0]
@@ -306,13 +306,13 @@ func buildKEK(ctx context.Context, spec string) (filebe.KEK, error) {
 // Supported specs: "passphrase", "keychain", "op:<vault>/<item>/<field>",
 // "bw:<id>/<field>", "age-env".
 //
-// S-FIND-12: the KEYLATCH_PASSPHRASE env-var read path is deleted. Passphrase
+// The KEYLATCH_PASSPHRASE env-var read path is deleted. Passphrase
 // input is accepted only via TTY (interactive prompt) or stdin pipe (@-).
 // No code in this function reads KEYLATCH_PASSPHRASE.
 func buildKEKWithSalt(_ context.Context, spec string, salt []byte) (filebe.KEK, error) {
 	switch {
 	case spec == "passphrase" || spec == "":
-		// S-FIND-12: KEYLATCH_PASSPHRASE env var is NOT read here.
+		// KEYLATCH_PASSPHRASE env var is NOT read here.
 		// Passphrase must come from TTY or stdin pipe — read from os.Stdin.
 		pass, err := readPassphrase()
 		if err != nil {
@@ -369,7 +369,7 @@ func buildKEKWithSalt(_ context.Context, spec string, salt []byte) (filebe.KEK, 
 // readPassphrase reads a passphrase from a TTY (masked) or any non-TTY stdin
 // source (anonymous pipe, named FIFO, file redirect, char device).
 //
-// S-FIND-12: KEYLATCH_PASSPHRASE env var is not used. If stdin is a TTY,
+// KEYLATCH_PASSPHRASE env var is not used. If stdin is a TTY,
 // term.ReadPassword is used for masked input. Otherwise, io.ReadAll reads the
 // passphrase from whatever is connected to stdin — os.ModeNamedPipe is NOT
 // used because it only detects named FIFOs and misses anonymous pipes (e.g.
@@ -402,7 +402,7 @@ func readPassphrase() ([]byte, error) {
 	}
 	pass = bytes.TrimRight(pass, "\r\n")
 	if len(pass) == 0 {
-		// KEYLATCH_PASSPHRASE env var is not accepted (S-FIND-12).
+		// KEYLATCH_PASSPHRASE env var is not accepted.
 		return nil, NewUsageError(
 			"passphrase requires a TTY (for masked input) or stdin pipe with a non-empty passphrase. KEYLATCH_PASSPHRASE is not supported.",
 		)

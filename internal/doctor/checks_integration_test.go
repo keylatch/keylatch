@@ -78,7 +78,7 @@ func TestCheckIntegrationMarkers_MarkerWithConfig(t *testing.T) {
 	require.NoError(t, os.MkdirAll(klDir, 0o750))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(klDir, "integration.yml"),
-		[]byte("agent: claude-code\nproviders:\n  - openrouter\n"),
+		[]byte("agent: claude-code\nproviders:\n - openrouter\n"),
 		0o600,
 	))
 

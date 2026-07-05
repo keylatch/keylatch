@@ -136,7 +136,7 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 	}
 
 	for _, rule := range tmpl.InjectionRules {
-		// Build the canonical storage path: namespace/category/provider/field (S-FIND-23).
+		// Build the canonical storage path: namespace/category/provider/field.
 		category := tmpl.Category
 		if category == "" {
 			category = "ai"
@@ -150,7 +150,7 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 			}
 			return Receipt{}, fmt.Errorf("runner: read credential %q: %w", rule.Source, err)
 		}
-		// Resolve external-store URI references (EPIC-10, T-10-01).
+		// Resolve external-store URI references.
 		// This runs after the LLM guard (GuardLLMSession) which executes at the
 		// CLI layer before the runner is invoked.
 		if store.IsProviderRefURI(val) {
@@ -234,7 +234,7 @@ func (p ProcessRunner) uriResolver() URIResolver {
 }
 
 // secretFieldLookupPath returns the canonical vault path for a credential field.
-// Canonical format: namespace/category/provider/field (S-FIND-23, T-03-01).
+// Canonical format: namespace/category/provider/field.
 // No backward-compat read from "default/connections/..." — v1.0.0 has no existing users.
 func secretFieldLookupPath(namespace, category, provider, field string) string {
 	if category == "" {

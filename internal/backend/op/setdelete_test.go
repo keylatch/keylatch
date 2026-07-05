@@ -118,8 +118,8 @@ func TestIdentityAndClose(t *testing.T) {
 	assert.NoError(t, b.Close())
 }
 
-// Phase-4 versioned/meta stubs must consistently return ErrNotSupported.
-func TestPhase4Stubs_NotSupported(t *testing.T) {
+// Versioned/meta stubs must consistently return ErrNotSupported.
+func TestVersionedStubs_NotSupported(t *testing.T) {
 	b := openWithRunner(t, &kexec.MockRunner{})
 	ctx := context.Background()
 

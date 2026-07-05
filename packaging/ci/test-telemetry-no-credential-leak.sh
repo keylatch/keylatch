@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-telemetry-no-credential-leak.sh — EPIC-18 telemetry canary scan
+# test-telemetry-no-credential-leak.sh — telemetry canary scan
 #
 # Verifies that credential values enrolled in the vault NEVER appear in any
 # telemetry event body emitted to the remote sink.
@@ -13,7 +13,7 @@
 #   6. Grep all captured request bodies for the canary string
 #   7. Fail if the canary is found; pass otherwise
 #
-# S-TEL-1 invariant: telemetry payloads must never contain credential bytes.
+# Invariant: telemetry payloads must never contain credential bytes.
 #
 # Exit codes:
 #   0 — canary not found in any captured telemetry body (PASS)
@@ -169,7 +169,7 @@ log "Bootstrapping keylatch in telemetry mode..."
 log "Enrolling canary credential..."
 
 if ! printf '%s' "$CANARY" | "$KEYLATCH_BIN" set default/custom/canary-tel-test/api_key >/dev/null 2>&1; then
-  fail "enrollment failed — canary was never written; S-TEL-1 scan is vacuous; aborting"
+  fail "enrollment failed — canary was never written; scan is vacuous; aborting"
 fi
 log "Enrolled via: keylatch set default/custom/canary-tel-test/api_key"
 
@@ -219,8 +219,8 @@ else
 fi
 
 if [[ "$LEAK_FOUND" -ne 0 ]]; then
-  fail "S-TEL-1 violated: canary credential bytes appeared in telemetry output"
+  fail "invariant violated: canary credential bytes appeared in telemetry output"
 fi
 
-pass "S-TEL-1: no canary credential bytes found in any telemetry channel"
+pass "no canary credential bytes found in any telemetry channel"
 log "All telemetry-canary checks passed."

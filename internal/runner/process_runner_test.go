@@ -98,7 +98,7 @@ func (m *mockBackend) ID() string { return "mock" }
 
 func (m *mockBackend) Close() error { return nil }
 
-// secretPath mirrors the canonical lookup path used by ProcessRunner (S-FIND-23).
+// secretPath mirrors the canonical lookup path used by ProcessRunner.
 // Format: namespace/category/provider/field. The account segment is dropped in v1.0.0.
 func secretPath(namespace, category, provider, field string) string {
 	if category == "" {
@@ -320,7 +320,7 @@ func TestProcessRunner_BackendNotFound(t *testing.T) {
 // TestProcessRunner_URIResolution verifies that when a credential field contains
 // a provider-ref URI (e.g. op://...), the runtime resolves it via the injected
 // resolver and injects the resolved value into the subprocess environment —
-// not the raw URI string. (EPIC-10, T-10-01)
+// not the raw URI string.
 func TestProcessRunner_URIResolution(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test requires #!/bin/sh executable — not supported on Windows")

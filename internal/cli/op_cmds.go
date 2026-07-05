@@ -17,14 +17,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RegisterOPCommands attaches Phase 2 op-related commands to root.
+// RegisterOPCommands attaches op-related commands to root.
 func RegisterOPCommands(root *cobra.Command) {
 	root.AddCommand(newOPInitCmd())
 	root.AddCommand(newOPListCmd())
 }
 
 // newOPInitCmd returns the `op-init <service>` command.
-// S2-6: secret values are read via secure prompt or --from-stdin; never positional arg.
+// Secret values are read via secure prompt or --from-stdin; never positional arg.
 func newOPInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "op-init <service>",
@@ -32,7 +32,7 @@ func newOPInitCmd() *cobra.Command {
 		Long: `op-init reads a secret value from a secure prompt (or --from-stdin) and
 stores it in the configured 1Password vault using the op CLI.
 
-The value is NEVER read from a positional argument (S2-6).`,
+The value is NEVER read from a positional argument.`,
 		Args: cobra.ExactArgs(1),
 	}
 
@@ -67,7 +67,7 @@ The value is NEVER read from a positional argument (S2-6).`,
 			return fmt.Errorf("exit %d", exitcode.UserError)
 		}
 
-		// S2-6: read value from secure prompt or --from-stdin; never positional arg.
+		// Read value from secure prompt or --from-stdin; never positional arg.
 		var value []byte
 		if fromStdin {
 			scanner := bufio.NewScanner(c.InOrStdin())
@@ -95,7 +95,7 @@ The value is NEVER read from a positional argument (S2-6).`,
 			return err
 		}
 
-		// S2-1: no value in output.
+		// No value in output.
 		vaultName := "Keylatch"
 		if cfg.OP != nil && cfg.OP.Vault != "" {
 			vaultName = cfg.OP.Vault

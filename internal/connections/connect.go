@@ -22,12 +22,12 @@ type Store interface {
 // Connect creates a new connection for the given provider.
 //
 // Steps:
-//  1. Look up the registry template.
-//  2. For each SecretField: read from opts.Fields or prompt interactively.
-//  3. Write each secret to vault under canonical "namespace/category/provider/field" path.
-//  4. Zero secret byte slices after write.
-//  5. Write connection metadata to vault.
-//  6. Return the populated Connection with Status="untested".
+// 1. Look up the registry template.
+// 2. For each SecretField: read from opts.Fields or prompt interactively.
+// 3. Write each secret to vault under canonical "namespace/category/provider/field" path.
+// 4. Zero secret byte slices after write.
+// 5. Write connection metadata to vault.
+// 6. Return the populated Connection with Status="untested".
 //
 // Returns ErrAmbiguous when a connection already exists for this provider+namespace
 // and opts.Account is empty on a multi-account provider.
@@ -159,7 +159,7 @@ func Connect(ctx context.Context, provider string, opts ConnectOptions, store St
 
 // connectionMetaPath returns the vault path for connection metadata.
 // Canonical format: namespace/category/provider/meta
-// S-FIND-23: v1.0.0 uses four-segment paths exclusively.
+// v1.0.0 uses four-segment paths exclusively.
 func connectionMetaPath(namespace, category, provider string) string {
 	if category == "" {
 		category = "ai"
@@ -169,7 +169,7 @@ func connectionMetaPath(namespace, category, provider string) string {
 
 // secretFieldPath returns the vault path for a secret field.
 // Canonical format: namespace/category/provider/field
-// S-FIND-23: v1.0.0 uses four-segment paths exclusively.
+// v1.0.0 uses four-segment paths exclusively.
 func secretFieldPath(namespace, category, provider, field string) string {
 	if category == "" {
 		category = "ai"

@@ -11,10 +11,10 @@ import (
 const BwrapInstallHint = `bwrap (bubblewrap) is required for direct_classic_sandboxed mode on Linux.
 
 Install it with your package manager:
-  apt-get install bubblewrap       # Debian/Ubuntu
-  dnf install bubblewrap           # Fedora/RHEL
-  pacman -S bubblewrap             # Arch Linux
-  nix-env -iA nixpkgs.bubblewrap  # Nix`
+  apt-get install bubblewrap # Debian/Ubuntu
+  dnf install bubblewrap # Fedora/RHEL
+  pacman -S bubblewrap # Arch Linux
+  nix-env -iA nixpkgs.bubblewrap # Nix`
 
 // DetectBwrap reports whether bwrap is available on the PATH or at known
 // system locations. Returns the resolved path and ok=true when found.

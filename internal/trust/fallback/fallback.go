@@ -2,7 +2,7 @@
 // It evaluates a list of RootSpec entries in order, applying skip rules, and returns
 // the first RootOfTrust that satisfies an Operation's requirements.
 //
-// Security invariant FIND2-003: hardware-only policy NEVER silently downgrades to
+// Security invariant hardware-only policy NEVER silently downgrades to
 // passphrase. Chain.Resolve returns ErrChainExhausted when RequiredRootTypes contains
 // hardware roots and only passphrase roots are available.
 package fallback
@@ -38,7 +38,7 @@ type Operation struct {
 	InteractiveAllowed bool
 	// RequiredRootTypes restricts resolution to specific root types.
 	// An empty slice means any type is acceptable.
-	// FIND2-003: if this is non-empty and contains only hardware types, passphrase
+	// if this is non-empty and contains only hardware types, passphrase
 	// roots are never selected as a fallback.
 	RequiredRootTypes []trust.RootType
 	// RequireAllOfRootIDs lists root spec IDs that ALL must be satisfied (two-person mode).
@@ -86,13 +86,13 @@ func NewChain(specs []trust.RootSpec) *Chain {
 // Resolve selects the first eligible RootOfTrust for op from the chain.
 //
 // Resolution algorithm:
-//  1. Skip roots where Status != RootActive.
-//  2. Skip roots where the required capability is not supported.
-//  3. Skip roots not in op.RequiredRootTypes (if non-empty). FIND2-003: hardware-only
-//     policies never silently downgrade to passphrase.
-//  4. Skip presence-requiring roots in LLM sessions.
-//  5. Skip non-launchd-safe roots when !op.InteractiveAllowed.
-//  6. Try trust.New(spec) — first success wins.
+// 1. Skip roots where Status != RootActive.
+// 2. Skip roots where the required capability is not supported.
+// 3. Skip roots not in op.RequiredRootTypes (if non-empty). hardware-only
+// policies never silently downgrade to passphrase.
+// 4. Skip presence-requiring roots in LLM sessions.
+// 5. Skip non-launchd-safe roots when !op.InteractiveAllowed.
+// 6. Try trust.New(spec) — first success wins.
 //
 // Returns ErrChainExhausted with full Reason if no root is eligible.
 func (c *Chain) Resolve(ctx context.Context, op Operation) (trust.RootOfTrust, Reason, error) {
@@ -210,7 +210,7 @@ func (c *Chain) ResolveAll(ctx context.Context, op Operation) ([]trust.RootOfTru
 				})
 				continue
 			}
-			// Rule 3: RequiredRootTypes filter (mirrors Resolve, FIND2-003).
+			// Rule 3: RequiredRootTypes filter (mirrors Resolve).
 			if len(op.RequiredRootTypes) > 0 && !rootTypeIn(spec.Type, op.RequiredRootTypes) {
 				skipped = append(skipped, SkippedRoot{
 					SpecID: spec.ID, Type: spec.Type, Reason: SkipRootType,

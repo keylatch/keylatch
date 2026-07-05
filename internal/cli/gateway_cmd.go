@@ -1,4 +1,4 @@
-// Package cli — Phase 9 gateway subcommands.
+// Package cli contains gateway subcommands.
 package cli
 
 import (
@@ -32,7 +32,7 @@ import (
 func newGatewayCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gateway",
-		Short: "Manage the local typed provider gateway (Phase 9)",
+		Short: "Manage the local typed provider gateway",
 	}
 	cmd.AddCommand(newGatewayInitCmd())
 	cmd.AddCommand(newGatewayUpCmd())
@@ -115,6 +115,7 @@ func newGatewayUpCmd() *cobra.Command {
 		port          int
 		detach        bool
 		unsafeBindAll bool
+		listenAddr    string
 		withProxy     bool
 		proxyPort     int
 		budgetPerHour float64
@@ -126,7 +127,7 @@ func newGatewayUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 
-			// P1.3: check if gateway is already running.
+			// Check if gateway is already running.
 			pidPath := paths.GatewayPID(env)
 			if pid, running := gateway.IsRunning(pidPath); running {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: Gateway is already running (pid: %d).\n\n", pid)
@@ -136,7 +137,7 @@ func newGatewayUpCmd() *cobra.Command {
 			}
 
 			if detach {
-				// T-13-08: refuse --detach when running via `go run`.
+				// Refuse --detach when running via `go run`.
 				// `go run` compiles to a temp binary; re-exec'ing it would
 				// either fail (binary deleted) or start a dangling process
 				// tied to the go run session. Detect this condition early.
@@ -153,6 +154,17 @@ func newGatewayUpCmd() *cobra.Command {
 				childArgs := []string{"gateway", "up", fmt.Sprintf("--port=%d", port)}
 				if unsafeBindAll {
 					childArgs = append(childArgs, "--unsafe-bind-all")
+				}
+				if listenAddr != "" {
+					// docker-server-security: validate --listen up front so a
+					// malformed value fails immediately in the parent, rather
+					// than surfacing later as a raw net.Listen error inside the
+					// detached child.
+					if err := validateHostPort(listenAddr); err != nil {
+						fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", err)
+						os.Exit(exitcode.UserError)
+					}
+					childArgs = append(childArgs, "--listen="+listenAddr)
 				}
 				if budgetPerHour > 0 {
 					childArgs = append(childArgs, fmt.Sprintf("--budget-per-hour=%g", budgetPerHour))
@@ -186,7 +198,29 @@ func newGatewayUpCmd() *cobra.Command {
 				return fmt.Errorf("gateway up: signing key must be 32 bytes (run 'gateway init' first)")
 			}
 
-			bind := fmt.Sprintf("127.0.0.1:%d", port)
+			// LLM sessions never get a non-loopback bind, regardless of flags/env
+			// (fail closed). gateway.New() enforces this independently; suppressing
+			// the inputs here keeps the CLI's own messaging/printed address accurate.
+			isLLM := llmcontext.IsLLMSession(env)
+			effectiveListenAddr := listenAddr
+			bindEnv := env
+			if isLLM {
+				if unsafeBindAll {
+					fmt.Fprintln(c.ErrOrStderr(), "gateway: LLM session detected — --unsafe-bind-all ignored")
+					unsafeBindAll = false
+				}
+				if effectiveListenAddr != "" || env(gateway.EnvListenKey) != "" {
+					fmt.Fprintln(c.ErrOrStderr(), "gateway: LLM session detected — --listen/KEYLATCH_GATEWAY_LISTEN ignored")
+					effectiveListenAddr = ""
+					bindEnv = func(string) string { return "" }
+				}
+			}
+			bind, allowExternalBind, bindErr := resolveAndValidateGatewayBindAddr(port, effectiveListenAddr, unsafeBindAll, bindEnv)
+			if bindErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", bindErr)
+				os.Exit(exitcode.UserError)
+			}
+			unsafeBindAll = unsafeBindAll || allowExternalBind
 
 			// Open audit logger on a best-effort basis. If the keyring is not set
 			// up (no passphrase / DEK), the gateway still starts without audit.
@@ -270,11 +304,29 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 7878, "port to listen on")
 	cmd.Flags().BoolVar(&detach, "detach", false, "run gateway as a background process")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "allow non-loopback bind (non-LLM sessions only)")
+	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7878 (Docker; non-LLM sessions only; overrides KEYLATCH_GATEWAY_LISTEN)")
 	cmd.Flags().BoolVar(&withProxy, "with-proxy", false, "also start the CONNECT proxy alongside the gateway")
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
 	return cmd
+}
+
+// resolveAndValidateGatewayBindAddr wraps gateway.ResolveBindAddr with the
+// same validateHostPort check used for KEYLATCH_GATEWAY_ADDR/
+// KEYLATCH_PROXY_ADDR (docker-server-security hardening), so a malformed
+// --listen/KEYLATCH_GATEWAY_LISTEN value produces a clean exitcode.UserError
+// message here instead of a raw net.Listen error surfacing later inside
+// gateway.New()/Serve().
+//
+// Kept as a standalone, side-effect-free function (rather than inlined in
+// RunE) so it can be unit tested without starting a real server.
+func resolveAndValidateGatewayBindAddr(port int, listenAddr string, unsafeBindAll bool, bindEnv llmcontext.Lookup) (bind string, allowExternal bool, err error) {
+	bind, allowExternal = gateway.ResolveBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
+	if err := validateHostPort(bind); err != nil {
+		return "", false, err
+	}
+	return bind, allowExternal, nil
 }
 
 // --- gateway down ---
@@ -503,7 +555,7 @@ func newGatewayTokenRevokeCmd() *cobra.Command {
 // in a system temp directory; its path contains the OS temp dir prefix and
 // typically a "go-build" or "go-run" segment.
 //
-// T-13-08: used to block `gateway --detach` when running via `go run`, where
+// Used to block `gateway --detach` when running via `go run`, where
 // re-exec of a temp binary is unsafe (the binary may already be deleted or
 // the session tied to the go run invocation).
 func isGoRunArtifact() bool {

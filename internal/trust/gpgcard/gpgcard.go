@@ -26,7 +26,7 @@ type Options struct {
 	Label string
 	// HMACFunc computes an HMAC of its argument under the keyring's HMAC key.
 	// When non-nil, it is used to HMAC the raw adapter ID before embedding it
-	// in PresenceProof.RootID (S11-3: root IDs must be HMAC'd at emission).
+	// in PresenceProof.RootID (root IDs must be HMAC'd at emission).
 	// When nil, the raw adapter ID is stored (backward compat; should not be nil in production).
 	HMACFunc func([]byte) []byte
 }
@@ -128,7 +128,7 @@ func (a *Adapter) RequirePresence(_ context.Context, _ string) (trust.PresencePr
 	if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 		return trust.PresenceProof{}, trust.ErrLLMSessionBlocked
 	}
-	// S11-3: HMAC the root ID at emission.
+	// HMAC the root ID at emission.
 	rootID := a.id
 	if a.opts.HMACFunc != nil {
 		rootID = base64.RawURLEncoding.EncodeToString(a.opts.HMACFunc([]byte(a.id)))

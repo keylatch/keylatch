@@ -13,5 +13,5 @@ type SecurityBlockEvent struct {
 }
 
 // SecurityBlockHook is called by GuardLLMSession on every block.
-// Phase 5 replaces this with the real audit writer. Default is a no-op.
+// A future release replaces this with the real audit writer. Default is a no-op.
 var SecurityBlockHook func(ctx context.Context, e SecurityBlockEvent) = func(_ context.Context, _ SecurityBlockEvent) {}

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# test-receipts-no-credential-leak.sh — EPIC-16 canary scan (S-RM-9)
+# test-receipts-no-credential-leak.sh — canary scan
 #
 # Verifies that a known canary credential value injected at enrollment time
 # does NOT appear in any receipt output channel:
 #   1. GET /v1/receipts (JSON list endpoint)
 #   2. keylatch receipts list --json (CLI file-store path)
 #
-# S-RM-9 invariant: receipt payloads must never contain credential bytes.
+# Invariant: receipt payloads must never contain credential bytes.
 #
 # Exit codes:
 #   0 — no canary bytes found in any receipt output (PASS)
@@ -194,8 +194,8 @@ else
 fi
 
 if [[ "$LEAK_FOUND" -ne 0 ]]; then
-  fail "S-RM-9 violated: canary credential bytes appeared in receipt output"
+  fail "invariant violated: canary credential bytes appeared in receipt output"
 fi
 
-pass "S-RM-9: no canary credential bytes found in any receipt output channel"
+pass "no canary credential bytes found in any receipt output channel"
 log "All receipts-canary checks passed."

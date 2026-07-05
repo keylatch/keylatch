@@ -1,4 +1,4 @@
-// Package meta defines the pure, value-free domain model for Phase 4 metadata.
+// Package meta defines the pure, value-free domain model for versioned metadata.
 // This package has zero dependencies on backend, CLI, or IO. It owns the
 // canonical Meta struct, VersionMeta, DeliveryRecord, AADBinding, and ID.
 package meta
@@ -23,7 +23,7 @@ const DefaultMaxVersions = 5
 const MaxDeliveryRecords = 16
 
 // ID is an opaque per-path accessor token. Generated on first write; stable
-// across reads and versions. Audit logs reference it (HMAC'd in Phase 5).
+// across reads and versions. Audit logs reference it (HMAC'd).
 type ID string
 
 // String returns the string representation of the ID.
@@ -40,14 +40,14 @@ type AADBinding struct {
 	Namespace     string    `json:"namespace"`
 	Path          string    `json:"path"`
 	Version       int       `json:"version"`
-	KeyTerm       int       `json:"key_term"`   // Phase 5 wires; 0 in Phase 4
+	KeyTerm       int       `json:"key_term"`   // wired when encryption is enabled; 0 in plaintext mode
 	BackendID     string    `json:"backend_id"` // backend.ID() result
 	CreatedAt     time.Time `json:"created_at"`
 	Algorithm     string    `json:"algorithm"` // e.g. "xchacha20-poly1305"
 }
 
 // DeliveryRecord captures a single runtime delivery event for audit purposes.
-// Phase 4 stores up to MaxDeliveryRecords per version (FIFO cap).
+// Stores up to MaxDeliveryRecords per version (FIFO cap).
 type DeliveryRecord struct {
 	DeliveredAt     time.Time `json:"delivered_at"`
 	RuntimeMode     string    `json:"runtime_mode"`

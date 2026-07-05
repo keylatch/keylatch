@@ -10,7 +10,7 @@ import (
 )
 
 // TestNoShDashC verifies that no "sh -c" invocations exist in internal/backend/.
-// S1-3 / SC1-10: backend code must never invoke sh -c.
+// Backend code must never invoke sh -c.
 func TestNoShDashC(t *testing.T) {
 	backendDir := findBackendDir(t)
 
@@ -19,12 +19,12 @@ func TestNoShDashC(t *testing.T) {
 		for i, line := range lines {
 			if bytes.Contains(line, []byte(`"sh"`)) &&
 				bytes.Contains(line, []byte(`"-c"`)) {
-				t.Errorf("%s:%d: found sh -c invocation (S1-3 violation): %s",
+				t.Errorf("%s:%d: found sh -c invocation: %s",
 					path, i+1, strings.TrimSpace(string(line)))
 			}
 			// Also check for string literals containing "sh -c".
 			if bytes.Contains(line, []byte(`sh -c`)) {
-				t.Errorf("%s:%d: found 'sh -c' string (S1-3 violation): %s",
+				t.Errorf("%s:%d: found 'sh -c' string: %s",
 					path, i+1, strings.TrimSpace(string(line)))
 			}
 		}
@@ -37,7 +37,7 @@ func TestNoShDashC(t *testing.T) {
 }
 
 // TestNoOsExecOutsideExec verifies that "os/exec" is not imported in internal/backend/.
-// SC1-10: all exec calls must go through internal/exec, never os/exec directly in backends.
+// All exec calls must go through internal/exec, never os/exec directly in backends.
 func TestNoOsExecOutsideExec(t *testing.T) {
 	backendDir := findBackendDir(t)
 
@@ -45,7 +45,7 @@ func TestNoOsExecOutsideExec(t *testing.T) {
 		lines := bytes.Split(content, []byte("\n"))
 		for i, line := range lines {
 			if bytes.Contains(line, []byte(`"os/exec"`)) {
-				t.Errorf("%s:%d: found os/exec import in backend package (SC1-10 violation): %s",
+				t.Errorf("%s:%d: found os/exec import in backend package: %s",
 					path, i+1, strings.TrimSpace(string(line)))
 			}
 		}

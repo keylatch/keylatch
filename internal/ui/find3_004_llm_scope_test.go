@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFIND3004_LLMScopeIsCeiling verifies that when CLAUDE_CODE=1 is set,
+// TestLLMScopeIsCeiling verifies that when CLAUDE_CODE=1 is set,
 // the session scope is forced to ScopeStatusOnly regardless of requested scope.
-func TestFIND3004_LLMScopeIsCeiling(t *testing.T) {
+func TestLLMScopeIsCeiling(t *testing.T) {
 	t.Parallel()
 
 	k := make([]byte, 32)
@@ -36,9 +36,9 @@ func TestFIND3004_LLMScopeIsCeiling(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestFIND3004_LLMSession_WriteEndpoints404 verifies that write endpoints
+// TestLLMSession_WriteEndpoints404 verifies that write endpoints
 // return 404 (not 403) in LLM sessions, ensuring no route information leaks.
-func TestFIND3004_LLMSession_WriteEndpoints404(t *testing.T) {
+func TestLLMSession_WriteEndpoints404(t *testing.T) {
 	t.Parallel()
 
 	k := make([]byte, 32)
@@ -86,15 +86,15 @@ func TestFIND3004_LLMSession_WriteEndpoints404(t *testing.T) {
 			rec := httptest.NewRecorder()
 			srv.TestServeHTTP(rec, req)
 			assert.Equal(t, http.StatusNotFound, rec.Code,
-				"FIND3-004: write endpoint %s %s must return 404 in LLM session",
+				"write endpoint %s %s must return 404 in LLM session",
 				ep.method, ep.path)
 		})
 	}
 }
 
-// TestFIND3004_BootstrapCaptureForgedCookieRejected verifies that forged
+// TestBootstrapCaptureForgedCookieRejected verifies that forged
 // session cookies are rejected with 401.
-func TestFIND3004_BootstrapCaptureForgedCookieRejected(t *testing.T) {
+func TestBootstrapCaptureForgedCookieRejected(t *testing.T) {
 	t.Parallel()
 
 	k := make([]byte, 32)
@@ -118,5 +118,5 @@ func TestFIND3004_BootstrapCaptureForgedCookieRejected(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.TestServeHTTP(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code,
-		"FIND3-004: forged session cookie must be rejected")
+		"forged session cookie must be rejected")
 }

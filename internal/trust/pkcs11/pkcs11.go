@@ -31,7 +31,7 @@ type Options struct {
 	KekHMAC func([]byte) []byte
 	// HMACFunc computes an HMAC of its argument under the keyring's HMAC key.
 	// When non-nil, it is used to HMAC the raw adapter ID before embedding it
-	// in PresenceProof.RootID (S11-3: root IDs must be HMAC'd at emission).
+	// in PresenceProof.RootID (root IDs must be HMAC'd at emission).
 	// When nil, the raw adapter ID is stored (backward compat; should not be nil in production).
 	HMACFunc func([]byte) []byte
 }
@@ -47,7 +47,7 @@ type Adapter struct {
 }
 
 // New opens a PKCS#11 session to the module at opts.ModulePath.
-// Enforces the module allowlist before any session is opened (S11-4).
+// Enforces the module allowlist before any session is opened.
 func New(opts Options) (*Adapter, error) {
 	// 1. Load and verify allowlist.
 	entries, err := LoadAllowlist(opts.KekHMAC)
@@ -99,7 +99,7 @@ func New(opts Options) (*Adapter, error) {
 	if label == "" {
 		label = opts.ModulePath
 	}
-	_ = label // planned: passed to adapter display name in Phase 11
+	_ = label // planned: passed to adapter display name
 
 	return &Adapter{
 		opts: opts,
@@ -146,7 +146,7 @@ func (a *Adapter) RequirePresence(_ context.Context, _ string) (trust.PresencePr
 	if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 		return trust.PresenceProof{}, trust.ErrLLMSessionBlocked
 	}
-	// S11-3: HMAC the root ID at emission.
+	// HMAC the root ID at emission.
 	rootID := a.id
 	if a.opts.HMACFunc != nil {
 		rootID = base64.RawURLEncoding.EncodeToString(a.opts.HMACFunc([]byte(a.id)))

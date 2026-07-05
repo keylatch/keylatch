@@ -31,7 +31,7 @@ var (
 	ErrManifestCorrupt = errors.New("manifest corrupt")
 
 	// ErrNotSupported is returned by backends that do not implement optional
-	// Phase 4 versioned-storage methods (GetMeta, SetMeta, ListMeta,
+	// versioned-storage methods (GetMeta, SetMeta, ListMeta,
 	// GetVersioned, SetVersioned, DeleteVersioned).
 	ErrNotSupported = errors.New("backend: operation not supported")
 

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFIND3010BearerTTLExceedsCapRejected verifies that a TokenTTL > 1h is rejected.
-func TestFIND3010BearerTTLExceedsCapRejected(t *testing.T) {
+// TestBearerTTLExceedsCapRejected verifies that a TokenTTL > 1h is rejected.
+func TestBearerTTLExceedsCapRejected(t *testing.T) {
 	t.Setenv("CLAUDE_CODE", "")
 	t.Setenv("CODEX_ENV", "")
 	t.Setenv("CREDENTIALS_LLM_SESSION", "")
@@ -30,8 +30,8 @@ func TestFIND3010BearerTTLExceedsCapRejected(t *testing.T) {
 		"TokenTTL=24h must return ErrTTLExceedsCap")
 }
 
-// TestFIND3010BearerTTLOneHourAccepted verifies that TokenTTL=1h is accepted.
-func TestFIND3010BearerTTLOneHourAccepted(t *testing.T) {
+// TestBearerTTLOneHourAccepted verifies that TokenTTL=1h is accepted.
+func TestBearerTTLOneHourAccepted(t *testing.T) {
 	t.Setenv("CLAUDE_CODE", "")
 
 	s, err := New(ServerOptions{
@@ -51,9 +51,9 @@ func TestFIND3010BearerTTLOneHourAccepted(t *testing.T) {
 		"TokenTTL=1h must not return ErrTTLExceedsCap")
 }
 
-// TestFIND3010StdioModeNoToken verifies FIND3-010(a): stdio mode does not
+// TestStdioModeNoToken verifies that stdio mode does not
 // accept a session token.
-func TestFIND3010StdioModeNoToken(t *testing.T) {
+func TestStdioModeNoToken(t *testing.T) {
 	_, err := New(ServerOptions{
 		Transport:    TransportStdio,
 		SessionToken: "should-not-be-here",

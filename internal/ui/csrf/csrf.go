@@ -6,9 +6,9 @@
 // origin), it cannot forge the header.
 //
 // Security invariants:
-//   - CSRF token is never stored server-side (stateless double-submit).
-//   - All write endpoints (POST/PUT/DELETE/PATCH) require a valid CSRF token.
-//   - GET/HEAD/OPTIONS are exempt (safe methods).
+// - CSRF token is never stored server-side (stateless double-submit).
+// - All write endpoints (POST/PUT/DELETE/PATCH) require a valid CSRF token.
+// - GET/HEAD/OPTIONS are exempt (safe methods).
 package csrf
 
 import (

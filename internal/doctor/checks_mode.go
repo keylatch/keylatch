@@ -11,7 +11,7 @@ import (
 )
 
 // checkOperatingMode reports the active operating mode and its effective settings.
-// EPIC-17: D2 check — satisfies the doctor D-category operating-mode requirement.
+// D2 check — satisfies the doctor D-category operating-mode requirement.
 func checkOperatingMode(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		cfgPath := paths.Config(env)

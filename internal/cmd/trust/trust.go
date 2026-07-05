@@ -1,6 +1,6 @@
 // Package trust provides the `trust` and `shared-secret` CLI subcommand groups.
 //
-// This is the Phase 11/12 beachhead extraction from internal/cli, implementing
+// This is the beachhead extraction from internal/cli, implementing
 // ADR-005: internal/cmd/trust/ is extracted first as the trust domain is
 // the most self-contained domain with no intra-cli helper dependencies.
 //
@@ -37,7 +37,7 @@ func RegisterCommands(root *cobra.Command, groupID string) {
 	root.AddCommand(ssCmd)
 }
 
-// newTrustCmd returns the `trust` subcommand group for Phase 11.
+// newTrustCmd returns the `trust` subcommand group.
 func newTrustCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trust",
@@ -71,7 +71,7 @@ func newTrustListCmd() *cobra.Command {
 				for _, t := range types {
 					entries = append(entries, entry{Type: string(t)})
 				}
-				b, _ := json.MarshalIndent(entries, "", "  ")
+				b, _ := json.MarshalIndent(entries, "", " ")
 				fmt.Fprintln(c.OutOrStdout(), string(b))
 				return nil
 			}
@@ -360,11 +360,11 @@ func approvalDir() string {
 
 // ---- shared-secret commands ----
 
-// newSharedSecretCmd returns the `shared-secret` subcommand group for Phase 12.
+// newSharedSecretCmd returns the `shared-secret` subcommand group.
 func newSharedSecretCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shared-secret",
-		Short: "Manage team shared secrets (AGE-encrypted, Phase 12)",
+		Short: "Manage team shared secrets (AGE-encrypted)",
 	}
 	cmd.AddCommand(newSharedSecretCreateCmd())
 	cmd.AddCommand(newSharedSecretRewrapCmd())
@@ -406,7 +406,7 @@ func newSharedSecretCreateCmd() *cobra.Command {
 			jsonOut, _ := c.Flags().GetBool("json")
 			if jsonOut {
 				enc := json.NewEncoder(c.OutOrStdout())
-				enc.SetIndent("", "  ")
+				enc.SetIndent("", " ")
 				return enc.Encode(map[string]interface{}{
 					"id":         s.ID,
 					"name_hmac":  s.NameHMAC,
@@ -414,7 +414,7 @@ func newSharedSecretCreateCmd() *cobra.Command {
 					"version":    s.Version,
 				})
 			}
-			fmt.Fprintf(c.OutOrStdout(), "Shared secret created: id=%s  name_hmac=%s  recipients=%d\n",
+			fmt.Fprintf(c.OutOrStdout(), "Shared secret created: id=%s name_hmac=%s recipients=%d\n",
 				s.ID, s.NameHMAC, len(s.Recipients))
 			return nil
 		},
@@ -430,7 +430,7 @@ func newSharedSecretRewrapCmd() *cobra.Command {
 		Short: "Rewrap shared secret for a new team member (requires hardware presence)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "error: shared-secret rewrap blocked during LLM session (S12-7)")
+				fmt.Fprintln(c.ErrOrStderr(), "error: shared-secret rewrap blocked during LLM session")
 				os.Exit(2)
 				return nil
 			}
@@ -448,10 +448,10 @@ func newSharedSecretRewrapCmd() *cobra.Command {
 func newSharedSecretRotateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rotate",
-		Short: "Rotate a shared secret (re-encrypt for all active members, FIND3-006)",
+		Short: "Rotate a shared secret (re-encrypt for all active members)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "error: shared-secret rotate blocked during LLM session (S12-7)")
+				fmt.Fprintln(c.ErrOrStderr(), "error: shared-secret rotate blocked during LLM session")
 				os.Exit(2)
 				return nil
 			}
@@ -478,7 +478,7 @@ func newSharedSecretRevealCmd() *cobra.Command {
 		Short: "Reveal a shared secret value (blocked in LLM sessions, requires hardware proof)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "error: shared-secret reveal blocked during LLM session (S12-7)")
+				fmt.Fprintln(c.ErrOrStderr(), "error: shared-secret reveal blocked during LLM session")
 				os.Exit(2)
 				return nil
 			}

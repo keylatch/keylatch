@@ -1,11 +1,11 @@
-// Package sharedsecret implements Phase 12 shared-secret distribution using
+// Package sharedsecret implements shared-secret distribution using
 // AGE-compatible X25519+ChaCha20-Poly1305 encryption.
 //
 // Security invariants:
-//   - FIND2-001: AGE encryption with strict-fail — no fallback ciphers.
-//   - S12-7: Read blocked during LLM sessions.
-//   - S12-8: Read requires hardware presence proof.
-//   - FIND3-006: Rotate called automatically on RemoveMember.
+// - AGE encryption with strict-fail — no fallback ciphers.
+// - Read blocked during LLM sessions.
+// - Read requires hardware presence proof.
+// - Rotate called automatically on RemoveMember.
 package sharedsecret
 
 import (
@@ -111,7 +111,7 @@ func GenerateAGEKeyPair() (string, string, error) {
 }
 
 // encryptForRecipient encrypts plaintext for a recipient's X25519 public key.
-// Uses ephemeral X25519 + HKDF-SHA256 + ChaCha20-Poly1305 (FIND2-001, strict-fail).
+// Uses ephemeral X25519 + HKDF-SHA256 + ChaCha20-Poly1305 (strict-fail).
 func encryptForRecipient(plaintext []byte, recipientPubKeyHex string) ([]byte, error) {
 	recipientPub, err := agePublicKeyFromHex(recipientPubKeyHex)
 	if err != nil {
@@ -165,7 +165,7 @@ func encryptForRecipient(plaintext []byte, recipientPubKeyHex string) ([]byte, e
 }
 
 // decryptForRecipient decrypts a payload encrypted by encryptForRecipient.
-// FIND2-001: strict-fail — no fallback ciphers.
+// strict-fail — no fallback ciphers.
 func decryptForRecipient(payload []byte, recipientPrivKeyHex string) ([]byte, error) {
 	const ephemeralPubLen = 32
 
@@ -206,14 +206,14 @@ func decryptForRecipient(payload []byte, recipientPrivKeyHex string) ([]byte, er
 
 	plaintext, err := aead.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		// FIND2-001: strict-fail — no fallback.
+		// strict-fail — no fallback.
 		return nil, ErrDecryptionFailed
 	}
 	return plaintext, nil
 }
 
 // Create encrypts plaintext for each member's AgePublicKey.
-// FIND2-001: AGE encryption, strict-fail — no fallback ciphers.
+// AGE encryption, strict-fail — no fallback ciphers.
 // C-6: teamID is used to scope the name HMAC — prevents cross-team name collisions.
 func Create(_ context.Context, teamID, name string, plaintext []byte, members []team.Member) (*SharedSecret, error) {
 	id, err := generateID()
@@ -248,14 +248,14 @@ func Create(_ context.Context, teamID, name string, plaintext []byte, members []
 }
 
 // Read decrypts the shared secret for the calling member.
-// Blocked during LLM sessions (S12-7) and requires hardware presence proof (S12-8).
+// Blocked during LLM sessions and requires hardware presence proof.
 func Read(ctx context.Context, s *SharedSecret, member team.Member, proof trust.PresenceProof) ([]byte, error) {
-	// S12-7: blocked during LLM sessions.
+	// blocked during LLM sessions.
 	if isLLMSession(ctx) {
 		return nil, ErrLLMSessionBlocked
 	}
 
-	// S12-8: requires hardware presence proof.
+	// requires hardware presence proof.
 	if proof.ConfirmedAt.IsZero() {
 		return nil, ErrHardwarePresenceRequired
 	}
@@ -274,7 +274,7 @@ func Read(ctx context.Context, s *SharedSecret, member team.Member, proof trust.
 	return nil, ErrNoRecipientFound
 }
 
-// RotateWithPlaintext re-encrypts plaintext for the given member list (FIND3-006).
+// RotateWithPlaintext re-encrypts plaintext for the given member list.
 func RotateWithPlaintext(_ context.Context, s *SharedSecret, plaintext []byte, newMembers []team.Member) (*SharedSecret, error) {
 	now := time.Now().UTC()
 	recipients := make([]RecipientEntry, 0, len(newMembers))

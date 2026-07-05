@@ -15,7 +15,7 @@ import (
 var BuildVersion = "dev"
 
 // BootstrapTokenMinter is the interface the MintBootstrapToken handler
-// uses to obtain a single-use bootstrap token from the Phase 10 UI server.
+// uses to obtain a single-use bootstrap token from the UI server.
 type BootstrapTokenMinter interface {
 	MintBootstrapToken() (token string, expiresAt time.Time, err error)
 }
@@ -24,7 +24,7 @@ type BootstrapTokenMinter interface {
 // shutdown of the sidecar process.
 type ShutdownFunc func()
 
-// RegisterHandlers registers all 5 allowed IPC handlers in reg (S14-8).
+// RegisterHandlers registers all 5 allowed IPC handlers in reg.
 // The CI lint verifies this function registers exactly 5 handlers.
 func RegisterHandlers(reg *MethodRegistry, mux *events.Mux, minter BootstrapTokenMinter, shutdown ShutdownFunc) {
 	reg.Register(MethodHealth, healthHandler())
@@ -44,9 +44,9 @@ func healthHandler() HandlerFunc {
 	}
 }
 
-// mintBootstrapTokenHandler calls the Phase 10 bootstrap API and returns a
+// mintBootstrapTokenHandler calls the bootstrap API and returns a
 // single-use token. The token is NEVER a long-lived session token and NEVER
-// contains vault values (S14-8).
+// contains vault values.
 func mintBootstrapTokenHandler(minter BootstrapTokenMinter) HandlerFunc {
 	return func(_ context.Context, _ any, _ *FrameWriter) (any, error) {
 		if minter == nil {
@@ -101,8 +101,8 @@ func shutdownHandler(shutdown ShutdownFunc) HandlerFunc {
 }
 
 // openSystemBrowserHandler opens a URL in the system browser.
-// Only https:// and keylatch:// URLs are accepted (S14-2).
-// M8: uses full URL parsing for scheme validation — not prefix matching.
+// Only https:// and keylatch:// URLs are accepted.
+// Uses full URL parsing for scheme validation — not prefix matching.
 func openSystemBrowserHandler() HandlerFunc {
 	return func(_ context.Context, params any, _ *FrameWriter) (any, error) {
 		rawURL, ok := extractURLParam(params)
@@ -110,14 +110,14 @@ func openSystemBrowserHandler() HandlerFunc {
 			return nil, fmt.Errorf("OpenSystemBrowser: missing url param")
 		}
 
-		// M8: validate scheme via full URL parsing, not prefix matching.
+		// Validate scheme via full URL parsing, not prefix matching.
 		// Reject file://, unc://, ftp://, and any other non-allowed scheme.
 		parsed, err := url.Parse(rawURL)
 		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "keylatch") {
 			return nil, fmt.Errorf("OpenSystemBrowser: rejected URL scheme (only https:// and keylatch:// allowed): %q", rawURL)
 		}
 
-		// Audit hook placeholder — wired to Phase 5 audit in production.
+		// Audit hook placeholder — wired to the audit system in production.
 		if err := openBrowser(parsed); err != nil {
 			return nil, fmt.Errorf("OpenSystemBrowser: %w", err)
 		}
@@ -136,7 +136,7 @@ func extractURLParam(params any) (string, bool) {
 }
 
 // openBrowser opens the validated URL in the system browser.
-// M8: on Windows, use "cmd /c start" rather than explorer.exe to avoid UNC path risks.
+// On Windows, use "cmd /c start" rather than explorer.exe to avoid UNC path risks.
 // The parsed URL is used to ensure only the validated string is passed to the OS.
 func openBrowser(parsed *url.URL) error {
 	safeURL := parsed.String()
@@ -147,7 +147,7 @@ func openBrowser(parsed *url.URL) error {
 	case "linux":
 		cmd = exec.Command("xdg-open", safeURL) //nolint:gosec // G204: "xdg-open" is the standard Linux browser launcher; not user input
 	case "windows":
-		// M8: use "cmd /c start" — avoids explorer.exe UNC path injection risk.
+		// Use "cmd /c start" — avoids explorer.exe UNC path injection risk.
 		cmd = exec.Command("cmd", "/c", "start", "", safeURL) //nolint:gosec // G204: "cmd" is the Windows shell; args validated by URL parser above
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)

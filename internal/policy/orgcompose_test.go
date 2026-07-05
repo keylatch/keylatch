@@ -27,7 +27,7 @@ func makeOrgDenyBundle(t *testing.T, capability string) string {
 		BaselineDeny:    []string{capability},
 	}
 	orgpolicy.SignBundle(b)
-	data, _ := json.MarshalIndent(b, "", "  ")
+	data, _ := json.MarshalIndent(b, "", " ")
 	path := filepath.Join(dir, "bundle.json")
 	_ = os.WriteFile(path, data, 0o600)
 	t.Setenv("KEYLATCH_ORG_POLICY_DIR", dir)

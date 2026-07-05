@@ -8,11 +8,11 @@ import { cn } from '@/lib/utils'
  * MaskedField — secure credential input.
  *
  * Security invariants:
- *   - NEVER accepts a `value` prop. TypeScript enforces this at compile time.
- *   - No "show" or "reveal" toggle exists.
- *   - The input is always type="password" with no value attribute.
- *   - Inline edit: user can type a new value but the current value is never
- *     pre-populated or readable from the component.
+ * - NEVER accepts a `value` prop. TypeScript enforces this at compile time.
+ * - No "show" or "reveal" toggle exists.
+ * - The input is always type="password" with no value attribute.
+ * - Inline edit: user can type a new value but the current value is never
+ * pre-populated or readable from the component.
  */
 
 // Deliberately excludes `value`, `defaultValue`, and any controlled/uncontrolled

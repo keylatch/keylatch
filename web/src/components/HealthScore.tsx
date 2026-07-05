@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
 interface HealthScoreProps {
-  score: number        // 0–100
+  score: number // 0–100
   label?: string
   tooltip?: string
   className?: string

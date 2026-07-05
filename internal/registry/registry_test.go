@@ -54,7 +54,7 @@ func TestCoreV1TemplatesRequiredFields(t *testing.T) {
 	}
 }
 
-// TestRuntimeSupportContainsOnlyValidModes asserts S3-15(b): no deprecated
+// TestRuntimeSupportContainsOnlyValidModes asserts that no deprecated
 // RuntimeMode values appear in RuntimeSupport.Supported.
 func TestRuntimeSupportContainsOnlyValidModes(t *testing.T) {
 	for _, tmpl := range List() {
@@ -134,7 +134,7 @@ func TestBackwardCompatFieldsDerived(t *testing.T) {
 }
 
 // TestProviderTemplates_HasExpectedActions verifies that the headline AI providers
-// ship with the minimum set of actions required by EPIC-20.
+// ship with the minimum set of actions required.
 func TestProviderTemplates_HasExpectedActions(t *testing.T) {
 	cases := []struct {
 		provider       string

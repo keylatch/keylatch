@@ -13,7 +13,7 @@ import (
 )
 
 // newVersionsCmd returns the `versions` subcommand.
-// Security invariant S4-1: MUST NOT print values or call vault.Get.
+// Security invariant: MUST NOT print values or call vault.Get.
 // Canary invariant: output must not contain KEYLATCH_CANARY_PHASE4_VERSIONS_0xDEADBEEF.
 func newVersionsCmd() *cobra.Command {
 	return &cobra.Command{
@@ -35,7 +35,7 @@ State column:
 
 			path := args[0]
 
-			// Security invariant S4-1: GetMeta never decrypts values.
+			// Security invariant: GetMeta never decrypts values.
 			m, err := vault.GetMeta(ctx, path, cfg, env)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "[keylatch] error: %v\n", err)

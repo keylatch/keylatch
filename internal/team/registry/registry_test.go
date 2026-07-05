@@ -28,7 +28,7 @@ func newTestBundle(version int64, providers []teamregistry.ProviderTemplate) *te
 
 func writeBundleFile(t *testing.T, dir string, b *teamregistry.InternalBundle) string {
 	t.Helper()
-	data, _ := json.MarshalIndent(b, "", "  ")
+	data, _ := json.MarshalIndent(b, "", " ")
 	path := filepath.Join(dir, "bundle.json")
 	_ = os.WriteFile(path, data, 0o600)
 	return path
@@ -103,7 +103,7 @@ func TestInstall_MonotonicVersion(t *testing.T) {
 	// Attempt to install version 1 (older) — should fail.
 	b1 := newTestBundle(1, nil)
 	p1 := filepath.Join(dir, "bundle-old.json")
-	data, _ := json.MarshalIndent(b1, "", "  ")
+	data, _ := json.MarshalIndent(b1, "", " ")
 	_ = os.WriteFile(p1, data, 0o600)
 
 	err := teamregistry.Install(ctx, p1, "cosign-pub")

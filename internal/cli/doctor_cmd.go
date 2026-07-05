@@ -24,7 +24,7 @@ import (
 //   - _schema: always "v1" — stable schema identifier for consumers.
 //   - exit: the exit code that the command produces (0, 1, or 2).
 //   - summary: aggregate counts by status.
-//   - operating_mode: resolved operating mode name (EPIC-17).
+//   - operating_mode: resolved operating mode name.
 //   - All doctor.Report fields preserved for backward compatibility.
 type doctorJSONV1 struct {
 	doctor.Report
@@ -54,7 +54,7 @@ func buildDoctorJSONV1(report doctor.Report, exitCode int) doctorJSONV1 {
 		}
 	}
 
-	// EPIC-17: resolve operating mode for JSON output.
+	// resolve operating mode for JSON output.
 	operatingMode := resolveOperatingModeForDoctor()
 
 	return doctorJSONV1{
@@ -168,7 +168,7 @@ Exit codes:
 	cmd.Flags().Bool("yes", false, "confirm repair prompts")
 	cmd.Flags().Bool("quiet", false, "suppress table output; only exits with the appropriate code")
 	cmd.Flags().String("category", "", "comma-separated list of categories to run (e.g. environment,backends)")
-	// NOTE(epic-16): --connection flag for gateway scoping is deferred.
+	// NOTE: --connection flag for gateway scoping is deferred.
 
 	return cmd
 }
@@ -178,7 +178,7 @@ var sectionTitle = map[string]string{
 	"environment": "Environment",
 	"daemon":      "Daemon",
 	"backends":    "Backends",
-	"external":    "External Stores (EPIC-10)",
+	"external":    "External Stores",
 	"providers":   "Providers",
 }
 

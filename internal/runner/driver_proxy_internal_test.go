@@ -1,0 +1,57 @@
+package runner
+
+// driver_proxy_internal_test.go — white-box tests for isCredentialShapedName,
+// the docker-server-security pattern-matching denylist added on top of
+// providerKeyDenylist in driver_proxy.go. Uses package runner (not
+// runner_test) because isCredentialShapedName is unexported.
+
+import "testing"
+
+func TestIsCredentialShapedName(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		// Exact-name denylist (pre-existing).
+		{"OPENAI_API_KEY", true},
+		{"ANTHROPIC_API_KEY", true},
+
+		// Pattern-matched: not on the exact-name list, but credential-shaped.
+		{"AWS_SECRET_ACCESS_KEY", true},
+		{"AWS_SESSION_TOKEN", true},
+		{"NPM_TOKEN", true},
+		{"VERCEL_TOKEN", true},
+		{"DATABASE_URL_SECRET", true},
+		{"MY_CUSTOM_SECRET", true},
+		{"SOME_APP_PASSWORD", true},
+		{"LEGACY_APP_PASSWD", true},
+		{"SERVICE_CREDENTIAL", true},
+		{"SERVICE_CREDENTIALS", true},
+		{"TLS_PRIVATE_KEY", true},
+		{"lowercase_api_key", true}, // matching is case-insensitive
+		{"SOME_PIN", true},          // FIX 2: PIN added to credentialWords (e.g. KEYLATCH_PKCS11_PIN)
+		{"KEYLATCH_PKCS11_PIN", true},
+
+		// Glued compounds with no separator — the underscore-required matcher
+		// missed these (the review Medium); a whole-word suffix must catch them.
+		{"APIKEY", true},
+		{"DBPASSWORD", true},
+		{"APITOKEN", true},
+		{"MYSECRET", true},
+		{"SPIN", true}, // FIX 2: HasSuffix("PIN") over-blocks names ending in "SPIN" too — acceptable direction for a denylist
+
+		// Benign — must pass through.
+		{"PATH", false},
+		{"LANG", false},
+		{"NODE_ENV", false},
+		{"MY_APP_REGION", false},
+		{"AWS_REGION", false},
+		{"HOME", false},
+	}
+	for _, tc := range cases {
+		got := isCredentialShapedName(tc.name)
+		if got != tc.want {
+			t.Errorf("isCredentialShapedName(%q) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

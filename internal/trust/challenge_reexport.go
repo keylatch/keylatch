@@ -6,7 +6,7 @@ import "github.com/keylatch/keylatch/internal/trust/challenge"
 // CLI code that only needs challenge functionality can import internal/trust
 // instead of internal/trust/challenge.
 
-// Challenge is the Phase 11 ephemeral challenge for root-of-trust approval flows.
+// Challenge is the ephemeral challenge for root-of-trust approval flows.
 type Challenge = challenge.Challenge
 
 // Bind controls what context is bound into a Challenge.

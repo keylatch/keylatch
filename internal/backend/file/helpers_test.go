@@ -3,7 +3,7 @@ package file_test
 // helpers_test.go — shared test helpers for the file backend test package.
 //
 // All tests that exercise Set/Get/SetVersioned/GetVersioned must use a keyring-
-// backed backend (T-02-01, T-02-02, T-02-03). openKeyringBackend creates a
+// backed backend. openKeyringBackend creates a
 // *file.FileBackend with a fresh in-memory keyring suitable for tests.
 
 import (

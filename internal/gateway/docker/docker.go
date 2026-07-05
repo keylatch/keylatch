@@ -1,6 +1,6 @@
 // Package docker generates Docker Compose configurations for the keylatch gateway.
 //
-// S9-10: rootless, localhost bind, no --network host, env-var paths.
+// Rootless, localhost bind, no --network host, env-var paths.
 // Uses ${HOME}/.keylatch references, never absolute user-specific paths.
 package docker
 
@@ -20,7 +20,7 @@ type ComposeOptions struct {
 }
 
 // composeTemplate is the Docker Compose YAML template.
-// S9-10: rootless, localhost bind, no --network host, env-var paths.
+// Rootless, localhost bind, no --network host, env-var paths.
 const composeTemplate = `version: "3.9"
 services:
   keylatch-gateway:
@@ -38,7 +38,7 @@ services:
 `
 
 // GenerateCompose returns a Docker Compose YAML for the gateway.
-// S9-10: rootless, localhost bind, no --network host, env-var paths.
+// Rootless, localhost bind, no --network host, env-var paths.
 // Uses ${HOME}/.keylatch references, never absolute user-specific paths.
 func GenerateCompose(opts ComposeOptions) ([]byte, error) {
 	if opts.Port == 0 {

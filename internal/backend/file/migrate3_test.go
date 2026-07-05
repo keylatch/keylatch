@@ -13,7 +13,7 @@ import (
 )
 
 // TestMigrateIfFlat_SetMetaFails verifies that when SetMeta fails during
-// migration, the newly-written versioned file is removed (S4-5 invariant).
+// migration, the newly-written versioned file is removed.
 // The flat file should remain as the source of truth.
 func TestMigrateIfFlat_SetMetaFails(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -54,7 +54,7 @@ func TestMigrateIfFlat_SetMetaFails(t *testing.T) {
 	// If migration failed, the flat file should still be present.
 	flatPath := filepath.Join(dir, filepath.FromSlash(canonical), "value.enc")
 	if _, statErr := os.Stat(flatPath); os.IsNotExist(statErr) {
-		t.Error("flat file was removed after SetMeta failure — S4-5 violated")
+		t.Error("flat file was removed after SetMeta failure — must be preserved on rollback")
 	}
 }
 

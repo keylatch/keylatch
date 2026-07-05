@@ -193,7 +193,7 @@ func checkBackendBW(probe kexec.Probe) Check {
 
 // checkBackendOPAuth checks 1Password authentication without exposing the token.
 // It verifies OP_SERVICE_ACCOUNT_TOKEN is set (not empty) and optionally runs
-// `op whoami --format=json` to confirm auth. S2-7: token value never in output.
+// `op whoami --format=json` to confirm auth. token value never in output.
 func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
 		// Only run when op backend is selected.
@@ -212,7 +212,7 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// S2-7: check presence only — never expose the token value.
+		// check presence only — never expose the token value.
 		tokenSet := env("OP_SERVICE_ACCOUNT_TOKEN") != ""
 		if !tokenSet {
 			// Biometric may be available; treat as warn not error.
@@ -231,7 +231,7 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 		bin := env("KEYLATCH_OP_BIN")
 		if bin == "" {
 			var ok bool
-			bin, ok, _ = probe.Find(ctx, "op") //nolint:ineffassign,staticcheck // SA4006/ineffassign: bin resolved for future exec call in Phase 8
+			bin, ok, _ = probe.Find(ctx, "op") //nolint:ineffassign,staticcheck // SA4006/ineffassign: bin resolved for future exec call
 			if !ok {
 				return Status{
 					Name:    "backend.op.auth",
@@ -255,7 +255,7 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 }
 
 // checkBackendBWSession checks Bitwarden session state without exposing BW_SESSION.
-// S2-7: BW_SESSION value is never printed.
+// BW_SESSION value is never printed.
 func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
 		// Only run when bw backend is selected.
@@ -274,7 +274,7 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// S2-7: check presence only — never expose BW_SESSION value.
+		// check presence only — never expose BW_SESSION value.
 		sessionSet := env("BW_SESSION") != ""
 		if !sessionSet {
 			return Status{
@@ -301,7 +301,7 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// S2-7: do not print BW_SESSION; just report binary path and session presence.
+		// do not print BW_SESSION; just report binary path and session presence.
 		_ = bin
 		return Status{
 			Name:    "backend.bw.session",

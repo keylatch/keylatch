@@ -46,7 +46,7 @@ func installDenyBundle(t *testing.T, capability string) {
 	}
 	orgpolicy.SignBundle(b)
 
-	data, _ := json.MarshalIndent(b, "", "  ")
+	data, _ := json.MarshalIndent(b, "", " ")
 	p := filepath.Join(dir, "bundle.json")
 	_ = os.WriteFile(p, data, 0o600)
 	_ = orgpolicy.Install(context.Background(), p, "")

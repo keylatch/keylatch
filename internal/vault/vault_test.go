@@ -155,7 +155,7 @@ func TestGet_AuditEvent_Success(t *testing.T) {
 	if ev.Timestamp.IsZero() {
 		t.Error("timestamp must not be zero")
 	}
-	// S-RM-9: value must never appear in Extra.
+	// Value must never appear in Extra.
 	for k, v := range ev.Extra {
 		if s, ok := v.(string); ok && s == "secret" {
 			t.Errorf("audit Extra[%q] contains credential value", k)
@@ -243,7 +243,7 @@ func TestSet_AuditEvent_Success(t *testing.T) {
 	if ev.Path != path {
 		t.Errorf("path: got %q, want %q", ev.Path, path)
 	}
-	// S-RM-9: value bytes must never appear in Extra.
+	// Value bytes must never appear in Extra.
 	for k, v := range ev.Extra {
 		if s, ok := v.(string); ok && s == "my-secret" {
 			t.Errorf("audit Extra[%q] contains credential value", k)

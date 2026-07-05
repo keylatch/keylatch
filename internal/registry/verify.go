@@ -52,7 +52,7 @@ var ErrSecurityBlock = errors.New("registry: operation blocked inside LLM sessio
 // BundleOpts controls bundle loading behaviour.
 type BundleOpts struct {
 	// AllowUnsigned permits loading an unsigned bundle.
-	// FIND-008: this is blocked inside an LLM session unconditionally.
+	// This is blocked inside an LLM session unconditionally.
 	AllowUnsigned bool
 
 	// SigningIdentity is the expected cosign signing identity (email/OIDC issuer).
@@ -88,18 +88,18 @@ type RegistryLoadAuditEvent struct {
 }
 
 // RegistryLoadHook is called after every LoadBundle attempt.
-// Phase 5 replaces this with the real audit writer.
+// A future version replaces this with the real audit writer.
 var RegistryLoadHook func(e RegistryLoadAuditEvent) = func(_ RegistryLoadAuditEvent) {}
 
 // LoadBundle loads a community provider bundle from path.
 //
-// Security invariants (FIND-008):
+// Security invariants:
 //   - The bundle file must have an adjacent .sig file for cosign verification.
 //   - AllowUnsigned=true is blocked inside LLM sessions (returns ErrSecurityBlock).
 //   - An unsigned bundle with AllowUnsigned=false returns ErrUnsignedRegistryBundle.
 //   - A tampered bundle (signature mismatch) returns ErrUnsignedRegistryBundle.
 func LoadBundle(path string, opts BundleOpts) (Bundle, error) {
-	// FIND-008: gate AllowUnsigned on !IsLLMSession()
+	// Gate AllowUnsigned on !IsLLMSession()
 	if opts.AllowUnsigned && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 		return Bundle{}, ErrSecurityBlock
 	}
@@ -153,7 +153,7 @@ func LoadBundle(path string, opts BundleOpts) (Bundle, error) {
 }
 
 // parseBundleData decodes the bundle JSON and returns a Bundle.
-// M-7/FIND2-023: validates runtime modes in all community bundle templates.
+// Validates runtime modes in all community bundle templates.
 func parseBundleData(data []byte, accessor string, signed bool) (Bundle, error) {
 	var templates []ConnectionTemplate
 	if err := json.Unmarshal(data, &templates); err != nil {
@@ -215,7 +215,7 @@ func emitRegistryLoadAudit(accessor string, status SignatureStatus) {
 // data: raw bundle file bytes.
 // signingIdentity: unused for keyed verification; reserved for future OIDC keyless.
 //
-// FIND-008: uses the Keylatch bundle signing public key embedded from cosign.pub.
+// Uses the Keylatch bundle signing public key embedded from cosign.pub.
 func verifyCosignSignature(data, sigData []byte, _ string) error {
 	pub, err := cryptoutils.UnmarshalPEMToPublicKey(bundleVerifyKeyPEM)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 const canaryValue = "KEYLATCH_CANARY_PHASE3_SNIPPET_0xDEADBEEF"
 
 // highEntropyToken is a 32-byte high-entropy substring that must not appear
-// in MCP config for stdio mode (FIND3-010(a)).
+// in MCP config for stdio mode.
 const highEntropyToken = "Rz9kNJ7qXpLmWbD3YsAeT1cF6vGhM2nP"
 
 // tokenShapeRE detects high-entropy token-shaped substrings.
@@ -79,7 +79,7 @@ func TestProfileFilesDoNotContainCanary(t *testing.T) {
 	}
 }
 
-// TestSnippetNoAbsolutePaths verifies S3-6: no /Users/ or /home/ paths appear
+// TestSnippetNoAbsolutePaths verifies no /Users/ or /home/ paths appear
 // in generated snippets.
 func TestSnippetNoAbsolutePaths(t *testing.T) {
 	ctx := context.Background()
@@ -94,7 +94,7 @@ func TestSnippetNoAbsolutePaths(t *testing.T) {
 		"snippet must not contain absolute Linux home paths")
 }
 
-// TestMCPConfigNoHighEntropyToken verifies FIND3-010(a) + S3-16(a): stdio
+// TestMCPConfigNoHighEntropyToken verifies + stdio
 // mode MCP config must not contain KEYLATCH_MCP_TOKEN or high-entropy tokens.
 func TestMCPConfigNoHighEntropyToken(t *testing.T) {
 	// Ensure KEYLATCH_MCP_TOKEN is not set in env.

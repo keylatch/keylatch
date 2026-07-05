@@ -9,7 +9,7 @@ import (
 )
 
 // TestPassphraseZeroedAfterDeriveUnsafe uses unsafe.Pointer to inspect the
-// backing array bytes after PassphraseKEK returns. This is the S5-6 verification.
+// backing array bytes after PassphraseKEK returns.
 func TestPassphraseZeroedAfterDeriveUnsafe(t *testing.T) {
 	passphrase := []byte("ZERO-ME-0xDEADBEEF-SENTINEL")
 	originalLen := len(passphrase)
@@ -34,7 +34,7 @@ func TestPassphraseZeroedAfterDeriveUnsafe(t *testing.T) {
 	for i := 0; i < originalLen; i++ {
 		b := *(*byte)(unsafe.Pointer(uintptr(ptr) + uintptr(i)))
 		if b != 0 {
-			t.Errorf("passphrase backing array[%d] = 0x%02x, want 0x00 (S5-6: passphrase not zeroed after derive)", i, b)
+			t.Errorf("passphrase backing array[%d] = 0x%02x, want 0x00 (passphrase not zeroed after derive)", i, b)
 		}
 	}
 }

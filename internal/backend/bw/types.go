@@ -29,7 +29,7 @@ func (item bwItem) updatedTime() time.Time {
 // bwField is a custom field within a bwItem.
 // Type: 0=text (plain), 1=hidden (concealed), 2=boolean.
 //
-// T-13-02: Value is stored as []byte so zero() can wipe it from memory when
+// Value is stored as []byte so zero() can wipe it from memory when
 // the cache entry is evicted (TTL expiry or explicit invalidation).
 type bwField struct {
 	Name  string `json:"name"`

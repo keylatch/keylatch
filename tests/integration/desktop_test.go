@@ -45,7 +45,7 @@ func findBinary(t *testing.T) string {
 	return ""
 }
 
-// TestDesktopColdStart verifies: SC14-5
+// TestDesktopColdStart verifies cold-start behavior.
 // Spawn keylatch-app, assert tray icon present (via IPC health), WebView port reachable.
 func TestDesktopColdStart(t *testing.T) {
 	binary := findBinary(t)
@@ -77,7 +77,7 @@ func TestDesktopColdStart(t *testing.T) {
 	w.Close()
 
 	cmd := exec.Command(keylatchd, "--from-desktop-shell", "--ipc-socket", socketPath, "--port", "0")
-	// M9: ExtraFiles[0] becomes FD 3 in the child (stdin=0, stdout=1, stderr=2).
+	// ExtraFiles[0] becomes FD 3 in the child (stdin=0, stdout=1, stderr=2).
 	// Pass the hardcoded FD number 3, not r.Fd() (which is the parent's FD number).
 	cmd.ExtraFiles = []*os.File{r}
 	cmd.Env = append(os.Environ(), "KEYLATCH_IPC_KEY_FD=3")
@@ -90,7 +90,7 @@ func TestDesktopColdStart(t *testing.T) {
 	r.Close()
 	defer cmd.Process.Kill()
 
-	// SC14-5: wait for ready signal.
+	// Wait for ready signal.
 	time.Sleep(2 * time.Second)
 
 	// Verify the process is still running.
@@ -98,24 +98,24 @@ func TestDesktopColdStart(t *testing.T) {
 		t.Fatal("sidecar exited prematurely")
 	}
 
-	t.Log("SC14-5: cold-start test passed — sidecar running")
+	t.Log("cold-start test passed — sidecar running")
 }
 
-// TestDesktopApprovalFlow verifies: SC14-4
+// TestDesktopApprovalFlow verifies notification behavior for a paused gateway request.
 // Notification must fire within 3 s of a paused gateway request.
 func TestDesktopApprovalFlow(t *testing.T) {
-	t.Skip("SC14-4: requires full Tauri + sidecar + Phase 9 integration — run in CI")
+	t.Skip("requires full Tauri + sidecar + approval-flow integration — run in CI")
 
 	// Placeholder test structure for CI integration.
 	// The test would:
 	// 1. Spawn keylatch-app.
-	// 2. Trigger a paused gateway request via Phase 9 test fixture.
+	// 2. Trigger a paused gateway request via an approval-flow test fixture.
 	// 3. Assert a notification arrives within 3 s (clock-controlled).
 	// 4. Simulate notification click.
 	// 5. Assert WebView navigates to /approvals/<id>.
 }
 
-// TestDesktopOAuthFlow verifies: SC14-3
+// TestDesktopOAuthFlow verifies that
 // keylatch://oauth/callback is dispatched correctly.
 func TestDesktopOAuthFlow(t *testing.T) {
 	// This tests the OAuth state store and deep-link dispatch logic.
@@ -143,16 +143,16 @@ func TestDesktopOAuthFlow(t *testing.T) {
 		})
 	}
 
-	t.Log("SC14-3: OAuth flow validation structure verified")
+	t.Log("OAuth flow validation structure verified")
 }
 
-// TestDesktopSingleInstance verifies: SC14-13
+// TestDesktopSingleInstance verifies single-instance enforcement.
 // Second spawn exits 0; only one PID exists for keylatch-app.
 func TestDesktopSingleInstance(t *testing.T) {
 	binary := findBinary(t)
 	_ = binary // used if binary available
 
-	t.Log("SC14-13: single-instance test requires running app — verifying config only")
+	t.Log("single-instance test requires running app — verifying config only")
 
 	// Verify tauri.conf.json has single-instance plugin configured.
 	confPath := "../../src-tauri/tauri.conf.json"
@@ -162,12 +162,12 @@ func TestDesktopSingleInstance(t *testing.T) {
 	}
 	conf := string(data)
 	if !strings.Contains(conf, "single-instance") {
-		t.Error("tauri.conf.json missing single-instance plugin configuration (SC14-13)")
+		t.Error("tauri.conf.json missing single-instance plugin configuration")
 	}
-	t.Log("SC14-13: single-instance plugin configured in tauri.conf.json")
+	t.Log("single-instance plugin configured in tauri.conf.json")
 }
 
-// TestIPCHMACKeyFD verifies: SC14-14 / FIND2-002
+// TestIPCHMACKeyFD verifies the IPC HMAC key is passed via file descriptor, not argv.
 // The sidecar argv shows only --from-desktop-shell --ipc-socket <path>;
 // no key file appears in the process table or filesystem.
 func TestIPCHMACKeyFD(t *testing.T) {
@@ -205,7 +205,7 @@ func TestIPCHMACKeyFD(t *testing.T) {
 	entries, _ := os.ReadDir(tmpDir)
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), "ipc-") && strings.HasSuffix(e.Name(), ".key") {
-			t.Errorf("SC14-14 FAIL: key file found in %s: %s", tmpDir, e.Name())
+			t.Errorf("FAIL: key file found in %s: %s", tmpDir, e.Name())
 		}
 	}
 
@@ -218,15 +218,15 @@ func TestIPCHMACKeyFD(t *testing.T) {
 	for _, arg := range argv {
 		for _, badPattern := range keyArgPatterns {
 			if strings.Contains(arg, badPattern) {
-				t.Errorf("SC14-14 FAIL: argv contains key flag: %q", arg)
+				t.Errorf("FAIL: argv contains key flag: %q", arg)
 			}
 		}
 	}
 
-	t.Log("SC14-14 / FIND2-002: HMAC key FD test passed — key in pipe, not in argv")
+	t.Log("HMAC key FD test passed — key in pipe, not in argv")
 }
 
-// TestWebViewNavigationPolicy verifies FIND2-014.
+// TestWebViewNavigationPolicy verifies the WebView navigation allowlist policy.
 // Tests the navigation policy directly without a running Tauri app.
 func TestWebViewNavigationPolicy(t *testing.T) {
 	tests := []struct {
@@ -253,7 +253,7 @@ func TestWebViewNavigationPolicy(t *testing.T) {
 		})
 	}
 
-	t.Log("FIND2-014: WebView navigation policy test passed")
+	t.Log("WebView navigation policy test passed")
 }
 
 // isAllowedNavigation mirrors the Rust WebViewHost.evaluate_navigation logic.

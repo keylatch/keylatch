@@ -62,7 +62,7 @@ func csrfTokenFor(auth string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// --- Role gate (S12-15) ---
+// --- Role gate ---
 
 func TestAdminHandler_NonAdmin_Returns403(t *testing.T) {
 	h := newAdminHandler()
@@ -138,7 +138,7 @@ func TestAdminHandler_OwnerRole_Passes(t *testing.T) {
 
 // mintRoleJWT mints a properly HS256-signed JWT with the given role claim.
 // Signs with testCSRFSecret (which is the fallback JWTSigningKey when JWTSigningKey is nil).
-// S-INV-5: admin.go now verifies the signature — unsigned tokens must be rejected.
+// admin.go now verifies the signature — unsigned tokens must be rejected.
 func mintRoleJWT(role string) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	claims, _ := json.Marshal(map[string]string{"role": role})
@@ -165,11 +165,11 @@ func TestAdminJWT_AlgNone_Returns403(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusForbidden {
-		t.Errorf("EPIC-02/S-INV-5: alg:none JWT must return 403, got %d", w.Code)
+		t.Errorf("alg:none JWT must return 403, got %d", w.Code)
 	}
 }
 
-// TestAdminHandler_UnsignedJWT_Returns403 is the S-INV-5 gate:
+// TestAdminHandler_UnsignedJWT_Returns403 is the gate:
 // a JWT with a forged/unsigned signature must be rejected with 403.
 func TestAdminHandler_UnsignedJWT_Returns403(t *testing.T) {
 	h := newAdminHandler()
@@ -187,7 +187,7 @@ func TestAdminHandler_UnsignedJWT_Returns403(t *testing.T) {
 	h.ServeHTTP(w, r)
 
 	if w.Code != http.StatusForbidden {
-		t.Errorf("S-INV-5: expected 403 for unsigned JWT, got %d", w.Code)
+		t.Errorf("expected 403 for unsigned JWT, got %d", w.Code)
 	}
 }
 

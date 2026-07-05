@@ -14,7 +14,7 @@ import (
 
 // TestConcurrency_SameProcess verifies two parallel Get calls are serialized
 // by the flock. With 50ms simulated latency, total time should be ~2x single
-// call duration. (S1-2, SC1-5)
+// call duration.
 func TestConcurrency_SameProcess(t *testing.T) {
 	const latency = 50 * time.Millisecond
 	secBin := "/usr/bin/security"

@@ -46,7 +46,7 @@ func TestRFC4231Vectors(t *testing.T) {
 
 			got := audithmac.Of(key, inputData)
 			if got != expectedTruncated {
-				t.Errorf("got:  %s\nwant: %s", got, expectedTruncated)
+				t.Errorf("got: %s\nwant: %s", got, expectedTruncated)
 			}
 		})
 	}

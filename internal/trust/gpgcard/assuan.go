@@ -91,10 +91,10 @@ func assuanSend(conn net.Conn, command string) (response string, err error) {
 // assuanSign signs data using the key identified by keygrip via scdaemon.
 //
 // Protocol:
-//  1. SETKEY <keygrip>
-//  2. SIGKEY <keygrip>
-//  3. SETHASH --hash=sha256 <hexhash>
-//  4. PKSIGN
+// 1. SETKEY <keygrip>
+// 2. SIGKEY <keygrip>
+// 3. SETHASH --hash=sha256 <hexhash>
+// 4. PKSIGN
 func assuanSign(conn net.Conn, keygrip string, data []byte) ([]byte, error) {
 	// Step 1: SETKEY.
 	if _, err := assuanSend(conn, "SETKEY "+keygrip); err != nil {

@@ -1,5 +1,5 @@
 /**
- * ProviderCard tests — T-14-01 + T-14-07.
+ * ProviderCard tests — + .
  *
  * The card now polls /api/doctor on mount. We mock the api module to control
  * doctor responses and verify health indicator behaviour.
@@ -124,7 +124,7 @@ describe('ProviderCard — rendering', () => {
   })
 })
 
-describe('ProviderCard — doctor health indicator (T-14-07)', () => {
+describe('ProviderCard — doctor health indicator', () => {
   it('starts with pending status dot', () => {
     // Don't resolve yet — keep status as pending.
     mockGet.mockReturnValue(new Promise(() => {}))

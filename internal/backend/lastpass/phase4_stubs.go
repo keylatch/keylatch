@@ -1,5 +1,5 @@
 // Package lastpass implements the LastPass backend for keylatch.
-// Phase 4 stubs: versioned storage is not supported; all Phase 4 methods return ErrNotSupported.
+// Versioned storage is not supported; all versioned/metadata methods return ErrNotSupported.
 package lastpass
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/keylatch/keylatch/internal/vault/meta"
 )
 
-// GetMeta returns ErrNotSupported — LastPass does not support Phase 4 metadata.
+// GetMeta returns ErrNotSupported — LastPass does not support versioned metadata.
 func (b *LastPassBackend) GetMeta(_ context.Context, _ string) (meta.Meta, error) {
 	return meta.Meta{}, backend.ErrNotSupported
 }

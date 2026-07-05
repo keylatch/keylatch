@@ -1,4 +1,4 @@
-// Package budget implements per-actor spend and action rate limits for Phase 13.
+// Package budget implements per-actor spend and action rate limits.
 package budget
 
 import (

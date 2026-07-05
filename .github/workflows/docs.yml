@@ -11,10 +11,18 @@ on:
     paths:
       - 'docs/**'
 
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   docs-validate:
     name: Validate Mintlify build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node.js

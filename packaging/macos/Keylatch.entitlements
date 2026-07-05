@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- macOS Hardened Runtime entitlements for Keylatch.app
-     Required for Apple notarisation. Follows S14-1: no keychain access,
-     no user-selected file access. Only network client is needed for
-     the Phase 10 loopback API and update manifest fetch. -->
+     Required for Apple notarisation. Follows the security policy: no keychain
+     access, no user-selected file access. Only network client is needed for
+     the loopback API and update manifest fetch. -->
 <plist version="1.0">
 <dict>
   <!-- Hardened Runtime — required for notarisation. -->
@@ -23,7 +23,7 @@
   <key>com.apple.security.network.client</key>
   <true/>
 
-  <!-- S14-1: NO filesystem entitlements — the shell does not read/write
+  <!-- NO filesystem entitlements — the shell does not read/write
        user files or the Keychain. -->
   <!-- com.apple.security.files.user-selected.read-write: absent (intentional) -->
   <!-- com.apple.security.keychain-access-groups: absent (intentional) -->

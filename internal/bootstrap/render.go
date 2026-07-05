@@ -8,7 +8,7 @@ import (
 
 // RenderJSON encodes plan as compact JSON.
 func RenderJSON(plan Plan) ([]byte, error) {
-	b, err := json.MarshalIndent(plan, "", "  ")
+	b, err := json.MarshalIndent(plan, "", " ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal plan: %w", err)
 	}
@@ -21,20 +21,20 @@ func RenderText(plan Plan) string {
 	for _, s := range plan.Steps {
 		switch s.Action {
 		case "noop":
-			fmt.Fprintf(&sb, "  [skip]  %s (%s)\n", s.Path, s.Reason)
+			fmt.Fprintf(&sb, " [skip] %s (%s)\n", s.Path, s.Reason)
 		default:
 			doneStr := "planned"
 			if s.Done {
 				doneStr = "done"
 			}
-			fmt.Fprintf(&sb, "  [%s] %s %s (mode %04o) — %s\n",
+			fmt.Fprintf(&sb, " [%s] %s %s (mode %04o) — %s\n",
 				doneStr, s.Action, s.Path, s.Mode, s.Reason)
 		}
 	}
 	if len(plan.Warnings) > 0 {
 		sb.WriteString("\nWarnings:\n")
 		for _, w := range plan.Warnings {
-			fmt.Fprintf(&sb, "  ! %s\n", w)
+			fmt.Fprintf(&sb, " ! %s\n", w)
 		}
 	}
 	return sb.String()

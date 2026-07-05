@@ -1,6 +1,6 @@
 package llmcontext_test
 
-// ticket_test.go — EPIC-05 Task 2
+// ticket_test.go
 //
 // Tests for IssueTicket and VerifyTicket.
 
@@ -135,7 +135,7 @@ func TestIssueTicket_TTL(t *testing.T) {
 
 	ttl := tick.ExpiresAt.Sub(tick.IssuedAt)
 	assert.LessOrEqual(t, ttl, 5*time.Minute,
-		"ticket TTL must be ≤ 5 minutes (EPIC-05 requirement)")
+		"ticket TTL must be ≤ 5 minutes")
 	assert.Greater(t, ttl, time.Duration(0),
 		"ticket TTL must be positive")
 }

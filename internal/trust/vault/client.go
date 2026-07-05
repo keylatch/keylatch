@@ -2,9 +2,9 @@
 // or OpenBao Transit secrets engine.
 //
 // Security invariants:
-//   - Tokens are never held in struct fields; cleared after every API call.
-//   - mTLS client certs are loaded per-call, not cached.
-//   - Root spec IDs are HMAC'd before inclusion in audit events (S11-3).
+// - Tokens are never held in struct fields; cleared after every API call.
+// - mTLS client certs are loaded per-call, not cached.
+// - Root spec IDs are HMAC'd before inclusion in audit events.
 package vault
 
 import (
@@ -265,7 +265,7 @@ func bytesReaderZero(b []byte) io.Reader {
 // stringReader is kept for non-sensitive reads only. It does NOT zero the string.
 // For sensitive data (tokens, passwords), use bytesReaderZero with a []byte.
 //
-//nolint:unused // planned: used by Vault HTTP request body construction in Phase 13 token auth
+//nolint:unused // planned: used by Vault HTTP request body construction in token auth
 func stringReader(s string) io.Reader {
 	pr, pw := io.Pipe()
 	go func() {

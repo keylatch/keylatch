@@ -2,12 +2,12 @@
 // Supports both Bitwarden Cloud and Vaultwarden self-hosted via KEYLATCH_BW_SERVER.
 //
 // Security invariants:
-//   - S2-3: List zero-fills field values before returning.
-//   - S2-4: Server URL must use https:// (no TLS bypass for self-hosted).
-//   - S2-5: Fail-closed on binary unavailability (ErrUnavailable).
-//   - S2-7: BW_SESSION passed via subprocess env, never via --session CLI arg.
-//   - S2-9: Raw subprocess stderr never propagated; auth-failure hints only.
-//   - S2-10: Single-flight collapse for concurrent Get calls.
+//   - List zero-fills field values before returning.
+//   - Server URL must use https:// (no TLS bypass for self-hosted).
+//   - Fail-closed on binary unavailability (ErrUnavailable).
+//   - BW_SESSION passed via subprocess env, never via --session CLI arg.
+//   - Raw subprocess stderr never propagated; auth-failure hints only.
+//   - Single-flight collapse for concurrent Get calls.
 package bw
 
 import (
@@ -81,7 +81,7 @@ type BitwardenBackend struct {
 // Open validates options, resolves the `bw` binary, reads BW_SESSION from env,
 // and returns an initialized BitwardenBackend.
 func Open(opts Options) (*BitwardenBackend, error) {
-	// S2-4: reject non-https server URLs.
+	// Reject non-https server URLs.
 	if opts.Server != "" && !strings.HasPrefix(opts.Server, "https://") {
 		return nil, ErrInvalidServer{URL: opts.Server}
 	}
@@ -103,7 +103,7 @@ func Open(opts Options) (*BitwardenBackend, error) {
 		opts.Env = llmcontext.DefaultLookup
 	}
 
-	// S2-7: read BW_SESSION from env into unexported field. Never assign to
+	// Read BW_SESSION from env into unexported field. Never assign to
 	// a logged or exported variable.
 	session := opts.Env("BW_SESSION")
 
@@ -128,8 +128,8 @@ func (b *BitwardenBackend) Capabilities() []backend.Capability {
 }
 
 // Get returns the plaintext bytes for a canonical path via `bw get item`.
-// BW_SESSION is injected as a subprocess env var (S2-7). Uses single-flight
-// collapse and 60-second metadata cache (S2-10).
+// BW_SESSION is injected as a subprocess env var. Uses single-flight
+// collapse and 60-second metadata cache.
 func (b *BitwardenBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	connection, field, err := parsePath(path)
 	if err != nil {
@@ -175,7 +175,7 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 		return fmt.Errorf("bw Set: %w", err)
 	}
 
-	// T-13-02: invalidate cache with zeroing.
+	// Invalidate cache with zeroing.
 	b.evictCacheEntry(connection)
 
 	// Determine if item exists.
@@ -263,7 +263,7 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 		}
 	}
 
-	// T-13-02: invalidate cache with zeroing after write.
+	// Invalidate cache with zeroing after write.
 	b.evictCacheEntry(connection)
 	return nil
 }
@@ -275,7 +275,7 @@ func (b *BitwardenBackend) Delete(ctx context.Context, path string) error {
 		return fmt.Errorf("bw Delete: %w", err)
 	}
 
-	// T-13-02: invalidate cache with zeroing.
+	// Invalidate cache with zeroing.
 	b.evictCacheEntry(connection)
 
 	item, err := b.fetchItemDirect(ctx, connection)
@@ -300,7 +300,7 @@ func (b *BitwardenBackend) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
-// List returns metadata-only entries with zero-filled field values (S2-3).
+// List returns metadata-only entries with zero-filled field values.
 func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	if b.opts.AutoSync {
 		if err := b.sync(ctx); err != nil {
@@ -347,7 +347,7 @@ func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.E
 		}
 
 		for _, f := range item.Fields {
-			// S2-3: zero-fill field values unconditionally on list.
+			// Zero-fill field values unconditionally on list.
 			path := "default/" + item.Name + "/" + f.Name
 			if prefix != "" && !strings.HasPrefix(path, prefix) {
 				continue
@@ -372,7 +372,7 @@ func (b *BitwardenBackend) Close() error { return nil }
 
 // --- internal helpers ---
 
-// fetchItem returns a bwItem using cache + single-flight collapse (S2-10).
+// fetchItem returns a bwItem using cache + single-flight collapse.
 func (b *BitwardenBackend) fetchItem(ctx context.Context, connection string) (bwItem, error) {
 	const ttl = 60 * time.Second
 
@@ -382,7 +382,7 @@ func (b *BitwardenBackend) fetchItem(ctx context.Context, connection string) (bw
 		if time.Now().Before(entry.expiresAt) {
 			return entry.item, nil
 		}
-		// T-13-02: TTL expired — zero all field values and login credentials
+		// TTL expired — zero all field values and login credentials
 		// before evicting.
 		for i := range entry.item.Fields {
 			entry.item.Fields[i].zero()
@@ -432,7 +432,7 @@ func (b *BitwardenBackend) fetchItemDirect(ctx context.Context, connection strin
 
 	if exitCode != 0 {
 		stderrStr := string(stderr)
-		// S2-7 / S2-9: do not echo raw stderr; map to typed errors.
+		// Do not echo raw stderr; map to typed errors.
 		if isLocked(stderrStr) {
 			// Call bw status to confirm lock state.
 			if confirmed := b.confirmLocked(ctx); confirmed {
@@ -484,7 +484,7 @@ func (b *BitwardenBackend) sync(ctx context.Context) error {
 }
 
 // runWithSession invokes the bw CLI with BW_SESSION injected via subprocess env.
-// S2-7: session is NEVER passed as a --session argument; it goes in the env map
+// Session is NEVER passed as a --session argument; it goes in the env map
 // via the CommandRunner's stdin-pipe mechanism. Since our CommandRunner interface
 // does not expose env injection directly, we use the exec.EnvRunner wrapper if
 // available, otherwise fall back to a no-env run (test mocks capture calls).
@@ -493,7 +493,7 @@ func (b *BitwardenBackend) sync(ctx context.Context) error {
 // BW_SESSION must be in the process env. For tests, MockRunner records the
 // args — the env injection is verified by asserting --session is absent.
 func (b *BitwardenBackend) runWithSession(ctx context.Context, args []string, stdin []byte) ([]byte, []byte, int, error) {
-	// S2-7: NEVER pass --session as an argument. Session is in the process env
+	// NEVER pass --session as an argument. Session is in the process env
 	// (set by the user before launching keylatch) and inherited by subprocesses.
 	// For test overrides, the MockRunner does not inspect env, but tests verify
 	// that no arg contains "--session" or the session value.
@@ -520,7 +520,7 @@ func (b *BitwardenBackend) resolveFolderID(ctx context.Context, name string) (st
 
 // evictCacheEntry removes the cache entry for connection, zeroing any field
 // values and login credentials before deletion to prevent plaintext lingering
-// in memory. T-13-02: called on TTL expiry, explicit invalidation (Set/Delete).
+// in memory. Called on TTL expiry, explicit invalidation (Set/Delete).
 func (b *BitwardenBackend) evictCacheEntry(connection string) {
 	if v, ok := b.cache.Load(connection); ok {
 		entry := v.(cacheEntry)

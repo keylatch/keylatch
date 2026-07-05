@@ -1,4 +1,4 @@
-// Package cli — Phase 8 receipts subcommands.
+// Package cli — receipts subcommands.
 package cli
 
 import (
@@ -116,7 +116,7 @@ With --follow, connects to the keylatchd SSE endpoint (/v1/receipts/stream) and
 prints each incoming receipt as a JSON line. Press Ctrl-C to stop.
 
 The gateway address is read from KEYLATCH_UI_ADDR (default 127.0.0.1:7890).
-Credential values are never emitted (S-RM-9).`,
+Credential values are never emitted.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if follow {
 				return runReceiptsTailFollow(c)
@@ -147,6 +147,8 @@ func runReceiptsTailFollow(c *cobra.Command) error {
 	addr := os.Getenv("KEYLATCH_UI_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:7890"
+	} else if err := validateHostPort(addr); err != nil {
+		return fmt.Errorf("receipts tail: KEYLATCH_UI_ADDR: %w", err)
 	}
 	url := "http://" + addr + "/v1/receipts/stream"
 

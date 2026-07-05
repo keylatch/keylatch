@@ -5,12 +5,15 @@ project_name: keylatch
 
 before:
   hooks:
+    - bash scripts/sync-embedded-ui.sh
     - go mod tidy
 
 builds:
   - id: keylatch
     main: ./cmd/keylatch
     binary: keylatch
+    tags:
+      - embedded_ui
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -25,11 +28,13 @@ builds:
       - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
 
   # keylatchd is the Tauri desktop sidecar. It is declared in
-  # src-tauri/tauri.conf.json as externalBin and must be staged into
+  # src-tauri/tauri.conf.json as externalBin and must be copied into
   # src-tauri/binaries/ at Tauri bundle time.
   - id: keylatchd
     main: ./cmd/keylatchd
     binary: keylatchd
+    tags:
+      - embedded_ui
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -125,7 +130,7 @@ aurs:
     private_key: '{{ .Env.AUR_KEY }}'
     skip_upload: '{{ if index .Env "AUR_KEY" }}false{{ else }}true{{ end }}'
 
-# FIPS build — Phase 11
+# FIPS build template
 # builds:
 #   - id: keylatch-fips
 #     tags: [fips]

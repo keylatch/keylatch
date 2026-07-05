@@ -69,7 +69,7 @@ func openFileBackend(t *testing.T) (backend.Backend, string) {
 
 // spyBackend wraps a backend.Backend and counts calls to Get.
 // All other methods delegate to the embedded backend unchanged.
-// Used to verify S4-1: GetMeta and ListMeta must never call backend.Get.
+// Used to verify that GetMeta and ListMeta must never call backend.Get.
 type spyBackend struct {
 	backend.Backend
 	getCallCount atomic.Int64
@@ -491,9 +491,9 @@ func TestGetMeta_NeverCallsBackendGet(t *testing.T) {
 		t.Errorf("Path: got %q, want %q", got.Path, path)
 	}
 
-	// S4-1 assertion: Get must never have been called.
+	// Assertion: Get must never have been called.
 	if count := spy.getCallCount.Load(); count != 0 {
-		t.Errorf("S4-1 violated: GetMeta called backend.Get %d time(s)", count)
+		t.Errorf("GetMeta called backend.Get %d time(s)", count)
 	}
 }
 
@@ -542,8 +542,8 @@ func TestListMeta_NeverCallsBackendGet(t *testing.T) {
 		t.Errorf("expected 2 metas, got %d", len(metas))
 	}
 
-	// S4-1 assertion: Get must never have been called.
+	// Assertion: Get must never have been called.
 	if count := spy.getCallCount.Load(); count != 0 {
-		t.Errorf("S4-1 violated: ListMeta called backend.Get %d time(s)", count)
+		t.Errorf("ListMeta called backend.Get %d time(s)", count)
 	}
 }

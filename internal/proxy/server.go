@@ -1,7 +1,7 @@
 // Package proxy implements the gateway_proxy runtime: a local HTTP/HTTPS
 // intercepting proxy that injects provider credentials transparently.
 //
-// Security invariants (S-RM-6):
+// Security invariants:
 //   - Hosts not in the profile allowlist receive 403.
 //   - Routes not in profile allowlist receive 403.
 //   - Caller-supplied Authorization headers are stripped before forwarding.
@@ -11,7 +11,10 @@ package proxy
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -52,18 +55,113 @@ type Server struct {
 	CA *tlsCA
 	// AuditEmitter receives audit events. May be nil.
 	AuditEmitter audit.Emitter
+	// Token is the per-session bearer token callers must present (the proxy
+	// caller-auth check). Serve() mints one via EnsureToken if empty.
+	//
+	// Empty Token disables authentication — mirrors the established
+	// "empty secret = disabled" pattern used by ui.ServerOptions.IPCSecret
+	// (see internal/ui/api receipts handler); intended for tests only, since
+	// Serve() always ensures a token is set for any real listener.
+	Token string
 	// client is the shared HTTP client reused across requests (S1: avoids per-request allocation).
 	// Initialised lazily via clientOnce.
 	client     *http.Client
 	clientOnce sync.Once
+	tokenOnce  sync.Once
+	tokenErr   error
+}
+
+// proxyAuthHeader is the header proxy callers must present the per-session
+// bearer token in (the proxy caller-auth check). "Proxy-Authorization" is the RFC 7235 standard
+// header for authenticating to a forward/CONNECT proxy — deliberately
+// distinct from "Authorization", which callers may legitimately (attempt to)
+// set for the *upstream origin* and which this proxy already strips before
+// forwarding (see routeHandler). Reusing "Authorization" for proxy-caller
+// auth would conflate the two concerns and break that stripping test/guarantee.
+const proxyAuthHeader = "Proxy-Authorization"
+
+// EnsureToken lazily mints s.Token (32 random bytes, hex-encoded) if it is
+// currently empty, and returns it. Safe for concurrent use. Call this before
+// publishing the token to a child process so a concurrent caller can never
+// observe an empty/unset token.
+func (s *Server) EnsureToken() (string, error) {
+	s.tokenOnce.Do(func() {
+		if s.Token != "" {
+			return
+		}
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			s.tokenErr = fmt.Errorf("generate caller auth token: %w", err)
+			return
+		}
+		s.Token = hex.EncodeToString(b)
+	})
+	return s.Token, s.tokenErr
+}
+
+// checkCallerAuth validates the per-session bearer token (the proxy caller-auth
+// check — internal/proxy/server.go bound 127.0.0.1:7879 with
+// no client auth, so any same-user process could drive credential
+// injection). Returns true if the request is authorized.
+func (s *Server) checkCallerAuth(r *http.Request) bool {
+	if s.Token == "" {
+		// Auth disabled — test/demo mode only (see Token doc comment).
+		return true
+	}
+	const prefix = "Bearer "
+	got := r.Header.Get(proxyAuthHeader)
+	if !strings.HasPrefix(got, prefix) {
+		return false
+	}
+	presented := strings.TrimPrefix(got, prefix)
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(s.Token)) == 1
+}
+
+// isLoopbackAddr returns true if addr's host resolves to loopback. Mirrors
+// the isLoopbackBind helper in internal/ui and internal/gateway.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = strings.TrimPrefix(strings.TrimSuffix(addr, "]"), "[")
+		if host == "" {
+			host = addr
+		}
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Serve starts the proxy HTTP server on s.Addr and blocks until ctx is cancelled.
 // Graceful shutdown on ctx cancel.
+//
+// Unlike internal/ui and internal/gateway, the CONNECT proxy has no
+// --listen/--unsafe-bind-all opt-in and is loopback-only, unconditionally.
+// Rationale (docker-server-security hardening pass): the proxy transparently
+// injects live provider credentials into whatever host the caller CONNECTs
+// to, gated only by a flat host allowlist (Profile.Hosts) — there is no
+// per-request, capability-scoped authorization as granular as the gateway's
+// minted JWTs. Exposing that control plane to a container's host network
+// would multiply the blast radius of a single compromised profile well
+// beyond the UI's status surface or the gateway's scoped tokens. The proxy
+// caller-auth check (below) mitigates the "any same-user process" risk; it does not
+// by itself justify network exposure, so no opt-in is offered here.
 func (s *Server) Serve(ctx context.Context) error {
 	addr := s.Addr
 	if addr == "" {
 		addr = defaultProxyAddr
+	}
+
+	if !isLoopbackAddr(addr) {
+		return fmt.Errorf("proxy: refusing non-loopback bind %q — the CONNECT proxy is loopback-only by design (no --listen/--unsafe-bind-all opt-in)", addr)
+	}
+
+	// Mint the per-session caller-auth bearer token before accepting any
+	// connections. See checkCallerAuth.
+	if _, err := s.EnsureToken(); err != nil {
+		return fmt.Errorf("proxy: %w", err)
 	}
 
 	ln, err := net.Listen("tcp", addr)
@@ -100,7 +198,16 @@ func (s *Server) Serve(ctx context.Context) error {
 
 // ServeHTTP dispatches requests: CONNECT to handleCONNECT, everything else to
 // routeHandler. This method is exported so tests can use httptest.Server.
+//
+// The proxy caller-auth check is enforced first, before any routing or
+// host-allowlist decisions — an unauthenticated caller must not learn
+// anything about the profile (not even "host not allowed" vs "unauthorized").
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.checkCallerAuth(r) {
+		s.auditDeny(r.Context(), "proxy_caller_unauthenticated", r.Host)
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
 	if r.Method == http.MethodConnect {
 		s.handleCONNECT(w, r)
 		return
@@ -109,7 +216,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // routeHandler handles plain HTTP requests:
-//  1. Enforce host allowlist (S-RM-6).
+//  1. Enforce host allowlist.
 //  2. Strip caller-supplied Authorization header.
 //  3. Fetch credential from vault.
 //  4. Forward to upstream; stream response back.
@@ -126,7 +233,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 1b: SSRF re-resolution guard (S-RM-6 / W2).
+	// Step 1b: SSRF re-resolution guard.
 	// Re-resolve the hostname on every request when the profile requires it.
 	if s.Profile.SSRF.ResolveAndVerifyEachRequest {
 		if err := s.ssrfCheck(host); err != nil {
@@ -139,7 +246,7 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 	// Step 2: strip caller-supplied Authorization header.
 	r.Header.Del("Authorization")
 
-	// Step 3: find matching route — deny if none matches (S-RM-6 fail-closed).
+	// Step 3: find matching route — deny if none matches (fail-closed).
 	route := s.matchRoute(r)
 	if route == nil {
 		s.auditDeny(r.Context(), "route_not_allowed", r.URL.Path)
@@ -181,7 +288,9 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 	// Copy safe headers.
 	for k, vv := range r.Header {
 		lower := strings.ToLower(k)
-		if lower == "authorization" || strings.HasPrefix(lower, "x-keylatch-") {
+		// proxy-authorization carries our own caller-auth bearer token
+		// (checked in ServeHTTP) and must never reach the upstream provider.
+		if lower == "authorization" || lower == "proxy-authorization" || strings.HasPrefix(lower, "x-keylatch-") {
 			continue
 		}
 		for _, v := range vv {
@@ -242,7 +351,7 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SSRF re-resolution guard (S-RM-6 / W2).
+	// SSRF re-resolution guard.
 	if s.Profile.SSRF.ResolveAndVerifyEachRequest {
 		if err := s.ssrfCheck(host); err != nil {
 			s.auditDeny(r.Context(), "ssrf_denied", host)
@@ -441,8 +550,8 @@ func (s *Server) httpClient() *http.Client {
 	return s.client
 }
 
-// ssrfCheck resolves host to IPs and verifies none fall within denied private ranges
-// (S-RM-6 / W2). Returns a non-nil error if any resolved IP is in a denied range.
+// ssrfCheck resolves host to IPs and verifies none fall within denied private ranges.
+// Returns a non-nil error if any resolved IP is in a denied range.
 func (s *Server) ssrfCheck(host string) error {
 	addrs, err := net.LookupHost(host)
 	if err != nil {

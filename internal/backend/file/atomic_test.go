@@ -114,7 +114,7 @@ func TestConcurrentWriters(t *testing.T) {
 }
 
 // TestVersionedRoundTrip verifies SetVersioned + GetVersioned returns identical bytes.
-// Requires a keyring-backed backend (T-02-03).
+// Requires a keyring-backed backend.
 func TestVersionedRoundTrip(t *testing.T) {
 	b := openKeyringBackend(t)
 	defer b.Close()

@@ -13,9 +13,9 @@ type ContentLabeler struct{}
 // LabelResponse processes a response body from providerID.
 // Non-content providers are returned unmodified.
 //
-//   - Label: wraps content fields with UntrustedContentLabel in the response envelope.
-//   - Strip: removes content fields, returns metadata only.
-//   - Summarize: returns {"content": "__keylatch_content_stripped_pending_summarization__"}.
+// - Label: wraps content fields with UntrustedContentLabel in the response envelope.
+// - Strip: removes content fields, returns metadata only.
+// - Summarize: returns {"content": "__keylatch_content_stripped_pending_summarization__"}.
 func (cl *ContentLabeler) LabelResponse(providerID string, body []byte, policy UntrustedContentPolicy) ([]byte, error) {
 	if !UntrustedContentProviders[providerID] {
 		// Not an untrusted-content provider — return unmodified.

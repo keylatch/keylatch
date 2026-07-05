@@ -1,7 +1,7 @@
 //go:build windows
 
 // Package token — Windows best-effort consumption log implementation.
-// FIND3-009: On Windows, flock is not available; we use O_CREATE|O_EXCL retry loop.
+// On Windows, flock is not available; we use O_CREATE|O_EXCL retry loop.
 package token
 
 import (
@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// consumeTokenUseLog implements best-effort FIND3-009 on Windows.
+// consumeTokenUseLog implements best-effort atomic use counting on Windows.
 func consumeTokenUseLog(t *Token) bool {
 	logPath := t.ConsumptionLogPath
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {

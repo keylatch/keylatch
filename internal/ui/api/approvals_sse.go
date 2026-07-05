@@ -1,8 +1,8 @@
-// Package api — admin SSE approval inbox (Phase 12).
+// Package api — admin SSE approval inbox.
 //
 // Security invariants:
-//   - All SSE payloads are value-free: requester is HMACd, never raw email/ID.
-//   - Emit within 1s of approval state change (buffered channel, non-blocking).
+// - All SSE payloads are value-free: requester is HMACd, never raw email/ID.
+// - Emit within 1s of approval state change (buffered channel, non-blocking).
 package api
 
 import (
@@ -62,7 +62,7 @@ func (b *ApprovalBus) Unsubscribe(ch chan ApprovalSSEEvent) {
 }
 
 // Publish sends an event to all current subscribers non-blocking.
-// Subscribers with full buffers are skipped (never blocks local ops, S12-14).
+// Subscribers with full buffers are skipped (never blocks local ops).
 func (b *ApprovalBus) Publish(ev ApprovalSSEEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -70,7 +70,7 @@ func (b *ApprovalBus) Publish(ev ApprovalSSEEvent) {
 		select {
 		case ch <- ev:
 		default:
-			// subscriber's buffer full — drop (non-blocking per S12-14).
+			// subscriber's buffer full — drop (non-blocking).
 		}
 	}
 }

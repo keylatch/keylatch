@@ -1,5 +1,5 @@
 // Package file implements the filesystem backend for keylatch.
-// init.go implements keyring initialization for the file backend (Epic 04 T4-06).
+// init.go implements keyring initialization for the file backend.
 package file
 
 import (

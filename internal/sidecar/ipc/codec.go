@@ -8,7 +8,7 @@
 // The HMAC is computed over length_bytes || body_bytes.
 // A frame whose HMAC tag does not verify is rejected with ErrHMACMismatch;
 // the connection is closed and no error detail is surfaced to the caller
-// (S14-8 — no HMAC oracle).
+// (no HMAC oracle).
 package ipc
 
 import (
@@ -31,7 +31,7 @@ const (
 
 // ErrHMACMismatch is returned (and logged) when a received frame fails
 // HMAC-SHA256 verification. The connection is closed without surfacing
-// detail to the peer (S14-8).
+// detail to the peer.
 var ErrHMACMismatch = errors.New("ipc: HMAC mismatch — frame rejected")
 
 // ErrFrameTooLarge is returned when a peer sends a frame whose declared

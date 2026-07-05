@@ -1,4 +1,4 @@
-// Package simulate implements Phase 12 policy simulation (dry-run).
+// Package simulate implements policy simulation (dry-run).
 package simulate
 
 import (
@@ -124,7 +124,7 @@ func Explain(result *SimResult) string {
 	if len(result.Risks) > 0 {
 		sb.WriteString("Risks:\n")
 		for _, r := range result.Risks {
-			fmt.Fprintf(&sb, "  [%s] %s\n", r.Level, r.Message)
+			fmt.Fprintf(&sb, " [%s] %s\n", r.Level, r.Message)
 		}
 	}
 	return sb.String()

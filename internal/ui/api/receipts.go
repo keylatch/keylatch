@@ -245,7 +245,7 @@ func (h *receiptsStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 // pushReceiptsHandler implements POST /v1/receipts — internal-only, CLI → keylatchd bridge.
 //
-// S-INV-12: the handler requires the X-Keylatch-IPC-Secret header to match the
+// The handler requires the X-Keylatch-IPC-Secret header to match the
 // server's startup-time secret. This prevents foreign processes (different user
 // or unprivileged attacker) from injecting fake receipts into the UI dashboard.
 //
@@ -265,7 +265,7 @@ func NewPushReceiptsHandler(store *ReceiptStore) http.Handler {
 }
 
 // NewPushReceiptsHandlerWithSecret returns an http.Handler for POST /v1/receipts
-// that enforces the X-Keylatch-IPC-Secret header (S-INV-12).
+// that enforces the X-Keylatch-IPC-Secret header.
 func NewPushReceiptsHandlerWithSecret(store *ReceiptStore, ipcSecret string) http.Handler {
 	return &pushReceiptsHandler{store: store, ipcSecret: ipcSecret}
 }
@@ -276,7 +276,7 @@ func (h *pushReceiptsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// S-INV-12: reject requests from foreign processes.
+	// reject requests from foreign processes.
 	// When ipcSecret is set, require exact match on X-Keylatch-IPC-Secret.
 	// The comparison is constant-time to prevent timing side-channels.
 	if h.ipcSecret != "" {
@@ -289,7 +289,7 @@ func (h *pushReceiptsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// S-RM-9: body size limit — receipts are small; 16 KiB is generous.
+	// body size limit — receipts are small; 16 KiB is generous.
 	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
 	var receipt runner.RuntimeReceipt
 	if err := json.NewDecoder(r.Body).Decode(&receipt); err != nil {

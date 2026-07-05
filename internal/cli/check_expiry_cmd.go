@@ -26,10 +26,10 @@ type checkExpiryEntry struct {
 	Status        string `json:"status"`
 }
 
-// newPhase4CheckExpiryCmd returns the Phase 4 `check-expiry` command.
-// Security invariant S4-1: MUST NOT call vault.Get or backend.Get.
+// newCheckExpiryCmd returns the `check-expiry` command.
+// Security invariant: MUST NOT call vault.Get or backend.Get.
 // Canary invariant: output must not contain KEYLATCH_CANARY_PHASE4_EXPIRY_0xDEADBEEF.
-func newPhase4CheckExpiryCmd() *cobra.Command {
+func newCheckExpiryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "check-expiry [--days N] [--json]",
 		Short:         "Check credential expiry status",
@@ -52,7 +52,7 @@ Exit code 1 if any credentials are expired; 0 otherwise.`,
 				days = expiry.DefaultWarnDays
 			}
 
-			// Security invariant S4-1: ListMeta never decrypts values.
+			// Security invariant: ListMeta never decrypts values.
 			metas, err := vault.ListMeta(ctx, "", cfg, env)
 			if err != nil {
 				return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.OperationFailed)

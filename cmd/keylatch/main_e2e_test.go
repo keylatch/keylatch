@@ -16,14 +16,14 @@ import (
 )
 
 // CanarySecret is a sentinel value used to verify no credential leak.
-// S0-1: this value must never appear in stdout/stderr of any blocked command.
+// This value must never appear in stdout/stderr of any blocked command.
 const CanarySecret = "KEYLATCH_CANARY_DO_NOT_LEAK_0xDEADBEEF"
 
 var binaryPath string
 
 func TestMain(m *testing.M) {
 	// Initialise the global provider registry from embedded YAML templates so
-	// unit-style tests in this package (e.g. TestGoldenPath_Phase3) can perform
+	// unit-style tests in this package (e.g. TestGoldenPath_FullUserJourney) can perform
 	// registry lookups without relying on PersistentPreRunE.
 	if err := registry.InitFromConfig(context.Background(), func(key string) string {
 		return os.Getenv(key)
@@ -99,10 +99,10 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 func assertNoCanaryLeak(t *testing.T, stdout, stderr []byte, homeDir string) {
 	t.Helper()
 	if bytes.Contains(stdout, []byte(CanarySecret)) {
-		t.Fatalf("canary secret leaked to stdout (S0-1)")
+		t.Fatalf("canary secret leaked to stdout")
 	}
 	if bytes.Contains(stderr, []byte(CanarySecret)) {
-		t.Fatalf("canary secret leaked to stderr (S0-1)")
+		t.Fatalf("canary secret leaked to stderr")
 	}
 	if homeDir == "" {
 		return
@@ -117,13 +117,13 @@ func assertNoCanaryLeak(t *testing.T, stdout, stderr []byte, homeDir string) {
 			return nil
 		}
 		if bytes.Contains(data, []byte(CanarySecret)) {
-			t.Fatalf("canary secret leaked to file %s (S0-1)", path)
+			t.Fatalf("canary secret leaked to file %s", path)
 		}
 		return nil
 	})
 }
 
-// TestE2E_CLAUDE_CODE_blocks_get verifies S0-1, S0-2, S0-4.
+// TestE2E_CLAUDE_CODE_blocks_get verifies the CLAUDE_CODE signal blocks get.
 func TestE2E_CLAUDE_CODE_blocks_get(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
@@ -136,7 +136,7 @@ func TestE2E_CLAUDE_CODE_blocks_get(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_CODEX_ENV_blocks_get verifies S0-2 for CODEX_ENV signal.
+// TestE2E_CODEX_ENV_blocks_get verifies the CODEX_ENV signal blocks get.
 func TestE2E_CODEX_ENV_blocks_get(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
@@ -149,7 +149,7 @@ func TestE2E_CODEX_ENV_blocks_get(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get verifies S0-2 for CREDENTIALS_LLM_SESSION=1.
+// TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get verifies the CREDENTIALS_LLM_SESSION=1 signal blocks get.
 func TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
@@ -162,27 +162,113 @@ func TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_CREDENTIALS_LLM_SESSION_0_no_block verifies S0-3: =0 must NOT block.
-func TestE2E_CREDENTIALS_LLM_SESSION_0_no_block(t *testing.T) {
+// ---------------------------------------------------------------------------
+// The raw-credential session gate: raw-credential-path corroboration policy
+// (docker-server-security hardening, fix/daemonup-bypass).
+//
+// Raw-credential-exposure paths — non-masked `get`, and `run` in
+// direct_brokered / direct_classic_sandboxed runtime modes
+// (runtime.IsRawCredentialMode) — are now gated for EVERY session, including
+// SignalNone (no LLM signal detected at all, e.g. CREDENTIALS_LLM_SESSION=0
+// or no signals set). This closes the "unset every signal and sail through"
+// spoof-to-human gap the naive heuristic-only gate left open. Gateway/proxy
+// `run` modes are never gated: the child only ever receives a scoped session
+// token there, never the raw secret.
+//
+// The gate (RequireVerifiedSession, internal/cli/session_enforce.go) is
+// satisfied by:
+//   - a signed session ticket (KEYLATCH_LLM_TICKET), or
+//   - keylatchd's authenticated IPC confirming this PID as an active tracked
+//     session (llmcontext.SignalDaemonActive), or
+//   - the explicit escape hatch: KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (env)
+//     or allow_unverified_session (config.json).
+//
+// This is layered UNDER GuardLLMSession (`get`) and GuardRuntime (`run`):
+//   - A *detected* LLM session (positive signals: CLAUDE_CODE, CODEX_ENV,
+//     CREDENTIALS_LLM_SESSION=1) hits GuardLLMSession first on `get`, which
+//     hard-blocks unconditionally (exit 2, "Blocked in LLM session" message,
+//     no escape hatch) — the raw-credential session gate is never reached and its message never shown.
+//   - A SignalNone `get` (no signals, or CREDENTIALS_LLM_SESSION=0) passes
+//     GuardLLMSession, then hits the raw-credential session gate, which fails closed absent corroboration
+//     or the opt-out (exit 2, the raw-credential session gate's message mentioning
+//     KEYLATCH_ALLOW_UNVERIFIED_SESSION — a real hatch here, unlike get's
+//     hard block).
+//   - `run` in gateway_typed/gateway_sdk/gateway_proxy is unaffected by the raw-credential session gate
+//     regardless of session (never exposes a raw secret).
+//   - `run` in direct_brokered / direct_classic_sandboxed IS gated by the raw-credential session gate for
+//     ANY session (LLM-detected or SignalNone) even though GuardRuntime
+//     itself allows those modes in LLM sessions — the raw-credential session gate supersedes
+//     that allowance for the raw-credential boundary. The opt-out (env var
+//     or config) restores the previous unrestricted behavior.
+// ---------------------------------------------------------------------------
+
+// rawCredGateOptOut returns a copy of base with the raw-credential session gate escape hatch
+// (KEYLATCH_ALLOW_UNVERIFIED_SESSION=1) merged in.
+func rawCredGateOptOut(base map[string]string) map[string]string {
+	merged := map[string]string{"KEYLATCH_ALLOW_UNVERIFIED_SESSION": "1"}
+	for k, v := range base {
+		merged[k] = v
+	}
+	return merged
+}
+
+// TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut verifies that
+// CREDENTIALS_LLM_SESSION=0 (a SignalNone session — GuardLLMSession does not
+// block it) is still gated by the raw-credential session gate on raw `get`: it fails closed absent
+// corroboration or the escape hatch. The stderr must be the raw-credential session gate's message (which
+// references the opt-out), NOT GuardLLMSession's hard "Blocked" message —
+// GuardLLMSession never even fires here since there are no LLM signals.
+func TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut(t *testing.T) {
 	homeDir := t.TempDir()
-	_, _, code := runKeylatch(t,
+	_, stderr, code := runKeylatch(t,
 		map[string]string{"CREDENTIALS_LLM_SESSION": "0", "HOME": homeDir},
 		"get", "svc", "key")
 
-	assert.Equal(t, 5, code, "expected exit code 5 (OperationFailed/not-implemented), not 2 (SecurityBlock)")
+	assert.Equal(t, 2, code, "expected exit 2 (the raw-credential session gate fail-closed on SignalNone raw get)")
+	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, string(stderr), "Blocked in LLM session",
+		"SignalNone must never see GuardLLMSession's hard-block message")
 }
 
-// TestE2E_no_signals_no_block verifies S0-5: unset signals never block.
-func TestE2E_no_signals_no_block(t *testing.T) {
+// TestE2E_CREDENTIALS_LLM_SESSION_0_OptOutReachesHandler verifies that
+// setting the escape hatch alongside CREDENTIALS_LLM_SESSION=0 lets the
+// (SignalNone) session past the raw-credential session gate, reaching the not-implemented get handler.
+func TestE2E_CREDENTIALS_LLM_SESSION_0_OptOutReachesHandler(t *testing.T) {
 	homeDir := t.TempDir()
 	_, _, code := runKeylatch(t,
+		rawCredGateOptOut(map[string]string{"CREDENTIALS_LLM_SESSION": "0", "HOME": homeDir}),
+		"get", "svc", "key")
+
+	assert.Equal(t, 5, code, "expected exit 5 (OperationFailed/not-implemented) once the raw-credential session gate is opted out")
+}
+
+// TestE2E_no_signals_GatedWithoutOptOut verifies that a session with no LLM
+// signals at all (SignalNone) is still gated by the raw-credential session gate on raw `get` — the
+// unset-every-signal spoof-to-human case the raw-credential session gate exists to close.
+func TestE2E_no_signals_GatedWithoutOptOut(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
 		"get", "svc", "key")
 
-	assert.Equal(t, 5, code, "expected exit code 5, not 2")
+	assert.Equal(t, 2, code, "expected exit 2 (the raw-credential session gate fail-closed on SignalNone raw get)")
+	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, string(stderr), "Blocked in LLM session",
+		"SignalNone must never see GuardLLMSession's hard-block message")
 }
 
-// TestE2E_masked_exits_0_in_llm_session verifies S0-5: get --masked is safe.
+// TestE2E_no_signals_OptOutReachesHandler verifies that the escape hatch lets
+// a no-signal session past the raw-credential session gate, reaching the not-implemented get handler.
+func TestE2E_no_signals_OptOutReachesHandler(t *testing.T) {
+	homeDir := t.TempDir()
+	_, _, code := runKeylatch(t,
+		rawCredGateOptOut(map[string]string{"HOME": homeDir}),
+		"get", "svc", "key")
+
+	assert.Equal(t, 5, code, "expected exit 5 once the raw-credential session gate is opted out")
+}
+
+// TestE2E_masked_exits_0_in_llm_session verifies get --masked is a safe path.
 func TestE2E_masked_exits_0_in_llm_session(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
@@ -205,7 +291,7 @@ func TestE2E_help_exits_0_in_llm_session(t *testing.T) {
 	assert.Equal(t, 0, code, "--help must exit 0 in LLM session")
 }
 
-// TestLeafPackageDeps verifies S0-7 / SC0-12: internal/llmcontext has no internal/* deps.
+// TestLeafPackageDeps verifies internal/llmcontext has no internal/* deps.
 func TestLeafPackageDeps(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", "github.com/keylatch/keylatch/internal/llmcontext").Output()
 	if err != nil {
@@ -216,12 +302,12 @@ func TestLeafPackageDeps(t *testing.T) {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "github.com/keylatch/keylatch/internal/") &&
 			line != "github.com/keylatch/keylatch/internal/llmcontext" {
-			t.Errorf("llmcontext imports disallowed internal package: %s (S0-7)", line)
+			t.Errorf("llmcontext imports disallowed internal package: %s", line)
 		}
 	}
 }
 
-// TestStaticGrepNoOverride verifies S0-3 / SC0-13: no bypass or disable of the LLM guard.
+// TestStaticGrepNoOverride verifies there is no bypass or disable of the LLM guard.
 // The guard functions themselves are allowed to check !IsLLMSession (early-return for non-LLM),
 // but no handler may have a flag or override that disables the guard.
 func TestStaticGrepNoOverride(t *testing.T) {
@@ -244,7 +330,7 @@ func TestStaticGrepNoOverride(t *testing.T) {
 		return nil
 	})
 
-	// Check production code for explicit guard override patterns — S0-3 violations.
+	// Check production code for explicit guard override patterns — violations.
 	overridePatterns := []string{
 		`ALLOW_LLM_SESSION`,
 		`DISABLE_LLM_GUARD`,
@@ -256,12 +342,20 @@ func TestStaticGrepNoOverride(t *testing.T) {
 		cmd := exec.Command("grep", args...)
 		out, _ := cmd.CombinedOutput()
 		if len(bytes.TrimSpace(out)) > 0 {
-			t.Fatalf("found potential LLM guard override pattern %q (S0-3): %s", pattern, out)
+			t.Fatalf("found potential LLM guard override pattern %q: %s", pattern, out)
 		}
 	}
 }
 
-// TestE2E_GuardRuntime_AllowedModes verifies SC0-14: allowed modes proceed past guard.
+// TestE2E_GuardRuntime_AllowedModes verifies gateway modes proceed
+// past both GuardRuntime and the raw-credential session gate in an LLM session — they never expose a raw
+// credential value (the child only ever gets a scoped session token), so the raw-credential session gate
+// is a no-op for them regardless of session classification.
+//
+// direct_brokered is deliberately NOT in this table: unlike the gateway
+// modes, it is a raw-credential mode (runtime.IsRawCredentialMode) and is
+// gated by the raw-credential session gate in an LLM session — see
+// TestE2E_GuardRuntime_DirectBrokered_GatedInLLMSession below.
 func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 	allowedCases := []struct {
 		name    string
@@ -270,7 +364,6 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 	}{
 		{"gateway_typed", "gateway_typed", []string{"run", "--runtime", "gateway_typed", "openrouter", "--", "node", "x.js"}},
 		{"gateway_sdk", "gateway_sdk", []string{"run", "--runtime", "gateway_sdk", "openrouter", "--", "node", "x.js"}},
-		{"direct_brokered", "direct_brokered", []string{"run", "--runtime", "direct_brokered", "aws-prod", "--", "./deploy.sh"}},
 		{"gateway_proxy", "gateway_proxy", []string{"run", "--runtime", "gateway_proxy", "openrouter", "--", "node", "x.js"}},
 	}
 
@@ -281,17 +374,40 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 			_, _, code := runKeylatch(t,
 				map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
 				tc.args...)
-			// Allowed modes proceed past the guard — they must NOT exit 2 (SecurityBlock).
-			// The actual exit code may vary: exit 3 (Missing) if credentials are absent,
-			// exit 1 (UserError) if the provider is unknown, or exit 5 (OperationFailed).
-			// The invariant is: NOT 2 (the guard did not block them).
+			// Allowed modes proceed past both guards — they must NOT exit 2
+			// (SecurityBlock). The actual exit code may vary: exit 3
+			// (Missing) if credentials are absent, exit 1 (UserError) if the
+			// provider is unknown, or exit 5/7 for other operational states.
+			// The invariant is: NOT 2 (neither guard blocked them).
 			assert.NotEqual(t, 2, code, "runtime mode %s must not be blocked by guard (must not exit 2, got %d)", tc.runtime, code)
 		})
 	}
 }
 
+// TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate verifies that on a
+// clean (un-bootstrapped) machine a raw-credential run mode surfaces the
+// actionable BootstrapMissing error (exit 7) rather than the raw-credential
+// session gate's fail-closed message: the onboarding guards (bootstrap, then
+// connection) run before the session gate, so a first-run user is told to
+// bootstrap, not to provide session corroboration. Before setup there is no
+// credential to protect, so the session gate has nothing to gate here.
+//
+// The session gate's own fail-closed behavior for raw-credential exposure is
+// covered end-to-end by the `get` tests above (which do not depend on
+// bootstrap) and exhaustively at the unit level in
+// internal/cli/session_enforce_test.go.
+func TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
+		"run", "--runtime", "direct_brokered", "aws-prod", "--", "./deploy.sh")
+
+	assert.Equal(t, 7, code, "raw run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
+	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
+}
+
 // TestE2E_GuardRuntime_DirectClassicRemoved verifies that the permanently removed
-// mode direct_classic exits 5 (RuntimeNotAvailable) — it was removed in T-10-03
+// mode direct_classic exits 5 (RuntimeNotAvailable) — it was permanently removed
 // and must never be reinstated.
 func TestE2E_GuardRuntime_DirectClassicRemoved(t *testing.T) {
 	homeDir := t.TempDir()
@@ -299,36 +415,36 @@ func TestE2E_GuardRuntime_DirectClassicRemoved(t *testing.T) {
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
 		"run", "--runtime", "direct_classic", "openrouter", "--", "node", "x.js")
 
-	// exit 5 = RuntimeNotAvailable: mode permanently removed in v1.0.0 (T-10-03).
-	assert.Equal(t, 5, code, "direct_classic must exit 5 (RuntimeNotAvailable) — permanently removed in T-10-03")
+	// exit 5 = RuntimeNotAvailable: mode permanently removed in v1.0.0.
+	assert.Equal(t, 5, code, "direct_classic must exit 5 (RuntimeNotAvailable) — permanently removed")
 	assert.Empty(t, stdout)
 	assert.Contains(t, string(stderr), "direct_classic")
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_GuardRuntime_SandboxedAllowedInLLMSession verifies that
-// direct_classic_sandboxed is allowed in LLM sessions (EPIC-24 reinstated it).
-// Without bootstrap the run will exit 7 (BootstrapMissing) — not 5 (removed)
-// and not 2 (security block), proving the mode passes the guard.
-func TestE2E_GuardRuntime_SandboxedAllowedInLLMSession(t *testing.T) {
+// TestE2E_Run_SandboxedBootstrapPrecedesSessionGate verifies that
+// direct_classic_sandboxed (a raw-credential mode) also surfaces the
+// BootstrapMissing error (exit 7) on a clean machine, ahead of the
+// raw-credential session gate — same onboarding-first ordering as
+// direct_brokered. The session gate's raw-credential fail-closed behavior
+// (which supersedes GuardRuntime's allowance of sandboxed in LLM sessions once
+// a machine is set up) is covered by the get-path e2e tests and the
+// session_enforce unit tests.
+func TestE2E_Run_SandboxedBootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
 		"run", "--runtime", "direct_classic_sandboxed",
 		"openrouter", "--", "node", "x.js")
 
-	// Must NOT be SecurityBlock (2) — the guard allows this mode in LLM sessions.
-	// Must NOT be RuntimeNotAvailable (5) — the mode is active (EPIC-24), not removed.
-	// Without bootstrap, the run exits 7 (BootstrapMissing).
-	assert.NotEqual(t, 2, code,
-		"direct_classic_sandboxed must not be security-blocked in LLM session (EPIC-24); stderr: %s", stderr)
-	assert.NotEqual(t, 5, code,
-		"direct_classic_sandboxed must not return RuntimeNotAvailable — mode is active (EPIC-24); stderr: %s", stderr)
+	assert.Equal(t, 7, code,
+		"raw sandboxed run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
+	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
 
 // TestE2E_InjectBlockedInLLMSession verifies C-2: keylatch inject returns a non-zero
-// exit code in v1.0.0 because the inject command was removed (T-10-02).
-// Prior to T-10-02 this exited 2 (SecurityBlock) in LLM sessions; now the command
+// exit code in v1.0.0 because the inject command was removed.
+// Prior to removal this exited 2 (SecurityBlock) in LLM sessions; now the command
 // does not exist at all and cobra returns exit 1 (unknown command).
 func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 	homeDir := t.TempDir()
@@ -336,7 +452,7 @@ func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
 		"inject", "openrouter")
 
-	// exit 1 = UserError: cobra unknown command (inject removed in T-10-02).
+	// exit 1 = UserError: cobra unknown command (inject removed).
 	// SilenceErrors = true: cobra does not print the error text, main.go prints
 	// the doctor hint only. The invariant is a non-zero exit code.
 	assert.NotEqual(t, 0, code, "inject must exit non-zero in v1.0.0 — command is removed")
@@ -344,15 +460,20 @@ func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_GuardRuntime_NonLLMBaseline verifies non-LLM sessions are never blocked by GuardRuntime.
-func TestE2E_GuardRuntime_NonLLMBaseline(t *testing.T) {
+// TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate verifies that a
+// SignalNone (non-LLM) session running a raw-credential mode on a clean machine
+// also gets BootstrapMissing (exit 7) first — the onboarding guards precede the
+// session gate for every session class. The session gate's SignalNone
+// fail-closed behavior (the "unset every signal" spoof-to-human case it exists
+// to close) is verified end-to-end by the get-path tests above and unit-tested
+// in internal/cli/session_enforce_test.go.
+func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
-	_, _, code := runKeylatch(t,
+	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
 		"run", "--runtime", "direct_classic_sandboxed", "openrouter", "--", "node", "x.js")
 
-	// Non-LLM sessions must not be blocked by GuardRuntime (exit 2).
-	// The command may exit with Missing (3) if credentials are absent,
-	// or OperationFailed (5) for other errors — but never SecurityBlock (2) from guard.
-	assert.NotEqual(t, 2, code, "non-LLM session must never be blocked by GuardRuntime (must not exit 2, got %d)", code)
+	assert.Equal(t, 7, code,
+		"raw run before bootstrap must exit 7 (BootstrapMissing) for a SignalNone session too, ahead of the session gate; stderr: %s", stderr)
+	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }

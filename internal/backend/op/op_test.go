@@ -121,7 +121,7 @@ func TestGet_AuthFailure_ErrLocked(t *testing.T) {
 }
 
 func TestGet_AuthFailure_NoRawStderr(t *testing.T) {
-	// S2-9: raw stderr from auth failure must not appear in error message.
+	// Raw stderr from auth failure must not appear in error message.
 	// Use the adversarial fixture that contains a token-shaped string.
 	fixture := testdataPath(t, "adversarial_stderr_service_account.txt")
 	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
@@ -165,7 +165,7 @@ func TestList_ZeroFillsValues(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
 
-	// S2-3: canary must not appear in list entries (values are zero-filled in fixture).
+	// Canary must not appear in list entries (values are zero-filled in fixture).
 	for _, e := range entries {
 		assert.NotContains(t, e.Path, "KEYLATCH_CANARY")
 	}
@@ -187,7 +187,7 @@ func TestList_PrefixFilter(t *testing.T) {
 	}
 }
 
-// --- ErrAmbiguous tests (E3-T3) ---
+// --- ErrAmbiguous tests ---
 
 func TestGet_MultipleItems_ErrAmbiguous(t *testing.T) {
 	// The multiresult fixture has two items with same title; we return it as an array.
@@ -222,7 +222,7 @@ func TestGet_AccountSuffix_PassesAccountFlag(t *testing.T) {
 	assert.Equal(t, "KEYLATCH_CANARY_PHASE2_0xDEADBEEF", string(val))
 }
 
-// --- Canary assertion tests (E5-T4 / S2-3) ---
+// --- Canary assertion tests ---
 
 func TestList_CanaryAbsentFromEntries(t *testing.T) {
 	// The list fixture has empty field values — canary must be absent.

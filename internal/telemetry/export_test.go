@@ -22,3 +22,16 @@ func NewRemoteSinkForTest(endpoint string) *RemoteSink {
 	}
 	return s
 }
+
+// ResolvedTelemetryEndpoint returns the endpoint newRemoteSink() would
+// resolve to given the current KEYLATCH_TELEMETRY_URL env var (set via
+// t.Setenv in tests). Exposes the https-only validation behavior for testing
+// without making newRemoteSink or RemoteSink.endpoint exported.
+func ResolvedTelemetryEndpoint() string {
+	return newRemoteSink().endpoint
+}
+
+// DefaultTelemetryEndpoint exposes defaultTelemetryEndpoint for test assertions.
+func DefaultTelemetryEndpoint() string {
+	return defaultTelemetryEndpoint
+}

@@ -14,10 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPhase3MCPCmd returns the Phase 3 `mcp` command.
+// newMCPCmd returns the `mcp` command.
 //
-// FIND-014: --unsafe-bind-all is NOT registered as a flag.
-func newPhase3MCPCmd() *cobra.Command {
+// --unsafe-bind-all is NOT registered as a flag.
+func newMCPCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Start the keylatch MCP server",
@@ -64,7 +64,7 @@ func newPhase3MCPCmd() *cobra.Command {
 			return nil
 		},
 	}
-	// FIND-014: --unsafe-bind-all is explicitly NOT registered here.
+	// --unsafe-bind-all is explicitly NOT registered here.
 	cmd.Flags().Bool("stdio", false, "use stdio transport (default)")
 	cmd.Flags().Int("port", 0, "TCP port to listen on (127.0.0.1 only)")
 	return cmd

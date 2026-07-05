@@ -10,12 +10,36 @@
 # missing. For local development use the source-build Dockerfile at
 # the repo root instead.
 
+# distroless has no shell, so the nonroot-owned home/config directory must
+# be pre-created (with correct ownership) in a throwaway stage that does
+# have one, then copied over verbatim.
+FROM busybox:1-glibc AS homedir
+RUN mkdir -p /home/nonroot/.keylatch && chown -R 65532:65532 /home/nonroot
+
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY keylatch /keylatch
+COPY --from=homedir --chown=65532:65532 /home/nonroot /home/nonroot
+
+# The image runs as UID 65532 (nonroot) with no $HOME by default in
+# distroless, which makes config resolution fall back to an unwritable
+# relative directory. Set HOME and an explicit, writable config dir, and
+# declare it as a volume so config/vault state persists across container
+# recreation.
+ENV HOME=/home/nonroot
+ENV KEYLATCH_CONFIG_DIR=/home/nonroot/.keylatch
+VOLUME ["/home/nonroot/.keylatch"]
+
+# Documentation only — distroless has no shell to bind ports from, and
+# these do not publish anything by themselves. 7890 = local UI, 7878 = gateway.
+EXPOSE 7890 7878
 
 USER nonroot:nonroot
 ENTRYPOINT ["/keylatch"]
+
+# `keylatch health` is a lightweight self-check subcommand (added
+# alongside this container work) intended for container orchestrators.
+HEALTHCHECK CMD ["/keylatch", "health"]
 
 LABEL org.opencontainers.image.title="keylatch"
 LABEL org.opencontainers.image.description="Zero-trust credential vault CLI for AI-assisted workflows"

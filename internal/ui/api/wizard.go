@@ -1,11 +1,11 @@
 // Package api — wizard setup handlers for the /v1/ route family.
 //
 // Security invariants:
-//   - S10-V: api_key values are NEVER logged or echoed back in responses.
-//     The api_key is decoded directly into a []byte via a custom JSON type so
-//     it can be explicitly zeroed in memory after use. The JSON decode buffer
-//     is the only other copy and is GC-eligible immediately after decoding.
-//   - All write handlers require a valid session and CSRF token (enforced in server.go).
+// - S10-V: api_key values are NEVER logged or echoed back in responses.
+// The api_key is decoded directly into a []byte via a custom JSON type so
+// it can be explicitly zeroed in memory after use. The JSON decode buffer
+// is the only other copy and is GC-eligible immediately after decoding.
+// - All write handlers require a valid session and CSRF token (enforced in server.go).
 package api
 
 import (
@@ -124,7 +124,6 @@ var backendMeta = map[string]struct{ display, hint string }{
 	"azure-kv":   {"Azure Key Vault", ""},
 	"doppler":    {"Doppler", ""},
 	"infisical":  {"Infisical", ""},
-	"nordpass":   {"NordPass (experimental)", ""},
 	"lastpass":   {"LastPass (legacy)", ""},
 	"keeper":     {"Keeper Commander", "Install: pip install keepercommander"},
 }
@@ -200,8 +199,8 @@ func isBackendAvailable(name, hint string) bool {
 		return true
 	case "file", "keychain", "memory":
 		return true
-	// nordpass and lastpass have no detectable CLI; always report unavailable.
-	case "nordpass", "lastpass":
+	// lastpass has no detectable CLI; always report unavailable.
+	case "lastpass":
 		return false
 	}
 	// For CLI-backed backends check the binary is in PATH.
@@ -215,8 +214,8 @@ func isBackendAvailable(name, hint string) bool {
 }
 
 // cliForBackend returns the CLI binary name for a given backend, or "" if not
-// applicable. nordpass and lastpass are handled before this call in
-// isBackendAvailable and will never reach this function.
+// applicable. lastpass is handled before this call in isBackendAvailable and
+// will never reach this function.
 func cliForBackend(name, _ string) string {
 	switch name {
 	case "op":
@@ -591,7 +590,7 @@ func (h *WizardHandlers) checkCanaryPass() (ok bool, message string) {
 
 // isProviderConnected returns true when at least one provider connection meta
 // record exists in the store under any category within the "default/" namespace
-// (S-FIND-23). Scans "default/" and filters for entries whose path ends with
+// Scans "default/" and filters for entries whose path ends with
 // "/meta", covering all categories (ai, observability, etc.).
 // Returns false when the store is nil or the list call fails (error is logged at debug level).
 func (h *WizardHandlers) isProviderConnected(ctx context.Context) bool {

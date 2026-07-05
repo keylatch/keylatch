@@ -57,7 +57,7 @@ func TestOpen_HTTPServer_ErrInvalidServer(t *testing.T) {
 		Env:    func(string) string { return "" },
 	})
 	require.Error(t, err)
-	// S2-4: http:// rejected.
+	// http:// rejected.
 	assert.Contains(t, err.Error(), "https://")
 }
 
@@ -137,12 +137,12 @@ func TestGet_LockedVault_ErrLocked(t *testing.T) {
 	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, backend.ErrLocked))
-	// Hint present (S2-7: hint, not raw session).
+	// Hint present (hint, not raw session).
 	assert.Contains(t, err.Error(), "BW_SESSION")
 }
 
 func TestGet_NoSessionFlag_InArgs(t *testing.T) {
-	// S2-7: --session flag must never appear in Runner args.
+	// --session flag must never appear in Runner args.
 	fixture := testdataBytes(t, "item_get_openrouter.json")
 	key := argKey(fakeBWBin, "get", "item", "openrouter")
 	runner := makeRunner(key, kexec.MockResponse{Stdout: fixture, ExitCode: 0})
@@ -167,7 +167,7 @@ func TestGet_NoSessionFlag_InArgs(t *testing.T) {
 	for _, c := range calls {
 		for _, arg := range c.Args {
 			assert.False(t, strings.HasPrefix(arg, "--session"),
-				"S2-7: --session must not appear in subprocess args, got: %q", arg)
+				"--session must not appear in subprocess args, got: %q", arg)
 		}
 	}
 }
@@ -186,7 +186,7 @@ func TestList_ZeroFillsValues(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
 
-	// S2-3: canary must not appear (values are empty in list fixture).
+	// Canary must not appear (values are empty in list fixture).
 	for _, e := range entries {
 		assert.NotContains(t, e.Path, "CANARY")
 	}

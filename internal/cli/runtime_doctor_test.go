@@ -2,7 +2,6 @@ package cli_test
 
 // runtime_doctor_test.go verifies the `runtime doctor` output includes
 // direct_classic (available) and direct_classic_sandboxed (not available).
-// Epic 15 T04.
 
 import (
 	"bytes"
@@ -71,7 +70,7 @@ func TestRuntimeDoctor_RequiresProviderArg(t *testing.T) {
 // buildRuntimeDoctorReport (via the CLI) always appends the
 // direct_classic_sandboxed entry and that it contains a meaningful reason string.
 //
-// Epic 22: direct_classic_sandboxed is now implemented.
+// direct_classic_sandboxed is now implemented.
 // On Linux it is available when bwrap is present; on macOS it is available
 // via sandbox-exec; on Windows it is never available.
 func TestRuntimeDoctorReport_SandboxedReported(t *testing.T) {

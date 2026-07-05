@@ -14,12 +14,12 @@ import (
 	"github.com/keylatch/keylatch/internal/grant"
 )
 
-// TestFind_FIND3_009_SingleUseMultiprocess creates a MaxUses=1 grant and spawns
+// TestFind_SingleUseMultiprocess creates a MaxUses=1 grant and spawns
 // N concurrent OS processes each attempting to consume the grant via grant.Find.
-// Exactly 1 process should succeed (FIND3-009).
+// Exactly 1 process should succeed.
 //
 // The helper binary is compiled on-the-fly from a small main program.
-func TestFind_FIND3_009_SingleUseMultiprocess(t *testing.T) {
+func TestFind_SingleUseMultiprocess(t *testing.T) {
 	if os.Getenv("KEYLATCH_GRANT_FIND_SUBPROCESS") == "1" {
 		// Subprocess mode: run Find and exit 0 if found, 1 if not found.
 		runFindSubprocess()
@@ -94,7 +94,7 @@ func TestFind_FIND3_009_SingleUseMultiprocess(t *testing.T) {
 	close(results)
 
 	if successCount != 1 {
-		t.Errorf("FIND3-009: expected exactly 1 successful Find for MaxUses=1 grant, got %d", successCount)
+		t.Errorf("expected exactly 1 successful Find for MaxUses=1 grant, got %d", successCount)
 	}
 	_ = gJSON // suppress unused warning; used in OS-process variant below
 }
@@ -118,9 +118,9 @@ func runFindSubprocess() {
 	os.Exit(1)
 }
 
-// TestFind_FIND3_009_OSProcesses is the OS-process variant.
+// TestFind_OSProcesses is the OS-process variant.
 // It compiles the current test binary and re-invokes it as subprocesses.
-func TestFind_FIND3_009_OSProcesses(t *testing.T) {
+func TestFind_OSProcesses(t *testing.T) {
 	if os.Getenv("KEYLATCH_GRANT_FIND_SUBPROCESS") == "1" {
 		runFindSubprocess()
 		return
@@ -164,7 +164,7 @@ func TestFind_FIND3_009_OSProcesses(t *testing.T) {
 	ch := make(chan procResult, N)
 	for i := 0; i < N; i++ {
 		go func(i int) {
-			cmd := exec.Command(exe, "-test.run=TestFind_FIND3_009_OSProcesses", "-test.v")
+			cmd := exec.Command(exe, "-test.run=TestFind_OSProcesses", "-test.v")
 			cmd.Env = append(os.Environ(),
 				"KEYLATCH_GRANT_FIND_SUBPROCESS=1",
 				fmt.Sprintf("KEYLATCH_GRANT_PATH_ARG=%s", grantPath),
@@ -193,6 +193,6 @@ func TestFind_FIND3_009_OSProcesses(t *testing.T) {
 		}
 	}
 	if found != 1 {
-		t.Errorf("FIND3-009 OS-process: expected exactly 1 success for MaxUses=1 grant, got %d", found)
+		t.Errorf(" OS-process: expected exactly 1 success for MaxUses=1 grant, got %d", found)
 	}
 }

@@ -13,7 +13,7 @@ import (
 
 // ServeStdio starts the MCP server in stdio transport mode.
 //
-// FIND3-010(a): no bearer token is generated or written to stderr.
+// No bearer token is generated or written to stderr.
 // The server exits cleanly when stdin reaches EOF (parent closed pipe).
 //
 // Transport note: the official SDK's StdioTransport is hardwired to
@@ -34,13 +34,13 @@ func (s *Server) ServeStdio(ctx context.Context, store connections.Store, runner
 
 	RegisterTools(srv, store, runner)
 
-	// S3-1: assert exactly five tools are registered.
+	// Assert exactly five tools are registered.
 	s.registeredTools = len(registeredTools)
 	if s.registeredTools != 5 {
-		return fmt.Errorf("mcp: S3-1 violation: expected 5 tools, got %d", s.registeredTools)
+		return fmt.Errorf("mcp: tool registration invariant violated: expected 5 tools, got %d", s.registeredTools)
 	}
 
-	// FIND3-010(a): no token printed to stderr.
+	// No token printed to stderr.
 	// Log only "ready" to stderr — no token substring.
 	if s.opts.StderrLog {
 		slog.Info("keylatch mcp ready")

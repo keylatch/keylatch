@@ -21,13 +21,13 @@ func init() {
 }
 
 // newBackendUpgradeTrustCmd returns `keylatch backend upgrade-trust`.
-// Idempotent: upgrades a Phase 5 (schema v1) keyring to Phase 11 (schema v2).
+// Idempotent: upgrades a schema v1 keyring to the current root-of-trust schema (v2).
 // Blocked in LLM sessions.
 func newBackendUpgradeTrustCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade-trust",
-		Short: "Upgrade keyring from schema v1 (Phase 5) to v2 (Phase 11)",
-		Long: `Idempotent upgrade of a Phase 5 keyring to Phase 11 root-of-trust schema.
+		Short: "Upgrade keyring to the current root-of-trust schema",
+		Long: `Idempotent upgrade of a schema v1 keyring to the current root-of-trust schema.
 
 Reads the existing keyring.json, synthesises a RootOfTrustRecord from the
 legacy kek_type/kek_id fields, and writes back an updated schema_version=2

@@ -2,7 +2,7 @@
 # Requires bash 4+ for mapfile. On macOS, use /usr/local/bin/bash or brew bash.
 # packaging/ci/scan-no-secret-in-storage.sh
 #
-# S-INV-1 / §8.3 Security scan: verify no credential patterns appear in
+# §8.3 Security scan: verify no credential patterns appear in
 # keylatch vault storage or persistent OS storage. After any write operation
 # (keylatch set, keylatch connect), the vault directory must contain only
 # AEAD ciphertext — never plaintext or base64-encoded secrets.
@@ -63,7 +63,7 @@ check_content() {
   done
 }
 
-# ── Vault directory scan (S-INV-1 / T-02-05) ─────────────────────────────────
+# ── Vault directory scan ──────────────────────────────────────────────────────
 # Scan the vault data directory for plaintext credential patterns and for any
 # canary value set via KEYLATCH_CANARY. AEAD-encrypted files are binary and
 # will not match credential patterns; a match means plaintext leaked to disk.
@@ -89,7 +89,7 @@ fi
 
 # ── Canary-specific scan ──────────────────────────────────────────────────────
 # When KEYLATCH_CANARY is set, verify that exact value and its base64 form
-# do not appear anywhere in the vault directory (S-INV-1 acceptance criterion).
+# do not appear anywhere in the vault directory (acceptance criterion).
 if [[ -n "${KEYLATCH_CANARY:-}" ]] && [[ -d "$VAULT_DIR" ]]; then
   echo "INFO: canary scan for KEYLATCH_CANARY in ${VAULT_DIR}"
   CANARY_B64=$(printf '%s' "$KEYLATCH_CANARY" | base64 2>/dev/null || true)
@@ -145,8 +145,8 @@ if command -v reg.exe >/dev/null 2>&1 || command -v reg >/dev/null 2>&1; then
 fi
 
 if [[ $ERRORS -gt 0 ]]; then
-  echo "FAIL: ${ERRORS} credential pattern(s) found in storage. S-INV-1 / §8.3 violation."
+  echo "FAIL: ${ERRORS} credential pattern(s) found in storage. §8.3 violation."
   exit 1
 fi
 
-echo "OK: no credential patterns in storage (S-INV-1 / §8.3 scan passed)"
+echo "OK: no credential patterns in storage (§8.3 scan passed)"

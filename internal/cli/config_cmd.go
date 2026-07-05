@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -66,7 +67,7 @@ func newConfigSetCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			key, value := args[0], args[1]
 
-			// S05-4: blocklist check.
+			// Blocklist check.
 			if err := config.ValidateSetKey(key); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", err)
 				os.Exit(1)
@@ -79,12 +80,20 @@ func newConfigSetCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			// EPIC-17: validate operating mode before persisting.
+			// validate operating mode before persisting.
 			if strings.ToLower(key) == "mode" {
 				if _, parseErr := klruntime.ParseMode(value); parseErr != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", parseErr)
 					os.Exit(1)
 				}
+			}
+			if strings.ToLower(key) == "backend" {
+				canonical, ok := backend.CanonicalName(value)
+				if !ok {
+					fmt.Fprintf(c.ErrOrStderr(), "config set: unknown backend %q; valid values: %s\n", value, strings.Join(backend.KnownCanonicalNames(), ", "))
+					os.Exit(1)
+				}
+				value = canonical
 			}
 
 			if err := setField(&cfg, key, value); err != nil {

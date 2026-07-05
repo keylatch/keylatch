@@ -1,6 +1,6 @@
 // Package completion generates shell completion scripts for keylatch.
 // Completions cover command names and flags only — connection names and
-// secret values are never embedded (Phase 3 wires in runtime completion).
+// secret values are never embedded; runtime completion is wired in separately.
 package completion
 
 import (
@@ -50,7 +50,7 @@ func Generate(shell Shell, root *cobra.Command) (string, error) {
 
 // commandTree returns a depth-first ordered slice of all commands (including root).
 //
-//nolint:unused // planned: used for shell completion generation in Phase 13
+//nolint:unused // planned: used for shell completion generation
 func commandTree(root *cobra.Command) []*cobra.Command {
 	var result []*cobra.Command
 	var walk func(cmd *cobra.Command)

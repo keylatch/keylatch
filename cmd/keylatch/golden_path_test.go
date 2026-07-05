@@ -88,13 +88,13 @@ func filesIn(t *testing.T, dir string) []string {
 	return paths
 }
 
-// TestGoldenPath_Phase3 verifies the complete user journey for Phase 3:
-//  1. Bootstrap fresh HOME / XDG_RUNTIME_DIR.
-//  2. Connect openrouter with a canary api_key via in-memory MockBackend.
-//  3. Run `agent setup claude-code --mode mcp --dry-run` → assert no file writes.
-//  4. Assert GenerateMCPConfig is well-formed JSON with command:"keylatch".
-//  5. Assert no canary byte, no KEYLATCH_MCP_TOKEN, no absolute paths leak.
-func TestGoldenPath_Phase3(t *testing.T) {
+// TestGoldenPath_FullUserJourney verifies the complete user journey:
+// 1. Bootstrap fresh HOME / XDG_RUNTIME_DIR.
+// 2. Connect openrouter with a canary api_key via in-memory MockBackend.
+// 3. Run `agent setup claude-code --mode mcp --dry-run` → assert no file writes.
+// 4. Assert GenerateMCPConfig is well-formed JSON with command:"keylatch".
+// 5. Assert no canary byte, no KEYLATCH_MCP_TOKEN, no absolute paths leak.
+func TestGoldenPath_FullUserJourney(t *testing.T) {
 	ctx := context.Background()
 
 	// --- Step 1: Bootstrap fresh HOME and XDG_RUNTIME_DIR ---
@@ -148,13 +148,13 @@ func TestGoldenPath_Phase3(t *testing.T) {
 		t.Fatalf("preset.Setup dry-run: %v", err)
 	}
 
-	// S3-7: DryRun must produce no file writes.
+	// DryRun must produce no file writes.
 	if len(receipt.FilesWritten) > 0 {
-		t.Errorf("dry-run wrote files: %v (S3-7)", receipt.FilesWritten)
+		t.Errorf("dry-run wrote files: %v", receipt.FilesWritten)
 	}
 	filesAfter := filesIn(t, homeDir)
 	if len(filesAfter) != len(filesBefore) {
-		t.Errorf("dry-run changed file count: before %d, after %d (S3-7)",
+		t.Errorf("dry-run changed file count: before %d, after %d",
 			len(filesBefore), len(filesAfter))
 	}
 
@@ -201,19 +201,19 @@ func TestGoldenPath_Phase3(t *testing.T) {
 	// 5a: canary must not appear in any generated output.
 	canary := []byte(canaryPhase3)
 	if bytes.Contains(snippetBytes, canary) {
-		t.Errorf("canary leaked into prose snippet (S3-5)")
+		t.Errorf("canary leaked into prose snippet")
 	}
 	if bytes.Contains(mcpOutput, canary) {
-		t.Errorf("canary leaked into MCP config JSON (S3-5)")
+		t.Errorf("canary leaked into MCP config JSON")
 	}
 
 	// 5b: KEYLATCH_MCP_TOKEN must not appear.
 	tokenMark := []byte("KEYLATCH_MCP_TOKEN")
 	if bytes.Contains(snippetBytes, tokenMark) {
-		t.Errorf("KEYLATCH_MCP_TOKEN leaked into prose snippet (FIND3-010)")
+		t.Errorf("KEYLATCH_MCP_TOKEN leaked into prose snippet")
 	}
 	if bytes.Contains(mcpOutput, tokenMark) {
-		t.Errorf("KEYLATCH_MCP_TOKEN leaked into MCP config JSON (FIND3-010)")
+		t.Errorf("KEYLATCH_MCP_TOKEN leaked into MCP config JSON")
 	}
 
 	// 5c: absolute $HOME or /Users/ paths must not appear in generated output.
@@ -292,11 +292,11 @@ func TestGoldenPath_MCPConfigShape(t *testing.T) {
 
 	// KEYLATCH_MCP_TOKEN must be absent from Env.
 	if _, ok := spec.Env["KEYLATCH_MCP_TOKEN"]; ok {
-		t.Errorf("Env contains KEYLATCH_MCP_TOKEN (FIND3-010 violation)")
+		t.Errorf("Env contains KEYLATCH_MCP_TOKEN")
 	}
 }
 
-// TestGoldenPath_DryRunNoWrites verifies S3-7 for the golden path preset.
+// TestGoldenPath_DryRunNoWrites verifies for the golden path preset.
 func TestGoldenPath_DryRunNoWrites(t *testing.T) {
 	ctx := context.Background()
 	homeDir := t.TempDir()
@@ -324,12 +324,12 @@ func TestGoldenPath_DryRunNoWrites(t *testing.T) {
 				t.Fatalf("%s Setup dry-run: %v", name, err)
 			}
 			if len(receipt.FilesWritten) > 0 {
-				t.Errorf("%s dry-run reported FilesWritten: %v (S3-7)", name, receipt.FilesWritten)
+				t.Errorf("%s dry-run reported FilesWritten: %v", name, receipt.FilesWritten)
 			}
 
 			filesAfter := filesIn(t, homeDir)
 			if len(filesAfter) != len(filesBefore) {
-				t.Errorf("%s dry-run changed file count: before %d, after %d (S3-7)",
+				t.Errorf("%s dry-run changed file count: before %d, after %d",
 					name, len(filesBefore), len(filesAfter))
 			}
 		})

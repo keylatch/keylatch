@@ -1,4 +1,4 @@
-// Package cli — proxy lifecycle subcommands (Epic 19).
+// Package cli — proxy lifecycle subcommands.
 package cli
 
 import (
@@ -217,7 +217,7 @@ func newProxyUpCmd() *cobra.Command {
 						}
 						return
 					}
-					// Close immediately — full proxy logic is out of scope for this epic.
+					// Close immediately — full proxy logic is out of scope here.
 					conn.Close() //nolint:errcheck
 				}
 			}()

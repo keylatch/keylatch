@@ -3,9 +3,13 @@ package cli_test
 // setup_noninteractive_test.go tests the §2.4 non-interactive bootstrap flags.
 
 import (
+	"bytes"
+	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/cli"
+	"github.com/keylatch/keylatch/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -103,9 +107,8 @@ func TestResolveStdinFields_Invalid(t *testing.T) {
 	}
 }
 
-// TestSetup_Epic26_FlagsRegistered verifies that all Epic 26 flags are registered
-// on the setup command: --advanced, --no-daemon-start, --telemetry, --config.
-func TestSetup_Epic26_FlagsRegistered(t *testing.T) {
+// TestSetup_WizardFlagsRegistered verifies that the setup wizard flags are registered.
+func TestSetup_WizardFlagsRegistered(t *testing.T) {
 	t.Parallel()
 
 	root := cli.NewRootCommand()
@@ -119,13 +122,13 @@ func TestSetup_Epic26_FlagsRegistered(t *testing.T) {
 	require.NotNil(t, setupCmd, "setup command must be registered")
 
 	assert.NotNil(t, setupCmd.Flags().Lookup("advanced"),
-		"setup must have --advanced flag (Epic 26)")
+		"setup must have --advanced flag")
 	assert.NotNil(t, setupCmd.Flags().Lookup("no-daemon-start"),
-		"setup must have --no-daemon-start flag (Epic 26)")
+		"setup must have --no-daemon-start flag")
 	assert.NotNil(t, setupCmd.Flags().Lookup("telemetry"),
-		"setup must have --telemetry flag (Epic 26)")
+		"setup must have --telemetry flag")
 	assert.NotNil(t, setupCmd.Flags().Lookup("config"),
-		"setup must have --config flag (Epic 26)")
+		"setup must have --config flag")
 }
 
 // TestSetup_Headless_DefaultBackend verifies that --headless without --backend
@@ -153,6 +156,35 @@ func TestSetup_Headless_DefaultBackend(t *testing.T) {
 	bf := setupCmd.Flags().Lookup("backend")
 	require.NotNil(t, bf)
 	assert.Equal(t, "", bf.DefValue, "--backend must default to empty string")
+}
+
+func TestSetup_Headless_CanonicalizesBackendAlias(t *testing.T) {
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	t.Setenv("KEYLATCH_DATA_DIR", dataDir)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	root := cli.NewRootCommand()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"setup", "--headless", "--backend", "awssm"})
+
+	require.NoError(t, root.Execute())
+	require.Empty(t, stdout.String())
+
+	var result struct {
+		OK      bool   `json:"ok"`
+		Backend string `json:"backend"`
+	}
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &result))
+	require.True(t, result.OK)
+	require.Equal(t, "aws-sm", result.Backend)
+
+	cfg, err := config.Load(filepath.Join(configDir, "config.json"))
+	require.NoError(t, err)
+	require.Equal(t, "aws-sm", cfg.Backend)
 }
 
 // TestSetup_NoDaemonStart_FlagDefault verifies that --no-daemon-start defaults to false.

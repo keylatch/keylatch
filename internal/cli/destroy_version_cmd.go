@@ -16,7 +16,7 @@ import (
 )
 
 // newDestroyVersionCmd returns the `destroy-version` subcommand.
-// Security invariant S4-8: blocked in LLM sessions.
+// Security invariant: blocked in LLM sessions.
 func newDestroyVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "destroy-version <path> <version>",
@@ -25,16 +25,16 @@ func newDestroyVersionCmd() *cobra.Command {
 
 This action is irreversible. The ciphertext is deleted and the metadata is
 marked as destroyed — even if the physical file persists, GetVersion will be
-blocked at the metadata layer (S4-3).
+blocked at the metadata layer.
 
-Blocked in LLM sessions (S4-8). Requires confirmation or --force.`,
+Blocked in LLM sessions. Requires confirmation or --force.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			ctx := c.Context()
 			cfg := loadCLIConfig(c)
 			env := llmcontext.DefaultLookup
 
-			// S4-8: block in LLM sessions.
+			// Block in LLM sessions.
 			if llmcontext.IsLLMSession(env) {
 				return fmt.Errorf("[keylatch] security block: destroy-version requires a human terminal. Run outside an LLM session. (exit %d)", exitcode.SecurityBlock)
 			}

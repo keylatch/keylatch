@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-audit-perms.sh — T-11-02 (S-FIND-14)
+# lint-audit-perms.sh
 #
 # Asserts that the audit chain MAC salt file has mode 0600 and its containing
 # directory has mode 0700.

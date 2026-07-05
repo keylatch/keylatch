@@ -9,7 +9,7 @@ import (
 // GenerateMCPConfig generates the MCP configuration JSON for keylatch.
 //
 // Security invariants:
-//   - S3-5 / FIND3-010(a): Env must never contain KEYLATCH_MCP_TOKEN
+// - Env must never contain KEYLATCH_MCP_TOKEN
 func GenerateMCPConfig(_ context.Context) (MCPConfig, error) {
 	env := map[string]string{}
 
@@ -21,7 +21,7 @@ func GenerateMCPConfig(_ context.Context) (MCPConfig, error) {
 		env["KEYLATCH_LOG_LEVEL"] = lvl
 	}
 
-	// S3-5 / FIND3-010(a): assert KEYLATCH_MCP_TOKEN is never included.
+	// assert KEYLATCH_MCP_TOKEN is never included.
 	if _, hasToken := env["KEYLATCH_MCP_TOKEN"]; hasToken {
 		return MCPConfig{}, &ErrSnippetLeakDetected{Reason: "KEYLATCH_MCP_TOKEN must not appear in MCPConfig.Env"}
 	}
@@ -53,7 +53,7 @@ func assertMCPConfigNoToken(cfg MCPConfig) error {
 	for serverName, spec := range cfg.MCPServers {
 		if _, ok := spec.Env["KEYLATCH_MCP_TOKEN"]; ok {
 			return &ErrSnippetLeakDetected{
-				Reason: fmt.Sprintf("MCPServer %q: Env contains KEYLATCH_MCP_TOKEN (S3-5 / FIND3-010(a))", serverName),
+				Reason: fmt.Sprintf("MCPServer %q: Env contains KEYLATCH_MCP_TOKEN", serverName),
 			}
 		}
 	}

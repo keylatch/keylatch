@@ -6,25 +6,14 @@ import (
 	"strings"
 	"sync"
 	"time"
-)
 
-// N1: redactionPatterns contains the full set of credential prefix patterns
-// from packaging/redaction-patterns.json. These are loaded at compile time
-// as a literal rather than via //go:embed (which disallows ".." path traversal).
-// Any change to packaging/redaction-patterns.json must be reflected here.
-var redactionPatterns = []string{
-	"sk-",
-	"ghp_",
-	"github_pat_",
-	"AKIA",
-	"xoxb-",
-	"xoxp-",
-}
+	"github.com/keylatch/keylatch/internal/runner"
+)
 
 const subscriberBufferCap = 8
 
 // Mux is the desktop event fan-out multiplexer.
-// It accepts events from upstream sources (wired in E10-T1) and fans them
+// It accepts events from upstream sources and fans them
 // out to all registered IPC subscribers. Slow subscribers receive
 // drop-oldest behaviour to prevent them from blocking fast ones.
 type Mux struct {
@@ -100,8 +89,8 @@ func (m *Mux) Stop() {
 	})
 }
 
-// ApprovalCreatedEvent is the upstream Phase 9 event shape.
-// We use interface{} here to avoid importing Phase 9 packages (leaf-package rule).
+// ApprovalCreatedEvent is the upstream approval-created event shape.
+// We use interface{} here to avoid importing gateway packages (leaf-package rule).
 // The adapter functions below cast to the correct type.
 type ApprovalCreatedEvent interface {
 	GetApprovalID() string
@@ -110,46 +99,46 @@ type ApprovalCreatedEvent interface {
 	GetActor() string
 }
 
-// BrokerSubstitutionBlockedEvent is the upstream Phase 13 event shape.
+// BrokerSubstitutionBlockedEvent is the upstream broker event shape.
 type BrokerSubstitutionBlockedEvent interface {
 	GetEventID() string
 	GetAuditRef() string
 }
 
-// HighSeverityAuditEvent is the upstream Phase 5 event shape.
+// HighSeverityAuditEvent is the upstream audit event shape.
 type HighSeverityAuditEvent interface {
 	GetEventID() string
 	GetAuditRef() string
 }
 
-// Start wires the mux to upstream event sources (E10-T1).
+// Start wires the mux to upstream event sources.
 // Each channel carries the upstream event type; adapter goroutines convert
 // them to value-free Event structs before publishing on the mux.
 //
 // All payloads are scrubbed: the canary KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF
-// MUST NOT appear in any emitted event (enforced by the E10-T1 unit test).
+// MUST NOT appear in any emitted event (enforced by the corresponding unit test).
 //
 // Upstream bus channels are typed as chan interface{} to avoid importing
-// upstream phase packages from this leaf package.
+// upstream packages from this leaf package.
 func (m *Mux) Start(
 	ctx context.Context,
-	phase9ApprovalCh <-chan interface{}, // Phase 9 ApprovalCreated events
-	phase13BlockedCh <-chan interface{}, // Phase 13 BrokerSubstitutionBlocked events
-	phase5AuditCh <-chan interface{}, // Phase 5 high-severity audit events
+	approvalCh <-chan interface{}, // ApprovalCreated events
+	brokerBlockedCh <-chan interface{}, // BrokerSubstitutionBlocked events
+	highSeverityAuditCh <-chan interface{}, // High-severity audit events
 ) {
-	// Adapter: Phase 9 ApprovalCreated → ApprovalEvent.
-	if phase9ApprovalCh != nil {
-		go m.adaptPhase9(ctx, phase9ApprovalCh)
+	// Adapter: ApprovalCreated → ApprovalEvent.
+	if approvalCh != nil {
+		go m.adaptApprovalCreated(ctx, approvalCh)
 	}
 
-	// Adapter: Phase 13 BrokerSubstitutionBlocked → SecurityEvent.
-	if phase13BlockedCh != nil {
-		go m.adaptPhase13(ctx, phase13BlockedCh)
+	// Adapter: BrokerSubstitutionBlocked → SecurityEvent.
+	if brokerBlockedCh != nil {
+		go m.adaptBrokerBlocked(ctx, brokerBlockedCh)
 	}
 
-	// Adapter: Phase 5 high-severity audit → SecurityEvent.
-	if phase5AuditCh != nil {
-		go m.adaptPhase5(ctx, phase5AuditCh)
+	// Adapter: high-severity audit → SecurityEvent.
+	if highSeverityAuditCh != nil {
+		go m.adaptHighSeverityAudit(ctx, highSeverityAuditCh)
 	}
 
 	// Lifecycle goroutine.
@@ -162,9 +151,9 @@ func (m *Mux) Start(
 	}()
 }
 
-// adaptPhase9 converts Phase 9 ApprovalCreated events to ApprovalEvent.
-// Payload scrubbing: only value-free fields are included (S14-6).
-func (m *Mux) adaptPhase9(ctx context.Context, ch <-chan interface{}) {
+// adaptApprovalCreated converts ApprovalCreated events to ApprovalEvent.
+// Payload scrubbing: only value-free fields are included.
+func (m *Mux) adaptApprovalCreated(ctx context.Context, ch <-chan interface{}) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -184,8 +173,8 @@ func (m *Mux) adaptPhase9(ctx context.Context, ch <-chan interface{}) {
 	}
 }
 
-// adaptPhase13 converts Phase 13 BrokerSubstitutionBlocked events to SecurityEvent.
-func (m *Mux) adaptPhase13(ctx context.Context, ch <-chan interface{}) {
+// adaptBrokerBlocked converts BrokerSubstitutionBlocked events to SecurityEvent.
+func (m *Mux) adaptBrokerBlocked(ctx context.Context, ch <-chan interface{}) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -205,8 +194,8 @@ func (m *Mux) adaptPhase13(ctx context.Context, ch <-chan interface{}) {
 	}
 }
 
-// adaptPhase5 converts Phase 5 high-severity audit events to SecurityEvent.
-func (m *Mux) adaptPhase5(ctx context.Context, ch <-chan interface{}) {
+// adaptHighSeverityAudit converts high-severity audit events to SecurityEvent.
+func (m *Mux) adaptHighSeverityAudit(ctx context.Context, ch <-chan interface{}) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -227,7 +216,7 @@ func (m *Mux) adaptPhase5(ctx context.Context, ch <-chan interface{}) {
 }
 
 // convertToApprovalEvent safely converts a raw upstream event to an ApprovalEvent.
-// Returns nil if the conversion fails. Scrubs any canary values (S14-6).
+// Returns nil if the conversion fails. Scrubs any canary values.
 func convertToApprovalEvent(raw interface{}) *ApprovalEvent {
 	// Type-assert to the interface we defined.
 	if ev, ok := raw.(ApprovalCreatedEvent); ok {
@@ -275,15 +264,23 @@ func convertToSecurityEvent(raw interface{}, kind, severity string) *SecurityEve
 	}
 }
 
-// scrub removes any credential or canary patterns from a string (S14-6).
-// N1: applies all patterns from redaction-patterns.json (loaded at init),
-// plus the compile-time canary value.
+// scrub removes any credential or canary patterns from a string.
+//
+// docker-server-security hardening (L3): this used to carry its own
+// hand-maintained copy of the credential-prefix list, with a comment
+// requiring it be kept in sync with packaging/redaction-patterns.json by
+// hand — a THIRD copy of that table, alongside internal/runner/redact.go's
+// redactionDefs (the single source of truth) and the JSON file itself
+// (generated from redactionDefs via `go generate ./internal/runner`). This
+// now consumes runner.RedactionPrefixes() directly so there is nothing left
+// to drift: see TestScrub_MatchesRunnerRedactionPrefixes for the parity
+// guard covering this consumer.
 func scrub(s string) string {
 	const canary = "KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF"
 	if strings.Contains(s, canary) {
 		return "[REDACTED]"
 	}
-	for _, pattern := range redactionPatterns {
+	for _, pattern := range runner.RedactionPrefixes() {
 		if strings.Contains(s, pattern) {
 			return "[REDACTED]"
 		}

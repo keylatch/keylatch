@@ -9,7 +9,7 @@ import (
 
 // AllowedProviderBaseURLs maps provider IDs to their allowed upstream hostnames.
 // This list is validated at template install time (build-time) AND DNS-reverified
-// at request time (FIND2-017).
+// at request time.
 var AllowedProviderBaseURLs = map[string][]string{
 	"openai":          {"api.openai.com"},
 	"openrouter":      {"openrouter.ai"},
@@ -59,7 +59,7 @@ func init() {
 }
 
 // ErrSSRFTargetForbidden is returned when a URL resolves to a denied network.
-var ErrSSRFTargetForbidden = errors.New("ssrf: target host is forbidden (FIND2-017)")
+var ErrSSRFTargetForbidden = errors.New("ssrf: target host is forbidden")
 
 // ValidateTemplateBaseURL validates that rawURL is safe for the given providerID.
 // It checks:

@@ -191,7 +191,7 @@ func TestAssertSafeModes_NotFound(t *testing.T) {
 }
 
 func TestNoHardcodedPaths(t *testing.T) {
-	// S05-6: resolved paths must not contain hardcoded /Users/ or /home/<name>.
+	// Resolved paths must not contain hardcoded /Users/ or /home/<name>.
 	// We prove this by checking that when HOME=t.TempDir(), none of the
 	// resolved paths contain the literal string "/Users/" from a test machine.
 	tmp := t.TempDir()

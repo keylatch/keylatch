@@ -13,10 +13,10 @@ import (
 )
 
 // SetVersioned writes raw (possibly encrypted) bytes for a specific version of
-// a path using atomic write semantics (temp + fsync + rename). Mode 0o600 (S4-2).
+// a path using atomic write semantics (temp + fsync + rename). Mode 0o600.
 //
 // When a keyring is configured on the backend (fb.keyring != nil), the value is
-// encrypted via SetVersionedEncrypted (S5-1). Otherwise the raw bytes are written.
+// encrypted via SetVersionedEncrypted. Otherwise the raw bytes are written.
 func (fb *FileBackend) SetVersioned(ctx context.Context, path string, version int, value []byte) error {
 	if fb.keyring != nil {
 		// Encrypted path: build a minimal VersionMeta for AAD construction.
@@ -51,7 +51,7 @@ func (fb *FileBackend) SetVersioned(ctx context.Context, path string, version in
 		// reading the vault-layer metadata.
 		return fb.writeVersionMeta(path, version, vm.AAD)
 	}
-	// No keyring: fail closed (T-02-03, S-INV-1). Production builds require bootstrap.
+	// No keyring: fail closed. Production builds require bootstrap.
 	return backend.ErrBootstrapRequired
 }
 
@@ -59,7 +59,7 @@ func (fb *FileBackend) SetVersioned(ctx context.Context, path string, version in
 // Returns backend.ErrNotFound if the version file does not exist.
 //
 // When a keyring is configured (fb.keyring != nil), the ciphertext is
-// decrypted via GetVersionedEncrypted (S5-1). Otherwise raw bytes are returned.
+// decrypted via GetVersionedEncrypted. Otherwise raw bytes are returned.
 func (fb *FileBackend) GetVersioned(ctx context.Context, path string, version int) ([]byte, error) {
 	if fb.keyring != nil {
 		aadBinding, err := fb.readVersionMeta(path, version)
@@ -72,7 +72,7 @@ func (fb *FileBackend) GetVersioned(ctx context.Context, path string, version in
 		}
 		return fb.GetVersionedEncrypted(ctx, path, vm, fb.keyring)
 	}
-	// No keyring: fail closed (T-02-03). Reading raw plaintext is not supported in v1.0.0.
+	// No keyring: fail closed. Reading raw plaintext is not supported in v1.0.0.
 	return nil, backend.ErrBootstrapRequired
 }
 

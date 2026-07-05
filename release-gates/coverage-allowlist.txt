@@ -50,7 +50,6 @@ github.com/keylatch/keylatch/internal/backend/keeper
 github.com/keylatch/keylatch/internal/backend/keychain
 # internal/backend/lastpass — LastPass CLI wrapper
 github.com/keylatch/keylatch/internal/backend/lastpass
-# internal/backend/nordpass — NordPass CLI wrapper
 # internal/backend/op — 1Password CLI wrapper
 # internal/backend/protonpass — ProtonPass CLI wrapper
 github.com/keylatch/keylatch/internal/backend/protonpass

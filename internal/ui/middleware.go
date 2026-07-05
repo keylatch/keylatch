@@ -21,10 +21,10 @@ const cspValue = "default-src 'self'; " +
 	"form-action 'self'"
 
 // SecurityHeaders sets required security response headers on every response:
-//   - Cache-Control: no-store (prevents caching of potentially sensitive UI)
-//   - X-Frame-Options: DENY (clickjacking protection)
-//   - X-Content-Type-Options: nosniff (MIME sniffing protection)
-//   - Referrer-Policy: no-referrer (no URL leakage in Referer headers)
+// - Cache-Control: no-store (prevents caching of potentially sensitive UI)
+// - X-Frame-Options: DENY (clickjacking protection)
+// - X-Content-Type-Options: nosniff (MIME sniffing protection)
+// - Referrer-Policy: no-referrer (no URL leakage in Referer headers)
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

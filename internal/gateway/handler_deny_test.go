@@ -420,7 +420,7 @@ func TestGatewayToken_RejectsAudienceMismatch(t *testing.T) {
 }
 
 // TestGatewayToken_RejectsReplay verifies that a MaxUses=1 token is rejected
-// with 401 "token_exhausted" on a second use (replay protection, FIND3-009).
+// with 401 "token_exhausted" on a second use (replay protection).
 func TestGatewayToken_RejectsReplay(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)

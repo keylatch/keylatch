@@ -7,10 +7,10 @@ const RECEIPTS_COMMAND = 'keylatch receipts list'
  * ActivityFeedPlaceholder — non-removable placeholder card.
  *
  * Spec:
- *   - Always visible (no close button, no "don't show again").
- *   - "Copy command" copies `keylatch receipts list` to clipboard.
- *   - Muted/secondary styling — does not compete with the readiness pill.
- *   - Positioned below the fold (after readiness pill and approval queue summary).
+ * - Always visible (no close button, no "don't show again").
+ * - "Copy command" copies `keylatch receipts list` to clipboard.
+ * - Muted/secondary styling — does not compete with the readiness pill.
+ * - Positioned below the fold (after readiness pill and approval queue summary).
  */
 export function ActivityFeedPlaceholder() {
   return (

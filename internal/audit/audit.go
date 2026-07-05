@@ -2,10 +2,10 @@
 // audit logger for keylatch.
 //
 // Security invariants:
-//   - S5-12: audit entries contain no value bytes, no DEKs, no wrapped keys.
-//   - S5-13: audit --raw is blocked in LLM sessions (enforced at CLI layer).
-//   - FIND-006: each event is AEAD-sealed individually under the AuditDEK.
-//   - FIND3-008: chain headers are unencrypted so VerifyChain works without the DEK.
+// - audit entries contain no value bytes, no DEKs, no wrapped keys.
+// - audit --raw is blocked in LLM sessions (enforced at CLI layer).
+// - each event is AEAD-sealed individually under the AuditDEK.
+// - chain headers are unencrypted so VerifyChain works without the DEK.
 package audit
 
 import (
@@ -25,7 +25,7 @@ import (
 
 // DeriveChainMACKey derives the 32-byte HMAC chain key from the audit salt.
 // This key is salt-dependent but not DEK-dependent so VerifyChain works
-// in header-only mode (FIND3-008) without the AuditDEK.
+// in header-only mode without the AuditDEK.
 func DeriveChainMACKey(salt []byte) []byte {
 	// ikm is the audit salt; info provides domain separation.
 	ikm := salt
@@ -49,9 +49,9 @@ const (
 	OutcomeWarn   Outcome = "warn"
 )
 
-// Action constants — all Phase 5 actions plus forward-compat Phase 11/12 stubs.
+// Action constants — all actions plus forward-compat stubs.
 const (
-	// Phase 5 — vault operations.
+	// — vault operations.
 	ActionWrite   Action = "write"
 	ActionRead    Action = "read"
 	ActionDelete  Action = "delete"
@@ -61,46 +61,46 @@ const (
 	ActionRevoke  Action = "revoke"
 	ActionRotate  Action = "rotate"
 
-	// Phase 5 — keyring operations.
+	// — keyring operations.
 	ActionKeyringInit Action = "keyring_init"
 	ActionKEKRotate   Action = "kek_rotate"
 	ActionTermDestroy Action = "term_destroy"
 
-	// Phase 5 — audit operations.
+	// — audit operations.
 	ActionAuditRotate Action = "audit_rotate"
 	ActionAuditVerify Action = "audit_verify"
 	ActionAuditRead   Action = "audit_read"
 
-	// Phase 11 forward-compat stubs.
+	// forward-compat stubs.
 	ActionPolicyCheck Action = "policy_check"
 	ActionTokenIssue  Action = "token_issue"
 	ActionTokenRevoke Action = "token_revoke"
 
-	// Phase 11: trust operations.
+	// trust operations.
 	ActionTrustUnwrap    Action = "trust_unwrap"
 	ActionTrustEnroll    Action = "trust_enroll"
 	ActionTrustRevoke    Action = "trust_revoke"
 	ActionTrustChallenge Action = "trust_challenge"
 	ActionTrustApprove   Action = "trust_approve"
 
-	// Phase 12 forward-compat stubs.
+	// forward-compat stubs.
 	ActionShare    Action = "share"
 	ActionUnshare  Action = "unshare"
 	ActionDelegate Action = "delegate"
 
-	// Phase 9 gateway actions.
+	// gateway actions.
 	ActionGatewayCall         Action = "gateway_call"
 	ActionGatewayTokenMint    Action = "gateway_token_mint"
 	ActionGatewayTokenRevoke  Action = "gateway_token_revoke"
 	ActionSubstitutionBlocked Action = "substitution_blocked"
 
-	// Phase 13 broker actions.
+	// broker actions.
 	ActionBrokerExchange            Action = "broker.exchange"
 	ActionBrokerCacheHit            Action = "broker.cache_hit"
 	ActionDirectRunCredentialAccess Action = "broker.direct_run_credential_access"
 	ActionDirectRunBlocked          Action = "broker.direct_run_blocked"
 
-	// EPIC-09 child-env hygiene actions.
+	// child-env hygiene actions.
 	// ActionChildEnvFilter records that KEYLATCH_* vars were stripped from the
 	// child process environment. Extra.stripped_vars lists the names (not values)
 	// of the removed variables.
@@ -110,13 +110,13 @@ const (
 	// the names retained; Extra.stripped_count is the number removed.
 	ActionCleanEnv Action = "child_env.clean"
 
-	// EPIC-17 operating-mode actions.
+	// operating-mode actions.
 	// ActionCanaryInjected records that a canary token was injected into the child
 	// environment. Extra.provider holds the provider slug; Extra.session_id holds
 	// the actor identity. The canary token value is never logged.
 	ActionCanaryInjected Action = "canary.injected"
 
-	// EPIC-24 sandbox actions.
+	// sandbox actions.
 	// ActionSandboxLaunched records a successful sandbox launch via
 	// direct_classic_sandboxed mode. Extra.executable_sha256 holds the verified
 	// hash; Extra.executable holds the path (not the value).
@@ -153,7 +153,7 @@ func (le *loggerEmitter) Emit(ctx context.Context, e Event) error {
 	return le.l.Log(ctx, e)
 }
 
-// Event is an audit log entry. All fields are value-free per S5-12.
+// Event is an audit log entry. All fields are value-free per .
 type Event struct {
 	// Timestamp is the RFC3339Nano time of the event.
 	Timestamp time.Time `json:"ts"`
@@ -182,7 +182,7 @@ type Event struct {
 	// BackendID is the stable backend instance ID (from backend.ID()).
 	BackendID string `json:"backend_id,omitempty"`
 
-	// KeyTerm is the key term used for this operation (Phase 5).
+	// KeyTerm is the key term used for this operation.
 	KeyTerm int `json:"key_term,omitempty"`
 
 	// ReceiptID is an opaque receipt identifier for cross-referencing.
@@ -195,7 +195,7 @@ type Event struct {
 	ServiceName string `json:"service,omitempty"`
 }
 
-// Exporter is a forward-compat interface for Phase 12 SIEM exporters.
+// Exporter is a forward-compat interface for SIEM exporters.
 // Registered via RegisterExporter; nil-safe hook in Logger.
 type Exporter interface {
 	// Export receives a sealed audit line (ciphertext, not plaintext).
@@ -265,7 +265,7 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 
 	// Derive the chain MAC key from salt only (no DEK).
 	// This allows VerifyChain to work in header-only mode without the AuditDEK
-	// (FIND3-008): the chain MAC key depends only on the salt, not the DEK.
+	//: the chain MAC key depends only on the salt, not the DEK.
 	chainMACKey := DeriveChainMACKey(salt)
 
 	l := &Logger{
@@ -304,7 +304,7 @@ func (l *Logger) Close() error {
 }
 
 // Log appends an audit event to the log.
-// It seals the event under the AuditDEK (FIND-006), updates the HMAC chain,
+// It seals the event under the AuditDEK, updates the HMAC chain,
 // and fsyncs before returning.
 func (l *Logger) Log(_ context.Context, e Event) error {
 	l.mu.Lock()

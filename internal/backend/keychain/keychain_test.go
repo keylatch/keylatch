@@ -58,7 +58,7 @@ func newTestBackend(t *testing.T, runner *kexec.MockRunner, keychainPath string)
 }
 
 func TestGet_UnlockLockOrdering(t *testing.T) {
-	// SC1-4: lock-keychain must be the final security call after Get returns.
+	// lock-keychain must be the final security call after Get returns.
 	runner := setupMockRunner(testKeychainPath)
 	b := newTestBackend(t, runner, testKeychainPath)
 
@@ -108,7 +108,7 @@ func TestGet_ErrorPath_LockAlways(t *testing.T) {
 		}
 	}
 	if !lockCalled {
-		t.Error("lock-keychain was NOT called on error path (S1-1 violation)")
+		t.Error("lock-keychain was NOT called on error path")
 	}
 }
 
@@ -232,7 +232,7 @@ func TestCanarySecretNotInOutput(t *testing.T) {
 }
 
 func TestOpen_DoesNotUnlock(t *testing.T) {
-	// S1-9: Open must NOT call any security subcommand.
+	// Open must NOT call any security subcommand.
 	runner := &kexec.MockRunner{}
 	_, err := keychain.Open(keychain.Options{
 		KeychainPath: testKeychainPath,

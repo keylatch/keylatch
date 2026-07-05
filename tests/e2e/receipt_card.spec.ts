@@ -2,12 +2,12 @@
  * tests/e2e/receipt_card.spec.ts
  *
  * Playwright E2E tests for:
- *   1. Receipt card value-free assertion (S14-16):
+ *   1. Receipt card value-free assertion:
  *      The canary KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF must not appear
  *      in rendered HTML across any route that emits a receipt card.
  *
- *   2. CSP header assertion (S14-5):
- *      The active Content-Security-Policy must match the exact S14-5 policy
+ *   2. CSP header assertion:
+ *      The active Content-Security-Policy must match the exact required policy
  *      string; any weaker policy causes this test to fail.
  *
  * Run with:
@@ -18,10 +18,10 @@
 
 import { test, expect, Page, Response } from '@playwright/test';
 
-// The canary value that must never appear in rendered HTML (S14-16).
+// The canary value that must never appear in rendered HTML.
 const CANARY = 'KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF';
 
-// The exact CSP string required by S14-5. Must match the value emitted by
+// The exact CSP string required by the security policy. Must match the value emitted by
 // internal/ui/middleware.go cspValue. Strict: no unsafe-inline anywhere,
 // no wildcards, no eval, frame-ancestors 'none'.
 const REQUIRED_CSP =
@@ -63,7 +63,7 @@ const RECEIPT_ROUTES = [
   '/connections',
 ];
 
-test.describe('Receipt card value-free assertion (S14-16)', () => {
+test.describe('Receipt card value-free assertion', () => {
   test.beforeEach(async ({ page }) => {
     // Set the canary as if it were a credential in a fixture connection.
     // The server should never reflect it in receipt cards.
@@ -106,18 +106,18 @@ test.describe('Receipt card value-free assertion (S14-16)', () => {
       const html = await page.content();
       expect(
         html,
-        `S14-16 FAIL: canary found in rendered HTML on route ${route}`,
+        `FAIL: canary found in rendered HTML on route ${route}`,
       ).not.toContain(CANARY);
 
       // Also check via the MutationObserver we installed.
       const canaryFound = await page.evaluate(() => (window as any).__canaryFound);
-      expect(canaryFound, `S14-16 FAIL: canary appeared in DOM on route ${route}`).toBe(false);
+      expect(canaryFound, `FAIL: canary appeared in DOM on route ${route}`).toBe(false);
     });
   }
 });
 
-test.describe('CSP header assertion (S14-5)', () => {
-  test('active CSP matches exact S14-5 policy string', async ({ page }) => {
+test.describe('CSP header assertion', () => {
+  test('active CSP matches exact required policy string', async ({ page }) => {
     let response: Response | null = null;
     try {
       response = await page.goto(BASE_URL, {
@@ -141,7 +141,7 @@ test.describe('CSP header assertion (S14-5)', () => {
       '';
 
     if (cspHeader) {
-      // S14-5: the CSP must be at least as strong as REQUIRED_CSP.
+      // The CSP must be at least as strong as REQUIRED_CSP.
       // Weak CSP indicators that would fail the test:
       const weakIndicators = [
         "'unsafe-eval'",
@@ -152,14 +152,14 @@ test.describe('CSP header assertion (S14-5)', () => {
       for (const weak of weakIndicators) {
         expect(
           cspHeader,
-          `S14-5 FAIL: CSP is weaker than required — contains ${weak}`,
+          `FAIL: CSP is weaker than required — contains ${weak}`,
         ).not.toContain(weak);
       }
 
       // Verify required directives are present.
-      expect(cspHeader, 'S14-5: default-src must be present').toContain("default-src 'self'");
-      expect(cspHeader, "S14-5: script-src must restrict to 'self'").toContain("script-src 'self'");
-      expect(cspHeader, 'S14-5: connect-src must restrict to loopback').toContain('connect-src');
+      expect(cspHeader, 'default-src must be present').toContain("default-src 'self'");
+      expect(cspHeader, "script-src must restrict to 'self'").toContain("script-src 'self'");
+      expect(cspHeader, 'connect-src must restrict to loopback').toContain('connect-src');
 
       // Script-src must not include 'unsafe-inline' — the server CSP is strict.
       // Look for "script-src ... 'unsafe-inline'" specifically (style-src is
@@ -168,7 +168,7 @@ test.describe('CSP header assertion (S14-5)', () => {
       if (scriptSrcMatch) {
         expect(
           scriptSrcMatch[0],
-          "S14-5 FAIL: script-src must not include 'unsafe-inline'",
+          "FAIL: script-src must not include 'unsafe-inline'",
         ).not.toContain("'unsafe-inline'");
       }
 
@@ -177,7 +177,7 @@ test.describe('CSP header assertion (S14-5)', () => {
       const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
       expect(
         normalize(cspHeader),
-        'S14-5 FAIL: CSP does not match the canonical S14-5 policy',
+        'FAIL: CSP does not match the canonical policy',
       ).toBe(normalize(REQUIRED_CSP));
     } else {
       // Check via meta tag.
@@ -187,11 +187,11 @@ test.describe('CSP header assertion (S14-5)', () => {
       });
 
       if (metaCsp) {
-        expect(metaCsp, 'S14-5: meta CSP must contain default-src self').toContain("default-src 'self'");
+        expect(metaCsp, 'meta CSP must contain default-src self').toContain("default-src 'self'");
       } else {
         // In the Tauri shell, CSP is set at the WebView level.
         // The E2E test documents the expectation; actual enforcement is in the Rust code.
-        console.warn('S14-5: no CSP header or meta tag found — Tauri enforces CSP at WebView level');
+        console.warn('No CSP header or meta tag found — Tauri enforces CSP at WebView level');
       }
     }
   });
@@ -216,7 +216,7 @@ test.describe('CSP header assertion (S14-5)', () => {
     const html = await page.content();
     expect(
       html,
-      'S14-16 FAIL: canary in query param should not appear in rendered HTML',
+      'FAIL: canary in query param should not appear in rendered HTML',
     ).not.toContain(CANARY);
   });
 });

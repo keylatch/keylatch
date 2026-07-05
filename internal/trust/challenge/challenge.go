@@ -1,11 +1,11 @@
 // Package challenge implements ephemeral challenge creation and verification
-// for the Phase 11 Root of Trust approval flow.
+// for the Root of Trust approval flow.
 //
 // Security invariants:
-//   - Challenges are deterministically encoded (JCS-style sorted keys) so the
-//     signer and verifier produce identical byte sequences.
-//   - Expired challenges always return ErrChallengeExpired regardless of signature validity.
-//   - Supported algorithms: Ed25519, ECDSA P-256, RSA-PSS SHA-256.
+// - Challenges are deterministically encoded (JCS-style sorted keys) so the
+// signer and verifier produce identical byte sequences.
+// - Expired challenges always return ErrChallengeExpired regardless of signature validity.
+// - Supported algorithms: Ed25519, ECDSA P-256, RSA-PSS SHA-256.
 package challenge
 
 import (
@@ -128,9 +128,9 @@ func (c Challenge) Bytes() []byte {
 // Returns ErrUnsupportedKeyType for unrecognised key types.
 //
 // Supported algorithms:
-//   - Ed25519: raw 64-byte signature
-//   - ECDSA P-256: DER-encoded signature (two ASN.1 integers r, s)
-//   - RSA-PSS SHA-256: PKCS#8 PSS signature
+// - Ed25519: raw 64-byte signature
+// - ECDSA P-256: DER-encoded signature (two ASN.1 integers r, s)
+// - RSA-PSS SHA-256: PKCS#8 PSS signature
 func Verify(c Challenge, sig []byte, pub crypto.PublicKey) error {
 	if time.Now().UTC().After(c.Exp) {
 		return ErrChallengeExpired

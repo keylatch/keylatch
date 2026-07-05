@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPhase3AgentCmd returns the `agent` subcommand group.
-func newPhase3AgentCmd() *cobra.Command {
+// newAgentCmd returns the `agent` subcommand group.
+func newAgentCmd() *cobra.Command {
 	agentCmd := &cobra.Command{
 		Use:   "agent",
 		Short: "Manage AI agent integrations",
@@ -44,7 +44,7 @@ func newAgentSetupCmd() *cobra.Command {
 				mode = agentsnippet.ProfileModeMCP
 			}
 
-			// Gate --force on !IsLLMSession() (S3-11).
+			// Gate --force on !IsLLMSession().
 			if force && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Error: --force is not permitted inside an LLM session")
 				os.Exit(exitcode.SecurityBlock)
@@ -52,7 +52,7 @@ func newAgentSetupCmd() *cobra.Command {
 
 			preset, err := agent.Get(args[0])
 			if err != nil {
-				// P1.3: actionable error for unknown/undetected agents.
+				// Actionable error for unknown/undetected agents.
 				agentName := args[0]
 				home, homeErr := os.UserHomeDir()
 				configDir := "~/.claude/"
@@ -108,7 +108,7 @@ func newAgentSetupCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("mode", "mcp", "profile mode: mcp|run|gateway")
-	cmd.Flags().Bool("dry-run", false, "show what would be changed without writing files (S3-7)")
+	cmd.Flags().Bool("dry-run", false, "show what would be changed without writing files")
 	cmd.Flags().Bool("force", false, "overwrite existing config (blocked inside LLM sessions)")
 	cmd.Flags().Bool("diff", false, "show diff against current config")
 	cmd.Flags().String("namespace", "default", "vault namespace")

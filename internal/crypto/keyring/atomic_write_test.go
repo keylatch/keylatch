@@ -1,5 +1,5 @@
-// atomic_write_test.go — T6-04
-// Fault-injection tests for atomic keyring writes (S5-19 / SC5-FIND-010).
+// atomic_write_test.go
+// Fault-injection tests for atomic keyring writes.
 //
 // Each sub-test simulates a failure at a specific step and verifies that the
 // keyring file on disk is always in one of two consistent states (never partial).
@@ -34,7 +34,7 @@ func validKeyringJSON(t *testing.T, schemaVer int) []byte {
 	return data
 }
 
-// TestAtomicKeyringWriteFaultInjection verifies S5-19: after any failure during
+// TestAtomicKeyringWriteFaultInjection verifies that after any failure during
 // atomicWrite, the file on disk is either the previous or the new valid content —
 // never partial.
 //
@@ -81,7 +81,7 @@ func TestAtomicKeyringWriteFaultInjection(t *testing.T) {
 		}
 		var gotKF KeyringFile
 		if err := json.Unmarshal(got, &gotKF); err != nil {
-			t.Fatalf("parse after write: %v (file is partial/corrupt — S5-19 violated)", err)
+			t.Fatalf("parse after write: %v (file is partial/corrupt)", err)
 		}
 		if gotKF.Algorithm != envelope.AES256GCM {
 			t.Errorf("expected algorithm %q, got %q", envelope.AES256GCM, gotKF.Algorithm)
@@ -113,7 +113,7 @@ func TestAtomicKeyringWriteFaultInjection(t *testing.T) {
 		}
 		var gotKF KeyringFile
 		if err := json.Unmarshal(got, &gotKF); err != nil {
-			t.Fatalf("original file is unparseable (S5-19 violated): %v", err)
+			t.Fatalf("original file is unparseable: %v", err)
 		}
 		if gotKF.SchemaVersion != SchemaVersion {
 			t.Errorf("schema version = %d, want %d", gotKF.SchemaVersion, SchemaVersion)
@@ -136,7 +136,7 @@ func TestAtomicKeyringWriteFaultInjection(t *testing.T) {
 		}
 		for _, e := range entries {
 			if e.Name() != "keyring.json" {
-				t.Errorf("unexpected leftover file after atomic write: %q (S5-19: tmp not cleaned up)", e.Name())
+				t.Errorf("unexpected leftover file after atomic write: %q (tmp not cleaned up)", e.Name())
 			}
 		}
 	})

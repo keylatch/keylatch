@@ -1,13 +1,13 @@
-// Package gateway implements the Phase 9 local typed provider gateway server.
+// Package gateway implements the local typed provider gateway server.
 //
 // Security invariants:
-//   - S9-1: gateway binds to 127.0.0.1 only by default.
-//   - S9-2: root credential bytes are zeroed after upstream call returns.
-//   - S9-9: no /debug, /admin, /health/raw endpoints.
-//   - S9-13: LLMSession derived from JWT claim, NEVER from gateway's os.Getenv.
-//   - S9-15: child env contains ONLY KEYLATCH_SESSION_TOKEN + KEYLATCH_GATEWAY_URL.
-//   - S9-16: substitution prevention enforced on every request.
-//   - S9-19c: ErrExchangeUnsupported → 503 with Remediation string; never fallback to direct_classic_sandboxed.
+//   - gateway binds to 127.0.0.1 only by default.
+//   - root credential bytes are zeroed after upstream call returns.
+//   - no /debug, /admin, /health/raw endpoints.
+//   - LLMSession derived from JWT claim, NEVER from gateway's os.Getenv.
+//   - child env contains ONLY KEYLATCH_SESSION_TOKEN + KEYLATCH_GATEWAY_URL.
+//   - substitution prevention enforced on every request.
+//   - ErrExchangeUnsupported → 503 with Remediation string; never fallback to direct_classic_sandboxed.
 package gateway
 
 import (
@@ -72,7 +72,7 @@ type ServerOptions struct {
 	Env               llmcontext.Lookup
 	ApprovalsDir      string
 	TokenStorePath    string
-	AllowExternalBind bool // S9-1: requires explicit opt-in AND non-LLM session
+	AllowExternalBind bool // Requires explicit opt-in AND non-LLM session
 	// Vault is the credential store. When nil and SecretRef is non-empty, the
 	// handler skips vault lookup and passes an empty credential to the broker.
 	Vault VaultReader
@@ -85,8 +85,8 @@ type ServerOptions struct {
 
 	Metrics *ui.MetricsCollector
 
-	// Budget enforces per-actor budget limits on gateway requests (Phase 13
-	// wiring). When nil, no budget enforcement is applied.
+	// Budget enforces per-actor budget limits on gateway requests. When nil,
+	// no budget enforcement is applied.
 	Budget budget.BudgetCounter
 }
 
@@ -145,8 +145,8 @@ type RuntimeReceipt struct {
 //
 // - Compiles routes from registry.List() (all gateway-supporting templates).
 // - Validates SigningKey length == 32.
-// - S9-1: refuses to bind !127.0.0.1 unless AllowExternalBind AND !LLM session.
-// - Creates broker, registers it as vault lock subscriber (stub for Phase 9).
+// - Refuses to bind !127.0.0.1 unless AllowExternalBind AND !LLM session.
+// - Creates broker, registers it as vault lock subscriber.
 func New(opts ServerOptions) (*Server, error) {
 	// Validate signing key.
 	if len(opts.SigningKey) != 32 {
@@ -158,10 +158,10 @@ func New(opts ServerOptions) (*Server, error) {
 		opts.Bind = "127.0.0.1:7878"
 	}
 
-	// S9-1: refuse non-loopback bind unless explicitly opted in AND not LLM session.
+	// Refuse non-loopback bind unless explicitly opted in AND not LLM session.
 	if !isLoopbackBind(opts.Bind) {
 		if !opts.AllowExternalBind {
-			return nil, fmt.Errorf("gateway: S9-1: refusing non-loopback bind %q — use --unsafe-bind-all to override (non-LLM sessions only)", opts.Bind)
+			return nil, fmt.Errorf("gateway: refusing non-loopback bind %q — use --unsafe-bind-all to override (non-LLM sessions only)", opts.Bind)
 		}
 		// Check LLM session.
 		env := opts.Env
@@ -169,7 +169,7 @@ func New(opts ServerOptions) (*Server, error) {
 			env = llmcontext.DefaultLookup
 		}
 		if llmcontext.IsLLMSession(env) {
-			return nil, fmt.Errorf("gateway: S9-1: refusing non-loopback bind in LLM session")
+			return nil, fmt.Errorf("gateway: refusing non-loopback bind in LLM session")
 		}
 	}
 
@@ -289,7 +289,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 // Stop zeros the signing key slice and stops the HTTP server.
 func (s *Server) Stop() error {
-	// Zero signing key (S9-2).
+	// Zero signing key.
 	for i := range s.opts.SigningKey {
 		s.opts.SigningKey[i] = 0
 	}
@@ -303,7 +303,7 @@ func (s *Server) Routes() []*route.Route {
 	return s.router.Routes()
 }
 
-// OnVaultLock implements the FIND2-004 invariant: when the vault is locked,
+// OnVaultLock implements the invariant: when the vault is locked,
 // the broker cache is flushed synchronously so that no cached tokens outlive
 // the vault lock event. Callers should invoke this whenever they detect that
 // the backing vault has been sealed.
@@ -317,7 +317,7 @@ func (s *Server) OnVaultUnlock(ctx context.Context) error {
 }
 
 // healthHandler responds to GET /health with a value-free status.
-// S9-9: no /health/raw endpoint.
+// No /health/raw endpoint.
 func (s *Server) healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

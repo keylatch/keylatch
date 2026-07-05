@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPhase3CallCmd returns the `call` subcommand.
+// newCallCmd returns the `call` subcommand.
 //
 // `keylatch call <connection> <action>` dispatches a single named HTTP action
 // from the provider's action catalog. The credential is read from the vault,
@@ -30,7 +30,7 @@ import (
 // with [REDACTED:<pattern>].
 //
 // No raw credential bytes appear in stdout, stderr, or audit logs.
-func newPhase3CallCmd() *cobra.Command {
+func newCallCmd() *cobra.Command {
 	var (
 		rawParams       []string
 		runtimeOverride string
@@ -89,7 +89,7 @@ Examples:
 
 			actionName := args[1]
 
-			// Auto-spawn keylatchd if it is not already running (Epic 31).
+			// Auto-spawn keylatchd if it is not already running.
 			if !noDaemonStart && !daemon.IsRunning() {
 				fmt.Fprintln(c.ErrOrStderr(), "Starting Keylatch daemon... (will run in background)")
 				if err := daemon.Spawn(); err != nil {
@@ -384,7 +384,7 @@ func parseProviderAction(s string) (provider, action string, ok bool) {
 }
 
 // callMeta is a value-free record of GatewayAction fields for stderr logging.
-// Forward-compat: all fields round-tripped; semantics deferred to Phase 9/13.
+// Forward-compat: all fields round-tripped; semantics deferred to a later release.
 type callMeta struct {
 	Action                 string                    `json:"action"`
 	ExchangeStrategy       registry.ExchangeStrategy `json:"exchange_strategy"`
@@ -397,7 +397,7 @@ type callMeta struct {
 }
 
 // callMetaAllowedFields is the explicit allowlist of JSON keys that are
-// permitted in callMeta log output (T-13-06). Fields not in this set must
+// permitted in callMeta log output. Fields not in this set must
 // never be added to callMeta without updating both this allowlist and the
 // lint-callmeta-fields.sh script.
 //
@@ -495,10 +495,10 @@ func zeroBytes(b []byte) {
 }
 
 // emitCallMetaLog logs the allowlisted callMeta fields to stderr.
-// This is the T-13-06 audit path for gateway action metadata.
+// This is the audit path for gateway action metadata.
 // Retained for compatibility with gateway_actions round-trip.
 //
-//nolint:unused // preserved for T-13-06 forward-compat; called by Phase 9 gateway dispatch path
+//nolint:unused // preserved for forward-compat; called by the gateway dispatch path
 func emitCallMetaLog(actionName string, action *registry.GatewayAction, strategy registry.ExchangeStrategy) {
 	callMetaVal := buildCallMeta(actionName, action, strategy)
 	metaBytes, _ := json.Marshal(callMetaFilteredFields(callMetaVal))

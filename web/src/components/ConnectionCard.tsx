@@ -15,15 +15,15 @@ interface ConnectionCardProps {
 }
 
 const PROVIDER_NAMES: Record<string, string> = {
-  anthropic:  'Anthropic',
-  openai:     'OpenAI',
-  github:     'GitHub',
-  stripe:     'Stripe',
-  slack:      'Slack',
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  github: 'GitHub',
+  stripe: 'Stripe',
+  slack: 'Slack',
   openrouter: 'OpenRouter',
-  google:     'Google',
-  azure:      'Azure',
-  aws:        'AWS',
+  google: 'Google',
+  azure: 'Azure',
+  aws: 'AWS',
 }
 
 /**

@@ -17,23 +17,23 @@ func generatePowerShell(root *cobra.Command) (string, error) {
 	fmt.Fprintf(&sb, "# Add to your PowerShell profile: . (keylatch completion pwsh)\n\n")
 
 	fmt.Fprintf(&sb, "Register-ArgumentCompleter -Native -CommandName %s -ScriptBlock {\n", name)
-	fmt.Fprintf(&sb, "  param($wordToComplete, $commandAst, $cursorPosition)\n")
-	fmt.Fprintf(&sb, "  $subcommands = @('%s')\n", strings.Join(subs, "','"))
-	fmt.Fprintf(&sb, "  $flags = @(\n")
+	fmt.Fprintf(&sb, " param($wordToComplete, $commandAst, $cursorPosition)\n")
+	fmt.Fprintf(&sb, " $subcommands = @('%s')\n", strings.Join(subs, "','"))
+	fmt.Fprintf(&sb, " $flags = @(\n")
 
 	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
 		if f.Hidden {
 			return
 		}
-		fmt.Fprintf(&sb, "    '--%s'\n", f.Name)
+		fmt.Fprintf(&sb, " '--%s'\n", f.Name)
 	})
-	fmt.Fprintf(&sb, "  )\n\n")
+	fmt.Fprintf(&sb, " )\n\n")
 
-	fmt.Fprintf(&sb, "  $allCompletions = $subcommands + $flags\n")
-	fmt.Fprintf(&sb, "  $allCompletions | Where-Object { $_ -like \"$wordToComplete*\" } |\n")
-	fmt.Fprintf(&sb, "    ForEach-Object {\n")
-	fmt.Fprintf(&sb, "      [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)\n")
-	fmt.Fprintf(&sb, "    }\n")
+	fmt.Fprintf(&sb, " $allCompletions = $subcommands + $flags\n")
+	fmt.Fprintf(&sb, " $allCompletions | Where-Object { $_ -like \"$wordToComplete*\" } |\n")
+	fmt.Fprintf(&sb, " ForEach-Object {\n")
+	fmt.Fprintf(&sb, " [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)\n")
+	fmt.Fprintf(&sb, " }\n")
 	fmt.Fprintf(&sb, "}\n")
 
 	return sb.String(), nil

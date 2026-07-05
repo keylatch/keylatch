@@ -1,6 +1,6 @@
 package cli_test
 
-// epic13_test.go — EPIC-13 CLI-level test suite.
+// CLI-level test suite.
 //
 // Tests:
 //   - TestRun_DryRun_HappyPath

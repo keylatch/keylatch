@@ -21,6 +21,32 @@ func TestDefault(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", c.UI.Bind)
 }
 
+// TestDefault_AllowUnverifiedSessionDefaultsFalse covers the raw-credential
+// session gate's config-file escape hatch (docker-server-security hardening): it must default to false
+// (fail closed) so a fresh install never silently opts out of session
+// corroboration on raw-credential paths.
+func TestDefault_AllowUnverifiedSessionDefaultsFalse(t *testing.T) {
+	c := config.Default()
+	assert.False(t, c.AllowUnverifiedSession)
+}
+
+// TestSaveAndLoad_RoundTrip_AllowUnverifiedSession verifies the new
+// allow_unverified_session field round-trips through Save/Load, so a
+// permanent operator opt-out actually persists.
+func TestSaveAndLoad_RoundTrip_AllowUnverifiedSession(t *testing.T) {
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "config.json")
+
+	orig := config.Default()
+	orig.AllowUnverifiedSession = true
+
+	require.NoError(t, config.Save(p, orig))
+
+	loaded, err := config.Load(p)
+	require.NoError(t, err)
+	assert.True(t, loaded.AllowUnverifiedSession)
+}
+
 func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	tmp := t.TempDir()
 	p := filepath.Join(tmp, "config.json")
@@ -46,7 +72,7 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 func TestLoad_UnknownFieldsRejected(t *testing.T) {
 	tmp := t.TempDir()
 	p := filepath.Join(tmp, "config.json")
-	// Write a config with an unknown field (simulates S05-7 canary test).
+	// Write a config with an unknown field (canary test for unknown-field rejection).
 	data := `{"version":1,"backend":"file","default_namespace":"default","audit":{"enabled":true,"max_size_bytes":5242880},"ui":{"bind":"127.0.0.1"},"KEYLATCH_CANARY_DO_NOT_LEAK_0xDEADBEEF":"canary"}`
 	require.NoError(t, os.WriteFile(p, []byte(data), 0o600))
 

@@ -44,10 +44,10 @@ func usableReason(conn connections.Connection, isLLM bool) (usable string, reaso
 }
 
 // newListCmdImpl returns the extended `list` command that uses vault.List
-// via the dispatcher. Replaces the Phase 0 stub in root.go.
-// S1-6: output is metadata only — no credential values.
-// P1.6: provider-centric table view with --raw flag for vault-path output.
-// T-01-07: adds USABLE column and --json flag.
+// via the dispatcher. Replaces the stub in root.go.
+// Output is metadata only — no credential values.
+// Provider-centric table view with --raw flag for vault-path output.
+// Adds USABLE column and --json flag.
 func newListCmdImpl() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",

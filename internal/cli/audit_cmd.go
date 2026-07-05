@@ -1,6 +1,6 @@
 package cli
 
-// audit_cmd.go implements the Phase 5 `keylatch audit` CLI command.
+// audit_cmd.go implements the `keylatch audit` CLI command.
 
 import (
 	"encoding/json"
@@ -28,7 +28,7 @@ func newAuditCmd() *cobra.Command {
 	}
 
 	cmd.Flags().Bool("summary", false, "print audit summary (default)")
-	cmd.Flags().Bool("raw", false, "verify chain integrity and print verification summary (blocked in LLM sessions; S5-13)")
+	cmd.Flags().Bool("raw", false, "verify chain integrity and print verification summary (blocked in LLM sessions)")
 	cmd.Flags().Bool("rotate", false, "rotate the audit log")
 	cmd.Flags().Bool("verify-chain", false, "verify HMAC chain integrity")
 	cmd.Flags().String("since", "", "filter events since this RFC3339 timestamp (used with --summary)")
@@ -63,7 +63,7 @@ func newAuditCmd() *cobra.Command {
 }
 
 // openAuditLogger opens the audit logger using the environment config.
-// S-FIND-12: auditDEK is loaded from the keyring via TTY or stdin pipe (not env var).
+// auditDEK is loaded from the keyring via TTY or stdin pipe (not env var).
 func openAuditLogger() (*audit.Logger, func(), error) {
 	auditPath := paths.Audit(os.Getenv)
 	saltPath := paths.AuditSalt(os.Getenv)
@@ -179,10 +179,10 @@ func runAuditSummary(cmd *cobra.Command) error {
 }
 
 // runAuditRaw implements `keylatch audit --raw`.
-// S5-13: blocked in LLM sessions.
+// Blocked in LLM sessions.
 func runAuditRaw(cmd *cobra.Command) error {
 	if llmcontext.IsLLMSession(os.Getenv) {
-		return fmt.Errorf("audit --raw: blocked in LLM session (S5-13)")
+		return fmt.Errorf("audit --raw: blocked in LLM session")
 	}
 
 	auditPath := paths.Audit(os.Getenv)
@@ -237,7 +237,7 @@ func runAuditRotate(cmd *cobra.Command) error {
 }
 
 // runAuditVerifyChain implements `keylatch audit --verify-chain`.
-// S5-16: exits non-zero if any bad lines found.
+// Exits non-zero if any bad lines found.
 func runAuditVerifyChain(cmd *cobra.Command) error {
 	auditPath := paths.Audit(os.Getenv)
 	saltPath := paths.AuditSalt(os.Getenv)
@@ -247,7 +247,7 @@ func runAuditVerifyChain(cmd *cobra.Command) error {
 		return fmt.Errorf("audit --verify-chain: load salt: %w", err)
 	}
 
-	// Use header-only mode (no DEK) per FIND3-008 default.
+	// Use header-only mode (no DEK) by default.
 	// Full mode is available internally but not exposed here to avoid
 	// requiring the keyring password just for chain integrity checks.
 	report, err := audit.VerifyChain(auditPath, saltBytes, nil)
@@ -272,7 +272,7 @@ func runAuditVerifyChain(cmd *cobra.Command) error {
 		}
 	}
 
-	// S5-16: non-zero exit if tampered.
+	// Non-zero exit if tampered.
 	if report.FirstBadLine > 0 {
 		return fmt.Errorf("audit chain integrity failure at line %d: %s", report.FirstBadLine, report.FirstBadReason)
 	}

@@ -1,10 +1,10 @@
-// Package registry implements Phase 12 internal provider registry management.
-// Internal registry takes precedence over Phase 3 community registry on namespace conflicts.
+// Package registry implements internal provider registry management.
+// Internal registry takes precedence over community registry on namespace conflicts.
 //
 // Security invariants:
-//   - Cosign signature required on all bundles.
-//   - Monotonic version — older bundles cannot be installed.
-//   - Files written with mode 0600.
+// - Cosign signature required on all bundles.
+// - Monotonic version — older bundles cannot be installed.
+// - Files written with mode 0600.
 package registry
 
 import (
@@ -134,7 +134,7 @@ func Install(ctx context.Context, bundlePath string, cosignPubKey string) error 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("internal-registry: mkdir: %w", err)
 	}
-	out, err := json.MarshalIndent(b, "", "  ")
+	out, err := json.MarshalIndent(b, "", " ")
 	if err != nil {
 		return fmt.Errorf("internal-registry: marshal: %w", err)
 	}
@@ -152,7 +152,7 @@ func Install(ctx context.Context, bundlePath string, cosignPubKey string) error 
 }
 
 // List returns provider templates from the highest-installed internal bundle version.
-// Internal registry takes precedence over Phase 3 community registry on namespace conflicts.
+// Internal registry takes precedence over community registry on namespace conflicts.
 func List(_ context.Context) ([]ProviderTemplate, error) {
 	bundle, err := latestBundle(context.Background())
 	if errors.Is(err, ErrBundleNotFound) {

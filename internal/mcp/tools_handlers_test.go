@@ -252,7 +252,7 @@ func TestServeTCPDefaultAuthModeDispatch(t *testing.T) {
 	// explicit AuthBearerLegacy and the "default" switch case.
 	// The default case in ServeTCP is:
 	//   default: return s.serveBearerLegacy(ctx, srv)
-	// We've already covered it via TestFIND3010BearerTTLOneHourAccepted.
+	// We've already covered it via TestBearerTTLOneHourAccepted.
 	// This test uses an explicit ConnectionAuth value that isn't UnixPeerCred
 	// so it falls through to the default case.
 	s, err := New(ServerOptions{

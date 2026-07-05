@@ -1,6 +1,6 @@
 package cli_test
 
-// list_cmd_test.go — EPIC-02 Task 7
+// list_cmd_test.go
 //
 // Tests for the `list` command's USABLE column and --json output.
 // These tests work without a real backend by exercising the empty-list code path.
@@ -19,7 +19,7 @@ import (
 
 // TestList_JSON_Parseable verifies that `list --json` emits valid JSON,
 // even when no connections are stored (empty array is valid).
-// EPIC-02 Task 7: --json flag must emit parseable JSON output.
+// --json flag must emit parseable JSON output.
 func TestList_JSON_Parseable(t *testing.T) {
 	// Use a temp dir as the file backend to avoid real vault access.
 	tmp := t.TempDir()
@@ -54,14 +54,14 @@ func TestList_JSON_Parseable(t *testing.T) {
 			assert.Contains(t, entry, "provider", "entry must have 'provider' field")
 			assert.Contains(t, entry, "account", "entry must have 'account' field")
 			assert.Contains(t, entry, "status", "entry must have 'status' field")
-			assert.Contains(t, entry, "usable", "entry must have 'usable' field (EPIC-02 Task 7)")
+			assert.Contains(t, entry, "usable", "entry must have 'usable' field")
 		}
 	}
 }
 
 // TestList_USABLEColumn_LLMSession verifies that the `list` command emits the
 // USABLE column when running in LLM session context.
-// EPIC-02 Task 7: USABLE column must appear in table and JSON output.
+// USABLE column must appear in table and JSON output.
 //
 // This test exercises the column header path (table output) and the JSON field
 // (--json output). Both paths call usableReason which checks llmcontext.IsLLMSession.

@@ -3,7 +3,7 @@
   keylatch-uri-scheme.wxs — WiX fragment to register the keylatch:// URI scheme
   under HKCU (per-user) on Windows.
 
-  S14-10: registration is per-user (HKCU), not system-wide (HKLM), so no
+  Registration is per-user (HKCU), not system-wide (HKLM), so no
   administrator elevation is required.
 
   This fragment is included by the main WiX product file during MSI/NSIS
@@ -15,7 +15,7 @@
   <Fragment>
     <ComponentGroup Id="KeylatchURIScheme" Directory="TARGETDIR">
       <Component Id="KeylatchURISchemeReg" Guid="{A3F2B1C4-DE21-4A5B-9F3D-8E7C6B2A1D90}">
-        <!-- HKCU\Software\Classes\keylatch — per-user, no elevation (S14-10) -->
+        <!-- HKCU\Software\Classes\keylatch — per-user, no elevation -->
         <RegistryKey Root="HKCU"
                      Key="Software\Classes\keylatch"
                      Action="createAndRemoveOnUninstall">

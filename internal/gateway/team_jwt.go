@@ -1,4 +1,4 @@
-// Package gateway — team JWT claim helpers (Phase 12).
+// Package gateway — team JWT claim helpers.
 //
 // Security invariants:
 //   - All member IDs in JWT claims are HMACd (value-free output).
@@ -13,7 +13,7 @@ import (
 	"github.com/keylatch/keylatch/internal/team/ci"
 )
 
-// TeamJWTClaims holds Phase 12 team-mode claims to add to a gateway JWT.
+// TeamJWTClaims holds team-mode claims to add to a gateway JWT.
 // All sensitive values are HMACd per the value-free output invariant.
 type TeamJWTClaims struct {
 	TeamID           string `json:"team_id,omitempty"`

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # packaging/ci/lint-notification-fields.sh
 #
-# S14-6 CI lint: verify that struct fields on Notification (notify.rs),
+# CI lint: verify that struct fields on Notification (notify.rs),
 # ApprovalEvent, ReceiptEvent, and SecurityEvent (events.go) are within
 # the documented allow-list and have a "// security-reviewed: <date>" comment.
 #

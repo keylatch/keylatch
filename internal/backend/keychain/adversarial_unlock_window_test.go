@@ -8,14 +8,15 @@ import (
 	"testing"
 )
 
-// TestAdversarialUnlockWindow_SeparateProcess_Denied is the S1-15 adversarial test.
+// TestAdversarialUnlockWindow_SeparateProcess_Denied is the adversarial test
+// for the per-item ACL.
 //
 // This test requires a REAL macOS keychain with per-item ACLs set up. It verifies
 // that while Keylatch holds the keychain unlocked, a SEPARATE OS process (not a
 // goroutine) attempting to read a keylatch-* item via /usr/bin/security is denied
-// by the per-item ACL (FIND3-001, S1-12).
+// by the per-item ACL.
 //
-// S1-15: a goroutine-only test does NOT satisfy this invariant because the
+// A goroutine-only test does NOT satisfy this invariant because the
 // trusted-binary check would pass for the same process.
 //
 // This test is skipped in CI without a real keychain configured with per-item ACLs.
@@ -37,7 +38,7 @@ func TestAdversarialUnlockWindow_SeparateProcess_Denied(t *testing.T) {
 	// Step 3: from a SEPARATE OS process (not a goroutine), attempt to read
 	// the keylatch-openrouter / api_key item while the keychain is unlocked.
 	//
-	// This tests that the per-item ACL (FIND3-001) denies access to non-Keylatch
+	// This tests that the per-item ACL denies access to non-Keylatch
 	// processes even when the keychain is in the unlocked state.
 	//
 	// NOTE: The full implementation would require:
@@ -66,8 +67,8 @@ func TestAdversarialUnlockWindow_SeparateProcess_Denied(t *testing.T) {
 	err := cmd.Run()
 	if err == nil {
 		t.Error("adversarial process succeeded (expected denial by per-item ACL): " +
-			"FIND3-001/S1-12 violation — non-Keylatch process read a keylatch-* item")
+			"non-Keylatch process read a keylatch-* item")
 	} else {
-		t.Logf("adversarial process correctly denied: %v (FIND3-001 enforced)", err)
+		t.Logf("adversarial process correctly denied: %v (per-item ACL enforced)", err)
 	}
 }

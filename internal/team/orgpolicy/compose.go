@@ -14,10 +14,10 @@ type Decision struct {
 }
 
 // Compose applies the org AllowedEnvelope as a hard upper bound.
-// FIND3-005:
-//   - Org-deny overrides local allow.
-//   - Org-allow + local-narrow = local narrowing wins.
-//   - When no bundle installed, returns the localDecision unchanged (single-user mode).
+//
+// - Org-deny overrides local allow.
+// - Org-allow + local-narrow = local narrowing wins.
+// - When no bundle installed, returns the localDecision unchanged (single-user mode).
 func Compose(ctx context.Context, bundle *OrgBundle, localDecision Decision, capability string, env string) Decision {
 	if bundle == nil {
 		// No org policy: single-user mode — pass-through.

@@ -23,7 +23,7 @@ func BuildCanary(provider string) (string, error) {
 // token for the given provider.
 // Example: "anthropic" → "KEYLATCH_CANARY_ANTHROPIC"
 //
-//	"open-ai"  → "KEYLATCH_CANARY_OPEN_AI"
+//	"open-ai" → "KEYLATCH_CANARY_OPEN_AI"
 func EnvVarName(provider string) string {
 	slug := strings.ToUpper(strings.ReplaceAll(provider, "-", "_"))
 	return fmt.Sprintf("KEYLATCH_CANARY_%s", slug)

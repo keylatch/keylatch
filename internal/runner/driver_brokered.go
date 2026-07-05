@@ -20,7 +20,7 @@ const directBrokeredMode = string(runtime.RuntimeDirectBrokered)
 // canonicalSecretPath builds the vault lookup path for a credential field
 // using the canonical four-segment format: namespace/category/provider/field.
 //
-// S-FIND-23 (T-03-01): v1.0.0 uses the canonical format exclusively.
+// v1.0.0 uses the canonical format exclusively.
 // No backward-compat read from "default/connections/..." — v1.0.0 has no existing users.
 func canonicalSecretPath(namespace, category, provider, field string) string {
 	if category == "" {
@@ -42,7 +42,7 @@ type BrokerExchanger interface {
 // brokeredDriver reads the root credential from vault, exchanges it for a
 // short-lived token via the broker, injects it into the child environment,
 // and execs the subprocess. Root credential bytes are zeroed immediately
-// after Exchange returns (S-RM-3).
+// after Exchange returns.
 type brokeredDriver struct {
 	vault  backend.Backend
 	broker BrokerExchanger
@@ -106,7 +106,7 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 		}
 		return receipt, fmt.Errorf("direct_brokered: read credential: %w", err)
 	}
-	// Step 3: zero root credential after Exchange returns (S-RM-3).
+	// Step 3: zero root credential after Exchange returns.
 	defer zeroSlice(rootCredential)
 
 	// Exchange root credential for a short-lived token.
@@ -131,7 +131,7 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 	// direct_brokered runs in a trusted local process context. Inheriting
 	// os.Environ() is intentional: the brokered token overwrites the primary
 	// credential env var. KEYLATCH_* configuration vars are stripped via
-	// FilterChildEnv (T-08-01) before the subprocess sees the environment —
+	// FilterChildEnv before the subprocess sees the environment —
 	// the only KEYLATCH_* var re-injected is KEYLATCH_RUNTIME so the child
 	// process can identify the current runtime mode.
 	parentEnv := os.Environ()
@@ -151,9 +151,9 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 		parentEnv = append(parentEnv, tmpl.InjectionRules[i].EnvVar+"=")
 	}
 
-	// T-08-01: strip all KEYLATCH_* vars from the child env; re-inject only
+	// Strip all KEYLATCH_* vars from the child env; re-inject only
 	// KEYLATCH_RUNTIME so the child can identify its runtime mode.
-	// T-08-02: when CleanEnv is requested, start from a minimal base env
+	// When CleanEnv is requested, start from a minimal base env
 	// instead of the full parent env.
 	var env []string
 	if req.CleanEnv {

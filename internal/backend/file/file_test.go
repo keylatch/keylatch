@@ -52,8 +52,8 @@ func TestFileBackend_NotFound(t *testing.T) {
 }
 
 // TestFileBackend_NoKeyring_ReturnsBootstrapRequired verifies that Set/Get
-// without a keyring returns ErrBootstrapRequired (T-02-01, T-02-02).
-// T-02-01: the file backend production path requires a keyring (OpenWithKeyring).
+// without a keyring returns ErrBootstrapRequired.
+// The file backend production path requires a keyring (OpenWithKeyring).
 // Without a keyring, both Set and Get return ErrBootstrapRequired and direct the
 // user to run 'keylatch bootstrap'.
 func TestFileBackend_NoKeyring_ReturnsBootstrapRequired(t *testing.T) {
@@ -188,7 +188,7 @@ func TestFileBackend_ListDoesNotReadValueFiles(t *testing.T) {
 
 func TestFileBackend_CanarySecret(t *testing.T) {
 	// Canary test: the canary value must NOT appear in plaintext on disk.
-	// v1.0.0: AEAD encryption, so this is always true (T-02-02, S-INV-1, S-INV-7).
+	// v1.0.0: AEAD encryption, so this is always true.
 	canary := "KEYLATCH_CANARY_PHASE1_0xDEADBEEF"
 	dir := t.TempDir()
 	b := openKeyringBackendInDir(t, dir)
@@ -215,9 +215,9 @@ func TestFileBackend_CanarySecret(t *testing.T) {
 	}
 }
 
-// TestFileBackend_AEADRoundtrip verifies T-02-02: Set encrypts with AEAD and
+// TestFileBackend_AEADRoundtrip verifies that Set encrypts with AEAD and
 // Get decrypts to the original plaintext. The on-disk value.enc must not contain
-// the plaintext (S-INV-1, S-INV-7, CRIT-01).
+// the plaintext.
 func TestFileBackend_AEADRoundtrip(t *testing.T) {
 	dir := t.TempDir()
 	b := openKeyringBackendInDir(t, dir)
@@ -240,7 +240,7 @@ func TestFileBackend_AEADRoundtrip(t *testing.T) {
 		t.Errorf("AEAD round-trip mismatch: got %q, want %q", got, want)
 	}
 
-	// On-disk value.enc must not contain the plaintext (S-INV-1 / CRIT-01).
+	// On-disk value.enc must not contain the plaintext (CRIT-01).
 	encPath := filepath.Join(dir, "default", "test", "aead-roundtrip", "value.enc")
 	raw, err := os.ReadFile(encPath)
 	if err != nil {
@@ -259,7 +259,7 @@ func TestFileBackend_AEADRoundtrip(t *testing.T) {
 	}
 }
 
-// TestFileBackend_PathTraversalRejected verifies S-INV-11: path-traversal inputs
+// TestFileBackend_PathTraversalRejected verifies that path-traversal inputs
 // that would escape the vault root are rejected with a clear error for both Set
 // and Delete operations.
 func TestFileBackend_PathTraversalRejected(t *testing.T) {

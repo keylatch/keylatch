@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-safecopy-regex.sh — T-13-04
+# lint-safecopy-regex.sh
 #
 # Asserts every sensitive field prefix in provider templates is covered by the
 # SafeCopyButton TOKEN_REGEX. Exits 0 if all prefixes are covered, 1 if any are missing.
@@ -47,7 +47,7 @@ while IFS= read -r tmpl_file; do
   done < "$tmpl_file"
 done < <(find "$TEMPLATES_DIR" \( -name "*.yaml" -o -name "*.yml" \) | sort)
 
-# Required prefixes from the T-13-04 spec.
+# Required prefixes from the provider-templates spec.
 # Note: some prefixes are split here to avoid triggering credential-guard hooks.
 # The prefix_covered() function handles split-string and character-class forms.
 ANT_PFX="sk-""ant-"

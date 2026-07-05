@@ -18,7 +18,7 @@ import (
 )
 
 // registeredTools is the canonical list of tool names.
-// S3-1: must have exactly five entries.
+// Must have exactly five entries.
 var registeredTools = []string{
 	"keylatch_status",
 	"keylatch_list_connections",
@@ -28,7 +28,7 @@ var registeredTools = []string{
 }
 
 func init() {
-	// S3-1: compile-time assertion that exactly five tools are registered.
+	// Compile-time assertion that exactly five tools are registered.
 	const assertFiveTools = 5
 	if len(registeredTools) != assertFiveTools {
 		panic(fmt.Sprintf("mcp: exactly five tools required; got %d", len(registeredTools)))
@@ -228,7 +228,7 @@ func makeTestHandler(store connections.Store) sdkmcp.ToolHandler {
 }
 
 // makeRunHandler implements keylatch_run.
-// Applies FIND-004 allowlist pre-flight before execution.
+// Applies allowlist pre-flight before execution.
 func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		args := getArguments(req)
@@ -245,7 +245,7 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 			account = "default"
 		}
 
-		// FIND-004: allowlist pre-flight — fetch template before parsing command.
+		// Allowlist pre-flight — fetch template before parsing command.
 		tmpl, err := registry.Get(provider)
 		if err != nil {
 			return newToolResultError("run: provider not found"), nil
@@ -264,7 +264,7 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 				}
 			}
 		case string:
-			// FIND-004: check the raw trimmed string to prevent leading-space bypass.
+			// Check the raw trimmed string to prevent leading-space bypass.
 			// "  node exploit.js" must not pass a "node " prefix check.
 			raw := strings.TrimSpace(v)
 			command = strings.Fields(raw)
@@ -277,7 +277,7 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 			return newToolResultError("run: 'command' argument required"), nil
 		}
 
-		// FIND-004: allowlist pre-flight for the []interface{} path (not yet checked above).
+		// Allowlist pre-flight for the []interface{} path (not yet checked above).
 		if !allowlistChecked {
 			cmdLine := strings.Join(command, " ")
 			if !commandMatchesAllowlist(cmdLine, tmpl.AllowedCommandPrefixes) {
@@ -285,7 +285,7 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 			}
 		}
 
-		// Resolve binary — must be an absolute path (S1-8).
+		// Resolve binary — must be an absolute path.
 		binary := command[0]
 		cmdArgs := command[1:]
 
@@ -301,7 +301,7 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 
 		receipt := RuntimeReceipt{
 			Provider:   provider,
-			Connection: fmt.Sprintf("%s/%s/%s", namespace, provider, account), // HMAC in Phase 5
+			Connection: fmt.Sprintf("%s/%s/%s", namespace, provider, account), // HMAC'd in a future revision
 			Runtime:    string(tmpl.RuntimeSupport.Preferred),
 			ExitCode:   exitCode,
 		}
@@ -320,7 +320,7 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 }
 
 // commandMatchesAllowlist checks whether cmdLine starts with one of the allowed prefixes.
-// FIND-004: returns false if allowlist is empty (deny-all when no prefixes configured).
+// Returns false if allowlist is empty (deny-all when no prefixes configured).
 func commandMatchesAllowlist(cmdLine string, allowedPrefixes []string) bool {
 	if len(allowedPrefixes) == 0 {
 		return false

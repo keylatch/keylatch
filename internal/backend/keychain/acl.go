@@ -14,7 +14,7 @@ import (
 
 // VerifyACL re-reads the login-keychain ACL entry for "keylatch-keychain/unlock"
 // and confirms the stored binary path/identity matches os.Executable().
-// Returns ErrACLMismatch with a hint message on mismatch. (S1-11, FIND-013)
+// Returns ErrACLMismatch with a hint message on mismatch.
 func (k *KeychainBackend) VerifyACL(ctx context.Context) error {
 	currentBin, err := os.Executable()
 	if err != nil {
@@ -23,7 +23,7 @@ func (k *KeychainBackend) VerifyACL(ctx context.Context) error {
 
 	// Read the unlock password item from the login keychain (no -k flag).
 	// We check the ACL by looking at the item's trusted applications.
-	// In Phase 1 with the CLI approach, we verify the stored path in the item's comment/label.
+	// With the current CLI approach, we verify the stored path in the item's comment/label.
 	stdout, _, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"find-generic-password",
 			"-s", "keylatch-keychain",
@@ -50,8 +50,8 @@ func (k *KeychainBackend) VerifyACL(ctx context.Context) error {
 }
 
 // RepairACL re-issues the login-keychain ACL entry pointing at the current binary.
-// On signed builds uses a SecRequirement clause (FIND-013); on unsigned builds
-// uses path-only with an explicit warning. (S1-11, FIND-013)
+// On signed builds uses a SecRequirement clause; on unsigned builds
+// uses path-only with an explicit warning.
 func (k *KeychainBackend) RepairACL(ctx context.Context) error {
 	currentBin, err := os.Executable()
 	if err != nil {
@@ -103,7 +103,7 @@ func (k *KeychainBackend) RepairACL(ctx context.Context) error {
 
 // RepairItemACLs walks every keylatch-* item in the custom keychain and
 // re-issues a per-item SecAccess ACL naming only the Keylatch binary as
-// the trusted retriever. Idempotent. (FIND3-001, S1-12)
+// the trusted retriever. Idempotent.
 func (k *KeychainBackend) RepairItemACLs(ctx context.Context) error {
 	// Read the manifest to enumerate all items — no bulk value reads.
 	manifest, err := k.loadManifest(ctx)
@@ -120,7 +120,7 @@ func (k *KeychainBackend) RepairItemACLs(ctx context.Context) error {
 	trustedApp := currentBin
 
 	// For each item in the manifest, re-issue the per-item ACL.
-	// In Phase 1 using CLI approach: update each item with -T {trustedApp}.
+	// Using the CLI approach: update each item with -T {trustedApp}.
 	for _, row := range manifest.Items {
 		for _, field := range row.Fields {
 			if err := k.repairItemACL(ctx, row.Connection, field, trustedApp); err != nil {
@@ -136,7 +136,7 @@ func (k *KeychainBackend) RepairItemACLs(ctx context.Context) error {
 		_ = err
 	}
 
-	_ = signed // Used in full Security.framework implementation (Phase 1 uses CLI)
+	_ = signed // Used in full Security.framework implementation (current approach uses CLI)
 	return nil
 }
 

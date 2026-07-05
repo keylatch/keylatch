@@ -43,17 +43,17 @@ func Wrap(summary string, cause error, hint string, code string) *E {
 //
 //	Error: <summary>
 //	  Cause: <cause.Error()>
-//	  Fix:   <hint>
-//	  Docs:  keylatch.dev/errors/<code>
+//	  Fix: <hint>
+//	  Docs: keylatch.dev/errors/<code>
 func Format(w io.Writer, err *E) {
 	fmt.Fprintf(w, "Error: %s\n", err.Summary)
 	if err.Cause != nil {
-		fmt.Fprintf(w, "  Cause: %s\n", err.Cause.Error())
+		fmt.Fprintf(w, " Cause: %s\n", err.Cause.Error())
 	}
 	if err.Hint != "" {
-		fmt.Fprintf(w, "  Fix:   %s\n", err.Hint)
+		fmt.Fprintf(w, " Fix: %s\n", err.Hint)
 	}
 	if err.Code != "" {
-		fmt.Fprintf(w, "  Docs:  keylatch.dev/errors/%s\n", err.Code)
+		fmt.Fprintf(w, " Docs: keylatch.dev/errors/%s\n", err.Code)
 	}
 }

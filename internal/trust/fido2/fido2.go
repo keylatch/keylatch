@@ -34,11 +34,11 @@ type EnrollOptions struct {
 type Adapter struct {
 	opts     EnrollOptions
 	id       string
-	credID   []byte   //nolint:unused // planned: used by FIDO2 assertion in Phase 11 hardware integration
-	hmacSalt [32]byte //nolint:unused // planned: used by HMAC-secret extension in Phase 11 FIDO2 operations
+	credID   []byte   //nolint:unused // planned: used by FIDO2 assertion in hardware integration
+	hmacSalt [32]byte //nolint:unused // planned: used by HMAC-secret extension in FIDO2 operations
 	// HMACFunc computes an HMAC of its argument under the keyring's HMAC key.
 	// When non-nil, it is used to HMAC the raw adapter ID before embedding it
-	// in PresenceProof.RootID (S11-3: root IDs must be HMAC'd at emission).
+	// in PresenceProof.RootID (root IDs must be HMAC'd at emission).
 	HMACFunc func([]byte) []byte
 }
 
@@ -165,7 +165,7 @@ func (a *Adapter) RequirePresence(ctx context.Context, reason string) (trust.Pre
 		// Mi-6: always return empty proof on any error — never return non-empty proof with error.
 		return trust.PresenceProof{}, err
 	}
-	// S11-3: HMAC the root ID at emission.
+	// HMAC the root ID at emission.
 	rootID := a.id
 	if a.HMACFunc != nil {
 		rootID = base64.RawURLEncoding.EncodeToString(a.HMACFunc([]byte(a.id)))

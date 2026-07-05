@@ -1,9 +1,9 @@
-// Package export implements Phase 12 SIEM audit export.
+// Package export implements SIEM audit export.
 //
 // Security invariants:
-//   - S12-14: SIEM export unavailability NEVER blocks local keylatch operations.
-//   - All exported values are HMACd — no raw emails or names.
-//   - Async buffered: buffer size 1000; Export never blocks.
+// - SIEM export unavailability NEVER blocks local keylatch operations.
+// - All exported values are HMACd — no raw emails or names.
+// - Async buffered: buffer size 1000; Export never blocks.
 package export
 
 import (
@@ -46,7 +46,7 @@ type AuditEvent struct {
 }
 
 // Exporter is an async buffered SIEM exporter.
-// S12-14: SIEM unavailability never blocks local operations.
+// SIEM unavailability never blocks local operations.
 type Exporter struct {
 	adapter  SIEMAdapter
 	endpoint string
@@ -75,13 +75,13 @@ func New(adapter SIEMAdapter, endpoint, teamID string) *Exporter {
 	}
 }
 
-// Export enqueues an event for async delivery. Never blocks (S12-14).
+// Export enqueues an event for async delivery. Never blocks.
 // If buffer full, drops event and increments dropped counter.
 func (e *Exporter) Export(event AuditEvent) {
 	select {
 	case e.buf <- event:
 	default:
-		// Buffer full: drop and count (S12-14 — never block).
+		// Buffer full: drop and count (never block).
 		e.dropped.Add(1)
 	}
 }
@@ -97,7 +97,7 @@ func (e *Exporter) Flush(ctx context.Context) error {
 		select {
 		case event := <-e.buf:
 			if err := e.send(ctx, event); err != nil {
-				// S12-14: log but don't block — continue draining.
+				// log but don't block — continue draining.
 				continue
 			}
 		case <-ctx.Done():
@@ -115,7 +115,7 @@ func (e *Exporter) Start(ctx context.Context) {
 		for {
 			select {
 			case event := <-e.buf:
-				// S12-14: send failure is silently swallowed — never blocks local ops.
+				// send failure is silently swallowed — never blocks local ops.
 				_ = e.send(ctx, event)
 			case <-ctx.Done():
 				return
@@ -160,7 +160,7 @@ func (e *Exporter) send(ctx context.Context, event AuditEvent) error {
 
 	resp, err := e.client.Do(req)
 	if err != nil {
-		// S12-14: SIEM unavailability never blocks local ops.
+		// SIEM unavailability never blocks local ops.
 		return nil
 	}
 	defer resp.Body.Close()

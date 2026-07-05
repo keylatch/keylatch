@@ -13,23 +13,23 @@ import (
 )
 
 // ErrUndeclaredWritePath is returned when Setup tries to write to a path not
-// declared in Profile.Files (S3-11).
+// declared in Profile.Files.
 var ErrUndeclaredWritePath = errors.New("agent: write to undeclared path rejected")
 
 // ErrSecretInProfileContent is returned when profile content contains a value
-// that matches a vault secret (S3-8 canary check).
+// that matches a vault secret (canary check).
 var ErrSecretInProfileContent = errors.New("agent: profile content contains secret bytes")
 
 // ErrForceInLLMSession is returned when --force is used inside an LLM session.
 var ErrForceInLLMSession = errors.New("agent: --force is not permitted inside an LLM session")
 
 // guardedWrite writes content to path, enforcing:
-//   - path must be in declaredPaths (S3-11)
-//   - content must not match any current vault secret (S3-8)
-//   - opts.Force must not be true inside an LLM session
-//   - ConflictPolicy is honoured ("create_only", "merge", "overwrite")
+// - path must be in declaredPaths
+// - content must not match any current vault secret
+// - opts.Force must not be true inside an LLM session
+// - ConflictPolicy is honoured ("create_only", "merge", "overwrite")
 func guardedWrite(path, content string, declaredPaths []string, conflictPolicy string, opts SetupOptions) error {
-	// S3-11: path must be declared.
+	// path must be declared.
 	if !pathDeclared(path, declaredPaths) {
 		return fmt.Errorf("%w: %s", ErrUndeclaredWritePath, path)
 	}
@@ -39,7 +39,7 @@ func guardedWrite(path, content string, declaredPaths []string, conflictPolicy s
 		return ErrForceInLLMSession
 	}
 
-	// S3-7: dry-run produces no file writes.
+	// dry-run produces no file writes.
 	if opts.DryRun {
 		return nil
 	}
@@ -113,7 +113,7 @@ func mergeJSON(path, content string) error {
 	}
 
 	merged := deepMerge(existingMap, newMap)
-	mergedData, err := json.MarshalIndent(merged, "", "  ")
+	mergedData, err := json.MarshalIndent(merged, "", " ")
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 }
 
 // checkProfileContentNoSecrets verifies that profile content does not contain
-// forbidden patterns. This is the S3-8 canary check.
+// forbidden patterns. This is the canary check.
 func checkProfileContentNoSecrets(files []agentsnippet.ProfileFile) error {
 	for _, f := range files {
 		if err := guardContentForSecrets(f.Content); err != nil {

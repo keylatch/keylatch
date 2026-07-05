@@ -59,7 +59,7 @@ func TestConnectWritesFieldsToStore(t *testing.T) {
 	assert.Equal(t, "untested", conn.Status)
 	assert.Equal(t, "default", conn.Namespace)
 
-	// Verify the field was written to the canonical path (S-FIND-23).
+	// Verify the field was written to the canonical path.
 	path := secretFieldPath("default", "ai", "openrouter", "api_key")
 	val, ok := store.storedValue(path)
 	assert.True(t, ok, "api_key must be stored in vault")
@@ -178,7 +178,7 @@ func TestDelete_RollbackAfterConnect(t *testing.T) {
 	}, store)
 	require.NoError(t, err)
 
-	// 2. Verify the secret field was stored at the canonical path (S-FIND-23).
+	// 2. Verify the secret field was stored at the canonical path.
 	secretPath := secretFieldPath("default", "ai", "openrouter", "api_key")
 	_, exists := store.storedValue(secretPath)
 	assert.True(t, exists, "api_key must be stored before Delete")
@@ -246,9 +246,9 @@ func TestDelete_PartialFailure(t *testing.T) {
 
 // TestStoragePath_AICanonical verifies that Connect writes credentials under
 // the canonical four-segment path format "namespace/category/provider/field"
-// (S-FIND-23, T-03-01). Specifically:
-//   - `keylatch set openai.api_key=...` writes under `default/ai/openai/api_key`
-//   - No `default/connections/...` path is written
+// Specifically:
+// - `keylatch set openai.api_key=...` writes under `default/ai/openai/api_key`
+// - No `default/connections/...` path is written
 func TestStoragePath_AICanonical(t *testing.T) {
 	ctx := context.Background()
 	store := newMockStore()

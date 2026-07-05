@@ -44,7 +44,7 @@ func LoadState(path string) (State, error) {
 // SaveState atomically writes the state to path.
 // The file is created with mode 0o600.
 func SaveState(path string, s State) error {
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := json.MarshalIndent(s, "", " ")
 	if err != nil {
 		return fmt.Errorf("marshal daemon state: %w", err)
 	}

@@ -1,6 +1,6 @@
 package cli_test
 
-// TestGet_NeverReturnsRawValue verifies EPIC-02 Task 4:
+// TestGet_NeverReturnsRawValue verifies:
 // `keylatch get` with --masked outputs only masked values (****) and never raw credentials.
 //
 // The non-masked `get` path calls os.Exit(5) without printing any credential value.

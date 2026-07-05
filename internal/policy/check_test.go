@@ -7,7 +7,7 @@ import (
 	"github.com/keylatch/keylatch/internal/policy"
 )
 
-// canaryKey is the Phase 8 canary that must not appear in any output.
+// canaryKey is the canary that must not appear in any output.
 const canaryKey = "KEYLATCH_CANARY_PHASE8_0xDEADBEEF"
 
 func basePolicy() policy.Policy {
@@ -62,7 +62,7 @@ func TestCheck_LLMReadDeny_Read(t *testing.T) {
 		LLMSession: true,
 	})
 	if d.Allow {
-		t.Error("S8-9: read capability must be denied in LLM session")
+		t.Error("read capability must be denied in LLM session")
 	}
 	if d.Reason == "" {
 		t.Error("Reason must be non-empty on LLM read deny")
@@ -82,7 +82,7 @@ func TestCheck_LLMReadDeny_Export(t *testing.T) {
 		LLMSession: true,
 	})
 	if d.Allow {
-		t.Error("S8-9: export capability must be denied in LLM session")
+		t.Error("export capability must be denied in LLM session")
 	}
 }
 
@@ -96,7 +96,7 @@ func TestCheck_LLMReadDeny_RevealSuffix(t *testing.T) {
 		LLMSession: true,
 	})
 	if d.Allow {
-		t.Error("S8-9: .reveal suffix capability must be denied in LLM session")
+		t.Error(".reveal suffix capability must be denied in LLM session")
 	}
 }
 
@@ -109,7 +109,7 @@ func TestCheck_LLMReadDeny_DumpSuffix(t *testing.T) {
 		LLMSession: true,
 	})
 	if d.Allow {
-		t.Error("S8-9: .dump suffix capability must be denied in LLM session")
+		t.Error(".dump suffix capability must be denied in LLM session")
 	}
 }
 

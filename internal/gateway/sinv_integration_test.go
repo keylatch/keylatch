@@ -1,11 +1,11 @@
 package gateway_test
 
-// sinv_integration_test.go — S-INV-9 and S-INV-12 integration tests.
+// sinv_integration_test.go — gateway route and auth integration tests.
 //
-// S-INV-9: gateway end-to-end route matching and auth enforcement. Credentials
+// Gateway end-to-end route matching and auth enforcement. Credentials
 // loaded from vault must not appear in gateway responses (no credential echo).
 //
-// S-INV-12: all gateway routes require a valid Bearer token; unauthenticated
+// All gateway routes require a valid Bearer token; unauthenticated
 // requests → 401 with error code "missing_token".
 
 import (
@@ -76,23 +76,23 @@ func TestSINV9_GatewayRouteMatchingAndAuthEnforcement(t *testing.T) {
 	go srv.Serve(ctx) //nolint:errcheck
 	waitForGateway(t, fmt.Sprintf("127.0.0.1:%d", port))
 
-	// Verify compiled routes are non-empty (S-INV-9: registry wired to router).
+	// Verify compiled routes are non-empty (registry wired to router).
 	routes := srv.Routes()
 	if len(routes) == 0 {
-		t.Fatal("S-INV-9: gateway has no compiled routes — registry not loaded")
+		t.Fatal("gateway has no compiled routes — registry not loaded")
 	}
 
 	// Verify all routes have non-empty Capability and Provider fields.
 	for _, rt := range routes {
 		if rt.Capability == "" {
-			t.Errorf("S-INV-9: route %s has empty Capability", rt.PathTemplate)
+			t.Errorf("route %s has empty Capability", rt.PathTemplate)
 		}
 		if rt.Provider == "" {
-			t.Errorf("S-INV-9: route %s has empty Provider", rt.PathTemplate)
+			t.Errorf("route %s has empty Provider", rt.PathTemplate)
 		}
 	}
 
-	// S-INV-9: non-existent path must 404 (not bypass routing).
+	// Non-existent path must 404 (not bypass routing).
 	jwtStr, _, err := token.Mint(token.TokenSpec{
 		Actor:        "sinv9-actor",
 		Capabilities: []string{"openrouter.chat_completion"},
@@ -117,10 +117,10 @@ func TestSINV9_GatewayRouteMatchingAndAuthEnforcement(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("S-INV-9: non-existent route must return 404, got %d", resp.StatusCode)
+		t.Errorf("non-existent route must return 404, got %d", resp.StatusCode)
 	}
 
-	// S-INV-9: health endpoint works without auth (not a credential route).
+	// Health endpoint works without auth (not a credential route).
 	healthReq, _ := http.NewRequest("GET",
 		fmt.Sprintf("http://127.0.0.1:%d/health", port), nil)
 	healthResp, err := client.Do(healthReq)
@@ -129,12 +129,12 @@ func TestSINV9_GatewayRouteMatchingAndAuthEnforcement(t *testing.T) {
 	}
 	defer healthResp.Body.Close()
 	if healthResp.StatusCode != http.StatusOK {
-		t.Errorf("S-INV-9: /health must return 200, got %d", healthResp.StatusCode)
+		t.Errorf("/health must return 200, got %d", healthResp.StatusCode)
 	}
 }
 
 // TestSINV12_AllGatewayRoutesRequireAuth verifies that every request to a
-// known gateway route without an Authorization header returns 401 (S-INV-12).
+// known gateway route without an Authorization header returns 401.
 func TestSINV12_AllGatewayRoutesRequireAuth(t *testing.T) {
 	t.Parallel()
 
@@ -178,7 +178,7 @@ func TestSINV12_AllGatewayRoutesRequireAuth(t *testing.T) {
 			fmt.Sprintf("http://127.0.0.1:%d%s", port, tc.path),
 			strings.NewReader("{}"))
 		req.Header.Set("Content-Type", "application/json")
-		// No Authorization header — S-INV-12 requires 401.
+		// No Authorization header — must require 401.
 		resp, err := client.Do(req)
 		if err != nil {
 			t.Fatalf("request %s %s: %v", tc.method, tc.path, err)
@@ -186,7 +186,7 @@ func TestSINV12_AllGatewayRoutesRequireAuth(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("S-INV-12: path %s without auth: want 401, got %d (body: %s)",
+			t.Errorf("path %s without auth: want 401, got %d (body: %s)",
 				tc.path, resp.StatusCode, body)
 			continue
 		}
@@ -195,18 +195,18 @@ func TestSINV12_AllGatewayRoutesRequireAuth(t *testing.T) {
 			Error string `json:"error"`
 		}
 		if err := json.Unmarshal(body, &errResp); err != nil {
-			t.Errorf("S-INV-12: could not parse error response: %v (body: %s)", err, body)
+			t.Errorf("could not parse error response: %v (body: %s)", err, body)
 			continue
 		}
 		if errResp.Error != "missing_token" {
-			t.Errorf("S-INV-12: path %s: expected error code 'missing_token', got %q",
+			t.Errorf("path %s: expected error code 'missing_token', got %q",
 				tc.path, errResp.Error)
 		}
 	}
 }
 
 // TestSINV12_InvalidTokenReturns401 verifies that a malformed or expired JWT
-// returns 401 (S-INV-12 token validation).
+// returns 401 (token validation).
 func TestSINV12_InvalidTokenReturns401(t *testing.T) {
 	t.Parallel()
 
@@ -256,7 +256,7 @@ func TestSINV12_InvalidTokenReturns401(t *testing.T) {
 		}
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("S-INV-12: malformed token %q: want 401, got %d",
+			t.Errorf("malformed token %q: want 401, got %d",
 				tc.name, resp.StatusCode)
 		}
 	}
@@ -264,7 +264,7 @@ func TestSINV12_InvalidTokenReturns401(t *testing.T) {
 
 // TestSINV12_VaultCredentialNotEchoedInResponse verifies that a credential
 // returned by vault.Get never appears verbatim in the gateway HTTP response
-// body or headers (S-INV-9 / S-INV-12 credential non-echo invariant).
+// body or headers (credential non-echo invariant).
 //
 // S-04: uses an httptest.Server as the mock upstream so the positive path
 // (upstream returns 200) is exercised, not just an absence-of-canary assertion
@@ -349,14 +349,14 @@ func TestSINV12_VaultCredentialNotEchoedInResponse(t *testing.T) {
 
 	// The canary credential must never appear in the response body.
 	if strings.Contains(string(body), canaryValue) {
-		t.Errorf("S-INV-12: vault canary credential found in gateway response body")
+		t.Errorf("vault canary credential found in gateway response body")
 	}
 
 	// The canary credential must never appear in response headers.
 	for name, vals := range resp.Header {
 		for _, v := range vals {
 			if strings.Contains(v, canaryValue) {
-				t.Errorf("S-INV-12: vault canary found in response header %s: %q", name, v)
+				t.Errorf("vault canary found in response header %s: %q", name, v)
 			}
 		}
 	}

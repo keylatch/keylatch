@@ -2,9 +2,9 @@
 // It supports signing (all key types) and wrapping (Ed25519 only, via HKDF).
 //
 // Security invariants:
-//   - LLM sessions are blocked for enrolment operations (RequirePresence).
-//   - Wrap/Unwrap for non-Ed25519 keys return ErrCapabilityUnsupported.
-//   - HKDF-based wrapping never stores the wrapping key between calls.
+// - LLM sessions are blocked for enrolment operations (RequirePresence).
+// - Wrap/Unwrap for non-Ed25519 keys return ErrCapabilityUnsupported.
+// - HKDF-based wrapping never stores the wrapping key between calls.
 package sshagent
 
 import (
@@ -43,7 +43,7 @@ type Options struct {
 	SocketPath string
 	// HMACFunc computes an HMAC of its argument under the keyring's HMAC key.
 	// When non-nil, it is used to HMAC the raw adapter ID before embedding it
-	// in PresenceProof.RootID (S11-3: root IDs must be HMAC'd at emission).
+	// in PresenceProof.RootID (root IDs must be HMAC'd at emission).
 	// When nil, the raw adapter ID is stored with a warning logged.
 	HMACFunc func([]byte) []byte
 }
@@ -107,7 +107,7 @@ func New(opts Options) (*Adapter, error) {
 	if label == "" {
 		label = selected.Type()
 	}
-	_ = label // planned: stored in adapter display name in Phase 11
+	_ = label // planned: stored in adapter display name
 
 	id := gossh.FingerprintSHA256(selected)
 
@@ -127,7 +127,7 @@ func (a *Adapter) Has(c trust.Capability) bool {
 	case trust.CapSignChallenge:
 		return true
 	case trust.CapWrap:
-		// Only Ed25519 supports HKDF-based wrapping (FIND2-020).
+		// Only Ed25519 supports HKDF-based wrapping.
 		return a.keyType == "ed25519"
 	case trust.CapUserPresence:
 		// Detect touch-required extension; conservative: false unless confirmed.
@@ -140,7 +140,7 @@ func (a *Adapter) Has(c trust.Capability) bool {
 	}
 }
 
-// Wrap implements HKDF-based DEK wrapping for Ed25519 keys (FIND2-020).
+// Wrap implements HKDF-based DEK wrapping for Ed25519 keys.
 // Signs a fixed challenge "Keylatch-KEK-v1" via the agent, derives a 32-byte
 // wrapping key using HKDF-SHA256, then AES-256-GCM encrypts dek.
 func (a *Adapter) Wrap(ctx context.Context, dek []byte) ([]byte, error) {
@@ -280,7 +280,7 @@ func (a *Adapter) RequirePresence(_ context.Context, _ string) (trust.PresencePr
 		return trust.PresenceProof{}, trust.ErrLLMSessionBlocked
 	}
 	// SSH agents do not provide structured presence proofs; return a basic proof.
-	// S11-3: HMAC the root ID at emission so callers never see the raw adapter ID.
+	// HMAC the root ID at emission so callers never see the raw adapter ID.
 	return trust.PresenceProof{
 		Method:      "ssh-agent",
 		ConfirmedAt: time.Now().UTC(),

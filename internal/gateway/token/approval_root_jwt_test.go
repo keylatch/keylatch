@@ -8,7 +8,7 @@ import (
 )
 
 // TestMint_ApprovalRootClaims verifies that approval root fields are HMAC'd
-// and persisted correctly (S11-3: raw root IDs must never appear in JWT/Token).
+// and persisted correctly (raw root IDs must never appear in JWT/Token).
 func TestMint_ApprovalRootClaims(t *testing.T) {
 	key := testSigningKey(t)
 	storePath := testStorePath(t)
@@ -31,7 +31,7 @@ func TestMint_ApprovalRootClaims(t *testing.T) {
 		t.Fatalf("Mint: %v", err)
 	}
 
-	// Verify raw root ID is NOT stored (S11-3).
+	// Verify raw root ID is NOT stored.
 	if tok.ApprovalRootHMAC == "" {
 		t.Error("expected ApprovalRootHMAC to be set")
 	}

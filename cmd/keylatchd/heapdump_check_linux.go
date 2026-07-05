@@ -2,7 +2,7 @@
 
 package main
 
-// heapdump_check_linux.go — EPIC-12 heap-dump canary check for Linux.
+// heapdump_check_linux.go — heap-dump canary check for Linux.
 //
 // On Linux, /proc/self/mem provides direct access to the process address space.
 // This check scans readable memory regions (from /proc/self/maps) for
@@ -14,7 +14,7 @@ package main
 // attacker with root access can bypass it. Its primary use is catching
 // accidental leaks during development and testing.
 //
-// S-HEAP-1: canary strings must not appear in heap memory after they are
+// canary strings must not appear in heap memory after they are
 // cleared. This check fires at startup, before any secrets are loaded.
 
 import (

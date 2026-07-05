@@ -13,7 +13,7 @@ external services or binaries are required.
 
 | Property | Detail |
 |----------|--------|
-| Encryption algorithm | XChaCha20-Poly1305 (default); AES-256-GCM when `KEYLATCH_FIPS=1` |
+| Encryption algorithm | XChaCha20-Poly1305 (default); AES-256-GCM in FIPS builds (`-tags=fips`, not an env var — see [Security: FIPS compliance](../security.md#fips-compliance)) |
 | Key derivation | KEK from platform keyring (macOS Keychain or age-env identity file) |
 | On-disk format | `value.enc` (ciphertext) + `value.enc.nonce` + `value.enc.aad` per secret |
 | Directory mode | 0o700 |

@@ -1,5 +1,5 @@
 // Package fields implements the SafeLogFields allowlist that enforces
-// audit entry value-freedom (S5-12).
+// audit entry value-freedom.
 //
 // Only explicitly listed keys for each Action are passed through to the audit
 // log in plaintext. All other keys are replaced with their HMAC'd form via
@@ -30,25 +30,25 @@ var safeLogFields = map[string][]string{
 	"keyring_init": {"algorithm", "kek_type"},
 	"kek_rotate":   {"old_kek_type", "new_kek_type"},
 	"term_destroy": {"term"},
-	// T-13-07: rotated_to/rotated_from are file paths (no credential content).
+	// rotated_to/rotated_from are file paths (no credential content).
 	// prev_file_hmac is a chain MAC value needed for cross-file chain verification.
 	"audit_rotate": {"rotated_to", "rotated_from", "prev_file_hmac"},
 	"audit_verify": {"result"},
 	"audit_read":   {},
-	// Phase 11 forward-compat
+	// forward-compat
 	"policy_check": {"policy_id", "result"},
 	"token_issue":  {"token_type", "ttl"},
 	"token_revoke": {"token_type"},
-	// Phase 12 forward-compat
+	// forward-compat
 	"share":    {"recipient_hmac"},
 	"unshare":  {"recipient_hmac"},
 	"delegate": {"delegate_type"},
-	// Gateway proxy actions (Epic 07 — T04).
+	// Gateway proxy actions.
 	"gateway_call": {"reason", "host", "error", "capability"},
-	// Proxy lifecycle actions (Epic 19).
+	// Proxy lifecycle actions.
 	"proxy.started": {"port", "pid"},
 	"proxy.stopped": {"pid", "reason"},
-	// Phase 13 broker actions — all actor/session IDs are HMAC-hashed (FIND2-012).
+	// broker actions — all actor/session IDs are HMAC-hashed.
 	"broker.exchange": {
 		"provider", "exchange_strategy", "actor_hmac", "session_id_hmac",
 		"namespace", "capability", "ttl_seconds", "scopes_count",
@@ -66,19 +66,19 @@ var safeLogFields = map[string][]string{
 		"actor_hmac", "connection", "capability",
 		"runtime_requested", "llm_session_signal", "blocked_by",
 	},
-	// EPIC-09 child-env hygiene actions (T-09-01).
-	// stripped_vars: list of KEYLATCH_* var names removed (no values — S5-12).
-	//   In CleanEnv mode: contains ALL var names not in the allowlist (every non-
-	//   allowlisted variable from parent, regardless of prefix).
-	//   In non-CleanEnv mode: contains only the KEYLATCH_* var names that were
-	//   stripped (non-KEYLATCH_* vars are never touched and therefore not listed).
+	// child-env hygiene actions.
+	// stripped_vars: list of KEYLATCH_* var names removed (no values).
+	// In CleanEnv mode: contains ALL var names not in the allowlist (every non-
+	// allowlisted variable from parent, regardless of prefix).
+	// In non-CleanEnv mode: contains only the KEYLATCH_* var names that were
+	// stripped (non-KEYLATCH_* vars are never touched and therefore not listed).
 	// clean_env: boolean; true when --clean-env was applied.
 	"child_env.filter": {"runtime", "stripped_vars", "clean_env"},
 	// preserved_vars: list of var names kept in the minimal allowlist.
 	// stripped_count: integer count of stripped vars.
 	"child_env.clean": {"runtime", "preserved_vars", "stripped_count"},
 
-	// EPIC-24 sandbox actions.
+	// sandbox actions.
 	// executable: the path of the binary being sandboxed (path only, never its value).
 	// executable_sha256: SHA-256 hex digest of the executable (value-free — no credentials).
 	"sandbox.launched": {"provider", "runtime", "executable", "executable_sha256"},
@@ -88,17 +88,17 @@ var safeLogFields = map[string][]string{
 	// denied_paths: list of filesystem paths denied in the sandbox (no values).
 	"sandbox.deny_applied": {"provider", "runtime", "denied_paths"},
 
-	// EPIC-17 operating-mode actions.
+	// operating-mode actions.
 	// ActionCanaryInjected — provider slug and session_id_hmac (no canary token value).
 	"canary.injected": {"provider", "session_id_hmac"},
 
-	// Phase 13 broker dry-run action.
+	// broker dry-run action.
 	// command: the binary/subcommand name requested (no credential content).
 	// policy_decision: "allow" or "deny" string — no secret content.
 	"broker.dry_run_requested": {
 		"provider", "command", "scopes_count", "policy_decision",
 	},
-	// Phase 13 broker token revocation action.
+	// broker token revocation action.
 	// token_id: opaque token identifier used for audit correlation (not a credential value).
 	// timestamp: UTC RFC3339 time of revocation.
 	// provider_revocation_attempted / provider_revocation_succeeded: boolean metadata.
@@ -130,7 +130,7 @@ func Redact(salt []byte, action string, extra map[string]any) map[string]any {
 		if allowed[k] {
 			out[k] = v
 		} else {
-			// Replace with HMAC of the value — never the value itself (S5-12).
+			// Replace with HMAC of the value — never the value itself.
 			out[k] = hmac.Of(salt, []byte(fmt.Sprint(v)))
 		}
 	}
@@ -146,30 +146,30 @@ func AllActions() []string {
 		"audit_rotate", "audit_verify", "audit_read",
 		"policy_check", "token_issue", "token_revoke",
 		"share", "unshare", "delegate",
-		// Epic 07 gateway_proxy proxy deny action (T04).
+		// gateway_proxy proxy deny action.
 		"gateway_call",
-		// Epic 19 proxy lifecycle actions.
+		// Proxy lifecycle actions.
 		"proxy.started", "proxy.stopped",
-		// Phase 13 broker actions.
+		// broker actions.
 		"broker.exchange", "broker.cache_hit",
 		"broker.direct_run_credential_access", "broker.direct_run_blocked",
-		// EPIC-09 child-env hygiene actions.
+		// child-env hygiene actions.
 		"child_env.filter", "child_env.clean",
-		// EPIC-24 sandbox actions.
+		// sandbox actions.
 		"sandbox.launched", "sandbox.launch_refused", "sandbox.deny_applied",
-		// EPIC-17 canary actions.
+		// canary actions.
 		"canary.injected",
-		// Phase 13 broker dry-run and token revocation actions.
+		// broker dry-run and token revocation actions.
 		"broker.dry_run_requested", "broker.token_revoked",
 	}
 }
 
 func init() {
 	// Compile-time completeness check: panic if any Action is missing from
-	// the allowlist. This fires on package initialization (S5-2).
+	// the allowlist. This fires on package initialization.
 	for _, action := range AllActions() {
 		if _, ok := safeLogFields[action]; !ok {
-			panic(fmt.Sprintf("audit/fields: Action %q is missing from SafeLogFields (S5-2)", action))
+			panic(fmt.Sprintf("audit/fields: Action %q is missing from SafeLogFields", action))
 		}
 	}
 }

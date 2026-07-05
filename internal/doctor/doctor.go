@@ -1,8 +1,8 @@
 // Package doctor implements the `keylatch doctor` diagnostic report.
 // It runs ordered checks and returns a Report with metadata-only Status values.
 //
-// Security invariant S05-6: no secret values appear in any Status.Detail.
-// Security invariant S05-7: KEYLATCH_CANARY_DO_NOT_LEAK_0xDEADBEEF never appears in output.
+// Security invariant no secret values appear in any Status.Detail.
+// Security invariant KEYLATCH_CANARY_DO_NOT_LEAK_0xDEADBEEF never appears in output.
 package doctor
 
 import (
@@ -185,7 +185,7 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 
 // sectionOrder defines the canonical display order for sections.
 // "external" is placed after "backends" so PM CLI checks appear alongside
-// credential-store backend checks (EPIC-10).
+// credential-store backend checks.
 var sectionOrder = []string{"environment", "daemon", "backends", "external", "providers"}
 
 // computeSections builds a SectionSummary slice from allStatuses, in canonical order.

@@ -10,7 +10,7 @@ import (
 
 // CommandRunner is the interface for invoking external binaries. All calls to
 // /usr/bin/security, op, bw, sops, etc. must go through this interface.
-// S1-8: implementations must reject relative paths.
+// implementations must reject relative paths.
 type CommandRunner interface {
 	// Run executes name with args. stdin is piped to the process if non-nil.
 	// Returns stdout, stderr, exit code, and any execution error.
@@ -27,9 +27,9 @@ var DefaultRunner CommandRunner = defaultRunner{}
 type defaultRunner struct{}
 
 // Run implements CommandRunner using os/exec.CommandContext.
-// S1-8: rejects relative paths before any exec call.
+// rejects relative paths before any exec call.
 func (defaultRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
-	// S1-8: reject relative paths — only absolute paths are accepted.
+	// reject relative paths — only absolute paths are accepted.
 	// filepath.IsAbs handles platform semantics: a "/"-prefix check rejected
 	// every Windows path (C:\...), breaking external CLI exec on Windows.
 	if !filepath.IsAbs(name) {

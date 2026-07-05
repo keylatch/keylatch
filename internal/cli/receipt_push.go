@@ -18,6 +18,11 @@ func pushReceiptToUI(ctx context.Context, receipt runner.RuntimeReceipt) {
 	addr := os.Getenv("KEYLATCH_UI_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:7890"
+	} else if err := validateHostPort(addr); err != nil {
+		// Best-effort push: a malformed KEYLATCH_UI_ADDR must not crash or
+		// block the primary command. Silently skip, matching the existing
+		// "keylatchd not running" no-op behavior below.
+		return
 	}
 	body, err := json.Marshal(receipt)
 	if err != nil {

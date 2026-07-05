@@ -9,10 +9,18 @@ on:
 # docs/integration/examples/ is syntactically valid and exits 0 in dry-run / mock mode.
 # It does NOT require a real Keylatch vault or network access.
 
+concurrency:
+  group: integration-examples-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   integration-examples:
     name: Smoke-test integration examples
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4

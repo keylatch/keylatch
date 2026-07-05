@@ -1,11 +1,11 @@
 // Package trust defines the Root of Trust interface, capability flags, and sentinel
-// errors for the Phase 11 pluggable hardware security module layer.
+// errors for the pluggable hardware security module layer.
 //
 // Security invariants:
-//   - S11-1: RootOfTrust.Wrap/Unwrap MUST zero plaintext DEK bytes before return.
-//   - S11-2: Sign, RequirePresence, and Attest MUST return ErrLLMSessionBlocked in LLM sessions.
-//   - S11-3: Root spec IDs are ALWAYS HMAC'd before appearing in audit events or JWT claims.
-//   - S11-4: ErrModuleNotAllowlisted MUST be returned before any PKCS#11 session is opened.
+// - RootOfTrust.Wrap/Unwrap MUST zero plaintext DEK bytes before return.
+// - Sign, RequirePresence, and Attest MUST return ErrLLMSessionBlocked in LLM sessions.
+// - Root spec IDs are ALWAYS HMAC'd before appearing in audit events or JWT claims.
+// - ErrModuleNotAllowlisted MUST be returned before any PKCS#11 session is opened.
 package trust
 
 import (
@@ -59,7 +59,7 @@ const (
 type PresenceProof struct {
 	Method      string    `json:"method"`
 	ConfirmedAt time.Time `json:"confirmed_at"`
-	RootID      string    `json:"root_id"`      // HMAC'd root spec ID per S11-3
+	RootID      string    `json:"root_id"`      // HMAC'd root spec ID
 	BindingHMAC string    `json:"binding_hmac"` // HMAC of canonical binding bytes
 }
 

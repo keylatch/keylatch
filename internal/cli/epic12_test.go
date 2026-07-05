@@ -1,11 +1,11 @@
 package cli_test
 
-// epic12_test.go — EPIC-12 CLI-level test suite.
+// CLI-level test suite.
 //
 // Tests:
 //   - TestRuntimeDoctor_DelegatesToDoctor
 //   - TestModes_JSONAndFixColumn
-//   - TestDoctorCmd_EPIC12Flags
+//   - TestDoctorCmd_RegisteredFlags
 //   - TestDoctorCmd_JSONSchemaV1Flags
 
 import (
@@ -100,10 +100,10 @@ func TestModes_JSONAndFixColumn(t *testing.T) {
 	assert.Contains(t, string(b), `"fix"`, "ModeEntry must have JSON fix field when set")
 }
 
-// TestDoctorCmd_EPIC12Flags verifies that the EPIC-12 flags are registered
-// on the doctor command: --category, --quiet, --json, --verbose, --repair, --yes.
-// Note: --connection was removed (TODO: add in EPIC-16 when gateway scoping is complete).
-func TestDoctorCmd_EPIC12Flags(t *testing.T) {
+// TestDoctorCmd_RegisteredFlags verifies that the doctor command's flags are registered:
+// --category, --quiet, --json, --verbose, --repair, --yes.
+// Note: --connection was removed (TODO: add when gateway scoping is complete).
+func TestDoctorCmd_RegisteredFlags(t *testing.T) {
 	t.Parallel()
 
 	root := cli.NewRootCommand()
@@ -114,7 +114,7 @@ func TestDoctorCmd_EPIC12Flags(t *testing.T) {
 			assert.NotNil(t, c.Flags().Lookup("quiet"),
 				"doctor must have --quiet flag")
 			assert.Nil(t, c.Flags().Lookup("connection"),
-				"--connection was removed; add in EPIC-16")
+				"--connection was removed")
 			assert.NotNil(t, c.Flags().Lookup("json"),
 				"doctor must have --json flag")
 			assert.NotNil(t, c.Flags().Lookup("verbose"),

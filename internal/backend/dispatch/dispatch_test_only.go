@@ -1,13 +1,13 @@
 //go:build test_only
 
-// Package dispatch — test-only helpers (T-13-08).
+// Package dispatch — test-only helpers.
 //
 // This file is compiled ONLY when -tags test_only is passed to go test/build.
 // It provides a Reset() alias for ClearCached() so existing test code can
 // continue to use the familiar Reset() name without exposing it in production
 // binaries.
 //
-// S-FIND-21: `nm ./keylatch | grep -i reset` must return empty; the symbol
+// `nm ./keylatch | grep -i reset` must return empty; the symbol
 // must not be reachable from the production build graph.
 package dispatch
 

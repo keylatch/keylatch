@@ -1,14 +1,14 @@
 package doctor
 
-// checks_external.go — EPIC-10 doctor checks for external store references.
+// checks_external.go — doctor checks for external store references.
 //
 // Adds an "external" category that probes each PM CLI binary when at least one
 // --provider-ref connection exists in the vault.
 //
 // Checks:
-//   - E1: exec.LookPath("op")  + `op whoami`         (scheme: op://)
-//   - E2: exec.LookPath("aws") + `aws sts get-caller-identity` (scheme: aws-sm://)
-//   - E3: exec.LookPath("vault") + `vault token lookup`         (scheme: hashivault://)
+// - E1: exec.LookPath("op") + `op whoami` (scheme: op://)
+// - E2: exec.LookPath("aws") + `aws sts get-caller-identity` (scheme: aws-sm://)
+// - E3: exec.LookPath("vault") + `vault token lookup` (scheme: hashivault://)
 //
 // The entire "external" category is skipped when no --provider-ref connections
 // are configured (vault has no field files containing op://, aws-sm://, or

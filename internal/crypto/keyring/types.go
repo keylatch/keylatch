@@ -10,7 +10,7 @@ import (
 )
 
 // SchemaVersion is the keyring file schema version this package writes.
-// Bumped to 2 in Phase 11 to accommodate the Roots and ApprovalChain fields.
+// Bumped to 2 to accommodate the Roots and ApprovalChain fields.
 const SchemaVersion = 2
 
 // TermStatus represents the lifecycle state of a DEK term.
@@ -56,7 +56,7 @@ type TermRecord struct {
 }
 
 // GCMState tracks the monotonic nonce counter for AES-256-GCM encryption.
-// Shared across all process instances via the keyring file (S5-FIND3-002).
+// Shared across all process instances via the keyring file.
 type GCMState struct {
 	// PerTerm maps term number to the current nonce counter value.
 	// Counter starts at 0 and increments monotonically.
@@ -79,7 +79,7 @@ type Argon2Params struct {
 }
 
 // RootOfTrustRecord associates a trust.RootSpec with the DEKs it has wrapped.
-// Added in Phase 11 (SchemaVersion=2).
+// Added when SchemaVersion=2.
 type RootOfTrustRecord struct {
 	// Spec is the persisted root-of-trust specification.
 	Spec trust.RootSpec `json:"spec"`
@@ -93,7 +93,7 @@ type RootOfTrustRecord struct {
 //
 // Schema §3.3: all field names are canonical; do not rename JSON tags.
 type KeyringFile struct {
-	// SchemaVersion must equal keyring.SchemaVersion (2 from Phase 11 onward).
+	// SchemaVersion must equal keyring.SchemaVersion (2 from the roots-of-trust upgrade onward).
 	SchemaVersion int `json:"schema_version"`
 
 	// Algorithm is the AEAD algorithm used for vault data encryption.
@@ -103,7 +103,7 @@ type KeyringFile struct {
 	// ActiveTerm is the term number currently used for new writes.
 	ActiveTerm int `json:"active_term"`
 
-	// Roots holds the Phase 11 root-of-trust records. Replaces legacy KEK fields
+	// Roots holds the root-of-trust records. Replaces legacy KEK fields
 	// when non-empty. Each root can independently wrap/unwrap every DEK term.
 	Roots []RootOfTrustRecord `json:"roots,omitempty"`
 
@@ -111,8 +111,8 @@ type KeyringFile struct {
 	// for two-person operations. Set by trust enroll and updated by trust revoke.
 	ApprovalChain []string `json:"approval_chain,omitempty"`
 
-	// --- Legacy fields (Phase 5 backward compat). ---
-	// Retained as omitempty; present only in Phase 5 keyrings or during migration.
+	// --- Legacy fields (backward compat). ---
+	// Retained as omitempty; present only in legacy keyrings or during migration.
 
 	// KEKType identifies the KEK provider type for this keyring (legacy).
 	KEKType string `json:"kek_type,omitempty"`

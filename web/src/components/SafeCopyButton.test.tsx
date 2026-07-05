@@ -68,7 +68,7 @@ describe('SafeCopyButton', () => {
     vi.useRealTimers()
   })
 
-  // T-13-04: extended regex coverage — all provider template sensitive field prefixes.
+  // extended regex coverage — all provider template sensitive field prefixes.
 
   it('refuses GitHub personal access token (ghp_)', async () => {
     render(<SafeCopyButton content="ghp_abcdefghijklmnopqrstu1234567890" />)

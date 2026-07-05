@@ -195,7 +195,7 @@ func flockPath(keyringPath string) string {
 
 // New creates a brand-new KeyringFile at path with the given configuration.
 // It generates a random salt and first DEK, wraps the DEK under kk, and writes
-// the keyring atomically (S5-19). For AES-GCM vaults, the GCM nonce counter is
+// the keyring atomically. For AES-GCM vaults, the GCM nonce counter is
 // initialized with the given gcmLeaseSize.
 func New(path string, kk kek.KEK, alg envelope.Algorithm, gcmLeaseSize uint64) error {
 	// Generate the first DEK.

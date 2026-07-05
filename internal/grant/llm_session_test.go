@@ -1,4 +1,4 @@
-// Package grant_test: FIND-001/S8-12 isolation tests.
+// Package grant_test: isolation tests.
 package grant_test
 
 import (
@@ -34,12 +34,12 @@ func TestLLMSession_GrantIssuedUnderCLAUDE_CODE(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	if !g.IssuedFromLLMSession {
-		t.Error("FIND-001: IssuedFromLLMSession must be true when CLAUDE_CODE=1")
+		t.Error("IssuedFromLLMSession must be true when CLAUDE_CODE=1")
 	}
 }
 
 // TestLLMSession_ReadCapabilityDenied ensures that Find returns false for
-// read-class capabilities on LLM-issued grants (S8-12).
+// read-class capabilities on LLM-issued grants.
 func TestLLMSession_ReadCapabilityDenied(t *testing.T) {
 	dir := t.TempDir()
 	llmEnv := func(k string) string {
@@ -78,7 +78,7 @@ func TestLLMSession_ReadCapabilityDenied(t *testing.T) {
 			Capability: cap,
 		})
 		if ok || found != nil {
-			t.Errorf("S8-12: Find(%q) should return (nil, false) for LLM-issued grant", cap)
+			t.Errorf("Find(%q) should return (nil, false) for LLM-issued grant", cap)
 		}
 	}
 }

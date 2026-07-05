@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-clean-machine-bootstrap.sh — EPIC-11 Task 3
+# test-clean-machine-bootstrap.sh
 #
 # Clean-machine smoke test for the bootstrap onboarding flow.
 #
@@ -164,8 +164,14 @@ pass "step 4: connect succeeded (exit 0)"
 # ─── Step 5: keylatch run after setup → exit 5 or 0 ─────────────────────────
 
 log "Step 5: run after setup (expect exit 5 or 0)..."
+# With the connection now present, this raw (direct_brokered) run passes the
+# bootstrap and connection guards and reaches the raw-credential session gate.
+# This automated smoke test is an unverified session (no signed ticket, no
+# keylatchd), so opt out explicitly to exercise the post-setup runtime path.
+# Steps 1 and 3 deliberately do NOT set this — they verify that the bootstrap
+# (exit 7) and connection (exit 6) guards take priority over the session gate.
 set +e
-combined_5="$("$KEYLATCH_BIN" run anthropic --runtime direct_brokered --allow echo -- echo hi 2>&1)"
+combined_5="$(KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 "$KEYLATCH_BIN" run anthropic --runtime direct_brokered --allow echo -- echo hi 2>&1)"
 exit_5=$?
 set -e
 

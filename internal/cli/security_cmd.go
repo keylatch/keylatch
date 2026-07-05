@@ -9,7 +9,7 @@ import (
 )
 
 // securityInvariants is the user-facing copy of the five security invariants.
-// Internal IDs (S-RM-1 etc.) live in docs/security/invariants.md only.
+// See docs/security/invariants.md for the security-invariant catalog.
 const securityInvariants = `Keylatch security model:
 
   * Your secrets never touch agent memory

@@ -1,5 +1,5 @@
 // Package runner defines the interface for executing commands under a named
-// credential connection. S0-9: allowlist-only; no blocklist exists.
+// credential connection. Allowlist-only; no blocklist exists.
 package runner
 
 import (
@@ -28,10 +28,10 @@ var ErrModeNotAvailable = errors.New("runner: runtime mode not available in this
 // Connection describes a named credential connection and the commands
 // allowed to run under it. AllowedCommandPrefixes must be non-empty for
 // any command to be permitted; an empty slice denies all execution.
-// S0-9 / FIND-004: per-template allowlist — empty = run REJECTED.
+// Per-template allowlist — empty = run REJECTED.
 type Connection struct {
 	Name                   string
-	AllowedCommandPrefixes []string // FIND-004: per-template allowlist; empty = run REJECTED
+	AllowedCommandPrefixes []string // Per-template allowlist; empty = run REJECTED
 }
 
 // RunOptions carries per-invocation options.
@@ -73,7 +73,7 @@ type ExecRequest struct {
 	// a minimal environment rather than inheriting os.Environ(). The minimal set
 	// is: PATH, HOME, USER, LOGNAME, SHELL, TERM, LANG, LC_* plus all explicitly
 	// injected credential vars and any vars listed in ExtraEnvVars.
-	// T-08-02: --clean-env flag implementation.
+	// --clean-env flag implementation.
 	CleanEnv bool
 	// ExtraEnvVars lists additional env var names to preserve when CleanEnv is true.
 	// Ignored when CleanEnv is false.
@@ -81,7 +81,7 @@ type ExecRequest struct {
 }
 
 // RuntimeReceipt is the value-free record emitted for every execution path
-// including errors (S-RM-9). It never contains credential bytes.
+// including errors. It never contains credential bytes.
 type RuntimeReceipt struct {
 	Runtime         string        `json:"runtime"`
 	Provider        string        `json:"provider"`

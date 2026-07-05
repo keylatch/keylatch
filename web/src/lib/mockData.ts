@@ -225,67 +225,67 @@ export function mockGet(path: string): unknown | undefined {
   if (path === '/v1/backends') {
     return [
       { name: 'keychain', display_name: 'macOS Keychain', available: true },
-      { name: 'op',       display_name: '1Password',      available: true },
-      { name: 'bw',       display_name: 'Bitwarden',      available: false, install_hint: 'Install the Bitwarden CLI: brew install bitwarden-cli' },
-      { name: 'file',     display_name: 'Encrypted file', available: true },
+      { name: 'op', display_name: '1Password', available: true },
+      { name: 'bw', display_name: 'Bitwarden', available: false, install_hint: 'Install the Bitwarden CLI: brew install bitwarden-cli' },
+      { name: 'file', display_name: 'Encrypted file', available: true },
     ]
   }
 
   if (path === '/v1/providers') {
     return [
       // ai
-      { slug: 'anthropic',  display_name: 'Anthropic',   category: 'ai',       docs_url: 'https://docs.anthropic.com',              runtime_modes: ['gateway_typed'] },
-      { slug: 'openai',     display_name: 'OpenAI',      category: 'ai',       docs_url: 'https://platform.openai.com/docs',         runtime_modes: ['gateway_typed'] },
-      { slug: 'openrouter', display_name: 'OpenRouter',  category: 'ai',       docs_url: 'https://openrouter.ai/docs',               runtime_modes: ['gateway_typed'] },
-      { slug: 'elevenlabs', display_name: 'ElevenLabs',  category: 'ai',       docs_url: 'https://elevenlabs.io/docs',               runtime_modes: ['gateway_typed'] },
-      { slug: 'replicate',  display_name: 'Replicate',   category: 'ai',       docs_url: 'https://replicate.com/docs',               runtime_modes: ['gateway_typed'] },
+      { slug: 'anthropic', display_name: 'Anthropic', category: 'ai', docs_url: 'https://docs.anthropic.com', runtime_modes: ['gateway_typed'] },
+      { slug: 'openai', display_name: 'OpenAI', category: 'ai', docs_url: 'https://platform.openai.com/docs', runtime_modes: ['gateway_typed'] },
+      { slug: 'openrouter', display_name: 'OpenRouter', category: 'ai', docs_url: 'https://openrouter.ai/docs', runtime_modes: ['gateway_typed'] },
+      { slug: 'elevenlabs', display_name: 'ElevenLabs', category: 'ai', docs_url: 'https://elevenlabs.io/docs', runtime_modes: ['gateway_typed'] },
+      { slug: 'replicate', display_name: 'Replicate', category: 'ai', docs_url: 'https://replicate.com/docs', runtime_modes: ['gateway_typed'] },
       // devtools
-      { slug: 'github',     display_name: 'GitHub',      category: 'devtools', docs_url: 'https://docs.github.com',                  runtime_modes: ['gateway_classic'] },
-      { slug: 'gitlab',     display_name: 'GitLab',      category: 'devtools', docs_url: 'https://docs.gitlab.com',                  runtime_modes: ['gateway_classic'] },
-      { slug: 'linear',     display_name: 'Linear',      category: 'devtools', docs_url: 'https://linear.app/docs/api',              runtime_modes: ['gateway_classic'] },
-      { slug: 'sentry',     display_name: 'Sentry',      category: 'devtools', docs_url: 'https://docs.sentry.io',                   runtime_modes: ['gateway_classic'] },
-      { slug: 'vercel',     display_name: 'Vercel',      category: 'devtools', docs_url: 'https://vercel.com/docs',                  runtime_modes: ['gateway_classic'] },
-      { slug: 'supabase',   display_name: 'Supabase',    category: 'devtools', docs_url: 'https://supabase.com/docs',                runtime_modes: ['gateway_classic'] },
-      { slug: 'turso',      display_name: 'Turso',       category: 'devtools', docs_url: 'https://docs.turso.tech',                  runtime_modes: ['gateway_classic'] },
-      { slug: 'n8n',        display_name: 'n8n',         category: 'devtools', docs_url: 'https://docs.n8n.io',                      runtime_modes: ['gateway_classic'] },
-      { slug: 'make',       display_name: 'Make',        category: 'devtools', docs_url: 'https://www.make.com/en/help',             runtime_modes: ['gateway_classic'] },
+      { slug: 'github', display_name: 'GitHub', category: 'devtools', docs_url: 'https://docs.github.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'gitlab', display_name: 'GitLab', category: 'devtools', docs_url: 'https://docs.gitlab.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'linear', display_name: 'Linear', category: 'devtools', docs_url: 'https://linear.app/docs/api', runtime_modes: ['gateway_classic'] },
+      { slug: 'sentry', display_name: 'Sentry', category: 'devtools', docs_url: 'https://docs.sentry.io', runtime_modes: ['gateway_classic'] },
+      { slug: 'vercel', display_name: 'Vercel', category: 'devtools', docs_url: 'https://vercel.com/docs', runtime_modes: ['gateway_classic'] },
+      { slug: 'supabase', display_name: 'Supabase', category: 'devtools', docs_url: 'https://supabase.com/docs', runtime_modes: ['gateway_classic'] },
+      { slug: 'turso', display_name: 'Turso', category: 'devtools', docs_url: 'https://docs.turso.tech', runtime_modes: ['gateway_classic'] },
+      { slug: 'n8n', display_name: 'n8n', category: 'devtools', docs_url: 'https://docs.n8n.io', runtime_modes: ['gateway_classic'] },
+      { slug: 'make', display_name: 'Make', category: 'devtools', docs_url: 'https://www.make.com/en/help', runtime_modes: ['gateway_classic'] },
       // storage
-      { slug: 'dropbox',    display_name: 'Dropbox',     category: 'storage',  docs_url: 'https://developers.dropbox.com',           runtime_modes: ['gateway_classic'] },
-      { slug: 'airtable',   display_name: 'Airtable',    category: 'storage',  docs_url: 'https://airtable.com/developers/web/api',  runtime_modes: ['gateway_classic'] },
-      { slug: 'notion',     display_name: 'Notion',      category: 'storage',  docs_url: 'https://developers.notion.com',            runtime_modes: ['gateway_classic'] },
+      { slug: 'dropbox', display_name: 'Dropbox', category: 'storage', docs_url: 'https://developers.dropbox.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'airtable', display_name: 'Airtable', category: 'storage', docs_url: 'https://airtable.com/developers/web/api', runtime_modes: ['gateway_classic'] },
+      { slug: 'notion', display_name: 'Notion', category: 'storage', docs_url: 'https://developers.notion.com', runtime_modes: ['gateway_classic'] },
       // auth
-      { slug: 'auth0',      display_name: 'Auth0',       category: 'auth',     docs_url: 'https://auth0.com/docs',                   runtime_modes: ['gateway_classic'] },
-      { slug: 'okta',       display_name: 'Okta',        category: 'auth',     docs_url: 'https://developer.okta.com',               runtime_modes: ['gateway_classic'] },
-      { slug: 'google',     display_name: 'Google',      category: 'auth',     docs_url: 'https://developers.google.com',            runtime_modes: ['gateway_classic'] },
-      { slug: 'atlassian',  display_name: 'Atlassian',   category: 'auth',     docs_url: 'https://developer.atlassian.com',          runtime_modes: ['gateway_classic'] },
+      { slug: 'auth0', display_name: 'Auth0', category: 'auth', docs_url: 'https://auth0.com/docs', runtime_modes: ['gateway_classic'] },
+      { slug: 'okta', display_name: 'Okta', category: 'auth', docs_url: 'https://developer.okta.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'google', display_name: 'Google', category: 'auth', docs_url: 'https://developers.google.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'atlassian', display_name: 'Atlassian', category: 'auth', docs_url: 'https://developer.atlassian.com', runtime_modes: ['gateway_classic'] },
       // cloud
-      { slug: 'cloudflare', display_name: 'Cloudflare',  category: 'cloud',    docs_url: 'https://developers.cloudflare.com',        runtime_modes: ['gateway_classic'] },
-      { slug: 'datadog',    display_name: 'Datadog',     category: 'cloud',    docs_url: 'https://docs.datadoghq.com',               runtime_modes: ['gateway_classic'] },
+      { slug: 'cloudflare', display_name: 'Cloudflare', category: 'cloud', docs_url: 'https://developers.cloudflare.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'datadog', display_name: 'Datadog', category: 'cloud', docs_url: 'https://docs.datadoghq.com', runtime_modes: ['gateway_classic'] },
       // payments
-      { slug: 'stripe',     display_name: 'Stripe',      category: 'payments', docs_url: 'https://stripe.com/docs',                  runtime_modes: ['gateway_classic'] },
+      { slug: 'stripe', display_name: 'Stripe', category: 'payments', docs_url: 'https://stripe.com/docs', runtime_modes: ['gateway_classic'] },
       // comms
-      { slug: 'slack',      display_name: 'Slack',       category: 'comms',    docs_url: 'https://api.slack.com',                    runtime_modes: ['gateway_classic'] },
-      { slug: 'twilio',     display_name: 'Twilio',      category: 'comms',    docs_url: 'https://www.twilio.com/docs',              runtime_modes: ['gateway_classic'] },
-      { slug: 'mailchimp',  display_name: 'Mailchimp',   category: 'comms',    docs_url: 'https://mailchimp.com/developer',          runtime_modes: ['gateway_classic'] },
-      { slug: 'mailgun',    display_name: 'Mailgun',     category: 'comms',    docs_url: 'https://documentation.mailgun.com',        runtime_modes: ['gateway_classic'] },
-      { slug: 'sendgrid',   display_name: 'SendGrid',    category: 'comms',    docs_url: 'https://docs.sendgrid.com',                runtime_modes: ['gateway_classic'] },
-      { slug: 'intercom',   display_name: 'Intercom',    category: 'comms',    docs_url: 'https://developers.intercom.com',          runtime_modes: ['gateway_classic'] },
-      { slug: 'hubspot',    display_name: 'HubSpot',     category: 'comms',    docs_url: 'https://developers.hubspot.com',           runtime_modes: ['gateway_classic'] },
-      { slug: 'zendesk',    display_name: 'Zendesk',     category: 'comms',    docs_url: 'https://developer.zendesk.com',            runtime_modes: ['gateway_classic'] },
-      { slug: 'posthog',    display_name: 'PostHog',     category: 'comms',    docs_url: 'https://posthog.com/docs',                 runtime_modes: ['gateway_classic'] },
-      { slug: 'zapier',     display_name: 'Zapier',      category: 'comms',    docs_url: 'https://platform.zapier.com/docs',         runtime_modes: ['gateway_classic'] },
-      { slug: 'salesforce', display_name: 'Salesforce',  category: 'comms',    docs_url: 'https://developer.salesforce.com',         runtime_modes: ['gateway_classic'] },
+      { slug: 'slack', display_name: 'Slack', category: 'comms', docs_url: 'https://api.slack.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'twilio', display_name: 'Twilio', category: 'comms', docs_url: 'https://www.twilio.com/docs', runtime_modes: ['gateway_classic'] },
+      { slug: 'mailchimp', display_name: 'Mailchimp', category: 'comms', docs_url: 'https://mailchimp.com/developer', runtime_modes: ['gateway_classic'] },
+      { slug: 'mailgun', display_name: 'Mailgun', category: 'comms', docs_url: 'https://documentation.mailgun.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'sendgrid', display_name: 'SendGrid', category: 'comms', docs_url: 'https://docs.sendgrid.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'intercom', display_name: 'Intercom', category: 'comms', docs_url: 'https://developers.intercom.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'hubspot', display_name: 'HubSpot', category: 'comms', docs_url: 'https://developers.hubspot.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'zendesk', display_name: 'Zendesk', category: 'comms', docs_url: 'https://developer.zendesk.com', runtime_modes: ['gateway_classic'] },
+      { slug: 'posthog', display_name: 'PostHog', category: 'comms', docs_url: 'https://posthog.com/docs', runtime_modes: ['gateway_classic'] },
+      { slug: 'zapier', display_name: 'Zapier', category: 'comms', docs_url: 'https://platform.zapier.com/docs', runtime_modes: ['gateway_classic'] },
+      { slug: 'salesforce', display_name: 'Salesforce', category: 'comms', docs_url: 'https://developer.salesforce.com', runtime_modes: ['gateway_classic'] },
     ]
   }
 
   if (path.startsWith('/v1/providers/')) {
     const slug = path.replace('/v1/providers/', '')
     const fieldMap: Record<string, Array<{ name: string; label: string; required: boolean }>> = {
-      anthropic:  [{ name: 'api_key', label: 'API Key', required: true }],
-      openai:     [{ name: 'api_key', label: 'API Key', required: true }],
-      github:     [{ name: 'token', label: 'Personal Access Token', required: true }],
-      stripe:     [{ name: 'secret_key', label: 'Secret Key', required: true }, { name: 'webhook_secret', label: 'Webhook Secret', required: false }],
-      slack:      [{ name: 'bot_token', label: 'Bot Token', required: true }],
+      anthropic: [{ name: 'api_key', label: 'API Key', required: true }],
+      openai: [{ name: 'api_key', label: 'API Key', required: true }],
+      github: [{ name: 'token', label: 'Personal Access Token', required: true }],
+      stripe: [{ name: 'secret_key', label: 'Secret Key', required: true }, { name: 'webhook_secret', label: 'Webhook Secret', required: false }],
+      slack: [{ name: 'bot_token', label: 'Bot Token', required: true }],
       openrouter: [{ name: 'api_key', label: 'API Key', required: true }],
     }
     const displayNames: Record<string, string> = {

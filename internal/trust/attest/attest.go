@@ -25,7 +25,7 @@ type Verdict struct {
 type Verifier struct {
 	// rootPool is the bundled MDS root certificate pool.
 	// In the stub implementation it is nil (no embedded root cert).
-	rootPool interface{} //nolint:unused // planned: MDS root cert pool wired in Phase 11 attestation verification
+	rootPool interface{} //nolint:unused // planned: MDS root cert pool wired in attestation verification
 }
 
 // New returns a Verifier with the bundled MDS root certificate pool.

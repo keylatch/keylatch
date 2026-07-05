@@ -48,7 +48,7 @@ func TestValidateRefURI_InvalidCases(t *testing.T) {
 		{"no scheme", "not-a-uri", "api_key"},
 		{"partial scheme", "op:/", "api_key"},
 		{"op single segment no slash", "op://ab", "api_key"},
-		{"blank whitespace", "   ", "api_key"},
+		{"blank whitespace", " ", "api_key"},
 	}
 
 	for _, tc := range cases {

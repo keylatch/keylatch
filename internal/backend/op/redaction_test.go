@@ -32,7 +32,7 @@ func loadFixture(t *testing.T, name string) []byte {
 
 // TestRedaction_AdversarialStderr_CanaryAbsent verifies that when `op item get`
 // returns stderr containing a token-shaped string (OP_SERVICE_ACCOUNT_TOKEN=<canary>),
-// the canary never appears in the returned error message (S2-9).
+// the canary never appears in the returned error message.
 func TestRedaction_AdversarialStderr_CanaryAbsent(t *testing.T) {
 	fixture := loadFixture(t, "adversarial_stderr_service_account.txt")
 
@@ -48,7 +48,7 @@ func TestRedaction_AdversarialStderr_CanaryAbsent(t *testing.T) {
 	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
 	require.Error(t, err)
 
-	// S2-9: canary must not appear in the error message.
+	// Canary must not appear in the error message.
 	assert.NotContains(t, err.Error(), canaryOP,
 		"canary must not leak from adversarial stderr into error message")
 	assert.NotContains(t, err.Error(), "OP_SERVICE_ACCOUNT_TOKEN",
@@ -90,7 +90,7 @@ func TestRedaction_AuthFailure_HintPresent(t *testing.T) {
 	assert.True(t, errors.Is(err, backend.ErrLocked))
 	// Hint present.
 	assert.Contains(t, err.Error(), "op signin")
-	// Raw stderr absent (S2-9).
+	// Raw stderr absent.
 	assert.NotContains(t, err.Error(), "not currently signed in")
 }
 

@@ -2,11 +2,11 @@
  * FieldInput — a single credential field row in the Add Provider wizard.
  *
  * Supports two storage modes per field:
- *   - direct: password input (value encrypted into keylatch vault)
- *   - reference: URI input + optional Browse button (resolves from external PM)
+ * - direct: password input (value encrypted into keylatch vault)
+ * - reference: URI input + optional Browse button (resolves from external PM)
  *
  * Client-side URI validation uses the same regex as the server-side validator
- * (T-14-06): ^(op|aws-sm|hashivault)://[^/][^/]*\/[^/].*
+ *: ^(op|aws-sm|hashivault)://[^/][^/]*\/[^/].*
  */
 
 import { useState } from 'react'
@@ -39,9 +39,9 @@ export function validateRefURI(uri: string): string | null {
 export type FieldMode = 'direct' | 'reference'
 
 export const PM_OPTIONS: { scheme: PMScheme; label: string; placeholder: string }[] = [
-  { scheme: 'op',         label: '1Password',            placeholder: 'op://vault/item/field' },
-  { scheme: 'aws_sm',     label: 'AWS Secrets Manager',  placeholder: 'aws-sm://region/secret-id' },
-  { scheme: 'hashivault', label: 'HashiCorp Vault',       placeholder: 'hashivault://mount/path#field' },
+  { scheme: 'op', label: '1Password', placeholder: 'op://vault/item/field' },
+  { scheme: 'aws_sm', label: 'AWS Secrets Manager', placeholder: 'aws-sm://region/secret-id' },
+  { scheme: 'hashivault', label: 'HashiCorp Vault', placeholder: 'hashivault://mount/path#field' },
 ]
 
 // ── Props ────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 package cli
 
 // TestConnect_SensitiveFieldArgvBlocked and TestConnect_NonSensitiveFieldArgvAllowed
-// verify EPIC-02 Task 3: S-INV-6 hard-block for sensitive field values passed via argv.
+// verify the hard-block for sensitive field values passed via argv.
 //
 // These are white-box tests that exercise the internal looksLikeSensitive and
 // sensitiveFields-blocked logic directly, since the connect command uses os.Exit
@@ -13,8 +13,8 @@ import (
 
 // TestConnect_SensitiveFieldArgvBlocked asserts that values matching the known
 // provider key prefixes or high-entropy heuristic are detected as sensitive
-// (and therefore would be blocked by the --field argv check in newPhase3ConnectCmd).
-// This covers the EPIC-02 Task 3 requirement: field '<name>' is sensitive — pass via
+// (and therefore would be blocked by the --field argv check in newConnectCmd).
+// This covers the requirement: field '<name>' is sensitive — pass via
 // @-, @prompt, or --provider-ref (not as --field=value).
 func TestConnect_SensitiveFieldArgvBlocked(t *testing.T) {
 	t.Parallel()
@@ -44,7 +44,7 @@ func TestConnect_SensitiveFieldArgvBlocked(t *testing.T) {
 			// looksLikeSensitive drives the argv check — if it returns true,
 			// the command exits with exitcode.InsecureArgv.
 			if !looksLikeSensitive(tc.value) {
-				t.Errorf("EPIC-02/S-INV-6: looksLikeSensitive(%q) = false; "+
+				t.Errorf("looksLikeSensitive(%q) = false; "+
 					"value should be detected as sensitive and blocked via argv", tc.value)
 			}
 		})
@@ -53,7 +53,7 @@ func TestConnect_SensitiveFieldArgvBlocked(t *testing.T) {
 
 // TestConnect_NonSensitiveFieldArgvAllowed asserts that non-sensitive configuration
 // values (model names, namespaces, short flags) are not incorrectly blocked.
-// The connect command allows these values via --field without triggering S-INV-6.
+// The connect command allows these values via --field without triggering the block.
 func TestConnect_NonSensitiveFieldArgvAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -76,7 +76,7 @@ func TestConnect_NonSensitiveFieldArgvAllowed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if looksLikeSensitive(tc.value) {
-				t.Errorf("EPIC-02/S-INV-6: looksLikeSensitive(%q) = true; "+
+				t.Errorf("looksLikeSensitive(%q) = true; "+
 					"non-sensitive config value should not be blocked via argv", tc.value)
 			}
 		})
@@ -85,7 +85,6 @@ func TestConnect_NonSensitiveFieldArgvAllowed(t *testing.T) {
 
 // TestArgvHeuristic_HighEntropy_Blocked verifies that high-entropy random strings
 // (> 20 chars, > 4.0 bits/char) are blocked regardless of key prefix.
-// EPIC-30 Task 1 acceptance criterion.
 func TestArgvHeuristic_HighEntropy_Blocked(t *testing.T) {
 	t.Parallel()
 
@@ -106,7 +105,7 @@ func TestArgvHeuristic_HighEntropy_Blocked(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if !looksLikeSensitive(tc.value) {
-				t.Errorf("EPIC-30/T-12-01: looksLikeSensitive(%q) = false; "+
+				t.Errorf("looksLikeSensitive(%q) = false; "+
 					"high-entropy string should be blocked by argv heuristic", tc.value)
 			}
 		})
@@ -116,7 +115,6 @@ func TestArgvHeuristic_HighEntropy_Blocked(t *testing.T) {
 // TestArgvHeuristic_ModelStringAllowed verifies that model name strings like
 // "claude-3" or "gpt-4o" are not blocked even though they start with common prefix
 // characters. Per-prefix allowlist for structured non-sensitive values.
-// EPIC-30 Task 1 acceptance criterion.
 func TestArgvHeuristic_ModelStringAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -137,7 +135,7 @@ func TestArgvHeuristic_ModelStringAllowed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if looksLikeSensitive(tc.value) {
-				t.Errorf("EPIC-30/T-12-01: looksLikeSensitive(%q) = true; "+
+				t.Errorf("looksLikeSensitive(%q) = true; "+
 					"model/config string should NOT be blocked by argv heuristic", tc.value)
 			}
 		})
@@ -145,8 +143,8 @@ func TestArgvHeuristic_ModelStringAllowed(t *testing.T) {
 }
 
 // TestArgvHeuristic_KnownKeyPrefix_Blocked verifies that values with well-known
-// API key prefixes are blocked by the knownProviderPrefixes list.
-// EPIC-30 Task 1 acceptance criterion — covers all prefixes including sk_live_ and sk_test_.
+// API key prefixes are blocked by the knownProviderPrefixes list, covering all
+// prefixes including sk_live_ and sk_test_.
 func TestArgvHeuristic_KnownKeyPrefix_Blocked(t *testing.T) {
 	t.Parallel()
 
@@ -173,7 +171,7 @@ func TestArgvHeuristic_KnownKeyPrefix_Blocked(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if !looksLikeSensitive(tc.value) {
-				t.Errorf("EPIC-30/T-12-01: looksLikeSensitive(%q) = false; "+
+				t.Errorf("looksLikeSensitive(%q) = false; "+
 					"known key prefix should be detected and blocked", tc.value)
 			}
 		})

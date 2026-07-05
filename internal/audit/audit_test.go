@@ -272,7 +272,7 @@ func TestCanaryNeverPlaintextInAuditLog(t *testing.T) {
 		t.Fatalf("read log: %v", err)
 	}
 	if containsBytes(raw, []byte(canary)) {
-		t.Error("canary appeared in plaintext in audit log (S5-1 / S5-18 violation)")
+		t.Error("canary appeared in plaintext in audit log")
 	}
 }
 

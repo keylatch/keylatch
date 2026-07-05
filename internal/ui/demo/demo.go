@@ -1,11 +1,11 @@
 // Package demo provides stub data for demo mode.
 //
 // Demo mode:
-//   - Uses fixture connections with canary-free data.
-//   - No real API calls are made.
-//   - /api/status includes {"demo": true, "demo_banner": "..."}.
-//   - All credential values are replaced with the string "demo-value-hidden".
-//     This is not a real credential — it cannot be used.
+// - Uses fixture connections with canary-free data.
+// - No real API calls are made.
+// - /api/status includes {"demo": true, "demo_banner": "..."}.
+// - All credential values are replaced with the string "demo-value-hidden".
+// This is not a real credential — it cannot be used.
 package demo
 
 // Connection is a value-free demo connection fixture.

@@ -16,7 +16,7 @@ import (
 )
 
 // chainHeader is the unencrypted portion prepended to each audit line.
-// It enables HMAC chain verification without the AuditDEK (FIND3-008).
+// It enables HMAC chain verification without the AuditDEK.
 type chainHeader struct {
 	Seq      int64  `json:"seq"`
 	PrevHMAC string `json:"prev_hmac"`
@@ -55,7 +55,7 @@ func (l *Logger) appendEvent(e Event) error {
 		return fmt.Errorf("audit: marshal chain header: %w", err)
 	}
 
-	// Step 5: AEAD-seal the event body under the AuditDEK (FIND-006).
+	// Step 5: AEAD-seal the event body under the AuditDEK.
 	// AAD = chain_header bytes (binds ciphertext to its position in the chain).
 	ct, nonce, err := envelope.SealXChaCha20(l.auditDEK, eventJSON, hdrBytes)
 	if err != nil {
@@ -80,7 +80,7 @@ func (l *Logger) appendEvent(e Event) error {
 		return fmt.Errorf("audit: write line: %w", err)
 	}
 
-	// Step 8: fsync before returning (FIND-022). Rollback seq/prevHMAC on failure.
+	// Step 8: fsync before returning. Rollback seq/prevHMAC on failure.
 	var fsyncErr error
 	if l.fsyncFailHook != nil {
 		fsyncErr = l.fsyncFailHook()
@@ -274,13 +274,13 @@ func (l *Logger) summarize(opts SummaryOpts) (Summary, error) {
 
 // rotate implements log rotation (must hold l.mu).
 //
-// T-13-07: cross-file chain continuity.
-//  1. Write a "rotation" sentinel event to the current (old) file with the
-//     final HMAC recorded in the Extra field. This allows auditors to verify
-//     that the chain ends cleanly and was not truncated.
-//  2. Write a "rotation-continued" sentinel event to the new file with the
-//     previous HMAC from the old file in the Extra field. This links the new
-//     file back to the old file, enabling cross-file chain verification.
+// cross-file chain continuity.
+// 1. Write a "rotation" sentinel event to the current (old) file with the
+// final HMAC recorded in the Extra field. This allows auditors to verify
+// that the chain ends cleanly and was not truncated.
+// 2. Write a "rotation-continued" sentinel event to the new file with the
+// previous HMAC from the old file in the Extra field. This links the new
+// file back to the old file, enabling cross-file chain verification.
 func (l *Logger) rotate() error {
 	rotated := l.path + ".1"
 
@@ -302,9 +302,9 @@ func (l *Logger) rotate() error {
 
 	// prevHMACForNewFile is the HMAC of the rotation sentinel line in the old file.
 	// We store this in both:
-	//   - the old file's rotation event Extra["final_hmac"] (written via an in-place update is not feasible;
-	//     instead we store it in the rotation-continued Extra["prev_file_hmac"] only)
-	//   - the new file's rotation-continued event Extra["prev_file_hmac"]
+	// - the old file's rotation event Extra["final_hmac"] (written via an in-place update is not feasible;
+	// instead we store it in the rotation-continued Extra["prev_file_hmac"] only)
+	// - the new file's rotation-continued event Extra["prev_file_hmac"]
 	// The auditor verifies continuity by: compute HMAC of last line of old file,
 	// compare to prev_file_hmac in first line of new file.
 	prevHMACForNewFile := l.prevHMAC

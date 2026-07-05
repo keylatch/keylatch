@@ -2,7 +2,7 @@
 // environment variable overrides in keylatch. All other packages must call
 // these functions rather than reading KEYLATCH_* env vars directly.
 //
-// Security invariant S05-6: no hardcoded /Users/<name>/, /home/<name>/, or
+// Security invariant: no hardcoded /Users/<name>/, /home/<name>/, or
 // repo-relative paths may appear here.
 package paths
 
@@ -18,19 +18,19 @@ import (
 // Lookup is an alias for llmcontext.Lookup so callers only import this package.
 type Lookup = llmcontext.Lookup
 
-// Forward-compat env var constants for Phase 11/12. Declared here so the
-// entire path-discovery surface is documented in one place. No exported
-// functions yet — these phases ship later.
+// Forward-compat env var constants. Declared here so the entire
+// path-discovery surface is documented in one place. No exported
+// functions yet — this functionality ships later.
 const (
-	// EnvTrustAllowlistPath is the env var for the PKCS #11 module allowlist
-	// (Phase 11). Default: ~/.keylatch/trust-allowlist.json
+	// EnvTrustAllowlistPath is the env var for the PKCS #11 module allowlist.
+	// Default: ~/.keylatch/trust-allowlist.json
 	EnvTrustAllowlistPath = "KEYLATCH_TRUST_ALLOWLIST_PATH"
 
-	// EnvTeamDir is the env var for the team state directory (Phase 12).
+	// EnvTeamDir is the env var for the team state directory.
 	// Default: ~/.keylatch/team/
 	EnvTeamDir = "KEYLATCH_TEAM_DIR"
 
-	// EnvOrgPolicyDir is the env var for installed org policy bundles (Phase 12).
+	// EnvOrgPolicyDir is the env var for installed org policy bundles.
 	// Default: ~/.keylatch/team/org-policy/
 	EnvOrgPolicyDir = "KEYLATCH_ORG_POLICY_DIR"
 )
@@ -93,7 +93,7 @@ func Audit(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "audit.log")
 }
 
-// AuditSalt returns the path to the HMAC salt file (Phase 5).
+// AuditSalt returns the path to the HMAC salt file.
 // Override: KEYLATCH_AUDIT_SALT_PATH
 func AuditSalt(env Lookup) string {
 	if v := env("KEYLATCH_AUDIT_SALT_PATH"); v != "" {
@@ -102,7 +102,7 @@ func AuditSalt(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "audit-salt")
 }
 
-// Policy returns the path to the policy file (Phase 8).
+// Policy returns the path to the policy file.
 // Override: KEYLATCH_POLICY_PATH
 func Policy(env Lookup) string {
 	if v := env("KEYLATCH_POLICY_PATH"); v != "" {
@@ -111,7 +111,7 @@ func Policy(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "policy.json")
 }
 
-// Grants returns the path to the grants JSON file (Phase 8).
+// Grants returns the path to the grants JSON file.
 // Override: KEYLATCH_GRANTS_PATH
 func Grants(env Lookup) string {
 	if v := env("KEYLATCH_GRANTS_PATH"); v != "" {
@@ -120,7 +120,7 @@ func Grants(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "grants.json")
 }
 
-// GrantsDir returns the directory that holds per-grant consumption logs (Phase 8).
+// GrantsDir returns the directory that holds per-grant consumption logs.
 // Override: KEYLATCH_GRANTS_DIR
 func GrantsDir(env Lookup) string {
 	if v := env("KEYLATCH_GRANTS_DIR"); v != "" {
@@ -130,7 +130,7 @@ func GrantsDir(env Lookup) string {
 }
 
 // GrantAccessorKey returns the path to the per-installation HMAC key used to
-// compute grant Accessor handles (Phase 8).
+// compute grant Accessor handles.
 // Override: KEYLATCH_GRANT_ACCESSOR_KEY_PATH
 func GrantAccessorKey(env Lookup) string {
 	if v := env("KEYLATCH_GRANT_ACCESSOR_KEY_PATH"); v != "" {
@@ -139,7 +139,7 @@ func GrantAccessorKey(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "grant-accessor.key")
 }
 
-// Actors returns the path to the actors registry file (Phase 8).
+// Actors returns the path to the actors registry file.
 // Override: KEYLATCH_ACTORS_PATH
 func Actors(env Lookup) string {
 	if v := env("KEYLATCH_ACTORS_PATH"); v != "" {
@@ -148,7 +148,7 @@ func Actors(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "actors.json")
 }
 
-// Projects returns the path to the projects registry file (Phase 8).
+// Projects returns the path to the projects registry file.
 // Override: KEYLATCH_PROJECTS_PATH
 func Projects(env Lookup) string {
 	if v := env("KEYLATCH_PROJECTS_PATH"); v != "" {
@@ -260,7 +260,7 @@ func ApprovalsDir(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "approvals")
 }
 
-// Sessions returns the path to the sessions file (Phase 9 stub).
+// Sessions returns the path to the sessions file (not yet wired up).
 // Override: KEYLATCH_SESSIONS_PATH
 func Sessions(env Lookup) string {
 	if v := env("KEYLATCH_SESSIONS_PATH"); v != "" {
@@ -269,7 +269,7 @@ func Sessions(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "sessions.json")
 }
 
-// Receipts returns the path to the run receipts file (Phase 8).
+// Receipts returns the path to the run receipts file.
 // Override: KEYLATCH_RECEIPTS_PATH
 func Receipts(env Lookup) string {
 	if v := env("KEYLATCH_RECEIPTS_PATH"); v != "" {

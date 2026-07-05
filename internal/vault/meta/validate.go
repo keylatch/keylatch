@@ -18,7 +18,7 @@ var (
 )
 
 // Validate checks that the Meta is well-formed. Returns the first sentinel
-// error found; no error accumulation in Phase 4.
+// error found; no error accumulation.
 func (m Meta) Validate() error {
 	if m.Path == "" {
 		return ErrMissingPath

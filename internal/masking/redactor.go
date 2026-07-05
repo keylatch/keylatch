@@ -19,12 +19,12 @@ type Redactor struct{}
 
 // Redact applies the masking policy to body and returns the redacted bytes.
 //
-//   - Basic: redacts basicClasses patterns.
-//   - Strict: redacts basicClasses + strictClasses patterns.
-//   - MetadataOnly: retains only AllowFields keys from a JSON object; strips content.
-//   - BlockBody: returns "{}".
-//   - MaxBodyChars > 0: truncates body before redaction.
-//   - BlockAttachments: removes attachment_url pattern matches.
+// - Basic: redacts basicClasses patterns.
+// - Strict: redacts basicClasses + strictClasses patterns.
+// - MetadataOnly: retains only AllowFields keys from a JSON object; strips content.
+// - BlockBody: returns "{}".
+// - MaxBodyChars > 0: truncates body before redaction.
+// - BlockAttachments: removes attachment_url pattern matches.
 func (r *Redactor) Redact(body []byte, policy MaskingPolicy) ([]byte, error) {
 	// Truncate first.
 	if policy.MaxBodyChars > 0 && len(body) > policy.MaxBodyChars {

@@ -15,9 +15,9 @@ interface DaemonHealthResponse {
  * computePillState — pure function that derives ReadinessPill from current data.
  *
  * Logic:
- *   - not_ready: daemon not running, or no KEK, or no verified provider.
- *   - ready:     daemon running + KEK loaded + at least one provider verified.
- *   - degraded:  ready conditions met but at least one provider has status 'error'.
+ * - not_ready: daemon not running, or no KEK, or no verified provider.
+ * - ready: daemon running + KEK loaded + at least one provider verified.
+ * - degraded: ready conditions met but at least one provider has status 'error'.
  */
 function computePillState(
   daemonOk: boolean,
@@ -50,18 +50,18 @@ function computePillState(
 const BANNER_CONFIG: Record<ReadinessPillState, { wrapper: string; dot: string; text: string }> = {
   ready: {
     wrapper: 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50',
-    dot:     'bg-emerald-500 animate-pulse',
-    text:    'text-emerald-700 dark:text-emerald-300',
+    dot: 'bg-emerald-500 animate-pulse',
+    text: 'text-emerald-700 dark:text-emerald-300',
   },
   not_ready: {
     wrapper: 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50',
-    dot:     'bg-red-500',
-    text:    'text-red-700 dark:text-red-300',
+    dot: 'bg-red-500',
+    text: 'text-red-700 dark:text-red-300',
   },
   degraded: {
     wrapper: 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50',
-    dot:     'bg-amber-500',
-    text:    'text-amber-700 dark:text-amber-300',
+    dot: 'bg-amber-500',
+    text: 'text-amber-700 dark:text-amber-300',
   },
 }
 

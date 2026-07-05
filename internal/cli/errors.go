@@ -15,7 +15,7 @@ import (
 // rather than a plain fmt.Errorf so that cmd/keylatch/main.go can call
 // os.Exit with the correct code and print a structured error to stderr.
 //
-// Exit-code matrix (EPIC-02 Task 2):
+// Exit-code matrix:
 //
 //	Class             Code  Constant
 //	OK                0     exitcode.OK
@@ -78,7 +78,7 @@ func NewRuntimeNotAvailable(format string, args ...interface{}) *CLIError {
 }
 
 // NewSecretNotFound returns a CLIError when a requested secret does not exist (exit 6).
-// Exit code 6 is not aliased in the exitcode package — it is introduced by EPIC-02.
+// Exit code 6 is not aliased in the exitcode package — it is introduced here.
 func NewSecretNotFound(format string, args ...interface{}) *CLIError {
 	return &CLIError{Class: "SecretNotFound", Code: exitCodeSecretNotFound, Message: fmt.Sprintf(format, args...)}
 }
@@ -100,15 +100,15 @@ func NewBackendUnavailable(format string, args ...interface{}) *CLIError {
 }
 
 // NewInternalError returns a CLIError for unexpected internal failures (exit 9).
-// Exit code 9 is introduced by EPIC-02.
+// Exit code 9 is introduced here.
 func NewInternalError(format string, args ...interface{}) *CLIError {
 	return &CLIError{Class: "InternalError", Code: exitCodeInternalError, Message: fmt.Sprintf(format, args...)}
 }
 
 // exitCodeSecretNotFound is exit code 6 (secret not found).
-// Introduced in EPIC-02; not yet in the exitcode package.
+// Not yet in the exitcode package.
 const exitCodeSecretNotFound = 6
 
 // exitCodeInternalError is exit code 9 (internal / unexpected error).
-// Introduced in EPIC-02; not yet in the exitcode package.
+// Not yet in the exitcode package.
 const exitCodeInternalError = 9

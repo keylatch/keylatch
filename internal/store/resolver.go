@@ -1,6 +1,6 @@
 // Package store implements URI dispatch for external credential store references.
 //
-// T-05-01 (EPIC-05): resolves provider-managed secret URIs in the form:
+// Resolves provider-managed secret URIs in the form:
 //
 //	op://vault/item/field      — 1Password CLI (op)
 //	aws-sm://region/secret-id  — AWS Secrets Manager (aws secretsmanager get-secret-value)
@@ -11,9 +11,9 @@
 // testable via mock runners. Full native SDK integration is planned for v1.1.0.
 //
 // Security invariants:
-//   - S-EXT-1: plaintext bytes are returned to the caller, never written to disk.
-//   - S-EXT-2: CLI binaries are resolved from PATH; absolute paths may be injected for testing.
-//   - S-EXT-3: only the requested field/key is extracted; no bulk exports.
+//   - Plaintext bytes are returned to the caller, never written to disk.
+//   - CLI binaries are resolved from PATH; absolute paths may be injected for testing.
+//   - Only the requested field/key is extracted; no bulk exports.
 package store
 
 import (
@@ -65,7 +65,7 @@ func IsProviderRefURI(val []byte) bool {
 // any store write occurs. It returns ErrInvalidURI when the scheme is not supported
 // or the URI is structurally invalid, without invoking any external binary.
 //
-// EPIC-10 (T-10-01): used by the CLI --provider-ref flag to gate persistence.
+// Used by the CLI --provider-ref flag to gate persistence.
 func ValidateProviderRefURI(uri string) error {
 	uri = strings.TrimSpace(uri)
 	if uri == "" {
@@ -170,7 +170,7 @@ func (r *Resolver) resolveOP(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("op read: runner error: %w", err)
 	}
 	if exitCode != 0 {
-		// S-EXT-2: never echo full stderr (may contain session info).
+		// Never echo full stderr (may contain session info).
 		hint := classifyOPError(string(stderr))
 		return nil, fmt.Errorf("op read exited %d: %s", exitCode, hint)
 	}

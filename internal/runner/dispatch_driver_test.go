@@ -373,7 +373,7 @@ func TestDispatch_DirectBrokered(t *testing.T) {
 	assert.Contains(t, output, ephemeralToken,
 		"child must receive ephemeral scoped token")
 	assert.NotContains(t, output, rootCred,
-		"root credential must not leak into child env (S-RM-3)")
+		"root credential must not leak into child env")
 }
 
 // TestDispatch_DirectBrokered_UnsupportedRuntime verifies ErrUnsupportedRuntime

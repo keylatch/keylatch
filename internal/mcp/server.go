@@ -2,12 +2,12 @@
 // value-free tools over stdio and localhost-TCP transports.
 //
 // Security invariants enforced here:
-//   - S3-1: exactly five tools, enforced at startup
-//   - S3-2: no secret-bearing field in any tool output
-//   - S3-4: TCP bind to 127.0.0.1 only; no 0.0.0.0; FIND-014
-//   - S3-5 + FIND3-010: stdio mode uses no bearer token
-//   - FIND-004: keylatch_run uses per-template allowlist
-//   - FIND3-010: TCP uses Unix-domain socket + SO_PEERCRED
+//   - exactly five tools, enforced at startup
+//   - no secret-bearing field in any tool output
+//   - TCP bind to 127.0.0.1 only; no 0.0.0.0
+//   - stdio mode uses no bearer token
+//   - keylatch_run uses per-template allowlist
+//   - TCP uses Unix-domain socket + SO_PEERCRED
 package mcp
 
 import (
@@ -26,7 +26,7 @@ const (
 
 // ConnectionAuthMode describes how MCP client connections are authenticated.
 //
-// FIND3-010 changes:
+// Changes:
 //   - stdio transport: always AuthStdioPipe (no bearer token)
 //   - TCP on Linux/macOS: AuthUnixPeerCred (SO_PEERCRED / LOCAL_PEERCRED)
 //   - TCP on Windows: AuthNamedPipeACL
@@ -44,10 +44,10 @@ const (
 type ServerOptions struct {
 	Transport Transport
 	// Bind is the address to bind to for TCP transport.
-	// FIND-014: 0.0.0.0 and --unsafe-bind-all are explicitly rejected.
+	// 0.0.0.0 and --unsafe-bind-all are explicitly rejected.
 	Bind string
 	// SessionToken is the bearer token for AuthBearerLegacy mode.
-	// FIND3-010: must be empty for stdio transport.
+	// Must be empty for stdio transport.
 	SessionToken string
 	// TokenTTL is the TTL for bearer tokens. Cap: 1 hour.
 	TokenTTL string
@@ -82,10 +82,10 @@ type RuntimeReceipt struct {
 // Typed errors for the MCP server.
 var (
 	// ErrForbiddenBind is returned when the caller tries to bind to 0.0.0.0.
-	ErrForbiddenBind = errors.New("mcp: binding to 0.0.0.0 is forbidden (FIND-014)")
+	ErrForbiddenBind = errors.New("mcp: binding to 0.0.0.0 is forbidden")
 
 	// ErrTokenInStdioMode is returned when a SessionToken is provided for stdio.
-	ErrTokenInStdioMode = errors.New("mcp: session token must not be set in stdio mode (FIND3-010)")
+	ErrTokenInStdioMode = errors.New("mcp: session token must not be set in stdio mode")
 
 	// ErrTTLExceedsCap is returned when TokenTTL exceeds the 1-hour cap.
 	ErrTTLExceedsCap = errors.New("mcp: bearer token TTL exceeds maximum of 1 hour")
@@ -105,18 +105,18 @@ var (
 // Server is the keylatch MCP server.
 type Server struct {
 	opts ServerOptions
-	// registeredTools counts registered tools for S3-1 assertion.
+	// registeredTools counts registered tools for the startup assertion.
 	registeredTools int
 }
 
 // New constructs a new MCP Server with the given options.
 //
 // Validates:
-//   - opts.Bind must not be "0.0.0.0" (FIND-014)
-//   - stdio transport must not set SessionToken (FIND3-010)
+//   - opts.Bind must not be "0.0.0.0"
+//   - stdio transport must not set SessionToken
 //   - ConnectionAuth is defaulted based on transport and platform
 func New(opts ServerOptions) (*Server, error) {
-	// FIND-014: reject 0.0.0.0 and :: (all-interfaces addresses).
+	// Reject 0.0.0.0 and :: (all-interfaces addresses).
 	// Use net.SplitHostPort to handle "host:port" forms like "0.0.0.0:8080".
 	{
 		host, _, err := net.SplitHostPort(opts.Bind)
@@ -129,7 +129,7 @@ func New(opts ServerOptions) (*Server, error) {
 		}
 	}
 
-	// FIND3-010(a): stdio transport must not carry a session token.
+	// stdio transport must not carry a session token.
 	if opts.Transport == TransportStdio && opts.SessionToken != "" {
 		return nil, ErrTokenInStdioMode
 	}

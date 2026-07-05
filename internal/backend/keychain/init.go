@@ -89,9 +89,9 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		return fmt.Errorf("keychain Init: set-keychain-settings: %w", err)
 	}
 
-	// Step 5: RepairACL to bind ACL to code-signing identity (FIND-013).
+	// Step 5: RepairACL to bind ACL to code-signing identity.
 	if err := k.RepairACL(ctx); err != nil {
-		// Non-fatal in Phase 1 — log but continue.
+		// Non-fatal — log but continue.
 		slog.Warn("keychain RepairACL failed", "error", err)
 	}
 
@@ -102,7 +102,7 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		return fmt.Errorf("keychain Init: write canary entry: %w", err)
 	}
 
-	// Step 7: RepairItemACLs for per-item ACL enforcement (FIND3-001).
+	// Step 7: RepairItemACLs for per-item ACL enforcement.
 	if err := k.RepairItemACLs(ctx); err != nil {
 		return fmt.Errorf("keychain Init: RepairItemACLs: %w", err)
 	}
@@ -120,7 +120,7 @@ func homeDir() string {
 }
 
 // zeroizeString zeroes a string's backing bytes (unsafe but useful for passwords).
-// For Phase 1, we accept the limitation of Go's string immutability.
+// We accept the limitation of Go's string immutability.
 //
 //nolint:unused // planned: called during keychain shutdown when session cleanup is added
 func zeroizeBytes(b []byte) {
@@ -131,7 +131,7 @@ func zeroizeBytes(b []byte) {
 
 // trimNewline trims a trailing newline from a byte slice.
 //
-//nolint:unused // planned: used when parsing security binary output in Phase 6
+//nolint:unused // planned: used when parsing security binary output
 func trimNewline(b []byte) string {
 	return strings.TrimRight(string(b), "\n")
 }

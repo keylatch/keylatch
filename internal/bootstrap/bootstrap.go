@@ -3,9 +3,9 @@
 // vault dir, audit log, config file, and cryptographic keyring with correct
 // file modes.
 //
-// Security invariant S05-1: all dirs created with 0o700, all files with 0o600.
-// Security invariant S05-2: running twice produces all noop steps.
-// Security invariant T-02-04: bootstrap initialises the keyring/KEK so the
+// Security invariant all dirs created with 0o700, all files with 0o600.
+// Security invariant running twice produces all noop steps.
+// Security invariant bootstrap initialises the keyring/KEK so the
 // file backend can operate without a separate setup step.
 package bootstrap
 
@@ -15,7 +15,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
+	backendpkg "github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 	"github.com/keylatch/keylatch/internal/crypto/kek"
@@ -58,15 +60,7 @@ type UnknownBackend struct {
 }
 
 func (e *UnknownBackend) Error() string {
-	return fmt.Sprintf("unknown backend %q: allowed values are file, keychain, op, bw", e.Backend)
-}
-
-// allowedBackends is the full set of supported backend identifiers.
-var allowedBackends = map[string]bool{
-	"file":     true,
-	"keychain": true,
-	"op":       true,
-	"bw":       true,
+	return fmt.Sprintf("unknown backend %q: allowed values are %s", e.Backend, strings.Join(backendpkg.KnownCanonicalNames(), ", "))
 }
 
 // Run executes or plans the bootstrap steps. It is idempotent — running on a
@@ -86,19 +80,21 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 	}
 
 	// Default backend.
-	backend := opts.Backend
-	if backend == "" {
-		backend = "file"
+	backendName := opts.Backend
+	if backendName == "" {
+		backendName = "file"
 	}
 
 	// Validate backend.
-	if !allowedBackends[backend] {
-		return Plan{}, &UnknownBackend{Backend: backend}
+	canonicalBackend, ok := backendpkg.CanonicalName(backendName)
+	if !ok {
+		return Plan{}, &UnknownBackend{Backend: backendName}
 	}
+	backendName = canonicalBackend
 
 	// keychain is macOS-only.
-	if backend == "keychain" && runtime.GOOS != "darwin" {
-		return Plan{}, fmt.Errorf("keychain backend is macOS-only; use file (default), op, or bw on %s", runtime.GOOS)
+	if backendName == "keychain" && runtime.GOOS != "darwin" {
+		return Plan{}, fmt.Errorf("keychain backend is macOS-only; use file, op, bw, or another external backend on %s", runtime.GOOS)
 	}
 
 	var plan Plan
@@ -126,14 +122,14 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 
 	// Step 4: create config file with defaults.
 	cfg := config.Default()
-	cfg.Backend = backend
+	cfg.Backend = backendName
 
 	cfgExists, err := fileExists(configFile)
 	if err != nil {
 		return plan, fmt.Errorf("check config file: %w", err)
 	}
 	if cfgExists {
-		// S05-7: do not overwrite existing config.
+		// do not overwrite existing config.
 		// Check if it has a different version — if so, warn.
 		existing, loadErr := config.Load(configFile)
 		if loadErr != nil {
@@ -167,7 +163,7 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 
 	// Steps 5–7: initialize the cryptographic keyring.
 	// Only performed for the "file" backend — other backends manage their own key storage.
-	if backend == "file" {
+	if backendName == "file" {
 		krDir := paths.KeyringDir(env)
 		krPath := paths.KeyringPath(env)
 		identityPath := paths.KeyringIdentityPath(env)

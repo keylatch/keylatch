@@ -100,7 +100,7 @@ func (c *InMemoryBudgetCounter) CheckAndRecord(_ context.Context, actor, capabil
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Phase 1: check all windows under write lock.
+	// Step 1: check all windows under write lock.
 	for _, kv := range c.relevantKeys(actor, capability) {
 		b, ok := c.windows[kv.key]
 		if !ok || b.isExpired(now) {
@@ -111,7 +111,7 @@ func (c *InMemoryBudgetCounter) CheckAndRecord(_ context.Context, actor, capabil
 		}
 	}
 
-	// Phase 2: record atomically (still under the same write lock).
+	// Step 2: record atomically (still under the same write lock).
 	c.recordLocked(now, actor, capability, amount)
 	return nil
 }

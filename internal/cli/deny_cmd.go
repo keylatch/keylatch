@@ -1,4 +1,4 @@
-// Package cli — Epic 21: deny subcommand (production).
+// Package cli — deny subcommand (production).
 package cli
 
 import (

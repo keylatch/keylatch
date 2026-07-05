@@ -107,7 +107,7 @@ func TestMustResolve(t *testing.T) {
 	_ = MustResolve("keylatch-definitely-not-a-binary-xyz")
 }
 
-// TestDefaultRunner_RejectsRelativePath covers the S1-8 guard, which is the
+// TestDefaultRunner_RejectsRelativePath covers the guard, which is the
 // only Run branch reachable on every platform.
 func TestDefaultRunner_RejectsRelativePath(t *testing.T) {
 	t.Parallel()

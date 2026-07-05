@@ -243,7 +243,7 @@ func TestRunHandlerNonZeroExitCode(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// makeRunHandler: leading space bypass prevention (FIND-004)
+// makeRunHandler: leading space bypass prevention
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerLeadingSpaceBypass(t *testing.T) {

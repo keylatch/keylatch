@@ -23,8 +23,10 @@ FAILED=0
 for DIR in "$DOCS_DIR" "$EXAMPLES_DIR"; do
   [[ -d "$DIR" ]] || continue
 
-  # Home paths
-  if grep -rE "/Users/[^/]+|/home/[^/]+" "$DIR" 2>/dev/null; then
+  # Home paths — flag leaked personal home dirs (/Users/<name>, /home/<name>),
+  # but allow the documented distroless container home /home/nonroot, which is
+  # the image's baked-in KEYLATCH_CONFIG_DIR location, not a leak.
+  if grep -rE "/Users/[^/]+|/home/[^/]+" "$DIR" 2>/dev/null | grep -vE "/home/nonroot(/|\b)"; then
     if [[ "$REPORT_MODE" -eq 1 ]]; then
       printf "  FAIL  %-45s (home path leak)\n" "$DIR"
     else

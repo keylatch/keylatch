@@ -1,11 +1,11 @@
 // Package grant provides the capability grant surface for keylatch.
 //
 // Security invariants:
-//   - S8-3:  expired grants (ExpiresAt before now) MUST NOT match.
-//   - S8-4:  revoked grants MUST NOT match.
-//   - S8-12: grants issued from an LLM session MUST NOT be returned by Find
-//     for read-class capabilities (read, export, *.reveal, *.dump).
-//   - FIND3-009: MaxUses enforcement uses flock + append-only consumption log.
+// - expired grants (ExpiresAt before now) MUST NOT match.
+// - revoked grants MUST NOT match.
+// - grants issued from an LLM session MUST NOT be returned by Find
+// for read-class capabilities (read, export, *.reveal, *.dump).
+// - MaxUses enforcement uses flock + append-only consumption log.
 package grant
 
 import (
@@ -44,7 +44,7 @@ type Grant struct {
 	RevokedAt            *time.Time `json:"revoked_at,omitempty"`
 	Parent               string     `json:"parent,omitempty"`
 	IssuedFromLLMSession bool       `json:"issued_from_llm_session"`
-	// Phase 12: team member who issued this grant (HMACd — value-free invariant).
+	// team member who issued this grant (HMACd — value-free invariant).
 	MemberID string `json:"member_id,omitempty"`
 	// Legacy compat — round-trip unchanged.
 	Scopes []string `json:"scopes,omitempty"`
@@ -59,7 +59,7 @@ type GrantSpec struct {
 	CWD        string
 	TTL        time.Duration
 	MaxUses    int
-	// MemberID is the HMACd member ID from team context (Phase 12, value-free).
+	// MemberID is the HMACd member ID from team context (value-free).
 	MemberID string
 }
 
@@ -171,7 +171,7 @@ func writeGrants(path string, gs []Grant) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("grant: mkdir: %w", err)
 	}
-	data, err := json.MarshalIndent(gs, "", "  ")
+	data, err := json.MarshalIndent(gs, "", " ")
 	if err != nil {
 		return fmt.Errorf("grant: marshal: %w", err)
 	}
@@ -222,7 +222,7 @@ func Create(_ context.Context, spec GrantSpec, env func(string) string) (*Grant,
 		MaxUses:              spec.MaxUses,
 		UsesRemaining:        spec.MaxUses,
 		IssuedFromLLMSession: llmcontext.IsLLMSession(env),
-		MemberID:             spec.MemberID, // HMACd from team context (Phase 12)
+		MemberID:             spec.MemberID, // HMACd from team context
 	}
 
 	if spec.MaxUses > 0 {
@@ -300,11 +300,11 @@ func Revoke(_ context.Context, path string, id string) error {
 
 // Find searches for the first non-expired, non-revoked grant that matches req.
 //
-// S8-12: grants issued from an LLM session are never returned for read-class
+// grants issued from an LLM session are never returned for read-class
 // capabilities.
-// S8-3:  expired grants are never returned.
-// S8-4:  revoked grants are never returned.
-// FIND3-009: MaxUses enforcement via flock + append-only consumption log.
+// expired grants are never returned.
+// revoked grants are never returned.
+// MaxUses enforcement via flock + append-only consumption log.
 func Find(_ context.Context, path string, req FindRequest) (*Grant, bool) {
 	grants, err := readGrants(path)
 	if err != nil {
@@ -315,15 +315,15 @@ func Find(_ context.Context, path string, req FindRequest) (*Grant, bool) {
 	for i := range grants {
 		g := &grants[i]
 
-		// S8-4: skip revoked.
+		// skip revoked.
 		if g.Revoked {
 			continue
 		}
-		// S8-3: skip expired.
+		// skip expired.
 		if g.ExpiresAt.Before(now) {
 			continue
 		}
-		// S8-12: LLM-issued grant denied for read-class capability.
+		// LLM-issued grant denied for read-class capability.
 		if g.IssuedFromLLMSession && isReadClassCap(req.Capability) {
 			continue
 		}
@@ -333,7 +333,7 @@ func Find(_ context.Context, path string, req FindRequest) (*Grant, bool) {
 			continue
 		}
 
-		// FIND3-009: MaxUses enforcement.
+		// MaxUses enforcement.
 		if g.MaxUses > 0 {
 			if ok := consumeUse(g); !ok {
 				continue

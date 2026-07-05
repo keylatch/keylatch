@@ -1,7 +1,7 @@
 // Package agentsnippet generates the copy-paste agent instruction prose, MCP
 // config JSON, and per-agent profile snippets. It is consumed by the UI
-// first-run step (Phase 10), the `keylatch agent snippet` CLI command, and the
-// `keylatch agent setup` installer (Epic 05).
+// first-run step, the `keylatch agent snippet` CLI command, and the
+// `keylatch agent setup` installer.
 package agentsnippet
 
 import "os"
@@ -21,7 +21,7 @@ type MCPConfig struct {
 }
 
 // MCPServerSpec describes a single MCP server entry.
-// S3-5 / FIND3-010(a): Env must NOT contain KEYLATCH_MCP_TOKEN.
+// Env must NOT contain KEYLATCH_MCP_TOKEN.
 type MCPServerSpec struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args"`

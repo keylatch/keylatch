@@ -58,7 +58,7 @@ func TestBrokerDryRun_Allow(t *testing.T) {
 // expected future behaviour.
 func TestBrokerDryRun_Deny(t *testing.T) {
 	t.Parallel()
-	// TODO(epic-24): wire policy engine so that deny is tested here.
+	// TODO: wire policy engine so that deny is tested here.
 	b := newTestBrokerForDryRun(t)
 	handle := broker.NewBrokerHandle(b)
 

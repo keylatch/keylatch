@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ReleaseManifest",
-  "description": "Keylatch release manifest — consumed by the Tauri updater and CLI updater (S14-9)",
+  "description": "Keylatch release manifest — consumed by the Tauri updater and CLI updater",
   "type": "object",
   "required": ["version", "channel", "published_at", "notes", "artifacts", "signature_url", "manifest_url"],
   "additionalProperties": false,

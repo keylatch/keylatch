@@ -16,7 +16,7 @@ type passphraseKEK struct {
 // PassphraseKEK derives a wrapping key from passphrase+salt+params and returns
 // a KEK backed by that key.
 //
-// S5-6: passphrase is zeroed immediately after Argon2id derivation.
+// Passphrase is zeroed immediately after Argon2id derivation.
 func PassphraseKEK(passphrase, salt []byte, p argon2.Params) (KEK, error) {
 	key, err := argon2.Derive(passphrase, salt, p)
 

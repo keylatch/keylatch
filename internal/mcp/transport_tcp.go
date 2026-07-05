@@ -30,7 +30,7 @@ const idleTimeout = 5 * time.Minute
 const bearerIdleTimeout = 30 * time.Minute
 
 // bearerSession holds the in-memory state for a legacy bearer token.
-// FIND3-010: never written to disk.
+// Never written to disk.
 type bearerSession struct {
 	mu         sync.Mutex
 	token      string
@@ -123,14 +123,14 @@ func generateNonce() (string, error) {
 
 // ServeTCP starts the MCP server in TCP transport mode.
 //
-// Auth mode selection (FIND3-010):
+// Auth mode selection:
 //   - Linux/macOS: Unix-domain socket with SO_PEERCRED / LOCAL_PEERCRED
 //   - Windows: Named pipe ACL
 //   - Fallback: Bearer legacy with TTL cap ≤ 1 hour
 //
-// FIND-014: 0.0.0.0 is rejected in New(); no --unsafe-bind-all flag exists.
+// 0.0.0.0 is rejected in New(); no --unsafe-bind-all flag exists.
 //
-// Phase 3 note: the TCP path accepts and authenticates connections but does
+// Note: the TCP path accepts and authenticates connections but does
 // not yet speak the MCP protocol over them. The official SDK server is
 // constructed for RegisterTools but no SDK transport is attached to the
 // net.Listener. Full MCP-over-TCP is deferred to a future phase.
@@ -161,9 +161,9 @@ func (s *Server) ServeTCP(ctx context.Context, store connections.Store, runner e
 	)
 	RegisterTools(srv, store, runner)
 
-	// S3-1: assert exactly five tools are registered (mirrors ServeStdio).
+	// Assert exactly five tools are registered (mirrors ServeStdio).
 	if len(registeredTools) != 5 {
-		return fmt.Errorf("mcp: invariant S3-1 violated: expected 5 tools, got %d", len(registeredTools))
+		return fmt.Errorf("mcp: tool registration invariant violated: expected 5 tools, got %d", len(registeredTools))
 	}
 
 	switch s.opts.ConnectionAuth {
@@ -178,7 +178,7 @@ func (s *Server) ServeTCP(ctx context.Context, store connections.Store, runner e
 }
 
 // serveUnixPeerCred binds a Unix-domain socket and validates SO_PEERCRED on each accept.
-// FIND3-010: only same-UID connections are accepted.
+// Only same-UID connections are accepted.
 func (s *Server) serveUnixPeerCred(ctx context.Context, _ *sdkmcp.Server) error {
 	xdgRuntime := os.Getenv("XDG_RUNTIME_DIR")
 	if xdgRuntime == "" {
@@ -266,15 +266,15 @@ func validatePeerUID(conn net.Conn, serverUID int) bool {
 }
 
 // handleUnixConn serves a single Unix connection.
-// Phase 3 stub: accepts connection, validates nonce, blocks until context done or idle.
+// Accepts connection, validates nonce, blocks until context done or idle.
 // Uses select so both context cancellation and the idle timeout are honoured.
 // (conn.SetDeadline only fires on I/O; since we do no I/O here the deadline
 // would never trigger — replaced with time.After to fix the goroutine leak.)
 func handleUnixConn(ctx context.Context, conn net.Conn, nonce string) {
 	defer conn.Close() //nolint:errcheck // defer close of connection, error non-actionable on shutdown
 	// The nonce would be sent in the JSON-RPC initialize response.
-	// For Phase 3, we accept the connection and let the MCP server handle the protocol.
-	// Full nonce injection into the initialize response is a Phase 5 concern.
+	// We accept the connection and let the MCP server handle the protocol.
+	// Full nonce injection into the initialize response is a future concern.
 	_ = nonce
 	select {
 	case <-ctx.Done():
@@ -295,7 +295,7 @@ func (s *Server) serveBearerLegacy(ctx context.Context, _ *sdkmcp.Server) error 
 		}
 	}
 
-	// FIND3-010(b): bearer token is never written to disk.
+	// Bearer token is never written to disk.
 	// Token is held in memory only for the duration of the server's lifetime.
 	bind := s.opts.Bind
 	if bind == "" {
@@ -333,7 +333,7 @@ func (s *Server) serveBearerLegacy(ctx context.Context, _ *sdkmcp.Server) error 
 		go func() {
 			defer conn.Close() //nolint:errcheck // defer close of TCP connection goroutine, error non-actionable
 			// Token validation and MCP protocol handled by mcp-go library.
-			// Phase 3 stub: hold connection open until idle timeout.
+			// Hold connection open until idle timeout.
 			<-time.After(idleTimeout)
 		}()
 	}

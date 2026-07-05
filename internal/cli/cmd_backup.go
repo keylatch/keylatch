@@ -1,4 +1,4 @@
-// Package cli — backup command (T-12-02).
+// Package cli — backup command.
 package cli
 
 import (
@@ -22,7 +22,7 @@ import (
 
 // newBackupCmd returns the `keylatch backup` subcommand.
 //
-// T-12-02: backup is value-bearing (it reads credentials) and is blocked in
+// backup is value-bearing (it reads credentials) and is blocked in
 // LLM sessions (exit 2). Passphrase comes from a TTY prompt, never from argv.
 func newBackupCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -39,7 +39,7 @@ To restore from backup, use: keylatch restore <backup-file>`,
 			ctx := c.Context()
 			env := llmcontext.DefaultLookup
 
-			// T-12-02: value-bearing — blocked in LLM sessions (exit 2).
+			// value-bearing — blocked in LLM sessions (exit 2).
 			if llmcontext.IsLLMSession(env) {
 				reasons := llmcontext.Reasons(env)
 				fmt.Fprintf(c.ErrOrStderr(), "Error: backup is blocked in LLM sessions (value-bearing operation).\n")
@@ -178,7 +178,7 @@ func writeBackupToFile(ctx context.Context, warnOut interface {
 		return 0, fmt.Errorf("marshal backup header: %w", err)
 	}
 
-	// List connections using canonical ai category prefix (S-FIND-23).
+	// List connections using canonical ai category prefix.
 	entries, err := store.List(ctx, "default/ai/")
 	if err != nil {
 		return 0, fmt.Errorf("list connections: %w", err)

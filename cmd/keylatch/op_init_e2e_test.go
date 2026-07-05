@@ -10,8 +10,8 @@
 //	KEYLATCH_E2E_OP=1 go test -v -tags=e2e_op ./cmd/keylatch/ -run TestE2E_OP
 //
 // Prerequisites:
-//   - `op` CLI installed and authenticated (OP_SERVICE_ACCOUNT_TOKEN set)
-//   - A sandbox vault named "KeylatchE2ETest" (or set KEYLATCH_E2E_OP_VAULT)
+// - `op` CLI installed and authenticated (OP_SERVICE_ACCOUNT_TOKEN set)
+// - A sandbox vault named "KeylatchE2ETest" (or set KEYLATCH_E2E_OP_VAULT)
 package main
 
 import (
@@ -58,7 +58,7 @@ func TestE2E_OP_InitAndList(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, entries, "op-list must return the pushed item")
 
-	// Values must be zero-filled in list (S2-3).
+	// Values must be zero-filled in list.
 	for _, e := range entries {
 		t.Logf("entry: path=%s backend=%s", e.Path, e.Backend)
 	}

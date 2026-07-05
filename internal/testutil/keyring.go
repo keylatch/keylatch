@@ -37,10 +37,10 @@ func SetupHermeticConfig(t *testing.T) string {
 // exercise dispatch.Select or any path that goes through the file backend factory.
 //
 // It:
-//  1. Creates a random 32-byte age identity file in a temp dir (mode 0o600).
-//  2. Sets KEYLATCH_AGE_IDENTITY to the identity file path via t.Setenv.
-//  3. Creates a keyring.json in a separate temp dir using the age-env KEK.
-//  4. Sets KEYLATCH_KEYRING_PATH to the keyring path via t.Setenv.
+// 1. Creates a random 32-byte age identity file in a temp dir (mode 0o600).
+// 2. Sets KEYLATCH_AGE_IDENTITY to the identity file path via t.Setenv.
+// 3. Creates a keyring.json in a separate temp dir using the age-env KEK.
+// 4. Sets KEYLATCH_KEYRING_PATH to the keyring path via t.Setenv.
 //
 // All env vars are restored and temp files removed via t.Cleanup automatically.
 // Returns the keyring file path for tests that need to pass it explicitly.

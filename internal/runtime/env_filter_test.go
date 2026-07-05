@@ -113,7 +113,7 @@ func TestFilterChildEnv_VarWithNoEquals(t *testing.T) {
 	assert.Contains(t, filtered, "PATH=/usr/bin")
 }
 
-// --- CleanBaseEnv tests (T-08-02) ---
+// --- CleanBaseEnv tests ---
 
 func TestCleanBaseEnv_RetainsAllowlistedVars(t *testing.T) {
 	env := []string{
@@ -203,7 +203,7 @@ func TestCleanBaseEnv_DoesNotModifyInput(t *testing.T) {
 	assert.Equal(t, original, env, "CleanBaseEnv must not modify the input slice")
 }
 
-// --- Filter() tests (T-09-01, EPIC-09) ---
+// --- Filter() tests ---
 
 // captureEmitter records all emitted audit events.
 type captureEmitter struct {

@@ -12,7 +12,7 @@ import (
 
 // allowedInLLMSession lists runtime modes that are permitted in LLM sessions.
 // v1.0.0: all remaining modes are allowed (direct_classic permanently removed).
-// EPIC-24: direct_classic_sandboxed is allowed — the OS sandbox provides the
+// direct_classic_sandboxed is allowed — the OS sandbox provides the
 // isolation boundary; credential values are never returned to the LLM session.
 var allowedInLLMSession = map[runtime.RuntimeMode]bool{
 	runtime.RuntimeGatewayTyped:           true,
@@ -23,8 +23,8 @@ var allowedInLLMSession = map[runtime.RuntimeMode]bool{
 }
 
 // GuardRuntime enforces runtime mode restrictions for LLM sessions.
-// S0-10: returns (block=true, SecurityBlock) for disallowed modes in LLM sessions.
-// S0-15: covers all cells of the 30-cell matrix (IsLLMSession × RuntimeMode × ApprovalJWT).
+// Returns (block=true, SecurityBlock) for disallowed modes in LLM sessions.
+// Covers all cells of the 30-cell matrix (IsLLMSession × RuntimeMode × ApprovalJWT).
 //
 // signingKey is the 32-byte HMAC key used to verify the approvalJWT signature.
 // When signingKey is nil or empty, the approval JWT is rejected (cannot verify).

@@ -1,4 +1,4 @@
-// Package review implements Phase 12 access review workflows.
+// Package review implements access review workflows.
 package review
 
 import (

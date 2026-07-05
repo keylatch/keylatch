@@ -211,3 +211,77 @@ func TestProxyDriver_ProviderKeyAbsent_Canary(t *testing.T) {
 	assert.NotContains(t, outBuf.String(), canaryKey,
 		"canary provider key must not appear in child process environment (gateway_proxy mode)")
 }
+
+// TestProxyDriver_ExtraEnvVars_DenylistsProviderKeys verifies that operator
+// --extra names matching a well-known provider credential env var are
+// denied, even though --extra is normally honored for arbitrary names.
+// This closes the gap where --extra OPENAI_API_KEY would otherwise leak the
+// real parent-process secret into the gateway_proxy child (defeating this guarantee).
+//
+// MY_APP_REGION (not MY_CUSTOM_TOKEN — that now matches the pattern-based
+// _TOKEN suffix denylist added below and is covered by
+// TestProxyDriver_ExtraEnvVars_DenylistsCredentialShapedNames instead) is
+// used here as the benign pass-through control.
+func TestProxyDriver_ExtraEnvVars_DenylistsProviderKeys(t *testing.T) {
+	const realSecret = "sk-real-parent-secret-must-not-leak-via-extra"
+	t.Setenv("OPENAI_API_KEY", realSecret)
+	t.Setenv("MY_APP_REGION", "custom-value-should-pass-through")
+
+	d, _ := newProxyDriverForTest(t)
+
+	var outBuf strings.Builder
+	req := runner.ExecRequest{
+		ConnectionSlug: "testprovider",
+		Command:        []string{"sh", "-c", "printenv OPENAI_API_KEY; printenv MY_APP_REGION"},
+		ExtraEnvVars:   []string{"OPENAI_API_KEY", "MY_APP_REGION"},
+		Stdout:         &outBuf,
+		Stderr:         &strings.Builder{},
+	}
+
+	_, err := d.Run(context.Background(), req, proxyTmpl())
+	require.NoError(t, err)
+
+	assert.NotContains(t, outBuf.String(), realSecret,
+		"--extra must not be able to leak a known provider credential env var into the child")
+	assert.Contains(t, outBuf.String(), "custom-value-should-pass-through",
+		"--extra must still pass through non-denylisted names")
+}
+
+// TestProxyDriver_ExtraEnvVars_DenylistsCredentialShapedNames verifies the
+// docker-server-security pattern-matching hardening: names that are not on
+// the fixed providerKeyDenylist but LOOK credential-shaped (by suffix) are
+// still denied, and a warning is emitted so the operator knows why the value
+// was withheld.
+func TestProxyDriver_ExtraEnvVars_DenylistsCredentialShapedNames(t *testing.T) {
+	const awsSecret = "aws-secret-must-not-leak-via-extra"
+	const npmToken = "npm-token-must-not-leak-via-extra"
+	t.Setenv("AWS_SECRET_ACCESS_KEY", awsSecret)
+	t.Setenv("NPM_TOKEN", npmToken)
+	t.Setenv("MY_APP_REGION", "benign-value-should-pass-through")
+
+	d, _ := newProxyDriverForTest(t)
+
+	var outBuf, errBuf strings.Builder
+	req := runner.ExecRequest{
+		ConnectionSlug: "testprovider",
+		Command:        []string{"sh", "-c", "printenv AWS_SECRET_ACCESS_KEY; printenv NPM_TOKEN; printenv MY_APP_REGION"},
+		ExtraEnvVars:   []string{"AWS_SECRET_ACCESS_KEY", "NPM_TOKEN", "MY_APP_REGION"},
+		Stdout:         &outBuf,
+		Stderr:         &errBuf,
+	}
+
+	_, err := d.Run(context.Background(), req, proxyTmpl())
+	require.NoError(t, err)
+
+	assert.NotContains(t, outBuf.String(), awsSecret,
+		"--extra AWS_SECRET_ACCESS_KEY must be denied by suffix pattern matching, not just the exact-name list")
+	assert.NotContains(t, outBuf.String(), npmToken,
+		"--extra NPM_TOKEN must be denied by suffix pattern matching, not just the exact-name list")
+	assert.Contains(t, outBuf.String(), "benign-value-should-pass-through",
+		"--extra must still pass through names that don't look credential-shaped")
+
+	assert.Contains(t, errBuf.String(), "AWS_SECRET_ACCESS_KEY",
+		"a warning must be emitted naming the withheld var")
+	assert.Contains(t, errBuf.String(), "NPM_TOKEN",
+		"a warning must be emitted naming the withheld var")
+}

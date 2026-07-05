@@ -60,7 +60,7 @@ func (m *mockStore) Delete(_ context.Context, path string) error {
 	return nil
 }
 
-// TestNewServerRejectsZeroBind verifies FIND-014: binding to 0.0.0.0 is rejected.
+// TestNewServerRejectsZeroBind verifies that binding to 0.0.0.0 is rejected.
 func TestNewServerRejectsZeroBind(t *testing.T) {
 	_, err := New(ServerOptions{
 		Transport: TransportTCP,
@@ -69,7 +69,7 @@ func TestNewServerRejectsZeroBind(t *testing.T) {
 	assert.ErrorIs(t, err, ErrForbiddenBind)
 }
 
-// TestNewServerRejectsTokenInStdioMode verifies FIND3-010(a): no bearer token in stdio mode.
+// TestNewServerRejectsTokenInStdioMode verifies that no bearer token is allowed in stdio mode.
 func TestNewServerRejectsTokenInStdioMode(t *testing.T) {
 	_, err := New(ServerOptions{
 		Transport:    TransportStdio,
@@ -92,9 +92,9 @@ func TestNewServerTCPBindDefault(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", s.opts.Bind)
 }
 
-// TestExactlyFiveToolsRegistered verifies S3-1: exactly five tools are registered.
+// TestExactlyFiveToolsRegistered verifies that exactly five tools are registered.
 func TestExactlyFiveToolsRegistered(t *testing.T) {
-	assert.Equal(t, 5, len(registeredTools), "S3-1: exactly five tools must be registered")
+	assert.Equal(t, 5, len(registeredTools), "exactly five tools must be registered")
 	assert.Contains(t, registeredTools, "keylatch_status")
 	assert.Contains(t, registeredTools, "keylatch_list_connections")
 	assert.Contains(t, registeredTools, "keylatch_describe")
@@ -117,7 +117,7 @@ func TestRateLimiterAllowsOncePerWindow(t *testing.T) {
 	assert.False(t, rl.Allow(key), "second call within window should be denied")
 }
 
-// TestCommandMatchesAllowlist verifies FIND-004 allowlist pre-flight logic.
+// TestCommandMatchesAllowlist verifies allowlist pre-flight logic.
 func TestCommandMatchesAllowlist(t *testing.T) {
 	tests := []struct {
 		name     string

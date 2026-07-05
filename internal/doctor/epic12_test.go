@@ -1,13 +1,13 @@
 package doctor_test
 
-// epic12_test.go — EPIC-12 test suite for the doctor check framework.
+// Test suite for the doctor check framework.
 //
 // Tests:
-//   - TestDoctor_CleanInstall_WarnsAndExits1
-//   - TestDoctor_FullyWiredInstall_OK
-//   - TestDoctor_BootstrapMissing_FailsF1
-//   - TestDoctor_JSONSchemaV1Stable
-//   - TestDoctor_CategoryFilter_Environment
+// - TestDoctor_CleanInstall_WarnsAndExits1
+// - TestDoctor_FullyWiredInstall_OK
+// - TestDoctor_BootstrapMissing_FailsF1
+// - TestDoctor_JSONSchemaV1Stable
+// - TestDoctor_CategoryFilter_Environment
 
 import (
 	"context"
@@ -147,7 +147,7 @@ func TestDoctor_JSONSchemaV1Stable(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Determine exit code as the CLI does (SC05-7: warnings do not set exit=1).
+	// Determine exit code as the CLI does (warnings do not set exit=1).
 	exitCode := 0
 	if !report.OverallOK {
 		exitCode = 2

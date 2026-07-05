@@ -10,8 +10,8 @@ import (
 // kekRootAdapter wraps a KEK to implement the trust.RootOfTrust interface.
 // It supports only CapWrap — all other capabilities return ErrCapabilityUnsupported.
 //
-// This shim is used during Phase 11 migration to present legacy KEK backends
-// as trust.RootOfTrust adapters for the fallback chain.
+// This shim is used to present legacy KEK backends as trust.RootOfTrust
+// adapters for the fallback chain during the roots-of-trust migration.
 type kekRootAdapter struct {
 	k KEK
 }
@@ -46,7 +46,7 @@ func (a *kekRootAdapter) Has(c trust.Capability) bool {
 	return c == trust.CapWrap
 }
 
-// Wrap delegates to the underlying KEK and zeros dek before returning (S11-1).
+// Wrap delegates to the underlying KEK and zeros dek before returning.
 func (a *kekRootAdapter) Wrap(_ context.Context, dek []byte) ([]byte, error) {
 	defer func() {
 		for i := range dek {

@@ -14,14 +14,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RegisterBWCommands attaches Phase 2 bw-related commands to root.
+// RegisterBWCommands attaches bw-related commands to root.
 func RegisterBWCommands(root *cobra.Command) {
 	root.AddCommand(newBWInitCmd())
 	root.AddCommand(newBWListCmd())
 }
 
 // newBWInitCmd returns the `bw-init <service>` command.
-// S2-6: secret values are read via secure prompt or --from-stdin; never positional arg.
+// Secret values are read via secure prompt or --from-stdin; never positional arg.
 func newBWInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bw-init <service>",
@@ -29,7 +29,7 @@ func newBWInitCmd() *cobra.Command {
 		Long: `bw-init reads a secret value from a secure prompt (or --from-stdin) and
 stores it in Bitwarden or a Vaultwarden self-hosted instance.
 
-The value is NEVER read from a positional argument (S2-6).
+The value is NEVER read from a positional argument.
 BW_SESSION must be set in the environment before running bw-init.`,
 		Args: cobra.ExactArgs(1),
 	}
@@ -65,7 +65,7 @@ BW_SESSION must be set in the environment before running bw-init.`,
 			return fmt.Errorf("exit %d", exitcode.UserError)
 		}
 
-		// S2-6: read value from secure prompt or --from-stdin; never positional arg.
+		// Read value from secure prompt or --from-stdin; never positional arg.
 		var value []byte
 		if fromStdin {
 			scanner := bufio.NewScanner(c.InOrStdin())
@@ -94,7 +94,7 @@ BW_SESSION must be set in the environment before running bw-init.`,
 			return err
 		}
 
-		// S2-1: no value in output.
+		// No value in output.
 		fmt.Fprintf(c.OutOrStdout(), "Pushed %s to Bitwarden\n", service)
 		return nil
 	}

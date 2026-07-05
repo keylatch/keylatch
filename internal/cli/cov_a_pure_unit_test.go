@@ -731,7 +731,7 @@ func TestParseBootstrapPlan_EmptyInput(t *testing.T) {
 
 func TestOutputCheckExpiryTable_Empty(t *testing.T) {
 	t.Parallel()
-	cmd := newPhase4CheckExpiryCmd()
+	cmd := newCheckExpiryCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	outputCheckExpiryTable(cmd, nil)
@@ -743,7 +743,7 @@ func TestOutputCheckExpiryTable_Empty(t *testing.T) {
 
 func TestOutputCheckExpiryTable_WithEntries(t *testing.T) {
 	t.Parallel()
-	cmd := newPhase4CheckExpiryCmd()
+	cmd := newCheckExpiryCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	entries := []checkExpiryEntry{
@@ -761,7 +761,7 @@ func TestOutputCheckExpiryTable_WithEntries(t *testing.T) {
 
 func TestOutputCheckExpiryJSON(t *testing.T) {
 	t.Parallel()
-	cmd := newPhase4CheckExpiryCmd()
+	cmd := newCheckExpiryCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	entries := []checkExpiryEntry{
@@ -778,7 +778,7 @@ func TestOutputCheckExpiryJSON(t *testing.T) {
 
 func TestOutputCheckExpiryJSON_NilEntries(t *testing.T) {
 	t.Parallel()
-	cmd := newPhase4CheckExpiryCmd()
+	cmd := newCheckExpiryCmd()
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	if err := outputCheckExpiryJSON(cmd, nil); err != nil {

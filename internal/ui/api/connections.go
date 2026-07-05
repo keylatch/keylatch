@@ -1,9 +1,9 @@
 // Package api implements the keylatch UI HTTP API handlers.
 //
 // Security invariants:
-//   - S10-V: no credential values are ever returned in responses (value-free).
-//   - Canary tests verify this on every handler.
-//   - All write handlers require a valid session and CSRF token.
+// - S10-V: no credential values are ever returned in responses (value-free).
+// - Canary tests verify this on every handler.
+// - All write handlers require a valid session and CSRF token.
 package api
 
 import (
@@ -86,7 +86,7 @@ func saveConnectionPolicy(r *http.Request, store connections.Store, namespace, p
 }
 
 // fieldModesPath returns the vault path for per-field mode metadata.
-// Canonical format: namespace/category/provider/fieldmodes (S-FIND-23),
+// Canonical format: namespace/category/provider/fieldmodes,
 // matching connectionMetaPath and secretFieldPath.
 func fieldModesPath(namespace, provider, _ string) string {
 	if namespace == "" {
@@ -307,7 +307,7 @@ func (h *ConnectionsHandler) create(w http.ResponseWriter, r *http.Request) {
 
 	// Build direct-mode fields map for the core connections.Connect call.
 	// Reference-mode fields store the URI in the vault so the required-field
-	// check passes; the real value is resolved at runtime via EPIC-05 resolver.
+	// check passes; the real value is resolved at runtime via resolver.
 	directFields := make(map[string][]byte)
 	for _, f := range typedFields {
 		switch f.Mode {
@@ -361,7 +361,7 @@ func (h *ConnectionsHandler) create(w http.ResponseWriter, r *http.Request) {
 		}
 		if saveErr := saveFieldModes(r, h.Store, ns, conn.Provider, conn.Account, modes); saveErr != nil {
 			// Non-fatal: the connection was created successfully but field-mode metadata
-			// could not be saved.  Log the error and include a warning in the response so
+			// could not be saved. Log the error and include a warning in the response so
 			// the caller knows to re-edit the connection to restore the modes.
 			slog.Error("connections: failed to save field modes",
 				"provider", conn.Provider,
@@ -409,7 +409,7 @@ func providerCategory(provider string) string {
 }
 
 // connectionMetaPath returns the canonical vault path for connection metadata.
-// Canonical format: namespace/category/provider/meta (S-FIND-23).
+// Canonical format: namespace/category/provider/meta.
 func connectionMetaPath(namespace, provider, _ string) string {
 	if namespace == "" {
 		namespace = defaultConnectionNamespace
@@ -419,7 +419,7 @@ func connectionMetaPath(namespace, provider, _ string) string {
 }
 
 // secretFieldPath returns the canonical vault path for a secret field.
-// Canonical format: namespace/category/provider/field (S-FIND-23).
+// Canonical format: namespace/category/provider/field.
 func secretFieldPath(namespace, provider, _ string, field string) string {
 	if namespace == "" {
 		namespace = defaultConnectionNamespace
@@ -584,7 +584,7 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Resolve namespace consistently: prefer conn.Namespace, fall back to the
-	// package default.  This avoids the C-04 bug where secretFieldPath used
+	// package default. This avoids the C-04 bug where secretFieldPath used
 	// defaultConnectionNamespace while saveFieldModes/loadFieldModes used conn.Namespace.
 	ns := conn.Namespace
 	if ns == "" {
@@ -592,7 +592,7 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Validate all fields and persist field-mode metadata BEFORE writing secret
-	// values.  If saveFieldModes fails, we return 500 without writing any secrets
+	// values. If saveFieldModes fails, we return 500 without writing any secrets
 	// (non-atomic write guard — W-05).
 	newModes := loadFieldModes(r, h.Store, ns, conn.Provider, conn.Account)
 	for _, f := range req.Fields {

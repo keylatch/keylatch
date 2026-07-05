@@ -1,5 +1,5 @@
-// Package substitution implements secret-substitution prevention (S9-16).
-// Enforced from Phase 9 day one on every gateway request.
+// Package substitution implements secret-substitution prevention.
+// Enforced on every gateway request.
 package substitution
 
 import (

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-docs-no-secrets.sh — EPIC-02 Task 5
+# lint-docs-no-secrets.sh
 #
 # Guards against insecure secret-in-argv examples leaking into documentation.
 # Fails if any of the following patterns are found in docs/, examples/, or README.md:

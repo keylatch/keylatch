@@ -22,10 +22,14 @@ concurrency:
   group: sandbox-linux-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   sandbox-linux:
     name: Sandbox tests (bwrap)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 

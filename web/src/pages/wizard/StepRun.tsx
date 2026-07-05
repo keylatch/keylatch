@@ -25,7 +25,7 @@ export function StepRun({
   };
   const envVar = ENV_VAR[provider] ?? `${provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
   // innerCommand is the sub-command passed to run_agent; Rust wraps it as:
-  //   keylatch run <provider> -- sh -c <innerCommand>
+  // keylatch run <provider> -- sh -c <innerCommand>
   // Do NOT pass the full "keylatch run ..." string here — that causes double-wrapping.
   const innerCommand = `claude "summarise this repo"`;
   const exampleCommand = `keylatch run ${provider} -- ${innerCommand}`;

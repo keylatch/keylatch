@@ -12,7 +12,7 @@ import (
 // experimentalCommandNames lists the commands that must be gated behind
 // KEYLATCH_EXPERIMENTAL=1.
 //
-// Epic 25: all commands have graduated to production; the gate is now empty.
+// All commands have graduated to production; the gate is now empty.
 var experimentalCommandNames = []string{
 	// (empty — all commands have graduated)
 }
@@ -106,7 +106,7 @@ func TestExperimentalCmd_AlwaysVisible(t *testing.T) {
 }
 
 // TestExperimentalCmd_PrintsNoGatedMessage asserts that `keylatch experimental`
-// output states no commands are currently gated (Epic 25).
+// output states no commands are currently gated.
 func TestExperimentalCmd_PrintsNoGatedMessage(t *testing.T) {
 	t.Setenv("KEYLATCH_EXPERIMENTAL", "")
 	root := cli.NewRootCommand()
@@ -117,7 +117,7 @@ func TestExperimentalCmd_PrintsNoGatedMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	out := buf.String()
-	// Epic 25: all commands graduated — output must confirm no gated commands.
+	// All commands graduated — output must confirm no gated commands.
 	assert.Contains(t, out, "No experimental commands are currently gated")
 	assert.Contains(t, out, "KEYLATCH_EXPERIMENTAL=1")
 }
@@ -141,7 +141,7 @@ func TestExperimentalCmd_ListsGatedCommands(t *testing.T) {
 }
 
 // TestGraduatedCommands_PresentWithoutEnvVar asserts all 6 graduated commands
-// appear as registered subcommands with KEYLATCH_EXPERIMENTAL unset (Epic 25).
+// appear as registered subcommands with KEYLATCH_EXPERIMENTAL unset.
 func TestGraduatedCommands_PresentWithoutEnvVar(t *testing.T) {
 	t.Setenv("KEYLATCH_EXPERIMENTAL", "")
 	root := cli.NewRootCommand()
@@ -158,7 +158,7 @@ func TestGraduatedCommands_PresentWithoutEnvVar(t *testing.T) {
 }
 
 // TestGraduatedCommands_PresentWithEnvVar asserts all 6 graduated commands
-// appear as registered subcommands with KEYLATCH_EXPERIMENTAL=1 (Epic 25).
+// appear as registered subcommands with KEYLATCH_EXPERIMENTAL=1.
 func TestGraduatedCommands_PresentWithEnvVar(t *testing.T) {
 	t.Setenv("KEYLATCH_EXPERIMENTAL", "1")
 	root := cli.NewRootCommand()

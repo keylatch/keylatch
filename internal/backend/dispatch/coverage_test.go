@@ -1,6 +1,6 @@
 // Package dispatch_test — additional coverage tests targeting previously
 // uncovered code paths: ErrUnknownBackend.Error, buildSettings branches,
-// and the userHomeDir path via file backend resolution.
+// and file backend resolution.
 package dispatch_test
 
 import (
@@ -111,31 +111,22 @@ func TestSelect_BuildSettings_FileWithEnvDataDir(t *testing.T) {
 	}
 }
 
-// TestSelect_BuildSettings_FileHomeDir verifies the home-dir fallback path
-// inside buildSettings for the file backend (no cfg.DataDir, no env override).
-// Since we do not control where the user home dir points, we just verify the
-// error message is meaningful (it will fail on ErrBootstrapRequired because
-// no keyring exists at the default home-dir path).
-func TestSelect_BuildSettings_FileHomeDir(t *testing.T) {
+// TestSelect_BuildSettings_FileConfigDirFallback verifies the config-dir fallback
+// path inside buildSettings for the file backend.
+func TestSelect_BuildSettings_FileConfigDirFallback(t *testing.T) {
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
 
 	cfg := config.Default()
 	cfg.Backend = "file"
-	cfg.DataDir = "" // no data dir — triggers home-dir lookup
+	cfg.DataDir = ""
 
-	// Use an env that has no KEYLATCH_DATA_DIR and no KEYLATCH_KEYRING_PATH.
-	// This exercises the userHomeDir() code path in buildSettings.
-	// The result will be ErrBootstrapRequired because the keyring won't exist.
-	env := fakeEnv(map[string]string{})
+	env := fakeEnv(map[string]string{"KEYLATCH_CONFIG_DIR": t.TempDir()})
 
 	_, err := dispatch.Select(context.Background(), cfg, env)
-	// We expect some error (no keyring at default home dir in CI).
 	if err == nil {
-		// In a dev environment the keyring might actually exist. Not a test failure.
-		t.Log("Select with home-dir fallback succeeded (keyring present on this machine)")
+		t.Log("Select with config-dir fallback succeeded")
 	}
-	// Either success or a recognisable error — the important thing is no panic.
 }
 
 // TestSelect_KeychainBranch_BuildsSettings verifies that selecting the

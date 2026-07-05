@@ -97,7 +97,7 @@ func TestHandler_E2E_ValidRequest(t *testing.T) {
 	// Use sentry which is gateway_typed.
 	_ = upstream // The route will use registry's test strategy URL, not our mock.
 	// For a true e2e, we'd need to override the route's upstream host.
-	// In Phase 9, we test the handler with the real registry routes.
+	// We test the handler with the real registry routes.
 
 	jwtStr, _, err := token.Mint(token.TokenSpec{
 		Actor:        "e2e-actor",

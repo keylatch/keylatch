@@ -54,11 +54,11 @@ type ServerOptions struct {
 	ReceiptStore *api.ReceiptStore
 
 	// IPCSecret is the hex-encoded 32-byte secret used to authenticate POST /v1/receipts
-	// (S-INV-12). If empty, the no-secret variant is used (test/demo mode only).
+	// If empty, the no-secret variant is used (test/demo mode only).
 	IPCSecret string
 
 	// SettingsStore holds server-validated settings (optional; nil → ephemeral default per-request).
-	// T-13-05: approval TTL is server-validated and clamped server-side.
+	// approval TTL is server-validated and clamped server-side.
 	SettingsStore *api.SettingsStore
 }
 
@@ -87,7 +87,7 @@ func New(opts ServerOptions) (*Server, error) {
 	isLLM := llmcontext.IsLLMSession(opts.Env)
 	if !isLoopbackBind(opts.Bind) {
 		if isLLM {
-			return nil, fmt.Errorf("ui: external bind rejected in LLM session (S10-1)")
+			return nil, fmt.Errorf("ui: external bind rejected in LLM session")
 		}
 		if !opts.AllowExternalBind {
 			return nil, fmt.Errorf("ui: external bind requires --unsafe-bind-all flag")
@@ -171,16 +171,16 @@ func (s *Server) Serve(ctx context.Context) error {
 func (s *Server) registerRoutes() {
 	// Liveness probe — value-free, no session required. Returns the
 	// running version and a fixed "ok" status. Matches the gateway's
-	// /health endpoint contract (S9-9: no debug info leaked, no values).
+	// /health endpoint contract (no debug info leaked, no values).
 	s.mux.HandleFunc("/health", s.handleHealth)
 	s.mux.Handle("/metrics", s.Metrics)
 
 	// Bootstrap exchange: one-time token → HttpOnly cookie + 303 redirect.
-	// T-13-01: rate-limited to 5 failed attempts per IP before 429.
+	// rate-limited to 5 failed attempts per IP before 429.
 	s.mux.HandleFunc("/__bootstrap", withBootstrapRateLimit(defaultRateLimiter, s.handleBootstrap))
 
 	// CSRF token endpoint (GET): issues a fresh CSRF token cookie.
-	// T-13-01: rate-limited alongside bootstrap to prevent token enumeration.
+	// rate-limited alongside bootstrap to prevent token enumeration.
 	s.mux.HandleFunc("/api/csrf", withBootstrapRateLimit(defaultRateLimiter, s.handleCSRF))
 
 	// Status endpoint (always available, even in LLM scope).
@@ -191,7 +191,7 @@ func (s *Server) registerRoutes() {
 	}
 	s.mux.HandleFunc("/api/status", s.requireSession(statusHandler.ServeHTTP))
 
-	// Settings endpoint (T-13-05): approval TTL with server-side clamping.
+	// Settings endpoint: approval TTL with server-side clamping.
 	// Session required; CSRF required for PUT (mutations).
 	settingsHandler := &api.SettingsHandler{Store: s.opts.SettingsStore}
 	s.mux.HandleFunc("/api/settings", s.requireSession(csrf.Middleware(settingsHandler).ServeHTTP))
@@ -218,13 +218,13 @@ func (s *Server) registerRoutes() {
 		connectionDetailHandler.RuntimeTester = &api.RuntimeTestHandler{Store: s.opts.Store}
 		s.mux.HandleFunc("/api/connections/", s.requireSession(csrf.Middleware(connectionDetailHandler).ServeHTTP))
 
-		// Password manager detection (T-14-04) — session required, no CSRF (read-only).
+		// Password manager detection — session required, no CSRF (read-only).
 		s.mux.HandleFunc("/api/password-managers", s.requireSession((&api.PMDetectHandler{}).ServeHTTP))
 
-		// PM browse (T-14-05) — session required, no CSRF (read-only).
+		// PM browse — session required, no CSRF (read-only).
 		s.mux.HandleFunc("/api/pm-browse", s.requireSession((&api.PMBrowseHandler{}).ServeHTTP))
 
-		// Doctor endpoint — per-card health check (T-14-07).
+		// Doctor endpoint — per-card health check.
 		// Accessible as GET /api/doctor?connection=<provider>&json=true
 		s.mux.HandleFunc("/api/doctor", s.requireSession((&api.DoctorHandler{}).ServeHTTP))
 
@@ -334,7 +334,7 @@ func (s *Server) registerRoutes() {
 }
 
 // handleBootstrap exchanges the one-time bootstrap token for a session cookie.
-// FIND-011: after the 303 redirect the token is consumed and never appears in
+// after the 303 redirect the token is consumed and never appears in
 // any subsequent URL.
 func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

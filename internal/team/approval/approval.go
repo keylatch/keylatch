@@ -1,9 +1,9 @@
-// Package approval implements Phase 12 two-person and N-of-M approval workflows.
+// Package approval implements two-person and N-of-M approval workflows.
 //
 // Security invariants:
-//   - S12-9: Self-approval is blocked — approver must differ from requester.
-//   - FIND2-005: Two-person hardware approval unlocks LLM-session read blocks.
-//   - All JWT claims are value-free (member IDs are HMACd).
+// - Self-approval is blocked — approver must differ from requester.
+// - Two-person hardware approval unlocks LLM-session read blocks.
+// - All JWT claims are value-free (member IDs are HMACd).
 package approval
 
 import (
@@ -99,8 +99,8 @@ func Create(_ context.Context, capability, connection string, requester team.Mem
 }
 
 // Approve records an approval from approver (with hardware PresenceProof).
-// Returns ErrSelfApproval if approver == requester (S12-9).
-// Transitions Status to Approved when quorum reached (FIND2-005).
+// Returns ErrSelfApproval if approver == requester.
+// Transitions Status to Approved when quorum reached.
 func Approve(_ context.Context, req *ApprovalRequest, approver team.Member, proof trust.PresenceProof) error {
 	// Check expiry.
 	if time.Now().After(req.ExpiresAt) {
@@ -108,12 +108,12 @@ func Approve(_ context.Context, req *ApprovalRequest, approver team.Member, proo
 		return ErrApprovalExpired
 	}
 
-	// S12-9: self-approval is blocked.
+	// self-approval is blocked.
 	if approver.HMAC == req.RequesterHMAC {
 		return ErrSelfApproval
 	}
 
-	// C-9 (FIND2-005): hardware presence proof is required — zero-value proof is rejected.
+	// C-9: hardware presence proof is required — zero-value proof is rejected.
 	if proof.ConfirmedAt.IsZero() {
 		return ErrHardwarePresenceRequired
 	}
@@ -128,7 +128,7 @@ func Approve(_ context.Context, req *ApprovalRequest, approver team.Member, proo
 	entry := ApprovalEntry{
 		ApproverHMAC: approver.HMAC,
 		ApprovedAt:   time.Now().UTC(),
-		RootHMAC:     proof.RootID, // already HMACd per S11-3
+		RootHMAC:     proof.RootID, // already HMACd
 	}
 	req.Approvals = append(req.Approvals, entry)
 
@@ -150,7 +150,7 @@ func Check(req *ApprovalRequest) error {
 	return ErrApprovalRequired
 }
 
-// MintJWTClaim returns the approval claim for gateway JWT when approved (FIND2-005).
+// MintJWTClaim returns the approval claim for gateway JWT when approved.
 // Returns a value-free claim (all member IDs are HMACd).
 func MintJWTClaim(req *ApprovalRequest) map[string]interface{} {
 	approvers := make([]string, 0, len(req.Approvals))

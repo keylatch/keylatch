@@ -18,7 +18,7 @@ func RoleLevel(r Role) int {
 }
 
 // RequireRole returns ErrRoleInsufficient if the caller's role is below minRole.
-// Enforcement happens here, not at CLI layer (S12-15).
+// Enforcement happens here, not at CLI layer.
 func RequireRole(member Member, minRole Role) error {
 	if RoleLevel(member.Role) < RoleLevel(minRole) {
 		return ErrRoleInsufficient

@@ -357,7 +357,7 @@ func installOpenCode(opts InstallOpts) (string, error) {
 }
 
 func installAntigravity(_ InstallOpts) (string, error) {
-	return "", fmt.Errorf("antigravity: Google Antigravity does not currently expose a hook API for tool interception.\n\nRecommended alternative: run Keylatch in gateway mode, which intercepts\nall outbound credential requests at the network level regardless of agent:\n\n  keylatch proxy start --port 8080\n  # Point Antigravity's network proxy setting to http://localhost:8080\n\nSee: https://keylatch.dev/integrations/antigravity")
+	return "", fmt.Errorf("antigravity: Google Antigravity does not currently expose a hook API for tool interception.\n\nRecommended alternative: run Keylatch in gateway mode, which intercepts\nall outbound credential requests at the network level regardless of agent:\n\n keylatch proxy start --port 8080\n # Point Antigravity's network proxy setting to http://localhost:8080\n\nSee: https://keylatch.dev/integrations/antigravity")
 }
 
 // --- internal helpers ---
@@ -481,7 +481,7 @@ func saveSettings(path string, settings map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("install-guard: create settings dir: %w", err)
 	}
-	data, err := json.MarshalIndent(settings, "", "  ")
+	data, err := json.MarshalIndent(settings, "", " ")
 	if err != nil {
 		return fmt.Errorf("install-guard: marshal settings: %w", err)
 	}

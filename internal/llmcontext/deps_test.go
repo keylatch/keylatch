@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestLeafPackageDeps verifies S0-7 / SC0-12: internal/llmcontext must not
+// TestLeafPackageDeps verifies that internal/llmcontext must not
 // import any other internal/* package from this module.
 func TestLeafPackageDeps(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", "github.com/keylatch/keylatch/internal/llmcontext").Output()
@@ -18,7 +18,7 @@ func TestLeafPackageDeps(t *testing.T) {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "github.com/keylatch/keylatch/internal/") &&
 			line != "github.com/keylatch/keylatch/internal/llmcontext" {
-			t.Errorf("llmcontext imports disallowed internal package: %s (S0-7)", line)
+			t.Errorf("llmcontext imports disallowed internal package: %s", line)
 		}
 	}
 }

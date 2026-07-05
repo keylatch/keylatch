@@ -8,7 +8,7 @@ import (
 
 // blockedKeywords is the case-insensitive list of key name fragments that
 // indicate the user is trying to store a credential in config (which must
-// never happen). Security note S05-4: this is a UX hint, NOT a security
+// never happen). Security note: this is a UX hint, NOT a security
 // control — values must be stored via `keylatch set` / backend write paths.
 var blockedKeywords = []string{
 	"password", "secret", "token", "key", "dek", "wrap", "salt", "nonce",

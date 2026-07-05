@@ -114,7 +114,7 @@ func TestStatusToolReturnsNoSecretFields(t *testing.T) {
 }
 
 // TestDescribeToolReturnsMaskedFields verifies that keylatch_describe returns
-// "****" for all secret fields (S3-10).
+// "****" for all secret fields.
 func TestDescribeToolReturnsMaskedFields(t *testing.T) {
 	store := newMockStore()
 	describeHandler := makeDescribeHandler(store)

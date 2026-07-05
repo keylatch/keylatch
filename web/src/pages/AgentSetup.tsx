@@ -35,11 +35,11 @@ function CopyIconButton({ content, label }: { content: string; label: string }) 
 }
 
 const PROVIDER_EXAMPLE_CMD: Record<string, string> = {
-  anthropic:  'claude "review the issue and open a PR"',
-  openai:     'openai api chat.completions.create ...',
-  github:     'gh issue create --title "Fix bug"',
-  stripe:     'stripe charges list',
-  slack:      'slack chat postMessage ...',
+  anthropic: 'claude "review the issue and open a PR"',
+  openai: 'openai api chat.completions.create ...',
+  github: 'gh issue create --title "Fix bug"',
+  stripe: 'stripe charges list',
+  slack: 'slack chat postMessage ...',
   openrouter: 'curl https://openrouter.ai/api/v1/chat/completions ...',
 }
 

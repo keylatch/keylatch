@@ -180,7 +180,7 @@ func TestE2E_DirectBrokered(t *testing.T) {
 	assert.Contains(t, output, scopedToken,
 		"E2E direct_brokered: child env must contain the scoped token from broker")
 	assert.NotContains(t, output, rootCred,
-		"E2E direct_brokered: root credential must not reach child (S-RM-3)")
+		"E2E direct_brokered: root credential must not reach child")
 }
 
 // TestE2E_GatewayProxy uses a stub proxy (liveness guard with check=true) and

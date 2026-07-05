@@ -1,18 +1,18 @@
 package doctor_test
 
-// checks_external_test.go — EPIC-10 tests for external PM CLI doctor checks.
+// checks_external_test.go — tests for external PM CLI doctor checks.
 //
 // Tests:
-//   - TestExternalOP_NoConnections_Skipped    — E1 check is skipped when no provider-ref connections exist
-//   - TestExternalOP_BinaryNotFound_Fails     — E1 check fails when `op` is not on PATH
-//   - TestExternalOP_BinaryFound_OK           — E1 check passes when `op` is found
-//   - TestExternalAWSSM_NoConnections_Skipped — E2 check is skipped when no provider-ref connections
-//   - TestExternalAWSSM_BinaryNotFound_Fails  — E2 check fails when `aws` is not on PATH
-//   - TestExternalAWSSM_BinaryFound_OK        — E2 check passes when `aws` is found
-//   - TestExternalHashiVault_NoConnections_Skipped — E3 check is skipped
-//   - TestExternalHashiVault_BinaryNotFound_Fails  — E3 check fails when `vault` is not on PATH
-//   - TestExternalHashiVault_BinaryFound_OK        — E3 check passes when `vault` is found
-//   - TestExternalSection_InReport           — "external" section appears in doctor report
+// - TestExternalOP_NoConnections_Skipped — E1 check is skipped when no provider-ref connections exist
+// - TestExternalOP_BinaryNotFound_Fails — E1 check fails when `op` is not on PATH
+// - TestExternalOP_BinaryFound_OK — E1 check passes when `op` is found
+// - TestExternalAWSSM_NoConnections_Skipped — E2 check is skipped when no provider-ref connections
+// - TestExternalAWSSM_BinaryNotFound_Fails — E2 check fails when `aws` is not on PATH
+// - TestExternalAWSSM_BinaryFound_OK — E2 check passes when `aws` is found
+// - TestExternalHashiVault_NoConnections_Skipped — E3 check is skipped
+// - TestExternalHashiVault_BinaryNotFound_Fails — E3 check fails when `vault` is not on PATH
+// - TestExternalHashiVault_BinaryFound_OK — E3 check passes when `vault` is found
+// - TestExternalSection_InReport — "external" section appears in doctor report
 
 import (
 	"context"

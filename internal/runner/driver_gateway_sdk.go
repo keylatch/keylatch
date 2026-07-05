@@ -33,7 +33,7 @@ type gatewaySdkDriver struct {
 	server GatewayServerStarter
 	key    []byte
 	store  string
-	// settings holds the resolved operating-mode effective settings (EPIC-17).
+	// settings holds the resolved operating-mode effective settings.
 	settings     runtime.EffectiveSettings
 	auditEmitter audit.Emitter
 }
@@ -48,7 +48,7 @@ func NewGatewaySDKDriver(server GatewayServerStarter, signingKey []byte, tokenSt
 
 // NewGatewaySDKDriverWithSettings returns a gatewaySdkDriver with operating-mode
 // effective settings and an optional audit emitter (may be nil).
-// EPIC-17: used when operating mode is resolved at run time.
+// Used when operating mode is resolved at run time.
 func NewGatewaySDKDriverWithSettings(
 	server GatewayServerStarter,
 	signingKey []byte,
@@ -121,7 +121,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	}
 
 	// Step 2: Build child env: base URL + session token. No provider key.
-	// Rules (T-08-01, §15.1):
+	// Rules:
 	//   1. Strip provider API key vars declared in InjectionRules.
 	//   2. Strip all KEYLATCH_* configuration vars (FilterChildEnv).
 	//   3. Re-inject only gateway vars + KEYLATCH_RUNTIME.
@@ -141,8 +141,8 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 			stripped = append(stripped, e)
 		}
 	}
-	// T-08-01: strip remaining KEYLATCH_* vars; re-inject only gateway token + runtime.
-	// T-08-02: when CleanEnv is requested, use CleanBaseEnv for a minimal start.
+	// Strip remaining KEYLATCH_* vars; re-inject only gateway token + runtime.
+	// When CleanEnv is requested, use CleanBaseEnv for a minimal start.
 	var childEnv []string
 	if req.CleanEnv {
 		childEnv = runtime.CleanBaseEnv(stripped, req.ExtraEnvVars...)
@@ -157,7 +157,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewaySdkMode)
 
-	// EPIC-17: canary injection — when enabled, mint a canary token and inject it
+	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.
 	if d.settings.CanaryInjectionEnabled {
 		canaryToken, canaryErr := canary.BuildCanary(tmpl.Provider)
@@ -170,7 +170,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 					Outcome: audit.OutcomeOK,
 					Extra: map[string]any{
 						"provider": tmpl.Provider,
-						// Use HMAC'd form — never log raw actor IDs (S5-2 / FIND2-012).
+						// Use HMAC'd form — never log raw actor IDs.
 						"session_id_hmac": fmt.Sprintf("%x", sha256.Sum256([]byte(actor)))[:16],
 					},
 				})

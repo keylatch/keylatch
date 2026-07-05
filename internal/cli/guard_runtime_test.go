@@ -56,9 +56,9 @@ func makeInvalidApprovalJWT(t *testing.T, key []byte) string {
 	return tok
 }
 
-// S0-15: 30-cell matrix test: IsLLMSession(2) × RuntimeMode(5) × ApprovalJWT(3) = 30 cells.
+// 30-cell matrix test: IsLLMSession(2) × RuntimeMode(5) × ApprovalJWT(3) = 30 cells.
 // RuntimeMode(5) = gateway_typed, gateway_sdk, direct_brokered, gateway_proxy,
-// direct_classic_sandboxed (reinstated EPIC-24). direct_classic permanently removed.
+// direct_classic_sandboxed (reinstated). direct_classic permanently removed.
 const expectedCells = 2 * 5 * 3 // 30
 
 func TestGuardRuntimeMatrix(t *testing.T) {

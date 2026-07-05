@@ -10,7 +10,7 @@ import (
 )
 
 // TestExitCodeMatrix asserts that every CLIError constructor produces an error
-// whose Code matches the declared exit-code for that class (EPIC-02 Task 2).
+// whose Code matches the declared exit-code for that class.
 func TestExitCodeMatrix(t *testing.T) {
 	t.Parallel()
 

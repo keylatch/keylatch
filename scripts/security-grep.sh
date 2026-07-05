@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# security-grep.sh — S2-8 static regression check.
+# security-grep.sh — static regression check for session-token format-string interpolation.
 #
 # Ensures no format-string interpolation of session tokens appears in production code.
 # Pattern: fmt.Sprintf/Printf/Fprintf/Errorf with BW_SESSION or OP_SERVICE_ACCOUNT_TOKEN.
@@ -12,9 +12,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-echo "S2-8: checking for format-string interpolation of session tokens..."
+echo "Checking for format-string interpolation of session tokens..."
 
-# S2-8: must return empty — no format-string interpolation of session tokens.
+# Must return empty — no format-string interpolation of session tokens.
 # The pattern targets code that EVALUATES/INTERPOLATES the session value (via %s, %v, %q
 # with a variable that holds the session), not hint messages that literally say "BW_SESSION".
 # We look for:
@@ -33,10 +33,10 @@ MATCHES=$(grep -rE \
   || true)
 
 if [ -n "$MATCHES" ]; then
-  echo "ERROR: S2-8 violation — session token in format string:"
+  echo "ERROR: session token in format string:"
   echo "$MATCHES"
   exit 1
 fi
 
-echo "S2-8: OK — no session token format-string interpolation found."
+echo "OK — no session token format-string interpolation found."
 exit 0

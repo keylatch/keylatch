@@ -1,8 +1,8 @@
-// Package ci implements Phase 12 CI/CD OIDC identity verification.
+// Package ci implements CI/CD OIDC identity verification.
 //
 // Security invariants:
-//   - S12-13: Strict verification of aud, iss, repo, and branch claims.
-//   - FIND2-011: JWKS fail-closed: expired cache + unreachable endpoint → ErrJWKSUnavailable.
+// - Strict verification of aud, iss, repo, and branch claims.
+// - JWKS fail-closed: expired cache + unreachable endpoint → ErrJWKSUnavailable.
 package ci
 
 import (
@@ -66,7 +66,7 @@ var (
 	ErrCIIssuerMismatch   = errors.New("CI OIDC token issuer does not match expected")
 	ErrCIRepoDenied       = errors.New("CI OIDC token repo not in allowlist")
 	ErrCIBranchDenied     = errors.New("CI OIDC token branch not in allowlist")
-	ErrJWKSUnavailable    = errors.New("JWKS endpoint unavailable — fail closed (FIND2-011)")
+	ErrJWKSUnavailable    = errors.New("JWKS endpoint unavailable — fail closed")
 	ErrTokenInvalid       = errors.New("CI OIDC token is invalid or tampered")
 	ErrTokenExpired       = errors.New("CI OIDC token has expired")
 	ErrCISignatureInvalid = errors.New("CI OIDC token signature invalid")
@@ -126,7 +126,7 @@ type jwtHeader struct {
 
 // jwtClaims holds the standard and provider-specific JWT claims.
 //
-//nolint:unused // planned: typed claim extraction replaces map[string]interface{} in Phase 13
+//nolint:unused // planned: typed claim extraction replaces map[string]interface{}
 type jwtClaims struct {
 	Issuer   string   `json:"iss"`
 	Subject  string   `json:"sub"`
@@ -138,10 +138,10 @@ type jwtClaims struct {
 
 // audience handles both string and []string aud values in JWT.
 //
-//nolint:unused // planned: used by jwtClaims.Audience in Phase 13 typed claim extraction
+//nolint:unused // planned: used by jwtClaims.Audience in typed claim extraction
 type audience []string
 
-func (a *audience) UnmarshalJSON(data []byte) error { //nolint:unused // planned: used by jwtClaims in Phase 13
+func (a *audience) UnmarshalJSON(data []byte) error { //nolint:unused // planned: used by jwtClaims
 	// Try string first.
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
@@ -192,7 +192,7 @@ var jwksOverrideURL = make(map[CIProvider]string)
 var jwksHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 // getJWKS returns public keys for the provider, fetching from network if cache is stale.
-// Fail-closed (FIND2-011): stale cache + unreachable endpoint → ErrJWKSUnavailable.
+// Fail-closed: stale cache + unreachable endpoint → ErrJWKSUnavailable.
 func getJWKS(ctx context.Context, provider CIProvider, endpoint string) ([]PublicKey, error) {
 	now := time.Now()
 
@@ -213,7 +213,7 @@ func getJWKS(ctx context.Context, provider CIProvider, endpoint string) ([]Publi
 
 	keys, err := fetchJWKS(ctx, url)
 	if err != nil {
-		// FIND2-011: fail-closed — return ErrJWKSUnavailable even on stale cache hit.
+		// fail-closed — return ErrJWKSUnavailable even on stale cache hit.
 		return nil, ErrJWKSUnavailable
 	}
 
@@ -513,8 +513,8 @@ func parseJWT(rawJWT string) (*jwtHeader, map[string]interface{}, error) {
 }
 
 // Verify verifies a CI OIDC JWT.
-// JWKS fail-closed (FIND2-011): expired cache + unreachable → ErrJWKSUnavailable.
-// Strict aud/iss/repo/branch verification (S12-13).
+// JWKS fail-closed: expired cache + unreachable → ErrJWKSUnavailable.
+// Strict aud/iss/repo/branch verification.
 func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, error) {
 	cfg, ok := providers[opts.Provider]
 	if !ok {
@@ -527,7 +527,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 		return Identity{}, ErrTokenInvalid
 	}
 
-	// Fetch JWKS and verify signature (FIND2-011).
+	// Fetch JWKS and verify signature.
 	keys, err := getJWKS(ctx, opts.Provider, cfg.JWKSEndpoint)
 	if err != nil {
 		return Identity{}, err // ErrJWKSUnavailable
@@ -536,7 +536,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 		return Identity{}, err // ErrCISignatureInvalid
 	}
 
-	// Verify issuer (S12-13) — exact equality, no prefix matching.
+	// Verify issuer — exact equality, no prefix matching.
 	iss, _ := claims["iss"].(string)
 	if iss != cfg.Issuer {
 		return Identity{}, ErrCIIssuerMismatch
@@ -551,7 +551,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 		return Identity{}, ErrTokenExpired
 	}
 
-	// Verify audience (S12-13).
+	// Verify audience.
 	if len(opts.Audience) > 0 {
 		audClaim := extractAudience(claims["aud"])
 		if !hasAnyAud(audClaim, opts.Audience) {
@@ -559,7 +559,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 		}
 	}
 
-	// Extract repo claim (S12-13).
+	// Extract repo claim.
 	repo, _ := claims[cfg.RepoClaim].(string)
 
 	// C-3: empty repo bypasses allowlist — deny if repo is empty and allowlist is set.
@@ -569,7 +569,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 		}
 	}
 
-	// Extract branch claim (S12-13).
+	// Extract branch claim.
 	branch, _ := claims[cfg.BranchClaim].(string)
 	// Normalize branch ref (github uses "refs/heads/main").
 	branch = normalizeBranch(branch)

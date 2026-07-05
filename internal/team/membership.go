@@ -7,7 +7,7 @@ import (
 
 // OnRotateSharedSecrets is a callback invoked when a member is removed.
 // It is called with the team and removed member ID so that shared-secret
-// rotation (FIND3-006) can be triggered by the sharedsecret package.
+// rotation can be triggered by the sharedsecret package.
 // Default: no-op.
 var OnRotateSharedSecrets func(ctx context.Context, t *Team, memberID string) error
 
@@ -23,7 +23,7 @@ func AddMember(_ context.Context, t *Team, m Member) error {
 	return writeTeam(t)
 }
 
-// RemoveMember sets a member's status to removed and triggers shared-secret rotation (FIND3-006).
+// RemoveMember sets a member's status to removed and triggers shared-secret rotation.
 func RemoveMember(ctx context.Context, t *Team, memberID string) error {
 	found := false
 	for i := range t.Members {
@@ -39,7 +39,7 @@ func RemoveMember(ctx context.Context, t *Team, memberID string) error {
 	if err := writeTeam(t); err != nil {
 		return err
 	}
-	// FIND3-006: trigger shared-secret rotation.
+	// trigger shared-secret rotation.
 	if OnRotateSharedSecrets != nil {
 		if err := OnRotateSharedSecrets(ctx, t, memberID); err != nil {
 			return fmt.Errorf("team: rotation callback failed: %w", err)

@@ -31,7 +31,7 @@ func TestFileFactory_UnknownKey_ReturnsError(t *testing.T) {
 
 // TestFileFactory_NoKeyring_ReturnsBootstrapRequired verifies that the factory
 // fails closed (ErrBootstrapRequired) when no keyring.json is present.
-// This is the core invariant of T-02-01: OpenWithKeyring is the only production path.
+// This is the core invariant: OpenWithKeyring is the only production path.
 func TestFileFactory_NoKeyring_ReturnsBootstrapRequired(t *testing.T) {
 	factory, ok := backend.Default.Get("file")
 	if !ok {

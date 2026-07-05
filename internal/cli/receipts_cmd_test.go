@@ -1,6 +1,6 @@
 package cli
 
-// receipts_cmd_test.go — EPIC-16 tests for `keylatch receipts list` and
+// receipts_cmd_test.go — tests for `keylatch receipts list` and
 // `keylatch receipts tail`.
 //
 // TestReceipts_List_JSON   — `--json` flag produces a JSON array with correct schema.
@@ -145,7 +145,7 @@ func TestReceipts_Tail_Follow_HTTPServer(t *testing.T) {
 
 // TestReceipts_NeverContainsCredentialInCLI verifies that the `receipts list --json`
 // output for a file-based Receipt never contains credential value fields.
-// This mirrors S-RM-9 for the CLI path.
+// This mirrors the receipt no-credential-leak invariant for the CLI path.
 func TestReceipts_NeverContainsCredentialInCLI(t *testing.T) {
 	t.Parallel()
 
@@ -159,6 +159,6 @@ func TestReceipts_NeverContainsCredentialInCLI(t *testing.T) {
 	output := outBuf.String()
 	for _, kw := range []string{`"value":`, `"secret":`, `"password":`, `"api_key":`} {
 		assert.False(t, strings.Contains(output, kw),
-			"CLI tail output must not contain credential field %q (S-RM-9)", kw)
+			"CLI tail output must not contain credential field %q", kw)
 	}
 }

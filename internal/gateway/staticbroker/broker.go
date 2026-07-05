@@ -1,16 +1,16 @@
-// Package staticbroker implements the Phase 9 static token broker for
+// Package staticbroker implements the static token broker for
 // the gateway's credential exchange layer.
 //
-// Rationale (ADR-002): internal/broker (Phase 13) has a strategy-based,
+// Rationale (ADR-002): internal/broker has a strategy-based,
 // actor/session-keyed API incompatible with the gateway's flat ExchangeSpec
 // contract. Rather than merging two fundamentally different APIs prematurely,
 // this package is renamed from internal/gateway/broker to
-// internal/gateway/staticbroker to clarify its role as a Phase 9 stopgap.
-// Full unification is deferred to Phase 13 when internal/broker matures.
+// internal/gateway/staticbroker to clarify its role as a stopgap.
+// Full unification is deferred until internal/broker matures.
 //
 // Security invariants:
-//   - S9-17: the in-process cache is never written to disk.
-//   - FIND2-004: OnVaultLock zeroes and purges all cached tokens.
+//   - the in-process cache is never written to disk.
+//   - OnVaultLock zeroes and purges all cached tokens.
 package staticbroker
 
 import (
@@ -28,7 +28,7 @@ const evictionInterval = 60 * time.Second
 
 // Sentinel errors.
 var (
-	ErrExchangeUnsupported = errors.New("broker: exchange strategy unsupported in Phase 9")
+	ErrExchangeUnsupported = errors.New("broker: exchange strategy not supported")
 	ErrScopesInsufficient  = errors.New("broker: insufficient scopes")
 	ErrVaultLocked         = errors.New("broker: vault is locked")
 )
@@ -50,7 +50,7 @@ type AccessToken struct {
 	Metadata  map[string]string
 }
 
-// Zero zeroes the credential bytes in the AccessToken (S9-2).
+// Zero zeroes the credential bytes in the AccessToken.
 func (a *AccessToken) Zero() {
 	for i := range a.Value {
 		a.Value[i] = 0
@@ -58,7 +58,7 @@ func (a *AccessToken) Zero() {
 }
 
 // BrokerCacheKey is the cache key for exchanged tokens.
-// S9-17: cache is in-process only, never written to disk.
+// Cache is in-process only, never written to disk.
 type BrokerCacheKey struct {
 	Provider   string
 	Actor      string
@@ -73,12 +73,12 @@ type cachedToken struct {
 }
 
 // Broker implements in-process access-token exchange and caching.
-// S9-17: cache is in-process only, never written to disk.
+// Cache is in-process only, never written to disk.
 type Broker struct {
 	mu         sync.Mutex
 	cache      map[BrokerCacheKey]cachedToken
 	maxEntries int
-	locked     bool // FIND2-004: set true by OnVaultLock
+	locked     bool // set true by OnVaultLock
 	stopEvict  chan struct{}
 }
 
@@ -153,7 +153,7 @@ func (b *Broker) evictExpired() {
 	}
 }
 
-func (b *Broker) set(key BrokerCacheKey, ct cachedToken) { //nolint:unused // planned: used by token refresh path in Phase 13 broker cache
+func (b *Broker) set(key BrokerCacheKey, ct cachedToken) { //nolint:unused // planned: used by a future token refresh path in the broker cache
 	if len(b.cache) >= b.maxEntries {
 		var (
 			evictKey    BrokerCacheKey
@@ -177,7 +177,7 @@ func (b *Broker) set(key BrokerCacheKey, ct cachedToken) { //nolint:unused // pl
 
 // Exchange exchanges a root credential for a short-lived access token.
 //
-// Phase 9 handles:
+// Handles:
 //   - "static_gateway_only": returns root credential as-is.
 //   - "none": returns empty access token.
 //
@@ -254,13 +254,12 @@ func (b *Broker) DryRun(_ context.Context, spec ExchangeSpec) (map[string]string
 			"strategy":    spec.Strategy,
 			"supported":   "false",
 			"phase":       "13",
-			"remediation": "Upgrade to Phase 13 for dynamic exchange strategies. Static gateway mode is available now.",
+			"remediation": "Dynamic exchange strategies are not yet available. Static gateway mode is available now.",
 		}, ErrExchangeUnsupported
 	}
 }
 
 // OnVaultLock zeroes and purges all cached tokens.
-// FIND2-004.
 func (b *Broker) OnVaultLock(_ context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()

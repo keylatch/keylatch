@@ -1,4 +1,4 @@
-// Package inventory implements Phase 12 team resource inventory management.
+// Package inventory implements team resource inventory management.
 package inventory
 
 import (

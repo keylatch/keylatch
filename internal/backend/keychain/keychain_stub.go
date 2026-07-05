@@ -69,7 +69,7 @@ func (k *KeychainBackend) List(_ context.Context, _ string) ([]backend.Entry, er
 	return nil, backend.ErrUnavailable
 }
 
-// GetMeta returns ErrNotSupported (Phase 4 versioned storage not available on non-file backends).
+// GetMeta returns ErrNotSupported (versioned storage not available on non-file backends).
 func (k *KeychainBackend) GetMeta(_ context.Context, _ string) (meta.Meta, error) {
 	return meta.Meta{}, backend.ErrNotSupported
 }

@@ -1,6 +1,6 @@
 package llmcontext
 
-// session_registry.go — EPIC-05 Task 2
+// session_registry.go
 //
 // SessionRegistry tracks active LLM-session PIDs and the associated agent
 // identifier. It is used by the keylatchd sidecar to answer IPC queries from
@@ -9,7 +9,7 @@ package llmcontext
 //
 // Thread-safety: all methods are safe for concurrent use.
 //
-// S0-7: this file imports only stdlib packages.
+// This file imports only stdlib packages.
 
 import (
 	"sync"

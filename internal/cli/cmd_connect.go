@@ -26,7 +26,7 @@ var knownProviderPrefixes = []string{
 	"sk-proj-", // OpenAI project keys (must appear before "sk-")
 	"sk_live_", // Stripe live-mode secret keys (must appear before "sk-")
 	"sk_test_", // Stripe test-mode secret keys (must appear before "sk-")
-	"sk-",      // OpenAI and generic (T-12-01)
+	"sk-",      // OpenAI and generic
 	"ghp_",     // GitHub personal access tokens
 	"ghs_",     // GitHub Actions tokens
 	"gho_",     // GitHub OAuth tokens
@@ -86,8 +86,8 @@ func looksLikeSensitive(value string) bool {
 	return false
 }
 
-// newPhase3ConnectCmd returns the Phase 3 `connect` subcommand group.
-func newPhase3ConnectCmd() *cobra.Command {
+// newConnectCmd returns the `connect` subcommand group.
+func newConnectCmd() *cobra.Command {
 	connectCmd := &cobra.Command{
 		Use:   "connect <provider>",
 		Short: "Connect a credential provider",
@@ -121,7 +121,7 @@ func newPhase3ConnectCmd() *cobra.Command {
 			fields := map[string][]byte{}
 
 			// Build a fast lookup of sensitive field names from the provider template.
-			// S-INV-6: sensitive fields must not be supplied via argv (shell history leak).
+			// Sensitive fields must not be supplied via argv (shell history leak).
 			sensitiveFields := map[string]bool{}
 			for _, sf := range tmpl.SecretFields {
 				if sf.Sensitive {
@@ -139,9 +139,9 @@ func newPhase3ConnectCmd() *cobra.Command {
 				}
 				key, val := parts[0], parts[1]
 
-				// S-INV-6: hard-block sensitive values passed via argv.
+				// Hard-block sensitive values passed via argv.
 				// @- (stdin) and @prompt (interactive) are safe — only reject plain values.
-				// Extended (T-12-01): also block values matching known provider key prefixes or
+				// Extended: also block values matching known provider key prefixes or
 				// high-entropy heuristic, regardless of template sensitive: true declaration.
 				if !strings.HasPrefix(val, "@") && (sensitiveFields[key] || looksLikeSensitive(val)) {
 					cliErr := NewInsecureArgv(
@@ -240,7 +240,7 @@ func newPhase3ConnectCmd() *cobra.Command {
 						os.Exit(exitcode.UserError)
 						return nil
 					}
-					// T-12-01: even in --interactive mode, warn when a non-sensitive field
+					// Even in --interactive mode, warn when a non-sensitive field
 					// receives a value that looks like a high-entropy secret.
 					if len(value) > 0 && !sf.Sensitive && looksLikeSensitive(string(value)) {
 						fmt.Fprintf(c.ErrOrStderr(),
@@ -470,10 +470,10 @@ func printConnectActionableError(c *cobra.Command, provider string, sf registry.
 	}
 }
 
-// newPhase3ListCmd returns the Phase 3 `list` command (provider/account/namespace columns).
+// newListCmd returns the `list` command (provider/account/namespace columns).
 //
-//nolint:unused // planned: wired into connect command in Phase 3 promotion
-func newPhase3ListCmd() *cobra.Command {
+//nolint:unused // planned: wired into connect command during a future promotion
+func newListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List connections (provider/account/namespace, no values)",
@@ -514,11 +514,11 @@ func newPhase3ListCmd() *cobra.Command {
 // resolveProviderRefs validates --provider-ref field=URI flags and stores the
 // URI (not the resolved plaintext) in fields.
 //
-// EPIC-10 (T-10-01): --provider-ref defers resolution to runtime. The URI is
+// --provider-ref defers resolution to runtime. The URI is
 // written to the vault verbatim so the resolver can be invoked each time the
 // credential is needed. This upholds two security invariants:
-//   - S-EXT-3: the external store is the authoritative source; no plaintext copy lives in keylatch.
-//   - S-EXT-4: rotation in the upstream PM is picked up automatically on next use.
+//   - The external store is the authoritative source; no plaintext copy lives in keylatch.
+//   - Rotation in the upstream PM is picked up automatically on next use.
 //
 // Each flag has the format "field-name=uri" where uri is one of:
 //   - op://vault/item/field

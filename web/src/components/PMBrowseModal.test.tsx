@@ -1,10 +1,10 @@
 /**
- * PMBrowseModal tests — T-14-05.
+ * PMBrowseModal tests — .
  *
  * Tests:
- *   - Unauthenticated: shows hint text and copy button, no item list
- *   - Authenticated: shows item list; clicking an item builds + passes URI to onSelect
- *   - Manual fallback: always rendered regardless of auth state
+ * - Unauthenticated: shows hint text and copy button, no item list
+ * - Authenticated: shows item list; clicking an item builds + passes URI to onSelect
+ * - Manual fallback: always rendered regardless of auth state
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'

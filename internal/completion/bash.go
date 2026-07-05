@@ -16,12 +16,12 @@ func generateBash(root *cobra.Command) (string, error) {
 	fmt.Fprintf(&sb, "# Add to your ~/.bashrc: source <(keylatch completion bash)\n\n")
 
 	fmt.Fprintf(&sb, "_%s_completions() {\n", name)
-	fmt.Fprintf(&sb, "  local cur\n")
-	fmt.Fprintf(&sb, "  cur=\"${COMP_WORDS[COMP_CWORD]}\"\n\n")
+	fmt.Fprintf(&sb, " local cur\n")
+	fmt.Fprintf(&sb, " cur=\"${COMP_WORDS[COMP_CWORD]}\"\n\n")
 
 	if len(subs) > 0 {
-		fmt.Fprintf(&sb, "  local subcommands='%s'\n", strings.Join(subs, " "))
-		fmt.Fprintf(&sb, "  COMPREPLY=($(compgen -W \"$subcommands\" -- \"$cur\"))\n")
+		fmt.Fprintf(&sb, " local subcommands='%s'\n", strings.Join(subs, " "))
+		fmt.Fprintf(&sb, " COMPREPLY=($(compgen -W \"$subcommands\" -- \"$cur\"))\n")
 	}
 
 	fmt.Fprintf(&sb, "}\n\n")

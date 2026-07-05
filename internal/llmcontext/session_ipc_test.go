@@ -1,6 +1,6 @@
 package llmcontext_test
 
-// session_ipc_test.go — EPIC-05 Task 2
+// session_ipc_test.go
 //
 // Tests for the IsLLMSession priority chain (ticket → IPC → env signals)
 // and the SessionServer/SessionRegistry.
@@ -219,7 +219,7 @@ func TestSessionServer_GetNotRegistered(t *testing.T) {
 	client := udsHTTPClient(socketPath)
 	resp := ipcGET(t, client, "/v1/llm-session?pid=99999")
 	assert.Equal(t, "v1", resp.Schema,
-		"_schema must be 'v1' (load-bearing for EPIC-21/23)")
+		"_schema must be 'v1' (load-bearing for the session contract)")
 	assert.False(t, resp.Active,
 		"unregistered PID must not be active")
 }
@@ -258,7 +258,7 @@ func TestSessionServer_RegisterAndQuery(t *testing.T) {
 }
 
 // TestSessionServer_SchemaV1 verifies that all responses carry _schema:"v1".
-// This is load-bearing for EPIC-21 and EPIC-23.
+// This is load-bearing for the session contract.
 func TestSessionServer_SchemaV1(t *testing.T) {
 	socketPath := shortSocketPath(t, "s.sock")
 	startSessionServer(t, socketPath)
@@ -266,5 +266,5 @@ func TestSessionServer_SchemaV1(t *testing.T) {
 	client := udsHTTPClient(socketPath)
 	resp := ipcGET(t, client, "/v1/llm-session?pid=1")
 	assert.Equal(t, "v1", resp.Schema,
-		"_schema must be 'v1' in all GET /v1/llm-session responses (EPIC-21/23 contract)")
+		"_schema must be 'v1' in all GET /v1/llm-session responses")
 }

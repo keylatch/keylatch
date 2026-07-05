@@ -10,7 +10,7 @@ import (
 )
 
 // ErrModeNotSupported is returned when the caller requests a runtime mode
-// that is not listed in the provider template's supported set (S-RM-8).
+// that is not listed in the provider template's supported set.
 var ErrModeNotSupported = errors.New("runtime: requested mode not supported by provider")
 
 // ResolveRequest carries the caller-supplied context for mode selection.
@@ -48,13 +48,13 @@ const (
 //  1. Removed modes check — if RequestedMode is in removedModes, return ErrModeRemoved.
 //  2. Explicit caller request — if RequestedMode is set, it must appear in
 //     tmpl.RuntimeSupport.Supported or ErrModeNotSupported is returned
-//     (no silent downgrade, S-RM-8).
+//     (no silent downgrade).
 //  3. Provider preferred mode — tmpl.RuntimeSupport.Preferred.
 //  4. Fallback hierarchy: gateway_typed → gateway_sdk → direct_brokered → gateway_proxy.
 //
 // If no mode can be selected, ErrModeNotSupported is returned.
 func Resolve(_ context.Context, req ResolveRequest, tmpl registry.ConnectionTemplate) (RuntimeDecision, error) {
-	// Step 1: check removed modes before anything else (T-10-03).
+	// Step 1: check removed modes before anything else.
 	if req.RequestedMode != "" {
 		if hint, removed := removedModes[string(req.RequestedMode)]; removed {
 			return RuntimeDecision{
@@ -131,7 +131,7 @@ func shapeFor(m RuntimeMode) CredentialDelivery {
 	case RuntimeDirectBrokered:
 		return DeliveryProviderEphemeral
 	case RuntimeDirectClassicSandboxed:
-		// EPIC-24: sandboxed mode injects credentials directly but inside an OS
+		// Sandboxed mode injects credentials directly but inside an OS
 		// sandbox (bwrap/sandbox-exec). Delivery shape is provider_root because
 		// the raw credential is injected into the sandboxed env, not brokered.
 		return DeliveryProviderRoot

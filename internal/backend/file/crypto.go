@@ -1,6 +1,6 @@
 // Package file implements the filesystem backend for keylatch.
 // crypto.go wires AEAD envelope encryption into the file backend.
-// Implements S5-1: every value on disk is encrypted.
+// Every value on disk is encrypted.
 package file
 
 import (
@@ -17,7 +17,7 @@ import (
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
-// CryptoOptions extends Options with Phase 5 keyring configuration.
+// CryptoOptions extends Options with keyring configuration.
 // When KeyringKEK is non-nil, the backend uses AEAD encryption for all
 // SetVersioned/GetVersioned calls.
 type CryptoOptions struct {
@@ -26,13 +26,13 @@ type CryptoOptions struct {
 	KeyringPath string
 
 	// KeyringKEK is the KEK used to unwrap DEKs from the keyring.
-	// When nil, the backend runs in plaintext mode (Phase 4 compat).
+	// When nil, the backend runs in plaintext mode (legacy compat).
 	KeyringKEK kek.KEK
 }
 
 // cryptoState holds the initialized keyring and its once-initialization guard.
 //
-//nolint:unused // Phase 5 keyring state; wired in when CryptoOptions.KeyringKEK is provided.
+//nolint:unused // keyring state; wired in when CryptoOptions.KeyringKEK is provided.
 type cryptoState struct {
 	once sync.Once
 	kr   *keyring.Keyring
@@ -41,7 +41,7 @@ type cryptoState struct {
 
 // ensureKeyring initializes the keyring on first use.
 //
-//nolint:unused // Phase 5 helper; called from SetVersionedEncrypted when CryptoOptions is set.
+//nolint:unused // helper; called from SetVersionedEncrypted when CryptoOptions is set.
 func (fb *FileBackend) ensureKeyring(opts CryptoOptions) (*keyring.Keyring, error) {
 	if fb.crypto == nil || opts.KeyringKEK == nil {
 		return nil, nil // no crypto configured
@@ -176,7 +176,7 @@ func (fb *FileBackend) GetVersionedEncrypted(
 	// Open (decrypt + authenticate).
 	plaintext, err := envelope.Open(envelope.Algorithm(vm.AAD.Algorithm), dek, ct, nonce, aadBytes)
 	if err != nil {
-		// Uniform oracle (S5-4).
+		// Uniform oracle — do not distinguish failure modes.
 		return nil, envelope.ErrAEADAuthFailed
 	}
 

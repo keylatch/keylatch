@@ -6,14 +6,14 @@ import (
 	"github.com/keylatch/keylatch/internal/policy"
 )
 
-// TestActorSpoof_FIND007 verifies FIND-007:
+// TestActorSpoof_ReadDenied verifies
 // even if KEYLATCH_ACTOR is set to "human" (actor spoofing), the LLM session
-// read-class deny (S8-9) is applied based on req.LLMSession, not the actor name.
-func TestActorSpoof_FIND007_ReadDenied(t *testing.T) {
+// read-class deny is applied based on req.LLMSession, not the actor name.
+func TestActorSpoof_ReadDenied(t *testing.T) {
 	p := policy.Policy{
 		SchemaVersion: 1,
 		Mode:          policy.ModeEnforcing,
-		DefaultDeny:   false, // would allow if not for S8-9
+		DefaultDeny:   false, // would allow if not for the LLM-session read-class deny
 		Rules: []policy.Rule{
 			{
 				ID:           "allow-all",
@@ -34,15 +34,15 @@ func TestActorSpoof_FIND007_ReadDenied(t *testing.T) {
 	})
 
 	if d.Allow {
-		t.Error("FIND-007: read capability must be denied in LLM session even with spoofed actor name")
+		t.Error("read capability must be denied in LLM session even with spoofed actor name")
 	}
 	if d.Reason == "" {
 		t.Error("Reason must be set on LLM read deny")
 	}
 }
 
-// TestActorSpoof_FIND007_ExportDenied confirms export is also denied.
-func TestActorSpoof_FIND007_ExportDenied(t *testing.T) {
+// TestActorSpoof_ExportDenied confirms export is also denied.
+func TestActorSpoof_ExportDenied(t *testing.T) {
 	p := policy.Policy{
 		SchemaVersion: 1,
 		Mode:          policy.ModeEnforcing,
@@ -65,13 +65,13 @@ func TestActorSpoof_FIND007_ExportDenied(t *testing.T) {
 	})
 
 	if d.Allow {
-		t.Error("FIND-007: export capability must be denied regardless of actor name in LLM session")
+		t.Error("export capability must be denied regardless of actor name in LLM session")
 	}
 }
 
-// TestActorSpoof_FIND007_InjectAllowed confirms non-read capabilities still
+// TestActorSpoof_InjectAllowed confirms non-read capabilities still
 // go through normal rule evaluation even with a spoofed actor name.
-func TestActorSpoof_FIND007_InjectAllowed(t *testing.T) {
+func TestActorSpoof_InjectAllowed(t *testing.T) {
 	p := policy.Policy{
 		SchemaVersion: 1,
 		Mode:          policy.ModeEnforcing,
