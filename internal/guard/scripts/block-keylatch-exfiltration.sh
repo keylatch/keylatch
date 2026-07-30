@@ -77,20 +77,30 @@ Bash)
 	fi
 
 	# S0-6 pattern 9: bare env / printenv dump (would expose KEYLATCH_* tokens).
-	# Command-position anchor (stronger than a plain whitespace boundary,
-	# because "env" is a common substring in prose/JSON and a plain
-	# whitespace/quote boundary alone would over-block e.g.
-	# `grep -n '"env"' settings.json`). Leading group accepts: start of
-	# string (optionally itself a quote, for a fully-quoted bare command),
-	# one or more shell separator/subshell chars (;, &, |, "(" — repeated to
-	# cover && / ||), or a single whitespace char optionally followed by one
-	# quote char (covers `bash -c '...'` / `sh -c "..."` wrapping). A quote
-	# only counts as a boundary when it is itself adjacent to a real
-	# command-start position — an embedded quote pair inside unrelated text
-	# (like the settings.json example above) is not preceded by whitespace
-	# immediately before "env" and so does not match. VAR=val prefixes
-	# before env/printenv are still tolerated.
-	if echo "$TOOL_INPUT" | grep -qE "(^['\"]?|[;&|(]+|[[:space:]]['\"]?)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|[;&|)'\"])"; then
+	# Two checks, deliberately kept separate rather than merged into one
+	# quote-permissive regex:
+	#
+	# 9a — command-position anchor. Leading group accepts: start of string
+	# (optionally itself a quote, for a fully-quoted bare command, e.g.
+	# `'env'`), or one or more shell separator/subshell chars (;, &, |, "("
+	# — repeated to cover && / ||). VAR=val prefixes before env/printenv
+	# are tolerated. Deliberately does NOT treat a bare whitespace-adjacent
+	# quote as a boundary — an earlier version did, and that wrongly
+	# blocked ordinary greps like `grep -n 'env' settings.json` (any
+	# single-quoted/double-quoted grep/sed/awk search term for the word
+	# "env"), because a lone quote before "env" is indistinguishable by
+	# character class alone from a real command start. Do not reintroduce
+	# a whitespace+quote leading alternative here without re-checking that
+	# false positive.
+	#
+	# 9b — surgical detection of the actual dangerous shape: an
+	# interpreter -c invocation (`bash -c '...'`, `sh -c "..."`, optionally
+	# path-prefixed like `/bin/bash -c '...'`) whose quoted body starts
+	# with env/printenv. This is what 9a intentionally does not catch
+	# (`'env'` alone works via the ^ branch, but the wrapper form needs the
+	# interpreter+flag context to distinguish it from `grep -n 'env' ...`).
+	if echo "$TOOL_INPUT" | grep -qE "(^['\"]?|[;&|(]+)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|[;&|)'\"])" || \
+	   echo "$TOOL_INPUT" | grep -qE "(^|[;&|(]+|[[:space:]]|/)(bash|sh|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+['\"](env|printenv)([[:space:]]|$|['\"])"; then
 		block "env/printenv is disabled in LLM sessions to prevent token exfiltration"
 	fi
 	;;

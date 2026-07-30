@@ -112,7 +112,8 @@ run_case "p8 bash -c wrapped blocked (repro)"   Bash  "bash -c 'cat ~/.keylatch/
 run_case "p8 sh -c wrapped blocked (repro)"     Bash  'sh -c "cat ~/.keylatch/secrets.env"'              2
 run_case "p8 prose near-miss allowed"           Bash  "grep -n keylatch README.md"                       0
 
-# --- pattern 9: bare env / printenv (command-position anchor, quote-extended) ---
+# --- pattern 9: bare env / printenv (command-position anchor + surgical
+# interpreter -c wrapper detection). See code-review regression below.
 run_case "p9 bare env blocked"                  Bash  "env"                                              2
 run_case "p9 bash -c wrapped blocked"           Bash  "bash -c 'env'"                                    2
 run_case "p9 sh -c wrapped blocked"             Bash  'sh -c "printenv"'                                 2
@@ -120,6 +121,22 @@ run_case "p9 var-prefixed env blocked"          Bash  "FOO=bar env"             
 run_case "p9 prose JSON key allowed"            Bash  "grep -n '\"env\"' settings.json"                  0
 run_case "p9 dotenv mention allowed"            Bash  "echo .env.example is our template file"           0
 run_case "p9 environment word allowed"          Bash  "cat package.json | grep environment"              0
+
+# --- pattern 9 regression fixtures (code review, 2026-07-30) ---
+# An earlier version of the quote-widening fix used a generic
+# whitespace+optional-quote leading boundary for pattern 9. That wrongly
+# blocked any ordinary single- or double-quoted grep/sed/awk search term
+# for the literal word "env" (a single quote char immediately before "env"
+# is indistinguishable from a real command start by character class
+# alone). Fixed by splitting into 9a (command-position anchor, no bare
+# quote boundary) + 9b (surgical bash/sh/zsh -c wrapper detection). These
+# six cases must all hold simultaneously.
+run_case "p9 regression: bash -c env still blocked"      Bash  "bash -c 'env'"                        2
+run_case "p9 regression: sh -c printenv still blocked"   Bash  'sh -c "printenv"'                     2
+run_case "p9 regression: grep single-quoted env allowed" Bash  "grep -n 'env' settings.json"          0
+run_case "p9 regression: grep double-quoted env allowed" Bash  'grep -n "env" settings.json'          0
+run_case "p9 regression: grep -rn env allowed"           Bash  "grep -rn 'env' src/"                  0
+run_case "p9 regression: grep JSON-key prose allowed"    Bash  "grep -n '\"env\"' settings.json"      0
 
 # Current Claude Code contract — tool call JSON delivered on stdin
 run_case_stdin "stdin: plain get blocked"        '{"tool_name":"Bash","tool_input":{"command":"keylatch get clockify api_key"}}'         2
