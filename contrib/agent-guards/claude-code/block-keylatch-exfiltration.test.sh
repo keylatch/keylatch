@@ -138,6 +138,23 @@ run_case "p9 regression: grep double-quoted env allowed" Bash  'grep -n "env" se
 run_case "p9 regression: grep -rn env allowed"           Bash  "grep -rn 'env' src/"                  0
 run_case "p9 regression: grep JSON-key prose allowed"    Bash  "grep -n '\"env\"' settings.json"      0
 
+# --- pattern 9 round-2 regression fixtures (code review, 2026-07-30) ---
+# 9b originally required env/printenv to be the literal first characters
+# right after the opening quote of the -c body. That missed leading
+# whitespace and VAR=val prefixes inside the quote — both ordinary shell
+# shapes that still invoke env/printenv as the actual command.
+run_case "p9 round2: bash -c ' env' (leading ws) blocked"        Bash  "bash -c ' env'"                      2
+run_case "p9 round2: bash -c '  env  ' (extra ws) blocked"       Bash  "bash -c '  env  '"                   2
+run_case "p9 round2: bash -c 'FOO=bar env' blocked"              Bash  "bash -c 'FOO=bar env'"                2
+run_case "p9 round2: bash -c 'FOO=bar BAZ=qux printenv' blocked" Bash  "bash -c 'FOO=bar BAZ=qux printenv'"   2
+
+# --- pattern 9 self-directed adversarial checks (asked for by code review) ---
+run_case "p9 adversarial: bash -c -x 'env' (flag after -c) blocked"  Bash  "bash -c -x 'env'"                2
+run_case "p9 adversarial: bash -x -c 'env' (flag before -c) blocked" Bash  "bash -x -c 'env'"                2
+run_case "p9 adversarial: bash -c<TAB>'env' (tab, not space) blocked" Bash $'bash -c\t\'env\''                2
+run_case "p9 adversarial: bash -c 'true; env' compound blocked"      Bash  "bash -c 'true; env'"             2
+run_case "p9 adversarial: bash -c 'true && env' compound blocked"    Bash  "bash -c 'true && env'"           2
+
 # Current Claude Code contract — tool call JSON delivered on stdin
 run_case_stdin "stdin: plain get blocked"        '{"tool_name":"Bash","tool_input":{"command":"keylatch get clockify api_key"}}'         2
 run_case_stdin "stdin: get --masked allowed"     '{"tool_name":"Bash","tool_input":{"command":"keylatch get --masked clockify api_key"}}' 0

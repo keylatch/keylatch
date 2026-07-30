@@ -95,12 +95,23 @@ Bash)
 	#
 	# 9b — surgical detection of the actual dangerous shape: an
 	# interpreter -c invocation (`bash -c '...'`, `sh -c "..."`, optionally
-	# path-prefixed like `/bin/bash -c '...'`) whose quoted body starts
-	# with env/printenv. This is what 9a intentionally does not catch
-	# (`'env'` alone works via the ^ branch, but the wrapper form needs the
-	# interpreter+flag context to distinguish it from `grep -n 'env' ...`).
+	# path-prefixed like `/bin/bash -c '...'`, and tolerant of extra flags
+	# in either order around -c, e.g. `bash -c -x '...'` / `bash -x -c
+	# '...'`) whose quoted body starts with env/printenv. This is what 9a
+	# intentionally does not catch (`'env'` alone works via the ^ branch,
+	# but the wrapper form needs the interpreter+flag context to
+	# distinguish it from `grep -n 'env' ...`). Inside the quoted body,
+	# leading whitespace and VAR=val prefixes before env/printenv are
+	# tolerated (`bash -c ' env'`, `bash -c 'FOO=bar env'`) — a second
+	# review round found these were bypassing an earlier version that
+	# required env/printenv to be the literal first characters after the
+	# opening quote. A `;`/`&`/`|`-separated compound inside the quote
+	# (`bash -c 'true; env'`) does not need special handling here — 9a
+	# already catches it, since 9a scans the whole raw string for a
+	# separator char immediately before env/printenv regardless of quote
+	# nesting.
 	if echo "$TOOL_INPUT" | grep -qE "(^['\"]?|[;&|(]+)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|[;&|)'\"])" || \
-	   echo "$TOOL_INPUT" | grep -qE "(^|[;&|(]+|[[:space:]]|/)(bash|sh|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+['\"](env|printenv)([[:space:]]|$|['\"])"; then
+	   echo "$TOOL_INPUT" | grep -qE "(^|[;&|(]+|[[:space:]]|/)(bash|sh|zsh|dash|ksh)[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*c[A-Za-z]*[[:space:]]+(-[A-Za-z]+[[:space:]]+)*['\"][[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|['\"])"; then
 		block "env/printenv is disabled in LLM sessions to prevent token exfiltration"
 	fi
 	;;
