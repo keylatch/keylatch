@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# keylatch-hook-version: 2
+# keylatch-hook-version: 3
 # Layer 2 agent guard — blocks credential-access patterns before the agent's
 # Bash/Read tool calls execute. Layer 1 (CLI-internal GuardLLMSession) still
 # applies even when this hook is not installed.
@@ -43,38 +43,54 @@ Bash)
 	fi
 
 	# S0-6 pattern 2: macOS security command — generic password
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])security[[:space:]]+find-generic-password'; then
+	# Quote-aware boundary (SEC3 quoting variants) — matches pattern 1's shape
+	# so `bash -c '...'` / `sh -c "..."` wrappers cannot evade the whitespace
+	# boundary by starting the segment right after a quote character.
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])security[[:space:]]+find-generic-password"; then
 		block "security find-generic-password is disabled in LLM sessions"
 	fi
 
 	# S0-6 pattern 3: macOS security command — internet password
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])security[[:space:]]+find-internet-password'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])security[[:space:]]+find-internet-password"; then
 		block "security find-internet-password is disabled in LLM sessions"
 	fi
 
 	# S0-6 pattern 4: 1Password CLI
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])op[[:space:]]+(read|item[[:space:]]+get)'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])op[[:space:]]+(read|item[[:space:]]+get)"; then
 		block "op read / op item get is disabled in LLM sessions"
 	fi
 
 	# S0-6 pattern 5: Bitwarden CLI
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])bw[[:space:]]+(get|list)'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])bw[[:space:]]+(get|list)"; then
 		block "bw get / bw list is disabled in LLM sessions"
 	fi
 
 	# S0-6 pattern 7: keylatch run -- env (env dump via run)
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])keylatch[[:space:]]+run[[:space:]].*--[[:space:]]+env([[:space:]]|$)'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])keylatch[[:space:]]+run[[:space:]].*--[[:space:]]+env([[:space:]]|$|'|\")"; then
 		block "keylatch run -- env is disabled in LLM sessions"
 	fi
 
 	# S0-6 pattern 8: cat with keylatch path or .env file
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])cat[[:space:]]+.*keylatch' || \
-	   echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])cat[[:space:]]+.*\.env'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])cat[[:space:]]+.*keylatch" || \
+	   echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])cat[[:space:]]+.*\.env"; then
 		block "cat of keylatch/env files is disabled in LLM sessions"
 	fi
 
-	# S0-6 pattern 9: bare env / printenv dump (would expose KEYLATCH_* tokens)
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])(env|printenv)([[:space:]]|$)'; then
+	# S0-6 pattern 9: bare env / printenv dump (would expose KEYLATCH_* tokens).
+	# Command-position anchor (stronger than a plain whitespace boundary,
+	# because "env" is a common substring in prose/JSON and a plain
+	# whitespace/quote boundary alone would over-block e.g.
+	# `grep -n '"env"' settings.json`). Leading group accepts: start of
+	# string (optionally itself a quote, for a fully-quoted bare command),
+	# one or more shell separator/subshell chars (;, &, |, "(" — repeated to
+	# cover && / ||), or a single whitespace char optionally followed by one
+	# quote char (covers `bash -c '...'` / `sh -c "..."` wrapping). A quote
+	# only counts as a boundary when it is itself adjacent to a real
+	# command-start position — an embedded quote pair inside unrelated text
+	# (like the settings.json example above) is not preceded by whitespace
+	# immediately before "env" and so does not match. VAR=val prefixes
+	# before env/printenv are still tolerated.
+	if echo "$TOOL_INPUT" | grep -qE "(^['\"]?|[;&|(]+|[[:space:]]['\"]?)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|[;&|)'\"])"; then
 		block "env/printenv is disabled in LLM sessions to prevent token exfiltration"
 	fi
 	;;
