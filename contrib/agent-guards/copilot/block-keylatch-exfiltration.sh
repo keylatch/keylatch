@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# keylatch-hook-version: 1
+# keylatch-hook-version: 2
 # GitHub Copilot CLI guard — blocks credential-access patterns.
 # Since the exact native hook config path is unconfirmed (the original gh copilot
 # extension is retired), this script is used as a shell wrapper fallback that
@@ -22,23 +22,23 @@ Bash|bash|shell|run_command|execute)
 		block "keylatch get is disabled in LLM sessions; use keylatch get --masked or keylatch run"
 	fi
 
-	# Block macOS security commands
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])security[[:space:]]+find-(generic|internet)-password'; then
+	# Block macOS security commands (quote-aware boundary, SEC3-style)
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])security[[:space:]]+find-(generic|internet)-password"; then
 		block "security find-password is disabled in LLM sessions"
 	fi
 
 	# Block 1Password CLI
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])op[[:space:]]+(read|item[[:space:]]+get)'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])op[[:space:]]+(read|item[[:space:]]+get)"; then
 		block "op read is disabled in LLM sessions"
 	fi
 
 	# Block Bitwarden CLI
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])bw[[:space:]]+(get|list)'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])bw[[:space:]]+(get|list)"; then
 		block "bw get is disabled in LLM sessions"
 	fi
 
 	# Block cat of keylatch config or keychain-db
-	if echo "$TOOL_INPUT" | grep -qE '(^|[[:space:]])cat[[:space:]]+.*\.keylatch/(config\.yaml|keylatch\.keychain-db)'; then
+	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])cat[[:space:]]+.*\.keylatch/(config\.yaml|keylatch\.keychain-db)"; then
 		block "cat of .keylatch files is disabled in LLM sessions"
 	fi
 	;;
