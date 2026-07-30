@@ -123,32 +123,53 @@ run_case "p9 dotenv mention allowed"            Bash  "echo .env.example is our 
 run_case "p9 environment word allowed"          Bash  "cat package.json | grep environment"              0
 
 # --- pattern 9 regression fixtures (code review, 2026-07-30) ---
-# An earlier version of the quote-widening fix used a generic
+# History: an earlier version of the quote-widening fix used a generic
 # whitespace+optional-quote leading boundary for pattern 9. That wrongly
 # blocked any ordinary single- or double-quoted grep/sed/awk search term
 # for the literal word "env" (a single quote char immediately before "env"
 # is indistinguishable from a real command start by character class
-# alone). Fixed by splitting into 9a (command-position anchor, no bare
-# quote boundary) + 9b (surgical bash/sh/zsh -c wrapper detection). These
-# six cases must all hold simultaneously.
-run_case "p9 regression: bash -c env still blocked"      Bash  "bash -c 'env'"                        2
-run_case "p9 regression: sh -c printenv still blocked"   Bash  'sh -c "printenv"'                     2
-run_case "p9 regression: grep single-quoted env allowed" Bash  "grep -n 'env' settings.json"          0
-run_case "p9 regression: grep double-quoted env allowed" Bash  'grep -n "env" settings.json'          0
-run_case "p9 regression: grep -rn env allowed"           Bash  "grep -rn 'env' src/"                  0
-run_case "p9 regression: grep JSON-key prose allowed"    Bash  "grep -n '\"env\"' settings.json"      0
+# alone). bb07679 fixed this by splitting into 9a (command-position
+# anchor, no bare quote boundary) + 9b (surgical bash/sh/zsh -c wrapper
+# detection).
+#
+# KNOWN REGRESSION (reintroduced 2026-07-30 — pattern 9 reverted to its
+# 79c5a97 form after a 3rd adversarial review round found unrelated
+# bypasses in the bb07679/0ff763e quote-widening; see the KNOWN
+# LIMITATION comment above pattern 9 in block-keylatch-exfiltration.sh):
+# the revert brings back the single generic whitespace+optional-quote
+# leading boundary that bb07679's 9a/9b split was written to remove.
+# Verified empirically at the reverted state: `grep -n 'env' file`,
+# `grep -n "env" file`, and `grep -rn 'env' dir/` are BLOCKED again — a
+# real, confirmed over-block false positive on quoted "env" as an
+# ordinary grep search term, not an actual env/printenv invocation. This
+# is a genuine functional regression, distinct from the bash-c/eval/exec
+# detection gap documented on pattern 9 itself; flagged back to the
+# decision-maker rather than silently fixed, since fixing it here would
+# mean not reverting to 79c5a97 verbatim as explicitly instructed.
+run_case "p9 regression: bash -c env still blocked"                Bash  "bash -c 'env'"                    2
+run_case "p9 regression: sh -c printenv still blocked"              Bash  'sh -c "printenv"'                 2
+run_case "p9 KNOWN REGRESSION: grep single-quoted env now blocked"  Bash  "grep -n 'env' settings.json"      2
+run_case "p9 KNOWN REGRESSION: grep double-quoted env now blocked"  Bash  'grep -n "env" settings.json'      2
+run_case "p9 KNOWN REGRESSION: grep -rn env now blocked"            Bash  "grep -rn 'env' src/"               2
+run_case "p9 regression: grep JSON-key prose allowed"               Bash  "grep -n '\"env\"' settings.json"  0
 
-# --- pattern 9 round-2 regression fixtures (code review, 2026-07-30) ---
-# 9b originally required env/printenv to be the literal first characters
-# right after the opening quote of the -c body. That missed leading
-# whitespace and VAR=val prefixes inside the quote — both ordinary shell
-# shapes that still invoke env/printenv as the actual command.
+# --- pattern 9 round-2 fixtures (code review, 2026-07-30) ---
+# These originally validated 9b's surgical bash/sh/zsh -c wrapper
+# handling of leading whitespace and VAR=val prefixes inside the quoted
+# body. 9b no longer exists after the revert to 79c5a97, but these still
+# pass — not via surgical interpreter detection, but incidentally, via
+# the same generic whitespace+optional-quote+whitespace* boundary
+# responsible for the KNOWN REGRESSION fixtures above. Kept as-is since
+# the observed behavior (blocked) is unchanged; the *mechanism* changed.
 run_case "p9 round2: bash -c ' env' (leading ws) blocked"        Bash  "bash -c ' env'"                      2
 run_case "p9 round2: bash -c '  env  ' (extra ws) blocked"       Bash  "bash -c '  env  '"                   2
 run_case "p9 round2: bash -c 'FOO=bar env' blocked"              Bash  "bash -c 'FOO=bar env'"                2
 run_case "p9 round2: bash -c 'FOO=bar BAZ=qux printenv' blocked" Bash  "bash -c 'FOO=bar BAZ=qux printenv'"   2
 
 # --- pattern 9 self-directed adversarial checks (asked for by code review) ---
+# Same note as round-2 above: still blocked at the reverted state, but
+# incidentally rather than via any interpreter-flag-aware logic (9b is
+# gone). Kept as regression coverage for the observed outcome.
 run_case "p9 adversarial: bash -c -x 'env' (flag after -c) blocked"  Bash  "bash -c -x 'env'"                2
 run_case "p9 adversarial: bash -x -c 'env' (flag before -c) blocked" Bash  "bash -x -c 'env'"                2
 run_case "p9 adversarial: bash -c<TAB>'env' (tab, not space) blocked" Bash $'bash -c\t\'env\''                2

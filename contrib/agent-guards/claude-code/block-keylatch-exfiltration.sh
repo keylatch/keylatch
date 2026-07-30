@@ -4,6 +4,14 @@
 # Bash/Read tool calls execute. Layer 1 (CLI-internal GuardLLMSession) still
 # applies even when this hook is not installed.
 #
+# v3 note: patterns 2, 3, 4, 5, 7, 8 gained a quote-wrap-bypass fix (a
+# `bash -c '...'` / `sh -c "..."` wrapper could no longer evade the
+# whitespace command-boundary check). Pattern 9 (env/printenv) did NOT
+# receive the equivalent round-2/round-3 quote-awareness widening — that
+# widening was reverted after a third adversarial review round found new
+# regex bypasses in that specific area. See the KNOWN LIMITATION comment
+# above pattern 9 below for the accepted, documented gap.
+#
 # Claude Code delivers the tool call as JSON on stdin:
 #   {"tool_name": "Bash", "tool_input": {"command": "..."}}
 # The CLAUDE_TOOL_NAME / CLAUDE_TOOL_INPUT environment variables are honoured
@@ -77,41 +85,34 @@ Bash)
 	fi
 
 	# pattern 9: bare env / printenv dump (would expose KEYLATCH_* tokens).
-	# Two checks, deliberately kept separate rather than merged into one
-	# quote-permissive regex:
+	# Command-position anchor (stronger than a plain whitespace boundary,
+	# because "env" is a common substring in prose/JSON and a plain
+	# whitespace/quote boundary alone would over-block e.g.
+	# `grep -n '"env"' settings.json`). Leading group accepts: start of
+	# string (optionally itself a quote, for a fully-quoted bare command),
+	# one or more shell separator/subshell chars (;, &, |, "(" — repeated to
+	# cover && / ||), or a single whitespace char optionally followed by one
+	# quote char (covers `bash -c '...'` / `sh -c "..."` wrapping). A quote
+	# only counts as a boundary when it is itself adjacent to a real
+	# command-start position — an embedded quote pair inside unrelated text
+	# (like the settings.json example above) is not preceded by whitespace
+	# immediately before "env" and so does not match. VAR=val prefixes
+	# before env/printenv are still tolerated.
 	#
-	# 9a — command-position anchor. Leading group accepts: start of string
-	# (optionally itself a quote, for a fully-quoted bare command, e.g.
-	# `'env'`), or one or more shell separator/subshell chars (;, &, |, "("
-	# — repeated to cover && / ||). VAR=val prefixes before env/printenv
-	# are tolerated. Deliberately does NOT treat a bare whitespace-adjacent
-	# quote as a boundary — an earlier version did, and that wrongly
-	# blocked ordinary greps like `grep -n 'env' settings.json` (any
-	# single-quoted/double-quoted grep/sed/awk search term for the word
-	# "env"), because a lone quote before "env" is indistinguishable by
-	# character class alone from a real command start. Do not reintroduce
-	# a whitespace+quote leading alternative here without re-checking that
-	# false positive.
-	#
-	# 9b — surgical detection of the actual dangerous shape: an
-	# interpreter -c invocation (`bash -c '...'`, `sh -c "..."`, optionally
-	# path-prefixed like `/bin/bash -c '...'`, and tolerant of extra flags
-	# in either order around -c, e.g. `bash -c -x '...'` / `bash -x -c
-	# '...'`) whose quoted body starts with env/printenv. This is what 9a
-	# intentionally does not catch (`'env'` alone works via the ^ branch,
-	# but the wrapper form needs the interpreter+flag context to
-	# distinguish it from `grep -n 'env' ...`). Inside the quoted body,
-	# leading whitespace and VAR=val prefixes before env/printenv are
-	# tolerated (`bash -c ' env'`, `bash -c 'FOO=bar env'`) — a second
-	# review round found these were bypassing an earlier version that
-	# required env/printenv to be the literal first characters after the
-	# opening quote. A `;`/`&`/`|`-separated compound inside the quote
-	# (`bash -c 'true; env'`) does not need special handling here — 9a
-	# already catches it, since 9a scans the whole raw string for a
-	# separator char immediately before env/printenv regardless of quote
-	# nesting.
-	if echo "$TOOL_INPUT" | grep -qE "(^['\"]?|[;&|(]+)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|[;&|)'\"])" || \
-	   echo "$TOOL_INPUT" | grep -qE "(^|[;&|(]+|[[:space:]]|/)(bash|sh|zsh|dash|ksh)[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*c[A-Za-z]*[[:space:]]+(-[A-Za-z]+[[:space:]]+)*['\"][[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|['\"])"; then
+	# KNOWN LIMITATION (tracked in a follow-up plan): this pattern does not
+	# detect env/printenv invoked via bash -c/sh -c/zsh -c with unquoted,
+	# adjacent-quote-spliced, ANSI-C-escaped, or command-substitution-
+	# obscured payloads, nor via eval/exec/command. Closing the command-
+	# substitution and variable-indirection cases specifically requires
+	# runtime execution and is not achievable by any static pre-execution
+	# check — accepted as permanent residual risk. The remaining gaps
+	# (unquoted -c value, eval/exec/command, nested wrappers) are
+	# technically closeable but were reverted here after 3 review rounds
+	# each found new regex bypasses in this area; a structural rewrite
+	# (deny-by-default: any -c/eval/exec/command payload must reduce via
+	# real shell tokenization to a static literal token) is the
+	# recommended fix, not further regex patching.
+	if echo "$TOOL_INPUT" | grep -qE "(^['\"]?|[;&|(]+|[[:space:]]['\"]?)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*(env|printenv)([[:space:]]|$|[;&|)'\"])"; then
 		block "env/printenv is disabled in LLM sessions to prevent token exfiltration"
 	fi
 	;;
