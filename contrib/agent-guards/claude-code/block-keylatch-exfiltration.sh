@@ -130,13 +130,48 @@ function tokenize(s, out_type, out_val, out_flag,    i, n, c, st, cur, flg, cnt,
 	if (open) { cnt++; out_type[cnt]="WORD"; out_val[cnt]=cur; out_flag[cnt]=flg }
 	return cnt
 }
+# Resolves a bare {a,b,...} brace-list token to the first non-empty
+# alternative, when it collapses to a single literal command word exactly
+# the way real bash brace expansion + unquoted word splitting does: e.g.
+# {env,} -> env (the empty alternative vanishes, no execution needed to
+# know that). Requires a real comma (bash does not treat {env} without a
+# comma as brace expansion at all -- verified). Deliberately narrow: only
+# a bare, non-nested {...} occupying the WHOLE token, no prefix/suffix.
+function brace_literal(w,    inner, n, alts, i, first) {
+	if (w !~ /^\{[^{}]*\}$/) return w
+	inner = substr(w, 2, length(w) - 2)
+	n = split(inner, alts, ",")
+	if (n < 2) return w
+	first = ""
+	for (i = 1; i <= n; i++) {
+		if (alts[i] != "") { first = alts[i]; break }
+	}
+	if (first == "env" || first == "printenv") return first
+	return w
+}
+
+# Resolves ${N:-literal} / ${N-literal} for positional parameters 1-9 to
+# the literal, since Claude Code Bash tool calls never append extra
+# positional args to the command string -- $1-$9 are deterministically
+# unset in this guard actual deployment context, making the default
+# branch always fire (no execution needed to know that). Deliberately
+# excludes named variables (${x:-env} stays a gap -- x could be externally
+# set) and $0 (always set to the invoking shell/script name in practice,
+# so its default branch never fires -- not a real bypass vector).
+function positional_default_literal(w,    p) {
+	if (w !~ /^\$\{[1-9](:-|-)[A-Za-z_][A-Za-z0-9_]*\}$/) return w
+	p = index(w, "-")
+	return substr(w, p + 1, length(w) - p - 1)
+}
+
 function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p, payload) {
 	i = start
 	while (i <= end && tt[i] == "WORD" && is_in(RESERVED, tv[i])) i++
 	while (i <= end && tt[i] == "WORD" && tv[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) i++
 	if (i > end) return 0
 	cw = tv[i]
-	base = cw
+	base = brace_literal(cw)
+	base = positional_default_literal(base)
 	if (index(base, "/") > 0) {
 		k = base
 		while (index(k, "/") > 0) { k = substr(k, index(k, "/") + 1) }
@@ -294,14 +329,27 @@ Bash)
 	# top-level `$'\x65nv'` (decodes to `env`) is blocked even with no
 	# wrapper at all.
 	#
+	# Two more deterministic, no-execution-needed sub-cases are resolved
+	# the same way, at any depth: bare brace-list command words like
+	# `{env,}` / `{,env,}` (the empty alternative vanishes on unquoted
+	# word splitting, same as real bash), and positional-parameter
+	# defaults `${1:-env}` .. `${9:-printenv}` (Claude Code never appends
+	# extra positional args to the command string, so $1-$9 are always
+	# unset here and the default literal always fires). Named-variable
+	# defaults (`${x:-env}`) are NOT resolved this way -- x could be
+	# externally set, so that stays a genuine gap; see below.
+	#
 	# KNOWN ACCEPTED GAPS (permanent, by design):
 	#   - Top-level command substitution, e.g. `$(echo env)` as a bare
 	#     command word. Resolving it requires execution, which defeats a
 	#     pre-execution guard.
-	#   - Variable indirection, e.g. `X=env; $X`. Same reason; also,
-	#     `$EDITOR file` / `$PYTHON -m pip` are ordinary idioms, so
-	#     blocking dynamic command words at top level would be a broad
-	#     false-positive surface.
+	#   - Variable indirection with a NAMED variable, e.g. `X=env; $X` or
+	#     `${x:-env}`. Genuinely undecidable: the variable could be set
+	#     externally. Also `$EDITOR file` / `$PYTHON -m pip` are ordinary
+	#     idioms, so blocking dynamic command words at top level would be
+	#     a broad false-positive surface. (Positional-parameter defaults
+	#     `${1:-env}` .. `${9:-printenv}` are NOT in this bucket -- those
+	#     are decidable and blocked, see above.)
 	#   - File-based payloads, e.g. `bash script.sh` where the script
 	#     contains env -- same class as `source file`, `. file`, and
 	#     `bash < file`. The guard inspects the tool-call text, not the

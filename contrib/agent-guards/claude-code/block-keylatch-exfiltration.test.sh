@@ -309,6 +309,36 @@ run_case "p9 K: bare top-level \$'\\145nv' (octal, no wrapper) blocked" Bash $'$
 run_case "p9 K: bash -c \$'\\x65nv' (depth>0, re-confirmed) blocked"    Bash $'bash -c $'"'"'\x65nv'"'"''    2
 run_case "p9 K: bash -c \"\$'\\x65nv\"' (dollar-quote inside dq, depth>0, re-confirmed) blocked" Bash 'bash -c "$'"'"'\x65nv'"'"'"'    2
 
+# Group L — round 10 review (2026-07-30): same well-scoped class as Bypass D
+# (deterministic, no-execution-needed sub-cases wrongly left open), not
+# implementation slips.
+#
+# Bypass E: brace expansion. `{env,}` expands to just `env` in real bash
+# (the empty alternative vanishes on unquoted word splitting) -- purely
+# lexical, no execution needed, same category that closed Bypass D. Was a
+# pure blind spot (never in the accepted-gaps list at all), not a
+# miscategorization.
+run_case "p9 L: bare {env,} (brace expansion) blocked"        Bash "{env,}"          2
+run_case "p9 L: bare {,env,} (brace expansion) blocked"       Bash "{,env,}"         2
+run_case "p9 L: bare {printenv,} (brace expansion) blocked"   Bash "{printenv,}"     2
+run_case "p9 L: bash -c '{env,}' (wrapped) blocked"           Bash "bash -c '{env,}'" 2
+run_case "p9 L: sudo {env,} (wrapped) blocked"                Bash "sudo {env,}"     2
+# Regression coverage: brace expansion must NOT over-block ordinary usage.
+run_case "p9 L: {ls,env} (ls first, not env) allowed"         Bash "{ls,env}"        0
+run_case "p9 L: {env} (no comma, not expansion) allowed"      Bash "{env}"           0
+
+# Bypass F: positional-parameter default expansion at top level. With $1/$9
+# always unset (Claude Code never appends positional args to the command
+# string), `${1:-env}` deterministically resolves to `env` -- no execution
+# needed. Already correctly blocked at depth>0 via the existing blanket
+# unquoted-$-in-command-word rule; the bypass was top-level (depth 0) only,
+# where D2's dynamic-taint-allowed rule fired instead.
+run_case "p9 L: \${1:-env} (positional default) blocked"      Bash '${1:-env}'       2
+run_case "p9 L: \${9:-printenv} (positional default) blocked" Bash '${9:-printenv}'  2
+# Regression coverage: named-variable defaults stay a gap (undecidable --
+# the variable could be set externally). Must NOT be over-blocked.
+run_case "p9 L: \${SOME_VAR:-env} (named var default) allowed" Bash '${SOME_VAR:-env}' 0
+
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
 # must stay byte-identical to this contrib copy modulo the "S0-6 " comment
 # prefix, so the two can never silently drift apart again. PASS-neutral if
