@@ -45,6 +45,26 @@ run_case_stdin() {
 	fi
 }
 
+# run_case_stdin_nojq is identical to run_case_stdin but forces PATH to a
+# jq-free directory, exercising the no-jq JSON fallback branch (TOOL_COMMAND
+# extraction via sed) -- the first coverage that branch has ever had.
+run_case_stdin_nojq() {
+	local label="$1"
+	local json="$2"
+	local expected_code="$3"
+
+	actual_code=0
+	printf '%s' "$json" | env -u CLAUDE_TOOL_NAME -u CLAUDE_TOOL_INPUT PATH=/usr/bin:/bin bash "$HOOK" 2>/dev/null || actual_code=$?
+
+	if [ "$actual_code" -eq "$expected_code" ]; then
+		echo "PASS: $label"
+		PASS=$((PASS + 1))
+	else
+		echo "FAIL: $label (expected=$expected_code, got=$actual_code)"
+		FAIL=$((FAIL + 1))
+	fi
+}
+
 # Core test cases
 run_case "Plain get blocked"                    Bash  "keylatch get clockify api_key"                    2
 run_case "get --masked allowed"                 Bash  "keylatch get --masked clockify api_key"           0
@@ -112,69 +132,100 @@ run_case "p8 bash -c wrapped blocked (repro)"   Bash  "bash -c 'cat ~/.keylatch/
 run_case "p8 sh -c wrapped blocked (repro)"     Bash  'sh -c "cat ~/.keylatch/secrets.env"'              2
 run_case "p8 prose near-miss allowed"           Bash  "grep -n keylatch README.md"                       0
 
-# --- pattern 9: bare env / printenv (command-position anchor + surgical
-# interpreter -c wrapper detection). See code-review regression below.
-run_case "p9 bare env blocked"                  Bash  "env"                                              2
-run_case "p9 bash -c wrapped blocked"           Bash  "bash -c 'env'"                                    2
-run_case "p9 sh -c wrapped blocked"             Bash  'sh -c "printenv"'                                 2
-run_case "p9 var-prefixed env blocked"          Bash  "FOO=bar env"                                      2
-run_case "p9 prose JSON key allowed"            Bash  "grep -n '\"env\"' settings.json"                  0
-run_case "p9 dotenv mention allowed"            Bash  "echo .env.example is our template file"           0
-run_case "p9 environment word allowed"          Bash  "cat package.json | grep environment"              0
+# --- pattern 9: bare env / printenv structural analyzer (awk tokenizer,
+# deny-by-default inside interpreter/eval payloads). Replaces three rounds
+# of regex-only patching (79c5a97 -> bb07679 -> 0ff763e -> bca5deb revert)
+# with real shell-word tokenization. See the comment above pattern 9 in
+# block-keylatch-exfiltration.sh for the full design and accepted gaps.
 
-# --- pattern 9 regression fixtures (code review, 2026-07-30) ---
-# History: an earlier version of the quote-widening fix used a generic
-# whitespace+optional-quote leading boundary for pattern 9. That wrongly
-# blocked any ordinary single- or double-quoted grep/sed/awk search term
-# for the literal word "env" (a single quote char immediately before "env"
-# is indistinguishable from a real command start by character class
-# alone). bb07679 fixed this by splitting into 9a (command-position
-# anchor, no bare quote boundary) + 9b (surgical bash/sh/zsh -c wrapper
-# detection).
-#
-# KNOWN REGRESSION (reintroduced 2026-07-30 — pattern 9 reverted to its
-# 79c5a97 form after a 3rd adversarial review round found unrelated
-# bypasses in the bb07679/0ff763e quote-widening; see the KNOWN
-# LIMITATION comment above pattern 9 in block-keylatch-exfiltration.sh):
-# the revert brings back the single generic whitespace+optional-quote
-# leading boundary that bb07679's 9a/9b split was written to remove.
-# Verified empirically at the reverted state: `grep -n 'env' file`,
-# `grep -n "env" file`, and `grep -rn 'env' dir/` are BLOCKED again — a
-# real, confirmed over-block false positive on quoted "env" as an
-# ordinary grep search term, not an actual env/printenv invocation. This
-# is a genuine functional regression, distinct from the bash-c/eval/exec
-# detection gap documented on pattern 9 itself; flagged back to the
-# decision-maker rather than silently fixed, since fixing it here would
-# mean not reverting to 79c5a97 verbatim as explicitly instructed.
-run_case "p9 regression: bash -c env still blocked"                Bash  "bash -c 'env'"                    2
-run_case "p9 regression: sh -c printenv still blocked"              Bash  'sh -c "printenv"'                 2
-run_case "p9 KNOWN REGRESSION: grep single-quoted env now blocked"  Bash  "grep -n 'env' settings.json"      2
-run_case "p9 KNOWN REGRESSION: grep double-quoted env now blocked"  Bash  'grep -n "env" settings.json'      2
-run_case "p9 KNOWN REGRESSION: grep -rn env now blocked"            Bash  "grep -rn 'env' src/"               2
-run_case "p9 regression: grep JSON-key prose allowed"               Bash  "grep -n '\"env\"' settings.json"  0
+# Group A — must-not-regress ALLOW. These are the false positives that
+# started this whole session; every one must pass.
+run_case "p9 A: grep -n 'env' settings.json allowed"        Bash  "grep -n 'env' settings.json"          0
+run_case "p9 A: grep -n \"env\" settings.json allowed"      Bash  'grep -n "env" settings.json'           0
+run_case "p9 A: grep -rn 'env' src/ allowed"                Bash  "grep -rn 'env' src/"                  0
+run_case "p9 A: grep -n '\"env\"' settings.json allowed"    Bash  "grep -n '\"env\"' settings.json"      0
+run_case "p9 A: echo mentioning env allowed"                Bash  "echo \"some text mentioning env\""    0
+run_case "p9 A: cat environment-notes.md allowed"           Bash  "cat environment-notes.md"             0
+run_case "p9 A: echo .env.example allowed"                  Bash  "echo .env.example is our template file" 0
+run_case "p9 A: cat | grep environment allowed"             Bash  "cat package.json | grep environment"  0
+run_case "p9 A: git commit -m env docs allowed"             Bash  'git commit -m "update env docs"'      0
+run_case "p9 A: sed s/env/environment/ allowed"              Bash  "sed -i 's/env/environment/g' notes.md" 0
+run_case "p9 A: npm run build --env allowed"                Bash  "npm run build --env production"       0
+run_case "p9 A: sudo grep env allowed"                      Bash  "sudo grep env /etc/hosts"             0
+run_case "p9 A: command -v env allowed (lookup)"            Bash  "command -v env"                       0
+run_case "p9 A: bash -c 'echo hello' allowed"               Bash  "bash -c 'echo hello'"                 0
+run_case "p9 A: bash -c 'grep -n \"env\" f' allowed"        Bash  'bash -c '"'"'grep -n "env" f'"'"''    0
+run_case "p9 A: bash -c \"echo \$HOME\" allowed"            Bash  'bash -c "echo $HOME"'                 0
+run_case "p9 A: echo \"a; env\" allowed"                    Bash  'echo "a; env"'                        0
 
-# --- pattern 9 round-2 fixtures (code review, 2026-07-30) ---
-# These originally validated 9b's surgical bash/sh/zsh -c wrapper
-# handling of leading whitespace and VAR=val prefixes inside the quoted
-# body. 9b no longer exists after the revert to 79c5a97, but these still
-# pass — not via surgical interpreter detection, but incidentally, via
-# the same generic whitespace+optional-quote+whitespace* boundary
-# responsible for the KNOWN REGRESSION fixtures above. Kept as-is since
-# the observed behavior (blocked) is unchanged; the *mechanism* changed.
-run_case "p9 round2: bash -c ' env' (leading ws) blocked"        Bash  "bash -c ' env'"                      2
-run_case "p9 round2: bash -c '  env  ' (extra ws) blocked"       Bash  "bash -c '  env  '"                   2
-run_case "p9 round2: bash -c 'FOO=bar env' blocked"              Bash  "bash -c 'FOO=bar env'"                2
-run_case "p9 round2: bash -c 'FOO=bar BAZ=qux printenv' blocked" Bash  "bash -c 'FOO=bar BAZ=qux printenv'"   2
+# Group B — must-not-regress BLOCK, pattern 9's original purpose.
+run_case "p9 B: bare env blocked"                           Bash  "env"                                 2
+run_case "p9 B: bare printenv blocked"                      Bash  "printenv"                             2
+run_case "p9 B: ls; env blocked"                            Bash  "ls; env"                              2
+run_case "p9 B: ls && env blocked"                          Bash  "ls && env"                            2
+run_case "p9 B: ls || env blocked"                          Bash  "ls || env"                            2
+run_case "p9 B: find . | env blocked"                       Bash  "find . | env"                         2
+run_case "p9 B: FOO=bar env blocked"                        Bash  "FOO=bar env"                          2
+run_case "p9 B: FOO=bar BAZ=qux printenv blocked"           Bash  "FOO=bar BAZ=qux printenv"              2
+run_case "p9 B: /usr/bin/env blocked"                       Bash  "/usr/bin/env"                         2
+run_case "p9 B: env NODE_ENV=production npm start blocked"  Bash  "env NODE_ENV=production npm start"    2
 
-# --- pattern 9 self-directed adversarial checks (asked for by code review) ---
-# Same note as round-2 above: still blocked at the reverted state, but
-# incidentally rather than via any interpreter-flag-aware logic (9b is
-# gone). Kept as regression coverage for the observed outcome.
-run_case "p9 adversarial: bash -c -x 'env' (flag after -c) blocked"  Bash  "bash -c -x 'env'"                2
-run_case "p9 adversarial: bash -x -c 'env' (flag before -c) blocked" Bash  "bash -x -c 'env'"                2
-run_case "p9 adversarial: bash -c<TAB>'env' (tab, not space) blocked" Bash $'bash -c\t\'env\''                2
-run_case "p9 adversarial: bash -c 'true; env' compound blocked"      Bash  "bash -c 'true; env'"             2
-run_case "p9 adversarial: bash -c 'true && env' compound blocked"    Bash  "bash -c 'true && env'"           2
+# Group C — round-1 / round-2 regressions.
+run_case "p9 C: bash -c 'env' blocked"                       Bash  "bash -c 'env'"                        2
+run_case "p9 C: sh -c \"printenv\" blocked"                  Bash  'sh -c "printenv"'                      2
+run_case "p9 C: bash -c ' env' (leading ws) blocked"         Bash  "bash -c ' env'"                        2
+run_case "p9 C: bash -c '  env  ' (extra ws) blocked"        Bash  "bash -c '  env  '"                     2
+run_case "p9 C: bash -c 'FOO=bar env' blocked"               Bash  "bash -c 'FOO=bar env'"                 2
+run_case "p9 C: bash -c 'FOO=bar BAZ=qux printenv' blocked"  Bash  "bash -c 'FOO=bar BAZ=qux printenv'"     2
+run_case "p9 C: bash -c -x 'env' (flag after -c) blocked"    Bash  "bash -c -x 'env'"                      2
+run_case "p9 C: bash -x -c 'env' (flag before -c) blocked"   Bash  "bash -x -c 'env'"                      2
+run_case "p9 C: bash -c<TAB>'env' (tab, not space) blocked"  Bash  $'bash -c\t\'env\''                     2
+run_case "p9 C: bash -c 'true; env' compound blocked"        Bash  "bash -c 'true; env'"                   2
+run_case "p9 C: bash -c 'true && env' compound blocked"      Bash  "bash -c 'true && env'"                 2
+run_case "p9 C: bash -c 'true' -c 'env' (only first -c honoured) blocked" Bash "bash -c 'true' -c 'env'"   2
+
+# Group D — round-3 bypasses 1, 2, 3, 5, 6, 7 (the core of the rewrite).
+run_case "p9 D1: bash -c env (unquoted) blocked"             Bash  "bash -c env"                          2
+run_case "p9 D1: sh -c env blocked"                          Bash  "sh -c env"                            2
+run_case "p9 D1: zsh -c env blocked"                         Bash  "zsh -c env"                           2
+run_case "p9 D1: dash -c env blocked"                        Bash  "dash -c env"                          2
+run_case "p9 D1: ksh -c printenv blocked"                    Bash  "ksh -c printenv"                      2
+run_case "p9 D1: bash -ec env (bundled cluster) blocked"     Bash  "bash -ec env"                         2
+run_case "p9 D2: bash -c \"e\"nv (quote-spliced) blocked"    Bash  'bash -c "e"nv'                        2
+run_case "p9 D2: bash -c 'e''nv' (quote-spliced) blocked"    Bash  "bash -c 'e''nv'"                      2
+run_case "p9 D2: bash -c 'e'\"n\"v (mixed-spliced) blocked"  Bash  'bash -c '"'"'e'"'"'"n"v'               2
+run_case "p9 D3: bash -c \$'\\x65nv' (ANSI-C escaped) blocked" Bash $'bash -c $\'\\x65nv\''                2
+run_case "p9 D5: bash -c 'bash -c env' (nested) blocked"     Bash  "bash -c 'bash -c env'"                 2
+run_case "p9 D5: bash -c 'bash -c \"bash -c env\"' (3 levels) blocked" Bash 'bash -c '"'"'bash -c "bash -c env"'"'"'' 2
+run_case "p9 D6: eval env blocked"                           Bash  "eval env"                             2
+run_case "p9 D6: eval 'env' blocked"                         Bash  "eval 'env'"                            2
+run_case "p9 D6: eval \"printenv\" blocked"                  Bash  'eval "printenv"'                       2
+run_case "p9 D7: exec env blocked"                           Bash  "exec env"                             2
+run_case "p9 D7: command env blocked"                        Bash  "command env"                          2
+
+# Group E — deny-by-default side effects (bypass 4 inside a payload:
+# blocked by refusal, not by resolution).
+run_case "p9 E: bash -c \"\$(echo env)\" blocked"            Bash  'bash -c "$(echo env)"'                 2
+run_case "p9 E: bash -c \`echo env\` (backtick) blocked"     Bash  'bash -c `echo env`'                    2
+run_case "p9 E: bash -c \"\$(printf env)\" blocked"          Bash  'bash -c "$(printf env)"'                2
+run_case "p9 E: bash -c \"\$CMD\" blocked"                   Bash  'bash -c "$CMD"'                        2
+run_case "p9 E: eval \"\$CMD\" blocked"                      Bash  'eval "$CMD"'                           2
+
+# Group F — structural coverage the regex reached only by accident.
+run_case "p9 F: bash -c 'if true; then env; fi' blocked"    Bash  "bash -c 'if true; then env; fi'"        2
+run_case "p9 F: find . | xargs env blocked"                 Bash  "find . | xargs env"                     2
+run_case "p9 F: sudo env blocked"                            Bash  "sudo env"                              2
+run_case "p9 F: timeout 5s env blocked"                       Bash  "timeout 5s env"                        2
+run_case "p9 F: nohup env blocked"                            Bash  "nohup env"                             2
+run_case "p9 F: busybox sh -c env blocked"                    Bash  "busybox sh -c env"                     2
+run_case "p9 F: newline separator blocked"                    Bash  $'ls\nenv'                             2
+
+# Group G — documented accepted gaps, pinned as ALLOW so any future
+# behavior change surfaces as a test diff, not a silent gap.
+run_case "p9 G: KNOWN ACCEPTED GAP - top-level \$(echo env) allowed (unresolvable without execution)" Bash '$(echo env)' 0
+run_case "p9 G: KNOWN ACCEPTED GAP - X=env; \$X allowed (variable indirection, unresolvable without execution)" Bash 'X=env; $X' 0
+run_case "p9 G: KNOWN ACCEPTED GAP - bash dump.sh allowed (file-based payload, guard inspects tool-call text only)" Bash "bash dump.sh" 0
+run_case "p9 G: KNOWN ACCEPTED GAP - bash -c 'env (unterminated quote) allowed (real shell rejects it too)" Bash "bash -c 'env" 0
 
 # Current Claude Code contract — tool call JSON delivered on stdin
 run_case_stdin "stdin: plain get blocked"        '{"tool_name":"Bash","tool_input":{"command":"keylatch get clockify api_key"}}'         2
@@ -185,6 +236,31 @@ run_case_stdin "stdin: env dump blocked"         '{"tool_name":"Bash","tool_inpu
 run_case_stdin "stdin: unrelated command allowed" '{"tool_name":"Bash","tool_input":{"command":"echo hello"}}'                            0
 run_case_stdin "stdin: unrelated Read allowed"   '{"tool_name":"Read","tool_input":{"file_path":"/tmp/notes.md"}}'                        0
 run_case_stdin "stdin: empty payload allowed"    '{}'                                                                                     0
+
+# Group H — stdin contract fixtures, including first-ever coverage of the
+# no-jq fallback branch's TOOL_COMMAND extraction.
+run_case_stdin "stdin p9: bash -c env blocked"        '{"tool_name":"Bash","tool_input":{"command":"bash -c env"}}'                 2
+run_case_stdin "stdin p9: grep -n env allowed"        '{"tool_name":"Bash","tool_input":{"command":"grep -n '\''env'\'' settings.json"}}' 0
+run_case_stdin_nojq "stdin nojq: bash -c env blocked" '{"tool_name":"Bash","tool_input":{"command":"bash -c env"}}'                 2
+run_case_stdin_nojq "stdin nojq: echo hello allowed"  '{"tool_name":"Bash","tool_input":{"command":"echo hello"}}'                  0
+
+# Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
+# must stay byte-identical to this contrib copy modulo the "S0-6 " comment
+# prefix, so the two can never silently drift apart again. PASS-neutral if
+# the internal copy is absent (the contrib directory may be vendored
+# standalone).
+INTERNAL_HOOK="$SCRIPT_DIR/../../../internal/guard/scripts/block-keylatch-exfiltration.sh"
+if [ -f "$INTERNAL_HOOK" ]; then
+	if diff -q <(sed 's/# S0-6 pattern /# pattern /' "$INTERNAL_HOOK") "$HOOK" >/dev/null 2>&1; then
+		echo "PASS: internal/contrib copy-sync (byte-identical modulo S0-6 prefix)"
+		PASS=$((PASS + 1))
+	else
+		echo "FAIL: internal/contrib copy-sync (files have drifted apart)"
+		FAIL=$((FAIL + 1))
+	fi
+else
+	echo "SKIP: internal/contrib copy-sync (internal copy not present -- standalone contrib checkout)"
+fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
