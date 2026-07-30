@@ -83,7 +83,7 @@ function tokenize(s, out_type, out_val, out_flag,    i, n, c, st, cur, flg, cnt,
 				if (nxt == DQ || nxt == "\\" || nxt == "$" || nxt == "`") { cur = cur nxt; i += 2; continue }
 				cur = cur c; i++; continue
 			}
-			if (c == "$" || c == "`") { flg = "D" }
+			if (c == "$" || c == "`") { if (flg != "A") flg = "D" }
 			cur = cur c; i++; continue
 		}
 		if (c == "\\") {
@@ -97,7 +97,20 @@ function tokenize(s, out_type, out_val, out_flag,    i, n, c, st, cur, flg, cnt,
 		}
 		if (c == SQ)   { st = "sq"; open = 1; i++; continue }
 		if (c == DQ)   { st = "dq"; open = 1; i++; continue }
-		if (c == "$" || c == "`") { flg = "D"; cur = cur c; open = 1; i++; continue }
+		if (c == "$" || c == "`") {
+			# An unquoted $ immediately followed by a single quote is
+			# ANSI-C quoting (bash dollar-single-quote syntax) -- a pure
+			# deterministic string transform, not "unresolvable without
+			# execution" like $(...)/backtick/$VAR. Flagged distinctly (A)
+			# so resolve_segment can block it unconditionally, not just
+			# inside a -c/eval payload (depth > 0). Dollar-single-quote is
+			# NOT recognized as ANSI-C quoting inside double quotes in real
+			# bash (verified), so this only applies here in the unquoted
+			# branch, not in dq.
+			if (c == "$" && substr(s, i+1, 1) == SQ) { flg = "A" }
+			else if (flg != "A") { flg = "D" }
+			cur = cur c; open = 1; i++; continue
+		}
 		if (c == " " || c == "\t") {
 			if (open) { cnt++; out_type[cnt]="WORD"; out_val[cnt]=cur; out_flag[cnt]=flg; cur=""; flg=""; open=0 }
 			i++; continue
@@ -129,6 +142,11 @@ function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p,
 		while (index(k, "/") > 0) { k = substr(k, index(k, "/") + 1) }
 		base = k
 	}
+	# ANSI-C-quote-tainted words (A) are blocked at any depth --
+	# deterministic decode, not an execution-dependent gap. Command
+	# substitution/backtick/variable-expansion taint (D) stays gated to
+	# depth > 0 (inside a -c/eval payload); allowed bare at top level.
+	if (tf[i] == "A") return 1
 	if (depth > 0 && tf[i] == "D") return 1
 	if (base == "env" || base == "printenv") return 1
 	if (is_in(SHELLS, base)) {
@@ -261,11 +279,20 @@ Bash)
 	# on this file for that history.
 	#
 	# Deny-by-default rule: inside an interpreter -c / eval payload, a
-	# command word that is a command substitution, backtick, ANSI-C $'...'
-	# string, or variable expansion is blocked without attempting to
-	# resolve it -- e.g. `bash -c "$(echo env)"` and `bash -c "$CMD"` are
-	# both blocked this way. This is refusal-to-analyze, not a claim to
-	# have solved substitution generally.
+	# command word that is a command substitution, backtick, or variable
+	# expansion is blocked without attempting to resolve it -- e.g.
+	# `bash -c "$(echo env)"` and `bash -c "$CMD"` are both blocked this
+	# way. This is refusal-to-analyze, not a claim to have solved
+	# substitution generally.
+	#
+	# ANSI-C quoting ($'...') is handled differently and more strongly:
+	# unlike $(...)/backtick/$VAR, decoding $'...' needs no execution --
+	# it is a pure deterministic string transform, the same category of
+	# operation this tokenizer already does for '...'/"..." quote removal.
+	# So a command word tainted by a leading $' is blocked unconditionally,
+	# at ANY depth, not just inside a -c/eval payload -- e.g. a bare
+	# top-level `$'\x65nv'` (decodes to `env`) is blocked even with no
+	# wrapper at all.
 	#
 	# KNOWN ACCEPTED GAPS (permanent, by design):
 	#   - Top-level command substitution, e.g. `$(echo env)` as a bare

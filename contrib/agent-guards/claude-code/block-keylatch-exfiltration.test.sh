@@ -288,6 +288,27 @@ run_case "p9 J: bypass C bare - dq backslash-newline blocked"          Bash $'"e
 run_case "p9 J: bypass C nested in bash -c blocked"                    Bash 'bash -c '"'"$'"e\\\nnv"'"'"                   2
 run_case "p9 J: sq backslash-newline pinned allowed (no fix needed)"   Bash $'\'e\\\nnv\''        0
 
+# Group K — round 8 review (2026-07-30): a scope/design gap, not an
+# implementation slip like Bypass A/B/C. A bare top-level ANSI-C-quoted
+# command word ($'...', no wrapper at all) decodes to `env` in real bash
+# and dumps the environment directly -- confirmed live: was exit 0
+# (allowed) when it should be exit 2 (blocked).
+#
+# Root cause: the D2 plan decision bundled $(...), backtick, $'...', and
+# $VAR together as all "unresolvable without execution, accept as gap."
+# That is correct for $(...)/backtick/$VAR (those genuinely need
+# execution) but wrong for $'...' -- ANSI-C quote decoding is a pure
+# deterministic string transform, the same category of operation this
+# tokenizer already does for '...'/"..." quote removal, so it does not
+# need execution and should never have been in the unresolvable bucket.
+# $'...' now carries a distinct taint flag (A, vs the generic D flag for
+# $(...)/backtick/$VAR) that resolve_segment blocks unconditionally, at
+# any depth -- not just inside a -c/eval payload.
+run_case "p9 K: bare top-level \$'\\x65nv' (hex, no wrapper) blocked"    Bash $'$'"'"'\x65nv'"'"''    2
+run_case "p9 K: bare top-level \$'\\145nv' (octal, no wrapper) blocked" Bash $'$'"'"'\145nv'"'"''    2
+run_case "p9 K: bash -c \$'\\x65nv' (depth>0, re-confirmed) blocked"    Bash $'bash -c $'"'"'\x65nv'"'"''    2
+run_case "p9 K: bash -c \"\$'\\x65nv\"' (dollar-quote inside dq, depth>0, re-confirmed) blocked" Bash 'bash -c "$'"'"'\x65nv'"'"'"'    2
+
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
 # must stay byte-identical to this contrib copy modulo the "S0-6 " comment
 # prefix, so the two can never silently drift apart again. PASS-neutral if
