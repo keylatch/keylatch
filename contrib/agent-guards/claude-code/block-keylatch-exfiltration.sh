@@ -74,6 +74,12 @@ function tokenize(s, out_type, out_val, out_flag,    i, n, c, st, cur, flg, cnt,
 			if (c == DQ) { st = "none"; i++; continue }
 			if (c == "\\") {
 				nxt = substr(s, i+1, 1)
+				# Backslash-newline is a line continuation inside double
+				# quotes too (POSIX: \ retains escaping meaning before $,
+				# `, ", \, and newline) -- must be stripped here the same
+				# way as the unquoted case below, or `"e\<newline>nv"`
+				# survives as a literal byte and is never recognized as env.
+				if (nxt == "\n") { i += 2; continue }
 				if (nxt == DQ || nxt == "\\" || nxt == "$" || nxt == "`") { cur = cur nxt; i += 2; continue }
 				cur = cur c; i++; continue
 			}

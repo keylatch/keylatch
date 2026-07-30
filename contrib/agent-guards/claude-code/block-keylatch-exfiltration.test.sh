@@ -268,6 +268,26 @@ run_case "p9 I: bash -cex env (c not trailing) blocked" Bash "bash -cex env" 2
 run_case "p9 I: bash \\<newline>-c env (line continuation) blocked"      Bash $'bash \\\n-c env'      2
 run_case "p9 I: bash \\<newline>-c printenv (line continuation) blocked" Bash $'bash \\\n-c printenv' 2
 
+# Group J — round 6 review (2026-07-30): same bug CLASS as Bypass B (backslash-
+# newline line continuation) but in the double-quote (dq) tokenizer branch,
+# which the Bypass B fix never touched. Real bash strips \<newline> inside
+# double quotes too (POSIX: backslash retains escaping meaning before $, `,
+# ", \, and newline) -- `"e\<newline>nv"` executes as `env` (verified).
+#
+# Completeness check across all three quoting contexts for backslash-newline:
+#   1. Unquoted   -- fixed round 5 (Bypass B), re-confirmed still correct above.
+#   2. Double-quoted -- fixed here (Bypass C).
+#   3. Single-quoted -- POSIX gives backslash NO escaping meaning inside single
+#      quotes, so `'e\<newline>nv'` is genuinely two literal lines of content,
+#      not a continuation. Verified directly in real bash: it does NOT run
+#      env, it errors "command not found" (exit 127) because the literal
+#      "word" is `e\` + newline + `nv`, not `env`. No fix needed in the sq
+#      branch (it never had escape processing to begin with); pinned as ALLOW
+#      below so that claim is a test fixture, not just an assertion.
+run_case "p9 J: bypass C bare - dq backslash-newline blocked"          Bash $'"e\\\nnv"'          2
+run_case "p9 J: bypass C nested in bash -c blocked"                    Bash 'bash -c '"'"$'"e\\\nnv"'"'"                   2
+run_case "p9 J: sq backslash-newline pinned allowed (no fix needed)"   Bash $'\'e\\\nnv\''        0
+
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
 # must stay byte-identical to this contrib copy modulo the "S0-6 " comment
 # prefix, so the two can never silently drift apart again. PASS-neutral if
