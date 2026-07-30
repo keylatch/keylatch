@@ -80,7 +80,15 @@ function tokenize(s, out_type, out_val, out_flag,    i, n, c, st, cur, flg, cnt,
 			if (c == "$" || c == "`") { flg = "D" }
 			cur = cur c; i++; continue
 		}
-		if (c == "\\") { cur = cur substr(s, i+1, 1); open = 1; i += 2; continue }
+		if (c == "\\") {
+			nxt = substr(s, i+1, 1)
+			# Unquoted backslash-newline is POSIX line continuation, not an
+			# escaped character -- both bytes are removed and emit nothing,
+			# so `bash \<newline>-c env` still tokenizes to bash, -c, env
+			# instead of corrupting the following -c token.
+			if (nxt == "\n") { i += 2; continue }
+			cur = cur nxt; open = 1; i += 2; continue
+		}
 		if (c == SQ)   { st = "sq"; open = 1; i++; continue }
 		if (c == DQ)   { st = "dq"; open = 1; i++; continue }
 		if (c == "$" || c == "`") { flg = "D"; cur = cur c; open = 1; i++; continue }
@@ -119,8 +127,15 @@ function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p,
 	if (base == "env" || base == "printenv") return 1
 	if (is_in(SHELLS, base)) {
 		for (j = i + 1; j <= end; j++) {
-			if (tt[j] == "WORD" && tv[j] ~ /^-[A-Za-z]*c$/) {
+			if (tt[j] == "WORD" && tv[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) {
 				p = j + 1
+				# Skip additional dash-flag tokens between -c and the payload
+				# word. Real bash keeps parsing short flags after -c (e.g.
+				# `bash -c -x env` genuinely runs env with xtrace on --
+				# verified empirically), so the payload is the first
+				# NON-flag token after the -c match, not necessarily the
+				# immediate next one. Do not "simplify" this back to
+				# tv[j+1] -- that reopens the bypass this comment is about.
 				while (p <= end && tv[p] ~ /^-/) p++
 				if (p <= end) {
 					payload = tv[p]
@@ -255,7 +270,8 @@ Bash)
 	#     blocking dynamic command words at top level would be a broad
 	#     false-positive surface.
 	#   - File-based payloads, e.g. `bash script.sh` where the script
-	#     contains env. The guard inspects the tool-call text, not the
+	#     contains env -- same class as `source file`, `. file`, and
+	#     `bash < file`. The guard inspects the tool-call text, not the
 	#     filesystem.
 	#   - Unbalanced quotes are allowed, not blocked: the real shell would
 	#     reject the command too, so nothing executes.

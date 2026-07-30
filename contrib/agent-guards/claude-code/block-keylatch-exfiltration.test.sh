@@ -244,6 +244,30 @@ run_case_stdin "stdin p9: grep -n env allowed"        '{"tool_name":"Bash","tool
 run_case_stdin_nojq "stdin nojq: bash -c env blocked" '{"tool_name":"Bash","tool_input":{"command":"bash -c env"}}'                 2
 run_case_stdin_nojq "stdin nojq: echo hello allowed"  '{"tool_name":"Bash","tool_input":{"command":"echo hello"}}'                  0
 
+# Group I — security-auditor round 2 (2026-07-30): two narrow implementation
+# bugs found in the tokenizer/resolver, not design flaws in the tokenizer
+# approach itself.
+#
+# Bypass A: bundled -c cluster where c is not the trailing character. Real
+# bash keeps parsing short flags after -c anywhere in a bundled cluster (all
+# five orderings below genuinely dump the environment in real bash,
+# verified) -- the original -c-family regex only matched c at the END of
+# the cluster (-xc/-ec style), missing -cx/-cv/-xce/-ecx/-cex.
+run_case "p9 I: bash -cx env (c not trailing) blocked"  Bash "bash -cx env"  2
+run_case "p9 I: bash -cv env (c not trailing) blocked"  Bash "bash -cv env"  2
+run_case "p9 I: bash -xce env (c not trailing) blocked" Bash "bash -xce env" 2
+run_case "p9 I: bash -ecx env (c not trailing) blocked" Bash "bash -ecx env" 2
+run_case "p9 I: bash -cex env (c not trailing) blocked" Bash "bash -cex env" 2
+
+# Bypass B: unquoted backslash-newline line continuation. Real bash removes
+# `\<newline>` entirely (POSIX line continuation) and executes
+# `bash \` + newline + `-c env` as `bash -c env` (verified -- dumps real
+# environment). The tokenizer's ordinary unquoted-backslash-escape rule was
+# copying the raw newline into the token instead, corrupting the following
+# -c token so the payload was never inspected.
+run_case "p9 I: bash \\<newline>-c env (line continuation) blocked"      Bash $'bash \\\n-c env'      2
+run_case "p9 I: bash \\<newline>-c printenv (line continuation) blocked" Bash $'bash \\\n-c printenv' 2
+
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
 # must stay byte-identical to this contrib copy modulo the "S0-6 " comment
 # prefix, so the two can never silently drift apart again. PASS-neutral if
