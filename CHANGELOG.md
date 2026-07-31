@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-07-31
+
 ### Added
 
 - **Canonical backend-name catalog** (`internal/backend/catalog.go`). Backend identifiers are now normalized to a single canonical form at every entry point (dispatch settings resolution, bootstrap config validation, `config` CLI): `awssm`/`aws-secrets` → `aws-sm`, `protonpass` → `proton-pass`, `hashivault` → `vault`, `opconnect` → `op-connect`, `gcpsm` → `gcp-sm`, `azurekv`/`azure-keyvault` → `azure-kv`. Old aliases are still accepted as input for backwards compatibility, but `config.json` should persist the canonical name going forward.
@@ -38,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keylatch run --extra` now withholds credential-shaped variables from the child. In addition to the existing exact-name provider-key denylist, any `--extra` name whose (case-insensitive) form ends in or contains `_KEY`, `_TOKEN`, `_SECRET`, `_PASSWORD`, `_PASSWD`, `_CREDENTIAL(S)`, or `_PRIVATE_KEY` is no longer copied into the `gateway_proxy` child; a warning naming each withheld variable is printed to stderr. Prevents a caller from leaking a real provider secret into the agent by requesting it via `--extra`.
 - `--listen` / `KEYLATCH_UI_LISTEN` / `KEYLATCH_GATEWAY_LISTEN` values are now validated as `host:port` before binding, returning a clear error instead of a raw `net.Listen` failure. (Non-loopback binds remain refused inside a detected LLM session regardless.)
 - Container images are now scanned and signed in CI as part of the release pipeline: per-arch Trivy vulnerability scanning plus cosign signing and a CycloneDX SBOM attestation on the multi-arch **manifest-list digest** (what `docker pull` resolves), in addition to the existing CLI-archive/SBOM blob signing.
+- **Claude Code exfiltration guard hardened against command-boundary and tokenizer bypasses** (`contrib/agent-guards/claude-code/block-keylatch-exfiltration.sh`, mirrored at `internal/guard/scripts/block-keylatch-exfiltration.sh`). Closed a quote-wrapped command-boundary bypass (a `bash -c '...'` / `sh -c "..."` wrapper previously evaded detection of `keylatch get`, `security find-*-password`, `op read`/`item get`, `bw get`/`list`, `keylatch run -- env`, and reads of `.keylatch`/`.env` files). Rewrote bare `env`/`printenv` detection from a regex to a structural shell-word tokenizer, closing several further bypass classes (bundled `-c` flag clusters, backslash-newline continuation inside both unquoted and double-quoted text, bare ANSI-C `$'...'` quoting, brace expansion, and positional-parameter default expansion). `keylatch-hook-version` is now `4` — installations should re-run `keylatch install-guard claude-code` to pick up the fix.
 
 ## [0.9.4] - 2026-06-24
 
