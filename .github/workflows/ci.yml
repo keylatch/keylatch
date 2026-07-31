@@ -289,6 +289,12 @@ jobs:
         run: stat contrib/agent-guards/claude-code/block-keylatch-exfiltration.sh
       - name: run hook test
         run: bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh
+      - name: run other agent-guard hook tests
+        run: |
+          bash contrib/agent-guards/aider/block-keylatch-exfiltration.test.sh
+          bash contrib/agent-guards/copilot/block-keylatch-exfiltration.test.sh
+          bash contrib/agent-guards/cursor/block-keylatch-exfiltration.test.sh
+          bash contrib/agent-guards/windsurf/block-keylatch-exfiltration.test.sh
 
   smoke:
     needs: lint
