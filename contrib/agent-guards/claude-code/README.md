@@ -62,7 +62,7 @@ Run `keylatch doctor` — it checks for the hook version comment and validates t
 
 ## Hook version
 
-The comment `# keylatch-hook-version: 2` at the top of the script is read by `keylatch doctor` to verify you have a compatible version. If a new hook version is released with additional block patterns, `keylatch doctor` will warn you to update.
+The comment `# keylatch-hook-version: 4` at the top of the script is read by `keylatch doctor` to verify you have a compatible version. If a new hook version is released with additional block patterns, `keylatch doctor` will warn you to update.
 
 ## Note
 
