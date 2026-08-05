@@ -436,11 +436,12 @@ func checkCosignInstalled(probe kexec.Probe) Check {
 //
 // F3 verifies that keylatchd does not retain credential plaintext
 // after a run completes. The check:
-// 1. Pings keylatchd on the default UI address.
-// 2. If keylatchd is not running: reports F3 informationally with a start
-//    hint (H11: this used to Warn, forcing exit 1 on every install that
-//    hasn't started the optional runtime monitor — most installs never do).
-// 3. If the runtime monitor is running: queries /v1/retention-canary (a memory
+//  1. Pings keylatchd on the default UI address.
+//  2. If keylatchd is not running: reports F3 informationally with a start
+//     hint (H11: this used to Warn, forcing exit 1 on every install that
+//     hasn't started the optional runtime monitor — most installs never do).
+//  3. If the runtime monitor is running: queries /v1/retention-canary (a memory
+//
 // inspection endpoint) with a generated canary token. If the monitor
 // reports the canary is absent from live memory, the check passes.
 //
