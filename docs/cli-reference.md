@@ -1106,13 +1106,13 @@ Initialize or verify the dedicated Keylatch keychain (`~/.keylatch/keylatch.keyc
 keylatch keychain-init [service] [--verify-acl] [--force]
 ```
 
-Safe to re-run (e.g. during `keylatch setup`): if a working unlock password
+Safe to re-run (e.g. during `keylatch setup`): if a working unlock credential
 already exists, `keychain-init` reuses it and only repairs the ACL — it never
-generates a new password unless neither the keychain-db nor the login-keychain
+generates a new one unless neither the keychain-db nor the login-keychain
 unlock item exists yet. Re-running it never orphans secrets stored under the
-current password.
+current credential.
 
-`--force` regenerates the unlock password unconditionally, even if this would
+`--force` regenerates the unlock credential unconditionally, even if this would
 orphan secrets stored under the current one. Only use it after confirming you
 accept that data loss (e.g. the login-keychain unlock item was lost or
 corrupted and the existing keychain-db is unrecoverable anyway).
