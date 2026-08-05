@@ -669,7 +669,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"backends", checkBackendKeychain(probe)},
 		{"backends", checkBackendOP(env, probe)},
 		{"backends", checkBackendOPAuth(env, probe)},
-		{"backends", checkBackendBW(probe)},
+		{"backends", checkBackendBW(env, probe)},
 		{"backends", checkBackendBWSession(env, probe)},
 		{"backends", checkBackendProtonPass(probe)},
 		{"backends", checkBackendKeeper(probe)},
