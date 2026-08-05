@@ -23,6 +23,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // compile-time interface check.
@@ -83,7 +84,13 @@ func (b *LastPassBackend) WarningMessage() string {
 
 // Get returns the plaintext bytes for a canonical path via `lpass show --json`.
 // Uses single-flight collapse for concurrent identical calls.
+//
+// Checks runner.OK before returning plaintext (C2).
 func (b *LastPassBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
+	if !runner.OK(ctx) {
+		return nil, backend.Meta{}, backend.ErrLocked
+	}
+
 	name := lpassName(path)
 
 	type result struct {
