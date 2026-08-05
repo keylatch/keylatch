@@ -56,6 +56,16 @@ func (k *KeychainBackend) ForceReinit(ctx context.Context, service string) error
 
 // init is the shared Init/ForceReinit implementation. See Init's doc comment
 // for the decision table; force short-circuits the two refusal branches.
+//
+// KNOWN GAP (review Finding-003, not fixed here): unlike Get/Set/Delete
+// (keychain.go), this read-decide-write sequence does NOT call acquireFlock.
+// Two concurrent Init/ForceReinit invocations (e.g. overlapping `keylatch
+// setup` runs, or `setup` racing `doctor --repair --yes`, which also calls
+// RepairACL) can both observe "no unlock item, no db yet", each generate a
+// different random password, and race on the final login-keychain upsert —
+// a race-triggered variant of the C1 data-loss bug this function otherwise
+// fixes for the deterministic-rerun case. Left as a follow-up: wrap this
+// sequence (and RepairACL, acl.go) in acquireFlock(k.opts.LockPath).
 func (k *KeychainBackend) init(ctx context.Context, service string, force bool) error {
 	dbExists := k.keychainDBExists()
 	existingPW, hasUnlockItem, err := k.tryReadUnlockPassword(ctx)
