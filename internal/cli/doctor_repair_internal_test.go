@@ -17,13 +17,38 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// envWithBackend writes a config.json with the given backend to a temp
+// KEYLATCH_CONFIG_DIR and returns an env Lookup pointing at it — used to
+// control keychainACLRepairApplies's gate deterministically instead of
+// depending on whatever config happens to exist on the machine running the
+// test (review Finding-004 fix must not accidentally read the real config).
+func envWithBackend(t *testing.T, backendName string) func(string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, config.Save(filepath.Join(dir, "config.json"), config.Config{
+		Version:          1,
+		Backend:          backendName,
+		DefaultNamespace: "default",
+	}))
+	return func(k string) string {
+		if k == "KEYLATCH_CONFIG_DIR" {
+			return dir
+		}
+		return ""
+	}
+}
 
 // withMockedStdin temporarily replaces the shared readLine() scanner with
 // one reading from input, restoring it on test cleanup.
@@ -87,8 +112,13 @@ func TestRunDoctorRepair_NonRepairableCheck_PrintsNoAutomatedRepair(t *testing.T
 
 // TestRunDoctorRepair_RepairableCheck_DeclinedPrompt verifies that without
 // --yes, declining the confirmation prompt skips the repair entirely (the
-// unsafe repairKeychainACL call is never reached).
+// unsafe repairKeychainACL call is never reached). Uses a config with
+// backend=keychain so the review Finding-004 gate lets the prompt appear at
+// all (this test's whole point is the decline path, not the gate).
 func TestRunDoctorRepair_RepairableCheck_DeclinedPrompt(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("keychain backend is darwin-only; the Finding-004 gate always skips it elsewhere")
+	}
 	withMockedStdin(t, "n\n")
 
 	report := doctor.Report{
@@ -104,12 +134,54 @@ func TestRunDoctorRepair_RepairableCheck_DeclinedPrompt(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	got := runDoctorRepair(context.Background(), &stdout, &stderr, report, func(string) string { return "" }, false /* yes=false: prompts */)
+	got := runDoctorRepair(context.Background(), &stdout, &stderr, report, envWithBackend(t, "keychain"), false /* yes=false: prompts */)
 
 	assert.Contains(t, stdout.String(), "Repair acl.keychain_unlock")
 	assert.Contains(t, stdout.String(), "skipped acl.keychain_unlock")
 	assert.Empty(t, stderr.String())
 	assert.Equal(t, report, got, "declined repair -> report unchanged, no re-run")
+}
+
+// TestRunDoctorRepair_KeychainACLCheck_SkippedWhenBackendNotKeychain is the
+// review Finding-004 regression test: the ACL check itself only gates on
+// whether a keychain-db file happens to exist on disk (checks_optional.go),
+// not on whether keychain is the actively selected backend. A user who
+// switched backends (H2) but has a leftover keychain-db file must not have
+// --repair silently open and repair that orphaned keychain's ACL. No prompt
+// should appear at all — the gate must short-circuit before the confirmation
+// step.
+func TestRunDoctorRepair_KeychainACLCheck_SkippedWhenBackendNotKeychain(t *testing.T) {
+	report := doctor.Report{
+		Checks: []doctor.Status{
+			{
+				Name:   "acl.keychain_unlock",
+				OK:     true,
+				Warn:   true,
+				Detail: "keychain ACL: mismatch",
+				Fix:    "Run `keylatch keychain-repair-acl` to repair the ACL.",
+			},
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	got := runDoctorRepair(context.Background(), &stdout, &stderr, report, envWithBackend(t, "file"), true /* yes=true — must still not repair */)
+
+	assert.NotContains(t, stdout.String(), "Repair acl.keychain_unlock", "must not prompt when keychain isn't the active backend")
+	assert.Contains(t, stdout.String(), "no automated repair")
+	assert.Contains(t, stdout.String(), "unrelated to your active backend")
+	assert.Empty(t, stderr.String())
+	assert.Equal(t, report, got, "gated repair -> report unchanged, no re-run")
+}
+
+// TestKeychainACLRepairApplies_NonDarwin verifies the repair never applies
+// on non-darwin platforms even if the config claims backend=keychain
+// (which itself would be invalid there — checkBackendSelected would FAIL
+// it — but the repair gate must not assume that check already ran).
+func TestKeychainACLRepairApplies_NonDarwin(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("this test is for non-darwin platforms only")
+	}
+	assert.False(t, keychainACLRepairApplies(envWithBackend(t, "keychain")))
 }
 
 // TestRepairableChecks_OnlyKeychainACL documents and locks in the
