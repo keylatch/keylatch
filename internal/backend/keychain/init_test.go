@@ -58,7 +58,7 @@ func TestInit_Idempotent_SecondRunReusesPasswordAndKeepsSecretsReadable(t *testi
 				Stdout: []byte("existing-unlock-pw\n"),
 			},
 			secBin + "|unlock-keychain|-p|existing-unlock-pw|" + keychainPath: {},
-			secBin + "|lock-keychain|" + keychainPath:                        {},
+			secBin + "|lock-keychain|" + keychainPath:                         {},
 			// Manifest starts empty (no items yet).
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + keychainPath: {
 				ExitCode: 44,
