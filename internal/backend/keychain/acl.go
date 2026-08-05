@@ -41,22 +41,26 @@ func (k *KeychainBackend) VerifyACL(ctx context.Context) error {
 	return nil
 }
 
-// RepairACL re-issues the login-keychain ACL entry pointing at the current binary.
-// On signed builds uses a SecRequirement clause; on unsigned builds
-// uses path-only with an explicit warning.
+// RepairACL re-issues the login-keychain ACL entry pointing at the current
+// binary. `security add-generic-password -T` always expects a filesystem
+// PATH to the trusted application (see `man security`) — it does not accept
+// a code-signing identity, Team ID, or SecRequirement text, on either signed
+// or unsigned builds. The `-T` value is therefore always currentBin.
+// detectCodeSigningIdentity is only used to decide whether to log a warning
+// about the binary lacking a stable signing identity (unsigned or
+// ad-hoc-signed, e.g. the default for `go build` on Apple Silicon).
 func (k *KeychainBackend) RepairACL(ctx context.Context) error {
 	currentBin, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("keychain RepairACL: os.Executable: %w", err)
 	}
 
-	// Try to detect code-signing identity for the current binary.
 	identity, signed := k.detectCodeSigningIdentity(ctx, currentBin)
-
 	if !signed {
-		// Unsigned build: warn and fall back to path-only ACL.
-		slog.Warn("unsigned build; ACL uses path-only isolation", "recommendation", "use a signed build with a Team ID")
-		identity = currentBin
+		slog.Warn("binary has no stable code-signing identity; ACL uses path-only isolation",
+			"recommendation", "use a signed build with a Team ID")
+	} else {
+		slog.Debug("code-signing identity detected", "identity", identity)
 	}
 
 	// Re-issue the unlock password item with the updated ACL.
@@ -73,14 +77,15 @@ func (k *KeychainBackend) RepairACL(ctx context.Context) error {
 
 	pw := strings.TrimRight(string(pwOut), "\n")
 
-	// Update the item with the new trusted application path.
+	// Update the item with the trusted application path. Always currentBin —
+	// see the doc comment above for why this is never the codesign identity.
 	_, _, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"add-generic-password",
 			"-U",
 			"-s", "keylatch-keychain",
 			"-a", "unlock",
 			"-w", pw,
-			"-T", identity,
+			"-T", currentBin,
 		},
 		nil)
 	if err != nil {
@@ -166,8 +171,16 @@ func (k *KeychainBackend) repairItemACL(ctx context.Context, conn, field, truste
 	return err
 }
 
-// detectCodeSigningIdentity returns the Team ID + bundle ID for the binary
-// if it is signed. Returns ("", false) for unsigned builds.
+// detectCodeSigningIdentity reports whether binPath has a real, stable
+// code-signing identity (a Team ID) and returns the raw codesign dump for
+// diagnostic logging. Returns ("", false) for unsigned builds AND for
+// ad-hoc-signed builds (Signature=adhoc / TeamIdentifier=not set) — the
+// default codesign applied by the linker on Apple Silicon `go build`. An
+// ad-hoc signature has no Team ID and changes on every rebuild, so it is not
+// a real identity worth trusting for ACL purposes even though `codesign -dv`
+// exits 0 for it (C4: treating "codesign didn't fail" as "signed" caused
+// RepairACL to pass the raw multi-line dump to `-T`, which only accepts a
+// filesystem path — see RepairACL's doc comment).
 func (k *KeychainBackend) detectCodeSigningIdentity(ctx context.Context, binPath string) (string, bool) {
 	stdout, _, exitCode, err := k.opts.Runner.Run(ctx, "/usr/bin/codesign",
 		[]string{"-dv", "--requirement", "-", binPath},
@@ -178,6 +191,9 @@ func (k *KeychainBackend) detectCodeSigningIdentity(ctx context.Context, binPath
 
 	output := strings.TrimSpace(string(stdout))
 	if output == "" || strings.Contains(output, "not signed") {
+		return "", false
+	}
+	if strings.Contains(output, "Signature=adhoc") || strings.Contains(output, "TeamIdentifier=not set") {
 		return "", false
 	}
 
