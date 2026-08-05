@@ -146,7 +146,7 @@ func checkACLKeychainUnlock() Check {
 				OK:      true,
 				Warn:    true,
 				Detail:  fmt.Sprintf("keychain ACL: could not open keychain backend: %v", err),
-				Fix:     "Run `keylatch keychain-init --verify-acl` to repair the ACL.",
+				Fix:     "Run `keylatch keychain-repair-acl` to repair the ACL (re-check with `keylatch keychain-init --verify-acl`).",
 				Tags:    []string{"acl"},
 			}
 		}
@@ -158,7 +158,7 @@ func checkACLKeychainUnlock() Check {
 				OK:      true,
 				Warn:    true,
 				Detail:  fmt.Sprintf("keychain ACL: %v", err),
-				Fix:     "Run `keylatch keychain-init --verify-acl` to repair the ACL.",
+				Fix:     "Run `keylatch keychain-repair-acl` to repair the ACL (re-check with `keylatch keychain-init --verify-acl`).",
 				Tags:    []string{"acl"},
 			}
 		}
