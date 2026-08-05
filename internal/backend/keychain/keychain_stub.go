@@ -116,3 +116,6 @@ func (k *KeychainBackend) RepairItemACLs(_ context.Context) error { return backe
 
 // Init returns ErrUnavailable.
 func (k *KeychainBackend) Init(_ context.Context, _ string) error { return backend.ErrUnavailable }
+
+// ForceReinit returns ErrUnavailable.
+func (k *KeychainBackend) ForceReinit(_ context.Context, _ string) error { return backend.ErrUnavailable }
