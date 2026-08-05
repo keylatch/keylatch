@@ -31,13 +31,20 @@ func newKeychainInitCmd() *cobra.Command {
 		Long: `keychain-init creates the dedicated locked keychain (~/.keylatch/keylatch.keychain-db)
 and stores the unlock password in the login keychain under a binary-path ACL.
 
+Safe to re-run: an existing, working unlock password is reused rather than
+regenerated. Use --force only if you have confirmed you accept losing access
+to secrets stored under the current password (e.g. the login-keychain unlock
+item was lost or corrupted).
+
 Use --verify-acl to re-validate the ACL after a binary path change.`,
 	}
 	cmd.Flags().Bool("verify-acl", false, "verify the keychain ACL instead of initializing")
+	cmd.Flags().Bool("force", false, "regenerate the unlock password even if this orphans existing secrets (DATA LOSS)")
 
 	cmd.RunE = func(c *cobra.Command, args []string) error {
 		ctx := c.Context()
 		verifyACL, _ := c.Flags().GetBool("verify-acl")
+		force, _ := c.Flags().GetBool("force")
 
 		cfg := loadCLIConfig(c)
 		env := llmcontext.DefaultLookup
@@ -82,9 +89,15 @@ Use --verify-acl to re-validate the ACL after a binary path change.`,
 			service = args[0]
 		}
 
-		if err := kb.Init(ctx, service); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "Error: keychain-init: %v\n", err)
-			return err
+		var initErr error
+		if force {
+			initErr = kb.ForceReinit(ctx, service)
+		} else {
+			initErr = kb.Init(ctx, service)
+		}
+		if initErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: keychain-init: %v\n", initErr)
+			return initErr
 		}
 
 		fmt.Fprintf(c.OutOrStdout(), "Keychain initialized for service: %s\n", service)
