@@ -5,12 +5,49 @@ package keychain_test
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 )
+
+// assertUnlockACLTArgEquals finds the add-generic-password call that updated
+// the login-keychain unlock item's ACL and asserts its -T value equals want.
+// `-T` only ever accepts a filesystem path (see RepairACL's doc comment) —
+// this guards against C4 regressing (passing codesign dump text instead).
+func assertUnlockACLTArgEquals(t *testing.T, runner *kexec.MockRunner, want string) {
+	t.Helper()
+	for _, call := range runner.CallsCopy() {
+		if len(call.Args) == 0 || call.Args[0] != "add-generic-password" {
+			continue
+		}
+		isUnlockItem := false
+		for _, a := range call.Args {
+			if a == "keylatch-keychain" {
+				isUnlockItem = true
+				break
+			}
+		}
+		if !isUnlockItem {
+			continue
+		}
+		for i, a := range call.Args {
+			if a == "-T" {
+				if i+1 >= len(call.Args) {
+					t.Fatalf("add-generic-password: -T flag has no following value: %v", call.Args)
+				}
+				if got := call.Args[i+1]; got != want {
+					t.Errorf("add-generic-password -T value: got %q, want %q (must always be a filesystem path, never codesign dump text)", got, want)
+				}
+				return
+			}
+		}
+		t.Fatalf("add-generic-password to unlock item missing -T flag: %v", call.Args)
+	}
+	t.Fatal("no add-generic-password call to the unlock item was recorded")
+}
 
 func TestVerifyACL_Match(t *testing.T) {
 	// VerifyACL should return nil when a real read of the unlock item
@@ -186,6 +223,85 @@ func TestRepairACL_PathOnly(t *testing.T) {
 	if !addCalled && err == nil {
 		t.Error("RepairACL: expected add-generic-password with -T flag")
 	}
+}
+
+func TestRepairACL_AdHocSignature_TreatedAsUnsigned_UsesPath(t *testing.T) {
+	// C4 regression: Go arm64 builds are ad-hoc linker-signed by default —
+	// codesign -dv exits 0 for them, but Signature=adhoc/TeamIdentifier=not
+	// set means there is no real, stable identity. RepairACL must still pass
+	// the binary's filesystem PATH to -T, never the codesign dump text.
+	secBin := "/usr/bin/security"
+	currentBin, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+
+	runner := &kexec.MockRunner{
+		Responses: map[string]kexec.MockResponse{
+			"/usr/bin/codesign|-dv|--requirement|-|" + currentBin: {
+				Stdout: []byte("Executable=" + currentBin + "\nSignature=adhoc\nTeamIdentifier=not set\n"),
+			},
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				Stdout: []byte("test-pw\n"),
+			},
+		},
+	}
+
+	b, err := keychain.Open(keychain.Options{
+		KeychainPath: testKeychainPath,
+		LockPath:     testLockPath,
+		SecurityBin:  secBin,
+		Runner:       runner,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := b.RepairACL(context.Background()); err != nil {
+		t.Fatalf("RepairACL: %v", err)
+	}
+
+	assertUnlockACLTArgEquals(t, runner, currentBin)
+}
+
+func TestRepairACL_RealSignature_StillUsesPathNotDump(t *testing.T) {
+	// Even with a genuine Team ID, -T must be the filesystem path — the
+	// `security` CLI's -T flag has never accepted a codesign identity or
+	// SecRequirement clause (that concept only exists via Security.framework
+	// APIs this codebase does not use).
+	secBin := "/usr/bin/security"
+	currentBin, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+
+	runner := &kexec.MockRunner{
+		Responses: map[string]kexec.MockResponse{
+			"/usr/bin/codesign|-dv|--requirement|-|" + currentBin: {
+				Stdout: []byte("Executable=" + currentBin +
+					"\nAuthority=Developer ID Application: Example Corp (TEAMID1234)\nTeamIdentifier=TEAMID1234\n"),
+			},
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				Stdout: []byte("test-pw\n"),
+			},
+		},
+	}
+
+	b, err := keychain.Open(keychain.Options{
+		KeychainPath: testKeychainPath,
+		LockPath:     testLockPath,
+		SecurityBin:  secBin,
+		Runner:       runner,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := b.RepairACL(context.Background()); err != nil {
+		t.Fatalf("RepairACL: %v", err)
+	}
+
+	assertUnlockACLTArgEquals(t, runner, currentBin)
 }
 
 func TestRepairItemACLs_NoValueReads(t *testing.T) {
