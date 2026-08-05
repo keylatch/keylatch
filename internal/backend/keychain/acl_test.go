@@ -5,7 +5,6 @@ package keychain_test
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -14,17 +13,16 @@ import (
 )
 
 func TestVerifyACL_Match(t *testing.T) {
-	// VerifyACL should return nil when the ACL contains the current executable path.
+	// VerifyACL should return nil when a real read of the unlock item
+	// succeeds — i.e. the login-keychain ACL trusts the current binary.
+	// (`security` enforces the ACL at read time; there is no separate
+	// "-g" ACL dump to grep for real trusted-application data.)
 	secBin := "/usr/bin/security"
-	currentBin, err := os.Executable()
-	if err != nil {
-		t.Fatalf("os.Executable: %v", err)
-	}
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
-			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-g": {
-				Stdout: []byte("path: " + currentBin + "\n"),
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				Stdout: []byte("test-unlock-password\n"),
 			},
 		},
 	}
@@ -40,18 +38,21 @@ func TestVerifyACL_Match(t *testing.T) {
 	}
 
 	if err := b.VerifyACL(context.Background()); err != nil {
-		t.Errorf("VerifyACL with matching path: got %v, want nil", err)
+		t.Errorf("VerifyACL with successful read: got %v, want nil", err)
 	}
 }
 
 func TestVerifyACL_Mismatch(t *testing.T) {
-	// VerifyACL should return ErrACLMismatch when the stored path doesn't match.
+	// VerifyACL should return ErrACLMismatch when the real read fails with
+	// errSecAuthFailed — the actual macOS signal that the calling binary is
+	// not in the item's trusted-application ACL.
 	secBin := "/usr/bin/security"
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
-			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-g": {
-				Stdout: []byte("path: /usr/local/bin/old-keylatch\n"),
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				ExitCode: 51, // errSecAuthFailed
+				Stderr:   []byte("errSecAuthFailed"),
 			},
 		},
 	}
@@ -68,7 +69,71 @@ func TestVerifyACL_Mismatch(t *testing.T) {
 
 	err = b.VerifyACL(context.Background())
 	if !errors.Is(err, backend.ErrACLMismatch) {
-		t.Errorf("VerifyACL with mismatch: got %v, want ErrACLMismatch", err)
+		t.Errorf("VerifyACL with errSecAuthFailed: got %v, want ErrACLMismatch", err)
+	}
+}
+
+func TestVerifyACL_InteractionNotAllowed(t *testing.T) {
+	// errSecInteractionNotAllowed (item locked / no UI available for a
+	// prompt) is the other real macOS ACL-denial signal readUnlockPassword
+	// classifies as ErrACLMismatch.
+	secBin := "/usr/bin/security"
+
+	runner := &kexec.MockRunner{
+		Responses: map[string]kexec.MockResponse{
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				ExitCode: 25308,
+				Stderr:   []byte("errSecInteractionNotAllowed"),
+			},
+		},
+	}
+
+	b, err := keychain.Open(keychain.Options{
+		KeychainPath: testKeychainPath,
+		LockPath:     testLockPath,
+		SecurityBin:  secBin,
+		Runner:       runner,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	err = b.VerifyACL(context.Background())
+	if !errors.Is(err, backend.ErrACLMismatch) {
+		t.Errorf("VerifyACL with errSecInteractionNotAllowed: got %v, want ErrACLMismatch", err)
+	}
+}
+
+func TestVerifyACL_NotFound_IsNotMisreportedAsACLMismatch(t *testing.T) {
+	// A missing unlock item (exit 44 — genuinely not initialised yet) is not
+	// an ACL problem and must not be misreported as ErrACLMismatch.
+	secBin := "/usr/bin/security"
+
+	runner := &kexec.MockRunner{
+		Responses: map[string]kexec.MockResponse{
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				ExitCode: 44,
+				Stderr:   []byte("could not be found"),
+			},
+		},
+	}
+
+	b, err := keychain.Open(keychain.Options{
+		KeychainPath: testKeychainPath,
+		LockPath:     testLockPath,
+		SecurityBin:  secBin,
+		Runner:       runner,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	err = b.VerifyACL(context.Background())
+	if err == nil {
+		t.Fatal("VerifyACL with missing item: expected an error, got nil")
+	}
+	if errors.Is(err, backend.ErrACLMismatch) {
+		t.Errorf("VerifyACL with missing item: got ErrACLMismatch, want a plain not-found error")
 	}
 }
 
