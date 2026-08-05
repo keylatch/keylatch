@@ -29,17 +29,17 @@ func newKeychainInitCmd() *cobra.Command {
 		Use:   "keychain-init [service]",
 		Short: "Initialize or verify the dedicated Keylatch keychain",
 		Long: `keychain-init creates the dedicated locked keychain (~/.keylatch/keylatch.keychain-db)
-and stores the unlock password in the login keychain under a binary-path ACL.
+and stores the unlock credential in the login keychain under a binary-path ACL.
 
-Safe to re-run: an existing, working unlock password is reused rather than
+Safe to re-run: an existing, working unlock credential is reused rather than
 regenerated. Use --force only if you have confirmed you accept losing access
-to secrets stored under the current password (e.g. the login-keychain unlock
-item was lost or corrupted).
+to secrets stored under the current credential (e.g. the login-keychain
+unlock item was lost or corrupted).
 
 Use --verify-acl to re-validate the ACL after a binary path change.`,
 	}
 	cmd.Flags().Bool("verify-acl", false, "verify the keychain ACL instead of initializing")
-	cmd.Flags().Bool("force", false, "regenerate the unlock password even if this orphans existing secrets (DATA LOSS)")
+	cmd.Flags().Bool("force", false, "re-initialize the unlock credential, destroying access to existing secrets (DATA LOSS)")
 
 	cmd.RunE = func(c *cobra.Command, args []string) error {
 		ctx := c.Context()
