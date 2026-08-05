@@ -584,6 +584,38 @@ func TestE2E_BrokerRevoke_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
 		"exactly one formatted error[...] line must appear, got: %s", stderr)
 }
 
+// TestE2E_Doctor_RepairQuietWithoutYes_RejectedFastNoHang is the review
+// Finding-005 regression test: `doctor --repair --quiet` without --yes used
+// to write its confirmation prompt to a discarded writer while still
+// blocking on stdin — invisible and indistinguishable from a hang. It must
+// now be rejected immediately with a usage error mentioning --yes.
+func TestE2E_Doctor_RepairQuietWithoutYes_RejectedFastNoHang(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"doctor", "--repair", "--quiet")
+
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, string(stderr), "--yes")
+}
+
+// TestE2E_Doctor_RepairQuietWithYes_DoesNotHang verifies the same
+// combination is accepted once --yes is also passed. The subprocess's stdin
+// reads from /dev/null (runKeylatch never sets cmd.Stdin), so a genuine hang
+// on a real prompt read would surface as this test never returning (failing
+// the whole test binary via go test's default timeout) rather than as an
+// assertion failure — the real value of this test is that runKeylatch's
+// blocking cmd.Run() returns at all.
+func TestE2E_Doctor_RepairQuietWithYes_DoesNotHang(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, _ := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"doctor", "--repair", "--quiet", "--yes")
+
+	assert.NotContains(t, string(stderr), "--repair --quiet requires --yes",
+		"the quiet+yes combination itself must not be rejected")
+}
+
 // TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate verifies that a
 // SignalNone (non-LLM) session running a raw-credential mode on a clean machine
 // also gets BootstrapMissing (exit 7) first — the onboarding guards precede the

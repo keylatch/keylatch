@@ -4,6 +4,7 @@ package cli_test
 // the doctor hint wiring.
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/cli"
@@ -75,6 +76,36 @@ func TestIsDoctorHintSuppressed_CompletionCmd(t *testing.T) {
 	assert.True(t, cli.IsDoctorHintSuppressed(completionCmd),
 		"doctor hint should be suppressed for completion command")
 }
+
+// TestDoctor_RepairQuietWithoutYes_RejectedFastNoHang is the review
+// Finding-005 regression test: `doctor --repair --quiet` without --yes used
+// to write its confirmation prompt to a discarded writer while still
+// blocking on real stdin — invisible and indistinguishable from a hang. It
+// must now fail fast with a usage error instead of reading stdin at all.
+func TestDoctor_RepairQuietWithoutYes_RejectedFastNoHang(t *testing.T) {
+	t.Parallel()
+
+	root := cli.NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	// Deliberately no stdin reader set — if the command tried to read a
+	// prompt response, cobra's default os.Stdin would be used and this
+	// test would hang forever instead of failing fast.
+	root.SetArgs([]string{"doctor", "--repair", "--quiet"})
+
+	err := root.Execute()
+	require.Error(t, err, "doctor --repair --quiet without --yes must be rejected")
+	assert.Contains(t, err.Error(), "--yes")
+}
+
+// Note: there is no in-process "quiet+yes is allowed" companion test here.
+// doctor's RunE always terminates via os.Exit(exitCode) at the very end
+// (every exit code, including 0), so calling root.Execute() with the
+// "doctor" subcommand in-process would kill the test binary itself once
+// past the early --repair --quiet-without---yes rejection checked above.
+// The allowed-combination path is covered end-to-end (subprocess, safe) by
+// TestE2E_Doctor_RepairQuietWithYes_DoesNotHang in cmd/keylatch/main_e2e_test.go.
 
 // TestDoctor_VerboseFlagRegistered verifies that --verbose is wired to the doctor command.
 func TestDoctor_VerboseFlagRegistered(t *testing.T) {
