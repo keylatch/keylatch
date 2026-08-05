@@ -41,7 +41,9 @@ func TestCheckIntegrationMarkers_NoMarkersNoConfig(t *testing.T) {
 }
 
 // TestCheckIntegrationMarkers_MarkerWithoutConfig verifies that detecting a
-// marker without integration.yml emits a warning.
+// marker without integration.yml is informational (H11: no longer a Warn —
+// having an unrelated agent marker present is not an install health
+// problem), while still surfacing an actionable Fix hint.
 func TestCheckIntegrationMarkers_MarkerWithoutConfig(t *testing.T) {
 	tmp := t.TempDir()
 	chdir(t, tmp)
@@ -54,8 +56,8 @@ func TestCheckIntegrationMarkers_MarkerWithoutConfig(t *testing.T) {
 	check := doctor.ExportCheckIntegrationMarkers()
 	status := check(context.Background())
 
-	assert.True(t, status.OK, "expected ok=true (warning, not failure)")
-	assert.True(t, status.Warn, "expected warn=true when marker found but no config")
+	assert.True(t, status.OK, "expected ok=true")
+	assert.False(t, status.Warn, "H11: marker-without-config is informational, not a warning")
 	assert.Contains(t, status.Detail, "I3:")
 	assert.Contains(t, status.Detail, "claude-code")
 	assert.NotEmpty(t, status.Fix, "fix hint should be populated")
@@ -103,7 +105,7 @@ func TestCheckIntegrationMarkers_WindsurfMarker(t *testing.T) {
 	status := check(context.Background())
 
 	assert.True(t, status.OK)
-	assert.True(t, status.Warn)
+	assert.False(t, status.Warn, "H11: informational, not a warning")
 	assert.Contains(t, status.Detail, "windsurf")
 	assert.Contains(t, status.Fix, "keylatch init integration --agent windsurf")
 }
@@ -124,7 +126,7 @@ func TestCheckIntegrationMarkers_CursorMarker(t *testing.T) {
 	status := check(context.Background())
 
 	assert.True(t, status.OK)
-	assert.True(t, status.Warn)
+	assert.False(t, status.Warn, "H11: informational, not a warning")
 	assert.Contains(t, status.Detail, "cursor")
 }
 
@@ -144,7 +146,7 @@ func TestCheckIntegrationMarkers_GeminiMarker(t *testing.T) {
 	status := check(context.Background())
 
 	assert.True(t, status.OK)
-	assert.True(t, status.Warn)
+	assert.False(t, status.Warn, "H11: informational, not a warning")
 	assert.Contains(t, status.Detail, "gemini")
 }
 
@@ -163,7 +165,7 @@ func TestCheckIntegrationMarkers_AgentsMDMarker(t *testing.T) {
 	status := check(context.Background())
 
 	assert.True(t, status.OK)
-	assert.True(t, status.Warn)
+	assert.False(t, status.Warn, "H11: informational, not a warning")
 	// AGENTS.md maps to generic
 	assert.NotEmpty(t, status.Fix)
 }
@@ -182,7 +184,8 @@ func TestCheckIntegrationMarkers_MultipleMarkersReportedOnce(t *testing.T) {
 	check := doctor.ExportCheckIntegrationMarkers()
 	status := check(context.Background())
 
-	assert.True(t, status.Warn)
+	assert.True(t, status.OK)
+	assert.False(t, status.Warn, "H11: informational, not a warning")
 	// Should mention claude-code exactly once in detail (deduplication)
 	assert.Contains(t, status.Detail, "claude-code")
 }
