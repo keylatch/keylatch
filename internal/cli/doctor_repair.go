@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
@@ -56,6 +58,16 @@ func runDoctorRepair(ctx context.Context, stdout, stderr io.Writer, report docto
 			continue
 		}
 
+		// review Finding-004: the ACL check itself only gates on whether a
+		// keychain-db file happens to exist on disk, not on whether keychain
+		// is the actively selected backend (a leftover file from before an
+		// H2 backend switch would otherwise still trigger a repair). Skip
+		// the repair — not just the check — when keychain isn't in active use.
+		if s.Name == "acl.keychain_unlock" && !keychainACLRepairApplies(env) {
+			fmt.Fprintf(stdout, "  [no automated repair] %s: stale keychain file detected, unrelated to your active backend\n", s.Name)
+			continue
+		}
+
 		if !yes {
 			fmt.Fprintf(stdout, "Repair %s (re-issue the keychain ACL for this binary)? [y/N]: ", s.Name)
 			ans := strings.ToLower(strings.TrimSpace(readLine()))
@@ -83,6 +95,22 @@ func runDoctorRepair(ctx context.Context, stdout, stderr io.Writer, report docto
 		return report
 	}
 	return fresh
+}
+
+// keychainACLRepairApplies reports whether the keychain-ACL repair is
+// applicable: keychain must be the actively selected backend (normalized
+// through backend.CanonicalName so aliases match), and the keychain backend
+// only exists on darwin (review Finding-004).
+func keychainACLRepairApplies(env llmcontext.Lookup) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	cfg, err := config.Load(paths.Config(env))
+	if err != nil {
+		cfg = config.Default()
+	}
+	canonical, ok := backend.CanonicalName(cfg.Backend)
+	return ok && canonical == "keychain"
 }
 
 // repairKeychainACL re-issues the login-keychain ACL entry and every
