@@ -282,6 +282,22 @@ func TestE2E_masked_exits_0_in_llm_session(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
+// TestE2E_VersionSubcommand_MatchesVersionFlag verifies the C6 fix:
+// `keylatch version` (documented in docs/installation.md as the post-install
+// verification step) exists and produces the exact same output as
+// `keylatch --version`.
+func TestE2E_VersionSubcommand_MatchesVersionFlag(t *testing.T) {
+	homeDir := t.TempDir()
+
+	stdoutCmd, _, codeCmd := runKeylatch(t, map[string]string{"HOME": homeDir}, "version")
+	stdoutFlag, _, codeFlag := runKeylatch(t, map[string]string{"HOME": homeDir}, "--version")
+
+	assert.Equal(t, 0, codeCmd, "keylatch version must exit 0")
+	assert.Equal(t, 0, codeFlag, "keylatch --version must exit 0")
+	assert.Equal(t, string(stdoutFlag), string(stdoutCmd), "keylatch version must print the same output as --version")
+	assert.Contains(t, string(stdoutCmd), "keylatch ")
+}
+
 // TestE2E_help_exits_0_in_llm_session verifies --help works in LLM sessions.
 func TestE2E_help_exits_0_in_llm_session(t *testing.T) {
 	homeDir := t.TempDir()
