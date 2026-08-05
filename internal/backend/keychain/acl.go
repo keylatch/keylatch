@@ -49,6 +49,12 @@ func (k *KeychainBackend) VerifyACL(ctx context.Context) error {
 // detectCodeSigningIdentity is only used to decide whether to log a warning
 // about the binary lacking a stable signing identity (unsigned or
 // ad-hoc-signed, e.g. the default for `go build` on Apple Silicon).
+//
+// KNOWN GAP (review Finding-003, not fixed here): unlike Get/Set/Delete
+// (keychain.go), RepairACL does not call acquireFlock, so it is not
+// serialized against concurrent Init/ForceReinit/RepairACL calls across
+// processes. See init.go's matching note for the concrete race scenario.
+// Left as a follow-up: wrap this in acquireFlock(k.opts.LockPath).
 func (k *KeychainBackend) RepairACL(ctx context.Context) error {
 	currentBin, err := os.Executable()
 	if err != nil {
