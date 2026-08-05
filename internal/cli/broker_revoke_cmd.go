@@ -89,17 +89,21 @@ Requires the broker to be running in-process.`,
 }
 
 // runBrokerRevokeSingle revokes a single token by ID.
+//
+// The ErrBrokerOutOfProcess/ErrTokenNotFound branches below return a
+// *CLIError without printing directly — main.go prints it exactly once
+// (C5). Printing here too would double-print (Finding-001); it would also
+// break existing in-process tests (e.g. TestBrokerRevokeCmd_OutOfProcess)
+// that call cmd.Execute() and assert on the returned error, which an
+// os.Exit here would defeat by killing the test process.
 func runBrokerRevokeSingle(c *cobra.Command, handle broker.BrokerHandle, tokenID string, useJSON bool) error {
 	err := handle.Revoke(tokenID)
 	if err != nil {
 		if errors.Is(err, broker.ErrBrokerOutOfProcess) {
-			fmt.Fprintln(c.ErrOrStderr(), "error[BrokerOutOfProcess]:", err.Error())
 			return NewSecurityBlock("broker not running in-process: %s", err.Error())
 		}
 		if errors.Is(err, broker.ErrTokenNotFound) {
-			fmt.Fprintf(c.ErrOrStderr(), "error[TokenNotFound]: token %q not found — it may have already expired or been revoked.\n", tokenID)
-			fmt.Fprintln(c.ErrOrStderr(), "  Run 'keylatch broker status' to see active token IDs.")
-			return NewUsageError("token %q not found", tokenID)
+			return NewUsageError("token %q not found — it may have already expired or been revoked. Run 'keylatch broker status' to see active token IDs", tokenID)
 		}
 		return NewInternalError("revoke token %q: %v", tokenID, err)
 	}
@@ -127,7 +131,9 @@ func runBrokerRevokeAll(c *cobra.Command, handle broker.BrokerHandle, actorID st
 	grants, err := handle.ListGrants()
 	if err != nil {
 		if errors.Is(err, broker.ErrBrokerOutOfProcess) {
-			fmt.Fprintln(c.ErrOrStderr(), "error[BrokerOutOfProcess]:", err.Error())
+			// Returns a *CLIError without printing directly — main.go
+			// prints it exactly once (C5); printing here too would
+			// double-print (Finding-001).
 			return NewSecurityBlock("broker not running in-process: %s", err.Error())
 		}
 		return NewInternalError("list grants: %v", err)

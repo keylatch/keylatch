@@ -505,6 +505,85 @@ func TestE2E_C5_MissingArgsPrintsError(t *testing.T) {
 	assert.NotEmpty(t, stderr, "stderr must contain the cobra arg-count error, not just the doctor hint")
 }
 
+// TestE2E_Approve_LLMSession_PrintsErrorExactlyOnce is a regression test for
+// the code-review Finding-001 double-print bug: approve_cmd.go's LLM-session
+// guard used to print a formatted error via cmderr.Format AND return a
+// *cli.CLIError, so main.go's C5 error-printing printed the same message a
+// second time (in a different format). The guard now returns the *CLIError
+// without printing directly — main.go is the single place that prints it.
+func TestE2E_Approve_LLMSession_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
+		"approve", "sometoken")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "not permitted inside an LLM session"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+}
+
+// TestE2E_Deny_LLMSession_PrintsErrorExactlyOnce mirrors the approve case for deny.
+func TestE2E_Deny_LLMSession_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
+		"deny", "sometoken")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "not permitted inside an LLM session"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+}
+
+// TestE2E_BrokerStatus_OutOfProcess_PrintsErrorExactlyOnce verifies the same
+// double-print bug is fixed for `broker status` when the broker singleton is
+// not running in-process (the default state for any freshly-invoked CLI).
+// broker_status_cmd.go used to print "error[BrokerOutOfProcess]: ..." itself
+// and then return a *CLIError that main.go printed again as
+// "error[SecurityBlock]: ...". It now returns the *CLIError without
+// printing directly, so "broker not running in-process" appears exactly once.
+func TestE2E_BrokerStatus_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"broker", "status")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "broker not running in-process"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+	assert.Equal(t, 1, strings.Count(string(stderr), "error["),
+		"exactly one formatted error[...] line must appear, got: %s", stderr)
+}
+
+// TestE2E_BrokerDryRun_OutOfProcess_PrintsErrorExactlyOnce mirrors the broker
+// status case for `broker dry-run`.
+func TestE2E_BrokerDryRun_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"broker", "dry-run", "openrouter", "node")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "broker not running in-process"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+	assert.Equal(t, 1, strings.Count(string(stderr), "error["),
+		"exactly one formatted error[...] line must appear, got: %s", stderr)
+}
+
+// TestE2E_BrokerRevoke_OutOfProcess_PrintsErrorExactlyOnce mirrors the broker
+// status case for `broker revoke <id>`.
+func TestE2E_BrokerRevoke_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"broker", "revoke", "sometokenid")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "broker not running in-process"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+	assert.Equal(t, 1, strings.Count(string(stderr), "error["),
+		"exactly one formatted error[...] line must appear, got: %s", stderr)
+}
+
 // TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate verifies that a
 // SignalNone (non-LLM) session running a raw-credential mode on a clean machine
 // also gets BootstrapMissing (exit 7) first — the onboarding guards precede the
