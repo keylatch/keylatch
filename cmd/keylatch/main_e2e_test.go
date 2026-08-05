@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
 )
@@ -453,11 +454,39 @@ func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 		"inject", "openrouter")
 
 	// exit 1 = UserError: cobra unknown command (inject removed).
-	// SilenceErrors = true: cobra does not print the error text, main.go prints
-	// the doctor hint only. The invariant is a non-zero exit code.
+	// root.SilenceErrors=true so cobra itself never prints anything, but
+	// main.go (C5) prints cobra's "unknown command" error text to stderr
+	// before the doctor hint. The invariant checked here is a non-zero exit
+	// code and no stdout leak; stderr content is covered by TestE2E_C5_*.
 	assert.NotEqual(t, 0, code, "inject must exit non-zero in v1.0.0 — command is removed")
 	assert.Empty(t, stdout, "stdout must be empty for unknown command")
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
+}
+
+// TestE2E_C5_UnknownCommandPrintsError verifies that an unknown command
+// prints cobra's "unknown command" error to stderr (not just the doctor
+// hint) — the specific symptom C5 fixes.
+func TestE2E_C5_UnknownCommandPrintsError(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"totally-not-a-real-command")
+
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, string(stderr), "unknown command", "stderr must contain cobra's unknown-command error, not just the doctor hint")
+	assert.Contains(t, string(stderr), cli.DoctorHint, "stderr must still contain the doctor hint")
+}
+
+// TestE2E_C5_MissingArgsPrintsError verifies that a cobra arg-count error
+// (e.g. a required positional argument omitted) is printed to stderr.
+func TestE2E_C5_MissingArgsPrintsError(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"keychain-clear") // requires exactly 1 arg
+
+	assert.NotEqual(t, 0, code)
+	assert.NotEmpty(t, stderr, "stderr must contain the cobra arg-count error, not just the doctor hint")
 }
 
 // TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate verifies that a
