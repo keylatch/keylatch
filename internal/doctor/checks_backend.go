@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -14,7 +16,11 @@ import (
 )
 
 // checkBackendSelected checks that the configured backend is valid and
-// supported on the current platform.
+// supported on the current platform. The allowed set is derived from
+// backend.KnownCanonicalNames() (H4) rather than a hardcoded literal, so
+// registering a new backend (vault, aws-sm, gcp-sm, azure-kv, doppler,
+// infisical, op-connect, ...) doesn't also require a doctor update to avoid
+// a spurious hard FAIL for anyone using it.
 func checkBackendSelected(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		cfgPath := paths.Config(env)
@@ -23,22 +29,18 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 			// Config missing — use default.
 			cfg = config.Default()
 		}
-		backend := cfg.Backend
-		allowed := map[string]bool{
-			"file": true, "keychain": true, "op": true, "bw": true,
-			"proton-pass": true, "keeper": true, "lastpass": true,
-		}
-		if !allowed[backend] {
+		canonical, ok := backend.CanonicalName(cfg.Backend)
+		if !ok {
 			return Status{
 				Name:    "backend.selected",
 				Section: "backends",
 				OK:      false,
-				Detail:  fmt.Sprintf("backend=%q is not a recognised value", backend),
-				Fix:     "Set backend to one of: file, keychain, op, bw, proton-pass, keeper, lastpass",
+				Detail:  fmt.Sprintf("backend=%q is not a recognised value", cfg.Backend),
+				Fix:     "Set backend to one of: " + strings.Join(backend.KnownCanonicalNames(), ", "),
 				Tags:    []string{"backend"},
 			}
 		}
-		if backend == "keychain" && runtime.GOOS != "darwin" {
+		if canonical == "keychain" && runtime.GOOS != "darwin" {
 			return Status{
 				Name:    "backend.selected",
 				Section: "backends",
@@ -52,7 +54,7 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 			Name:    "backend.selected",
 			Section: "backends",
 			OK:      true,
-			Detail:  fmt.Sprintf("backend=%s platform_supported=true", backend),
+			Detail:  fmt.Sprintf("backend=%s platform_supported=true", canonical),
 			Tags:    []string{"backend"},
 		}
 	}
