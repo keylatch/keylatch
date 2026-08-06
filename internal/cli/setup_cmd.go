@@ -25,6 +25,7 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -705,9 +706,21 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 }
 
 // setupStep3SpawnDaemon handles [3/5] — initialise and start the gateway.
+//
+// M1: on a resumed setup where the gateway is already running, shelling out
+// to `gateway up --detach` anyway makes the child's expected "already
+// running" refusal look like a setup failure. Check IsRunning ourselves
+// first and present it as the success case it actually is.
 func setupStep3SpawnDaemon(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[3/5] Gateway setup...")
 	fmt.Fprintln(c.OutOrStdout())
+
+	pidPath := paths.GatewayPID(llmcontext.DefaultLookup)
+	if pid, running := gateway.IsRunning(pidPath); running {
+		fmt.Fprintf(c.OutOrStdout(), "  Gateway already running (pid %d) — skipping.\n", pid)
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
 
 	self, err := os.Executable()
 	if err != nil {

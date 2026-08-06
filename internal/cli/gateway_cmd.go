@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -75,18 +76,57 @@ func newGatewayInitCmd() *cobra.Command {
 				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key already exists")
 			}
 
-			// Write gateway config.
+			// Write gateway config. M1: a re-run must not clobber a
+			// previously customised bind/mode — only missing fields are
+			// filled with defaults, existing values are kept as-is.
 			cfgPath := paths.GatewayConfig(env)
-			cfg := map[string]interface{}{
+			defaults := map[string]interface{}{
 				"version": version.Version,
 				"bind":    "127.0.0.1:7878",
 				"mode":    "local_process",
 			}
+
+			cfg := map[string]interface{}{}
+			existed := false
+			if data, readErr := os.ReadFile(cfgPath); readErr == nil {
+				existed = true
+				if jsonErr := json.Unmarshal(data, &cfg); jsonErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: warning: existing config at %s is not valid JSON (%v) — rewriting with defaults\n", cfgPath, jsonErr)
+					cfg = map[string]interface{}{}
+					existed = false
+				}
+			}
+
+			var kept, filled []string
+			for k, v := range defaults {
+				if k == "version" {
+					// version always tracks the current build; it is not a
+					// user-customisable field.
+					cfg[k] = v
+					continue
+				}
+				if _, ok := cfg[k]; ok {
+					kept = append(kept, k)
+					continue
+				}
+				cfg[k] = v
+				filled = append(filled, k)
+			}
+
 			cfgData, _ := json.MarshalIndent(cfg, "", "  ")
 			if err := os.WriteFile(cfgPath, cfgData, 0o600); err != nil {
 				return fmt.Errorf("gateway init: write config: %w", err)
 			}
 			_ = os.Chmod(cfgPath, 0o600)
+
+			if existed && len(kept) > 0 {
+				sort.Strings(kept)
+				fmt.Fprintf(c.OutOrStdout(), "gateway: kept existing values: %s\n", strings.Join(kept, ", "))
+			}
+			if len(filled) > 0 {
+				sort.Strings(filled)
+				fmt.Fprintf(c.OutOrStdout(), "gateway: filled missing fields with defaults: %s\n", strings.Join(filled, ", "))
+			}
 			fmt.Fprintf(c.OutOrStdout(), "gateway: config written to %s\n", cfgPath)
 
 			// Optionally write Docker Compose.
