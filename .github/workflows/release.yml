@@ -399,6 +399,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       windows_failed: ${{ steps.set_windows_failed.outputs.windows_failed }}
+      macos_failed: ${{ steps.set_macos_failed.outputs.macos_failed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -448,6 +449,32 @@ jobs:
         if: runner.os == 'Windows'
         run: go build -o src-tauri/binaries/keylatchd-x86_64-pc-windows-msvc.exe ./cmd/keylatchd
 
+      # ---------------------------------------------------------------------
+      # SIGNING SECRETS REQUIRED FOR SIGNED/NOTARIZED DESKTOP RELEASES
+      #
+      # None of the secrets below are provisioned yet, so the steps that
+      # consume them (continue-on-error: true) currently produce UNSIGNED
+      # artifacts. The `signing-status` job (see end of this file) turns red
+      # — without blocking `publish` — whenever that happens, and unsigned
+      # artifacts are renamed with an `-UNSIGNED` suffix + called out in the
+      # release notes. To ship signed/notarized builds, provision:
+      #
+      #   macOS (Apple Developer ID signing + notarization):
+      #     APPLE_CERTIFICATE                — base64 .p12 Developer ID Application cert
+      #     APPLE_CERTIFICATE_PASSWORD       — password for the .p12
+      #     APPLE_ID                         — Apple ID used for notarization
+      #     APPLE_PASSWORD                   — app-specific password for that Apple ID
+      #     APPLE_TEAM_ID                    — Apple Developer Team ID
+      #
+      #   Windows (Authenticode signing):
+      #     WINDOWS_CERTIFICATE              — base64 code-signing cert (.pfx)
+      #     WINDOWS_CERTIFICATE_PASSWORD     — password for the .pfx
+      #     WINDOWS_CERTIFICATE_THUMBPRINT   — thumbprint of the imported cert
+      #
+      #   Both platforms (Tauri updater signature, independent of OS code-signing):
+      #     TAURI_SIGNING_PRIVATE_KEY          — Tauri updater signing key
+      #     TAURI_SIGNING_PRIVATE_KEY_PASSWORD — password for that key
+      # ---------------------------------------------------------------------
       - name: build Tauri bundle (macOS — signed)
         id: build_macos
         if: runner.os == 'macOS'
@@ -492,6 +519,11 @@ jobs:
       - name: warn if notarization skipped
         if: ${{ steps.notarize.outcome == 'failure' || steps.notarize.outcome == 'skipped' }}
         run: echo "::warning::Notarization skipped or failed — APPLE_ID secrets may not be provisioned yet"
+
+      - name: set macos_failed output
+        id: set_macos_failed
+        if: ${{ runner.os == 'macOS' && (steps.build_macos.outcome == 'failure' || steps.build_macos.outcome == 'skipped' || steps.notarize.outcome == 'failure' || steps.notarize.outcome == 'skipped') }}
+        run: echo "macos_failed=true" >> "$GITHUB_OUTPUT"
 
       - name: build Tauri bundle (Windows — unsigned for 1.0.0)
         id: build_windows
@@ -545,6 +577,50 @@ jobs:
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: warn
 
+  # Non-blocking signal job: never gates `publish` (deliberately absent from
+  # publish's `needs`), so an unprovisioned signing cert can never hold up a
+  # release. Its only purpose is to make the Actions run page show red on
+  # this specific job whenever a desktop artifact ships unsigned, instead of
+  # every job reporting green while Gatekeeper/SmartScreen silently blocks
+  # the artifact for end users.
+  signing-status:
+    needs: [desktop-bundles]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: check macOS/Windows signing status
+        run: |
+          set -uo pipefail
+          MACOS_FAILED="${{ needs.desktop-bundles.outputs.macos_failed }}"
+          WINDOWS_FAILED="${{ needs.desktop-bundles.outputs.windows_failed }}"
+          UNSIGNED=0
+
+          {
+            echo "## Desktop signing status"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$MACOS_FAILED" = "true" ]; then
+            echo "::error::macOS desktop bundle is UNSIGNED / NOT NOTARIZED — Gatekeeper will block it on user machines."
+            echo "- ⚠ **macOS** — UNSIGNED, not notarized. Gatekeeper will block it (\"app is damaged\"/\"cannot be opened\"). Provision APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID." >> "$GITHUB_STEP_SUMMARY"
+            UNSIGNED=1
+          fi
+          if [ "$WINDOWS_FAILED" = "true" ]; then
+            echo "::error::Windows desktop bundle is UNSIGNED — SmartScreen will warn users on first run."
+            echo "- ⚠ **Windows** — UNSIGNED. SmartScreen will warn users. Provision WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD, WINDOWS_CERTIFICATE_THUMBPRINT." >> "$GITHUB_STEP_SUMMARY"
+            UNSIGNED=1
+          fi
+
+          if [ "$UNSIGNED" = "0" ]; then
+            echo "- ✅ All desktop bundles built this run are signed/notarized (or none were attempted)." >> "$GITHUB_STEP_SUMMARY"
+            echo "All built desktop bundles are signed/notarized."
+            exit 0
+          fi
+
+          echo "This job intentionally fails (non-blocking — publish does not depend on it) so the run page flags unsigned artifacts. See job summary for details."
+          exit 1
+
   publish:
     needs: [build-cli, sbom, release-gates, cosign-sign, manifest, desktop-bundles, provenance, container-supply-chain]
     runs-on: ubuntu-latest
@@ -582,6 +658,51 @@ jobs:
             -o -name "keylatch-*.json" \
           \) -exec cp {} release-files/ \;
           echo "--- collected ---" && ls -1 release-files/
+      - name: mark unsigned desktop artifacts
+        # Unsigned/unnotarized desktop artifacts must not look identical to
+        # signed ones in the release download list — rename with a visible
+        # -UNSIGNED suffix and build a release-notes addendum flagging it.
+        # (See the signing-status job for the non-blocking CI-red signal.)
+        run: |
+          set -euo pipefail
+          MACOS_FAILED="${{ needs.desktop-bundles.outputs.macos_failed }}"
+          WINDOWS_FAILED="${{ needs.desktop-bundles.outputs.windows_failed }}"
+
+          mark_unsigned() {
+            local pattern="$1"
+            shopt -s nullglob
+            for f in release-files/$pattern; do
+              base="${f%.*}"
+              ext="${f##*.}"
+              mv "$f" "${base}-UNSIGNED.${ext}"
+              echo "Renamed unsigned artifact: $(basename "${base}-UNSIGNED.${ext}")"
+            done
+          }
+
+          : > release-notes-addendum.md
+
+          if [ "$MACOS_FAILED" = "true" ]; then
+            mark_unsigned "*.dmg"
+            {
+              echo
+              echo "## ⚠ UNSIGNED BUILD — macOS"
+              echo
+              echo "The macOS \`.dmg\` in this release (files suffixed \`-UNSIGNED\`) is **not code-signed or notarized**. Gatekeeper will block it on user machines (\"app is damaged\" / \"cannot be opened\"). Verifiable via Sigstore cosign only, not Apple notarization. See the **signing-status** job on this run for the secrets still needed."
+            } >> release-notes-addendum.md
+          fi
+          if [ "$WINDOWS_FAILED" = "true" ]; then
+            mark_unsigned "*-setup.exe"
+            {
+              echo
+              echo "## ⚠ UNSIGNED BUILD — Windows"
+              echo
+              echo "The Windows installer in this release (files suffixed \`-UNSIGNED\`) is **not code-signed**. SmartScreen will warn users on first run. See the **signing-status** job on this run for the secrets still needed."
+            } >> release-notes-addendum.md
+          fi
+
+          echo "--- release-notes-addendum.md ---"
+          cat release-notes-addendum.md
+          echo "--- release-files (post-rename) ---" && ls -1 release-files/
       - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
       - name: cosign-sign desktop installers
         # The CLI archives are cosigned in the cosign-sign job, but the desktop
@@ -624,6 +745,13 @@ jobs:
           # the "Latest" download. A clean tag (v0.9.3) ships as Latest — the
           # default grab for external testers.
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # Auto-generated commit notes, plus the unsigned-build warning (if
+          # any) produced by the "mark unsigned desktop artifacts" step above.
+          # release-notes-addendum.md is always written (empty when every
+          # built artifact is signed), so append_body is always safe.
+          generate_release_notes: true
+          append_body: true
+          body_path: release-notes-addendum.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: windows bundle status
