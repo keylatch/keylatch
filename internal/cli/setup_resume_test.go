@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -183,6 +184,98 @@ func TestSetupResume_DeclineSwitch_KeepsOldBackend(t *testing.T) {
 	cfg, err := config.Load(filepath.Join(configDir, "config.json"))
 	require.NoError(t, err)
 	require.Equal(t, "op", cfg.Backend)
+}
+
+// TestSetupResume_UnreadableConfig_AbortsSetup verifies the review-flagged
+// warn-1 gap is fixed: a config file that exists but cannot be read
+// (permission denied) must abort setup with a clear error instead of
+// silently treating it as "no configured backend" and skipping straight to
+// the fresh-install flow (which would bypass H2's switch-confirmation gate
+// entirely).
+func TestSetupResume_UnreadableConfig_AbortsSetup(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	setupResumeClearLLMEnv(t)
+
+	cfgPath := filepath.Join(configDir, "config.json")
+	original := config.Config{Version: 1, Backend: "op", DefaultNamespace: "default"}
+	require.NoError(t, config.Save(cfgPath, original))
+
+	if err := os.Chmod(cfgPath, 0o000); err != nil {
+		t.Skipf("cannot chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o600) })
+	if _, readErr := os.ReadFile(cfgPath); readErr == nil {
+		t.Skip("file is still readable despite chmod 0o000 (likely running as root)")
+	}
+
+	// Only the storage-branch prompt should be consumed before setup aborts.
+	setupResumeStdin(t, "")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	root := NewRootCommand()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"setup", "--no-daemon-start"})
+
+	err := root.Execute()
+	require.Error(t, err, "setup must abort rather than silently treat an unreadable config as fresh")
+	require.Contains(t, err.Error(), cfgPath)
+
+	require.NotContains(t, stdout.String(), "Recommended backend:", "must not fall through to the fresh-install flow")
+	require.NotContains(t, stdout.String(), "Configured backend:")
+
+	matches, globErr := filepath.Glob(cfgPath + ".bak.*")
+	require.NoError(t, globErr)
+	require.Empty(t, matches, "an abort must never produce a backup")
+
+	require.NoError(t, os.Chmod(cfgPath, 0o600))
+	stillOriginal, readErr := config.Load(cfgPath)
+	require.NoError(t, readErr)
+	require.Equal(t, original, stillOriginal, "the original config must be completely untouched")
+}
+
+// TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning verifies that a
+// readable-but-content-unusable config (version mismatch) surfaces the
+// same M2 warning before the backend prompt, and is treated as a fresh
+// install rather than silently skipping straight past it with no
+// indication anything was wrong (warn-1).
+func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	setupResumeClearLLMEnv(t)
+
+	cfgPath := filepath.Join(configDir, "config.json")
+	data := `{"version":99,"backend":"op","default_namespace":"work","audit":{"enabled":true,"max_size_bytes":5242880},"ui":{"bind":"127.0.0.1"}}`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(data), 0o600))
+
+	// storage branch, decline the recommended backend (avoids macOS keychain
+	// in CI), pick "1" (file) from the basic menu, mode choice, provider
+	// pick, open-UI.
+	setupResumeStdin(t, "", "n", "1", "", "", "")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	root := NewRootCommand()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"setup", "--no-daemon-start"})
+
+	require.NoError(t, root.Execute())
+
+	require.Contains(t, stderr.String(), "existing config")
+	require.Contains(t, stderr.String(), "is unusable")
+	require.Contains(t, stdout.String(), "Recommended backend:", "an unusable config must fall through to the fresh-install flow, not silently vanish")
+	require.NotContains(t, stdout.String(), "Keep current backend", "no configured backend was recoverable, so the H2 keep-current prompt must not appear")
+
+	cfg, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, "file", cfg.Backend)
+
+	matches, globErr := filepath.Glob(cfgPath + ".bak.*")
+	require.NoError(t, globErr)
+	require.Len(t, matches, 1, "the unusable config must still be backed up once, when it is actually persisted over")
 }
 
 // TestSetupSecurityBlockMessage_NamesTriggeringSignal verifies the LLM
