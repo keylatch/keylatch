@@ -397,9 +397,15 @@ jobs:
         os: ${{ fromJSON(vars.DESKTOP_OS_MATRIX || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    outputs:
-      windows_failed: ${{ steps.set_windows_failed.outputs.windows_failed }}
-      macos_failed: ${{ steps.set_macos_failed.outputs.macos_failed }}
+    # Deliberately NOT job-level `outputs:` — GitHub Actions matrix job
+    # outputs are last-writer-wins across legs. With multiple OS legs (the
+    # supported post-MVP DESKTOP_OS_MATRIX expansion, see the comment above),
+    # a leg that never runs the signing steps (e.g. ubuntu-latest) can finish
+    # after the macOS/Windows leg and silently overwrite a real "unsigned"
+    # value with an empty string — a false green, exactly what H9 exists to
+    # prevent. Each leg instead uploads its own signing-status-<os> artifact
+    # (see "compute per-leg signing status" below); the signing-status and
+    # publish jobs download and aggregate all of them.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -520,11 +526,6 @@ jobs:
         if: ${{ steps.notarize.outcome == 'failure' || steps.notarize.outcome == 'skipped' }}
         run: echo "::warning::Notarization skipped or failed — APPLE_ID secrets may not be provisioned yet"
 
-      - name: set macos_failed output
-        id: set_macos_failed
-        if: ${{ runner.os == 'macOS' && (steps.build_macos.outcome == 'failure' || steps.build_macos.outcome == 'skipped' || steps.notarize.outcome == 'failure' || steps.notarize.outcome == 'skipped') }}
-        run: echo "macos_failed=true" >> "$GITHUB_OUTPUT"
-
       - name: build Tauri bundle (Windows — unsigned for 1.0.0)
         id: build_windows
         if: runner.os == 'Windows'
@@ -541,10 +542,44 @@ jobs:
         if: ${{ runner.os == 'Windows' && (steps.build_windows.outcome == 'failure' || steps.build_windows.outcome == 'skipped') }}
         run: echo "::warning::Windows bundle build failed — WINDOWS_CERTIFICATE secrets may not be provisioned yet"
 
-      - name: set windows_failed output
-        id: set_windows_failed
-        if: ${{ runner.os == 'Windows' && (steps.build_windows.outcome == 'failure' || steps.build_windows.outcome == 'skipped') }}
-        run: echo "windows_failed=true" >> "$GITHUB_OUTPUT"
+      - name: compute per-leg signing status
+        id: signing_status
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          UNSIGNED=false
+          REASON="not applicable — ${{ runner.os }} does not require a paid signing cert for this MVP"
+          case "${{ runner.os }}" in
+            macOS)
+              if [ "${{ steps.build_macos.outcome }}" = "failure" ] || [ "${{ steps.build_macos.outcome }}" = "skipped" ] || [ "${{ steps.notarize.outcome }}" = "failure" ] || [ "${{ steps.notarize.outcome }}" = "skipped" ]; then
+                UNSIGNED=true
+                REASON="macOS bundle build or notarization failed/skipped — APPLE_CERTIFICATE/APPLE_ID secrets not provisioned"
+              else
+                REASON="macOS bundle signed and notarized"
+              fi
+              ;;
+            Windows)
+              if [ "${{ steps.build_windows.outcome }}" = "failure" ] || [ "${{ steps.build_windows.outcome }}" = "skipped" ]; then
+                UNSIGNED=true
+                REASON="Windows bundle build failed/skipped — WINDOWS_CERTIFICATE secrets not provisioned"
+              else
+                REASON="Windows bundle built (unsigned by design; EV cert deferred to 1.1.0)"
+              fi
+              ;;
+          esac
+          printf '{"matrix_os":"%s","runner_os":"%s","unsigned":%s,"reason":"%s"}\n' \
+            "${{ matrix.os }}" "${{ runner.os }}" "$UNSIGNED" "$REASON" > "signing-status-${{ matrix.os }}.json"
+          cat "signing-status-${{ matrix.os }}.json"
+
+      # One artifact per matrix leg (filename/artifact name both suffixed
+      # with matrix.os, so they never collide once downloaded with
+      # merge-multiple: true elsewhere in this workflow).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signing-status-${{ matrix.os }}
+          path: signing-status-${{ matrix.os }}.json
+          if-no-files-found: error
 
       - name: install Linux system dependencies
         if: runner.os == 'Linux'
@@ -589,11 +624,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: download per-leg signing-status artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: signing-status-*
+          path: signing-status/
+          merge-multiple: true
       - name: check macOS/Windows signing status
         run: |
           set -uo pipefail
-          MACOS_FAILED="${{ needs.desktop-bundles.outputs.macos_failed }}"
-          WINDOWS_FAILED="${{ needs.desktop-bundles.outputs.windows_failed }}"
           UNSIGNED=0
 
           {
@@ -601,19 +640,29 @@ jobs:
             echo
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$MACOS_FAILED" = "true" ]; then
-            echo "::error::macOS desktop bundle is UNSIGNED / NOT NOTARIZED — Gatekeeper will block it on user machines."
-            echo "- ⚠ **macOS** — UNSIGNED, not notarized. Gatekeeper will block it (\"app is damaged\"/\"cannot be opened\"). Provision APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID." >> "$GITHUB_STEP_SUMMARY"
-            UNSIGNED=1
-          fi
-          if [ "$WINDOWS_FAILED" = "true" ]; then
-            echo "::error::Windows desktop bundle is UNSIGNED — SmartScreen will warn users on first run."
-            echo "- ⚠ **Windows** — UNSIGNED. SmartScreen will warn users. Provision WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD, WINDOWS_CERTIFICATE_THUMBPRINT." >> "$GITHUB_STEP_SUMMARY"
-            UNSIGNED=1
+          shopt -s nullglob
+          found=0
+          for f in signing-status/*.json; do
+            found=1
+            unsigned=$(jq -r '.unsigned' "$f")
+            reason=$(jq -r '.reason' "$f")
+            matrix_os=$(jq -r '.matrix_os' "$f")
+            runner_os=$(jq -r '.runner_os' "$f")
+            if [ "$unsigned" = "true" ]; then
+              echo "::error::${runner_os} (${matrix_os}) desktop bundle is UNSIGNED — ${reason}"
+              echo "- ⚠ **${runner_os}** (${matrix_os}) — UNSIGNED. ${reason}" >> "$GITHUB_STEP_SUMMARY"
+              UNSIGNED=1
+            else
+              echo "- ✅ ${runner_os} (${matrix_os}) — ${reason}" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          if [ "$found" = "0" ]; then
+            echo "::warning::no signing-status-*.json artifacts found — desktop-bundles may not have run any legs"
+            echo "- ⚠ no signing-status artifacts found from desktop-bundles" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [ "$UNSIGNED" = "0" ]; then
-            echo "- ✅ All desktop bundles built this run are signed/notarized (or none were attempted)." >> "$GITHUB_STEP_SUMMARY"
             echo "All built desktop bundles are signed/notarized."
             exit 0
           fi
@@ -662,11 +711,26 @@ jobs:
         # Unsigned/unnotarized desktop artifacts must not look identical to
         # signed ones in the release download list — rename with a visible
         # -UNSIGNED suffix and build a release-notes addendum flagging it.
+        # Reads the per-leg signing-status-<os>.json artifacts written by
+        # desktop-bundles (already downloaded into all-artifacts/ above)
+        # rather than desktop-bundles job outputs — matrix job outputs are
+        # last-writer-wins across legs and would go silently stale the
+        # moment DESKTOP_OS_MATRIX grows past a single leg.
         # (See the signing-status job for the non-blocking CI-red signal.)
         run: |
           set -euo pipefail
-          MACOS_FAILED="${{ needs.desktop-bundles.outputs.macos_failed }}"
-          WINDOWS_FAILED="${{ needs.desktop-bundles.outputs.windows_failed }}"
+          MACOS_FAILED=false
+          WINDOWS_FAILED=false
+          shopt -s nullglob
+          for f in all-artifacts/signing-status-*.json; do
+            unsigned=$(jq -r '.unsigned' "$f")
+            runner_os=$(jq -r '.runner_os' "$f")
+            [ "$unsigned" = "true" ] || continue
+            case "$runner_os" in
+              macOS) MACOS_FAILED=true ;;
+              Windows) WINDOWS_FAILED=true ;;
+            esac
+          done
 
           mark_unsigned() {
             local pattern="$1"
@@ -755,9 +819,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: windows bundle status
-        if: needs.desktop-bundles.outputs.windows_failed == 'true'
+        # Reads the same per-leg signing-status-<os>.json artifacts as "mark
+        # unsigned desktop artifacts" above (not a job-level output — see
+        # that step's comment for why).
         run: |
-          echo "::warning::Windows bundle build failed — Windows artifacts not included in this release"
+          shopt -s nullglob
+          for f in all-artifacts/signing-status-*.json; do
+            unsigned=$(jq -r '.unsigned' "$f")
+            runner_os=$(jq -r '.runner_os' "$f")
+            if [ "$runner_os" = "Windows" ] && [ "$unsigned" = "true" ]; then
+              echo "::warning::Windows bundle build failed — Windows artifacts not included in this release"
+            fi
+          done
   release-checklist:
     needs: publish
     runs-on: ubuntu-latest
