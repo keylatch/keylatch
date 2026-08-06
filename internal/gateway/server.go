@@ -204,6 +204,20 @@ func New(opts ServerOptions) (*Server, error) {
 		p, err := policy.Load(opts.PolicyPath)
 		switch {
 		case err == nil:
+			// Review finding (2026-08-06, blocking): ModePermissive is only
+			// legal outside LLM sessions (policy.Check panics whenever
+			// req.LLMSession && Mode==ModePermissive — see policy.go's
+			// invariant check). The gateway can receive LLMSession=true
+			// requests on every request (t.LLMSession comes from the
+			// verified JWT, Step 5b), so a permissive-mode policy file is
+			// never safe to load here — reject it at startup instead of
+			// letting the first LLM-session request panic mid-handler.
+			if p.Mode == policy.ModePermissive {
+				return nil, fmt.Errorf(
+					"gateway: policy %q has mode=%q — permissive mode is not valid for a gateway-loaded policy "+
+						"(the gateway can always receive LLM-session requests, which permissive mode forbids; use %q instead)",
+					opts.PolicyPath, p.Mode, policy.ModeEnforcing)
+			}
 			loadedPolicy = &p
 		case errors.Is(err, fs.ErrNotExist):
 			// Not configured yet — pass-through preserved.
