@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/route"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/telemetry"
 	"github.com/keylatch/keylatch/internal/ui"
@@ -111,6 +113,12 @@ type Server struct {
 	// actorHashKey is the domain-separated key for HMAC'ing actor IDs in
 	// budget denial receipts (derived from SigningKey, never the raw key).
 	actorHashKey []byte
+	// policy is the loaded request policy. nil means no policy is
+	// configured (ServerOptions.PolicyPath == "" or the file does not yet
+	// exist) — the handler's Step 6 treats nil as pass-through allow to
+	// preserve pre-wiring behavior (H7). Non-nil means Step 6 evaluates
+	// every request against it.
+	policy *policy.Policy
 }
 
 // RuntimeDecision describes the routing + credential decision for a request.
@@ -180,6 +188,30 @@ func New(opts ServerOptions) (*Server, error) {
 		return nil, fmt.Errorf("gateway: compile routes: %w", err)
 	}
 
+	// Load the request policy, if configured (H7 wiring).
+	//
+	// opts.PolicyPath == "" means the operator has not opted into gateway
+	// policy enforcement — leave loadedPolicy nil so the handler's Step 6
+	// stays pass-through, exactly like before this field was wired. A
+	// configured-but-not-yet-created file is treated the same way: there is
+	// nothing to enforce yet, not an error. Any other Load failure
+	// (malformed JSON, bad permissions, invalid schema) fails server
+	// startup — starting a gateway with a policy file the operator believes
+	// is active but which cannot actually be read would be worse than
+	// refusing to start.
+	var loadedPolicy *policy.Policy
+	if opts.PolicyPath != "" {
+		p, err := policy.Load(opts.PolicyPath)
+		switch {
+		case err == nil:
+			loadedPolicy = &p
+		case errors.Is(err, fs.ErrNotExist):
+			// Not configured yet — pass-through preserved.
+		default:
+			return nil, fmt.Errorf("gateway: load policy: %w", err)
+		}
+	}
+
 	b := staticbroker.New()
 
 	// Build per-provider HTTP client pool (gap P1).
@@ -216,6 +248,7 @@ func New(opts ServerOptions) (*Server, error) {
 		telemetrySink:     opts.TelemetrySink,
 		budget:            opts.Budget,
 		actorHashKey:      budget.DeriveActorHashKey(opts.SigningKey),
+		policy:            loadedPolicy,
 	}
 
 	// hostOverrideBlockerMiddleware is configured with an empty allowedHosts
