@@ -71,6 +71,28 @@ type setupHeadlessResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// setupSecurityBlockMessage builds the stderr message printed when
+// interactive setup refuses to run because llmcontext.IsLLMSession detected
+// an AI session (M8). It names the concrete triggering signal(s) instead of
+// a generic refusal, so a human in an editor-integrated terminal can tell
+// what to unset — without weakening the guard itself (no override flag).
+func setupSecurityBlockMessage(env llmcontext.Lookup) string {
+	var b strings.Builder
+	b.WriteString("Error: setup must be run interactively — not inside an AI session.\n")
+
+	if reasons := llmcontext.Reasons(env); len(reasons) > 0 {
+		fmt.Fprintf(&b, "  blocked: %s env var set — if you are a human in an editor-integrated terminal, unset it or run with --headless.\n", strings.Join(reasons, ", "))
+		return b.String()
+	}
+
+	// No env-var heuristic fired, so the block came from a stronger signal
+	// (a signed KEYLATCH_LLM_TICKET, or a keylatchd IPC query) — llmcontext.
+	// Reasons() only reports the env-var tier, so there is no single env var
+	// to name here.
+	b.WriteString("  blocked: session corroborated via a signed session ticket or keylatchd — not an environment variable, so unsetting env vars will not change this. If you are automating this, run with --headless.\n")
+	return b.String()
+}
+
 // platformBackend returns the recommended backend name and a human-readable
 // description for the current OS.
 func platformBackend() (name, desc string) {
@@ -134,7 +156,7 @@ Exit codes:
 			// LLM session guard: interactive setup must not run inside an AI session.
 			// Headless/non-interactive modes are explicitly allowed.
 			if !isNonInteractive && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "Error: setup must be run interactively — not inside an AI session.")
+				fmt.Fprint(c.ErrOrStderr(), setupSecurityBlockMessage(llmcontext.DefaultLookup))
 				os.Exit(exitcode.SecurityBlock)
 				return nil
 			}
