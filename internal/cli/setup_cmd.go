@@ -5,6 +5,7 @@ import (
 	"context"
 	cryptoRand "crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -67,6 +68,28 @@ type setupHeadlessResult struct {
 	OK      bool   `json:"ok"`
 	Backend string `json:"backend,omitempty"`
 	Error   string `json:"error,omitempty"`
+}
+
+// setupSecurityBlockMessage builds the stderr message printed when
+// interactive setup refuses to run because llmcontext.IsLLMSession detected
+// an AI session (M8). It names the concrete triggering signal(s) instead of
+// a generic refusal, so a human in an editor-integrated terminal can tell
+// what to unset — without weakening the guard itself (no override flag).
+func setupSecurityBlockMessage(env llmcontext.Lookup) string {
+	var b strings.Builder
+	b.WriteString("Error: setup must be run interactively — not inside an AI session.\n")
+
+	if reasons := llmcontext.Reasons(env); len(reasons) > 0 {
+		fmt.Fprintf(&b, "  blocked: %s env var set — if you are a human in an editor-integrated terminal, unset it or run with --headless.\n", strings.Join(reasons, ", "))
+		return b.String()
+	}
+
+	// No env-var heuristic fired, so the block came from a stronger signal
+	// (a signed KEYLATCH_LLM_TICKET, or a keylatchd IPC query) — llmcontext.
+	// Reasons() only reports the env-var tier, so there is no single env var
+	// to name here.
+	b.WriteString("  blocked: session corroborated via a signed session ticket or keylatchd — not an environment variable, so unsetting env vars will not change this. If you are automating this, run with --headless.\n")
+	return b.String()
 }
 
 // platformBackend returns the recommended backend name and a human-readable
@@ -132,7 +155,7 @@ Exit codes:
 			// LLM session guard: interactive setup must not run inside an AI session.
 			// Headless/non-interactive modes are explicitly allowed.
 			if !isNonInteractive && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "Error: setup must be run interactively — not inside an AI session.")
+				fmt.Fprint(c.ErrOrStderr(), setupSecurityBlockMessage(llmcontext.DefaultLookup))
 				os.Exit(exitcode.SecurityBlock)
 				return nil
 			}
@@ -335,13 +358,32 @@ func ResolveStdinFields(stdinFields []string) (map[string]string, error) {
 
 // setupStep1DetectPlatform handles [1/5] — detect OS and recommend the best backend.
 // Returns the recommended backend slug.
+//
+// H2: on resume (an existing config already names a backend), the OS
+// recommendation is not returned here — recommending a different backend
+// than what's configured is exactly what lets Enter-through resume silently
+// switch backends and orphan stored secrets. The OS recommendation is only
+// for fresh installs; setupStep2BackendSetup independently re-checks the
+// configured backend and gates any switch behind an explicit confirmation.
 func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 	fmt.Fprintln(c.OutOrStdout(), "[1/5] Detecting platform...")
 	fmt.Fprintln(c.OutOrStdout())
 
-	recommended, recDesc := platformBackend()
 	goos := runtime.GOOS
 	fmt.Fprintf(c.OutOrStdout(), "  Platform: %s\n", goos)
+
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	configuredBackend, err := loadConfiguredBackend(c, cfgPath)
+	if err != nil {
+		return "", err
+	}
+	if configuredBackend != "" {
+		fmt.Fprintf(c.OutOrStdout(), "  Configured backend: %s (from existing config)\n", configuredBackend)
+		fmt.Fprintln(c.OutOrStdout())
+		return configuredBackend, nil
+	}
+
+	recommended, recDesc := platformBackend()
 	fmt.Fprintf(c.OutOrStdout(), "  Recommended backend: %s (%s)\n", recommended, recDesc)
 	fmt.Fprintln(c.OutOrStdout())
 
@@ -350,6 +392,13 @@ func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 
 // setupStep2BackendSetup handles [2/5] — confirm backend and run bootstrap.
 // Takes the recommended backend from step 1; returns the chosen backend.
+//
+// H2: an existing config with a backend already set means secrets may
+// already be stored under that backend. On resume, this defaults the prompt
+// to *keeping* the configured backend rather than the OS recommendation,
+// and requires a typed "switch" confirmation before actually persisting a
+// different backend — Enter-through resume must never silently orphan
+// stored secrets.
 func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended string) (string, error) {
 	fmt.Fprintln(c.OutOrStdout(), "[2/5] Backend setup...")
 	fmt.Fprintln(c.OutOrStdout())
@@ -357,25 +406,45 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	advanced, _ := c.Flags().GetBool("advanced")
 	flagBackend, _ := c.Flags().GetString("backend")
 
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	configuredBackend, err := loadConfiguredBackend(c, cfgPath)
+	if err != nil {
+		return "", err
+	}
+
 	chosen := recommended
 	telemetrySetting := ""
+	// explicitFlagOverride: --backend is an unambiguous, deliberate choice
+	// (not an accidental Enter-through) — it bypasses the switch
+	// confirmation below, matching prior behavior for non-interactive/CI
+	// callers that already pass --backend explicitly.
+	explicitFlagOverride := flagBackend != ""
 
-	if flagBackend != "" {
-		// --backend flag overrides the recommendation.
+	switch {
+	case explicitFlagOverride:
 		chosen = flagBackend
 		fmt.Fprintf(c.OutOrStdout(), "  Using --backend=%s\n", chosen)
 		// Honour --telemetry off flag even in non-advanced mode.
 		if tf, _ := c.Flags().GetString("telemetry"); strings.ToLower(tf) == "off" {
 			telemetrySetting = "off"
 		}
-	} else if advanced {
+	case advanced:
 		// Advanced mode: show all 10 backend options and telemetry prompt.
 		chosen, telemetrySetting = setupPromptAdvancedBackend(c, recommended)
-	} else {
-		// Standard: prompt "Use recommended backend? (Y/n)".
+	case configuredBackend != "":
+		// Resume: default to *keeping* the configured backend, not the OS
+		// recommendation.
+		fmt.Fprintf(c.OutOrStdout(), "  Keep current backend [%s]? (Y/n): ", configuredBackend)
+		ans := strings.ToLower(strings.TrimSpace(readLine()))
+		if ans == "n" || ans == "no" {
+			chosen = setupPromptBasicBackend(c, configuredBackend)
+		} else {
+			chosen = configuredBackend
+		}
+	default:
+		// Fresh install: prompt "Use recommended backend? (Y/n)".
 		fmt.Fprintf(c.OutOrStdout(), "  Use recommended backend [%s]? (Y/n): ", recommended)
-		ans := readLine()
-		ans = strings.ToLower(strings.TrimSpace(ans))
+		ans := strings.ToLower(strings.TrimSpace(readLine()))
 		if ans == "n" || ans == "no" {
 			chosen = setupPromptBasicBackend(c, recommended)
 		}
@@ -387,9 +456,25 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	}
 	chosen = canonical
 
+	// H2: switching away from the configured backend orphans whatever is
+	// already stored under it (nothing migrates). Require an explicit typed
+	// confirmation before persisting the switch — anything else keeps the
+	// configured backend.
+	if !explicitFlagOverride && configuredBackend != "" && chosen != configuredBackend {
+		fmt.Fprintln(c.OutOrStdout())
+		fmt.Fprintf(c.OutOrStdout(), "  WARNING: switching backend from %q to %q.\n", configuredBackend, chosen)
+		fmt.Fprintf(c.OutOrStdout(), "  Secrets stored under %q will NOT be visible under %q — nothing is migrated.\n", configuredBackend, chosen)
+		fmt.Fprintf(c.OutOrStdout(), "  Type \"switch\" to confirm, or anything else to keep %q: ", configuredBackend)
+		confirm := strings.ToLower(strings.TrimSpace(readLine()))
+		if confirm != "switch" {
+			fmt.Fprintf(c.OutOrStdout(), "  Keeping current backend %q.\n\n", configuredBackend)
+			chosen = configuredBackend
+		}
+	}
+
 	fmt.Fprintf(c.OutOrStdout(), "  Configuring backend %q...\n", chosen)
 
-	_, err := bootstrap.Run(ctx, bootstrap.Options{
+	_, err = bootstrap.Run(ctx, bootstrap.Options{
 		DryRun:  false,
 		Backend: chosen,
 		Env:     llmcontext.DefaultLookup,
@@ -434,7 +519,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		}
 	}
 
-	if err := persistSetupBackend(chosen); err != nil {
+	if err := persistSetupBackend(c, chosen); err != nil {
 		return "", err
 	}
 
@@ -460,17 +545,104 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	return chosen, nil
 }
 
-func persistSetupBackend(chosen string) error {
+func persistSetupBackend(c *cobra.Command, chosen string) error {
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg, loadErr := config.Load(cfgPath)
-	if loadErr != nil {
-		cfg = config.Default()
+	cfg, err := loadConfigOrWarn(c, cfgPath)
+	if err != nil {
+		return err
 	}
 	cfg.Backend = chosen
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		return fmt.Errorf("persist backend %q: %w", chosen, saveErr)
 	}
 	return nil
+}
+
+// loadConfigOrWarn loads the config at cfgPath, classifying failures into
+// three distinct cases (review finding, blocking) so a transient/permission
+// read failure is never treated the same as a genuinely corrupt file —
+// which would otherwise let the caller silently overwrite (via
+// config.Save's rename, which only needs directory write permission, not
+// permission on the target file itself) a perfectly healthy config it was
+// merely unable to open:
+//
+//  1. File does not exist — fresh install. Silently returns config.Default()
+//     with a nil error: nothing was ever there to lose.
+//  2. The file exists but could not be READ (permission denied, transient
+//     I/O error, EBUSY, etc.) — the bytes were never even inspected, so
+//     there is no way to tell whether the config is fine or broken. Returns
+//     a non-nil error and config.Config{}; callers MUST abort the operation
+//     (propagate the error) rather than fall back to config.Default().
+//  3. The file was read successfully but its CONTENT is unusable (malformed
+//     JSON, unknown fields, version mismatch, failed validation) — this is
+//     the only case that resets to defaults. The bytes already read are
+//     backed up to "<cfgPath>.bak.<unix-nano>" — no second read: a repeat
+//     read isn't guaranteed to see the same bytes, and if the original
+//     failure involved I/O flakiness a second read could fail for the same
+//     reason a case-2 caller would need to abort for anyway.
+//
+// This is the write-path helper (persist*/setupStep* call sites that need
+// graceful degradation instead of silent data loss). setupStep1DetectPlatform
+// and setupStep2BackendSetup's resume detection use the same classification
+// via loadConfiguredBackend so a case-2 read failure can't silently look
+// like "no existing config" and skip the H2 switch-confirmation gate.
+func loadConfigOrWarn(c *cobra.Command, cfgPath string) (config.Config, error) {
+	data, readErr := os.ReadFile(cfgPath)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			return config.Default(), nil
+		}
+		// Case 2: the read itself failed — do not touch the file, abort.
+		return config.Config{}, fmt.Errorf("config at %s could not be read (%w) — refusing to reset it; check file permissions and retry", cfgPath, readErr)
+	}
+
+	cfg, parseErr := config.LoadBytes(cfgPath, data)
+	if parseErr == nil {
+		return cfg, nil
+	}
+
+	// Case 3: bytes were read fine, content is unusable.
+	fmt.Fprintf(c.ErrOrStderr(), "Warning: existing config at %s is unusable (%v); resetting to defaults.\n", cfgPath, parseErr)
+	backupPath := fmt.Sprintf("%s.bak.%d", cfgPath, time.Now().UnixNano())
+	if writeErr := os.WriteFile(backupPath, data, 0o600); writeErr == nil {
+		fmt.Fprintf(c.ErrOrStderr(), "Warning: backed up the unusable config to %s before overwriting it.\n", backupPath)
+	} else {
+		fmt.Fprintf(c.ErrOrStderr(), "Warning: could not back up the unusable config at %s (%v) — proceeding without a backup.\n", cfgPath, writeErr)
+	}
+	return config.Default(), nil
+}
+
+// loadConfiguredBackend inspects cfgPath for an existing backend selection,
+// using the same three-way classification as loadConfigOrWarn (review
+// finding, warn-1) so a permission/IO read failure can't silently look like
+// "no existing config" and let a resume skip H2's switch-confirmation gate:
+//
+//  1. Not exist → ("", nil): fresh install, no configured backend.
+//  2. Read/IO error → ("", err): the caller must abort. Silently treating
+//     this as "no config" would let a resume that genuinely has a
+//     configured backend skip the confirmation entirely.
+//  3. Content unusable (parse/version/validation error) → ("", nil), but
+//     prints the same "existing config is unusable" warning
+//     loadConfigOrWarn prints, at prompt time — so the user sees this is a
+//     broken existing install, not a fresh one, before being asked to pick
+//     a backend. This function does not itself back up or reset the file:
+//     that happens exactly once, later, inside loadConfigOrWarn when the
+//     chosen backend is actually persisted.
+func loadConfiguredBackend(c *cobra.Command, cfgPath string) (string, error) {
+	data, readErr := os.ReadFile(cfgPath)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", fmt.Errorf("config at %s could not be read (%w) — refusing to continue setup; check file permissions and retry", cfgPath, readErr)
+	}
+
+	cfg, parseErr := config.LoadBytes(cfgPath, data)
+	if parseErr != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "Warning: existing config at %s is unusable (%v); treating this as a fresh install for backend selection — it will be reset to defaults once setup finishes.\n", cfgPath, parseErr)
+		return "", nil
+	}
+	return cfg.Backend, nil
 }
 
 // setupPromptBasicBackend shows the standard 4-option backend menu.
@@ -633,9 +805,11 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 
 	// Persist the mode via config.
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg, loadErr := config.Load(cfgPath)
+	cfg, loadErr := loadConfigOrWarn(c, cfgPath)
 	if loadErr != nil {
-		cfg = config.Default()
+		fmt.Fprintf(c.ErrOrStderr(), "  Error: %v\n", loadErr)
+		fmt.Fprintln(c.OutOrStdout())
+		return
 	}
 	cfg.Mode = answer
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
@@ -646,10 +820,59 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 	fmt.Fprintln(c.OutOrStdout())
 }
 
+// setupGatewayPSRunner and setupGatewayPSBin back setupStep3SpawnDaemon's
+// process-identity verification (review finding, warn-2). Declared as vars
+// so tests can inject a mock without touching the real ps binary — same
+// injectable-var pattern as stdinScannerFn/storeNewResolver above.
+var (
+	setupGatewayPSRunner kexec.CommandRunner = kexec.DefaultRunner
+	setupGatewayPSBin                        = kexec.Resolve("ps")
+)
+
 // setupStep3SpawnDaemon handles [3/5] — initialise and start the gateway.
+//
+// M1: on a resumed setup where the gateway is already running, shelling out
+// to `gateway up --detach` anyway makes the child's expected "already
+// running" refusal look like a setup failure. Check IsRunning ourselves
+// first and present it as the success case it actually is.
+//
+// warn-2 (review finding): IsRunning alone only signal-0-probes the pid —
+// if the gateway crashed and its pid got recycled by an unrelated process,
+// IsRunning false-positives as "running" and setup would report a
+// misleading success with no functioning gateway. Reuse the same
+// resolveGatewayUpRunning/VerifyProcessIdentity best-effort check `gateway
+// up --force` uses (force=true mirrors --force's stale-PID recovery
+// semantics): a confirmed match or an inconclusive check both resolve to
+// "skip" here (inconclusive fails safe — see warn-4), but a confirmed
+// mismatch means the pid is stale, so setup removes it and proceeds to
+// actually start the gateway instead of silently doing nothing.
 func setupStep3SpawnDaemon(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[3/5] Gateway setup...")
 	fmt.Fprintln(c.OutOrStdout())
+
+	ctx := c.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	pidPath := paths.GatewayPID(llmcontext.DefaultLookup)
+	action, pid, note := resolveGatewayUpRunning(ctx, pidPath, true, setupGatewayPSRunner, setupGatewayPSBin)
+	switch action {
+	case gatewayUpRefuse:
+		// Covers both a confirmed match (genuinely running) and an
+		// inconclusive check (fail-safe, see warn-4) — either way the
+		// correct action here is the same: skip starting a new one.
+		fmt.Fprintf(c.OutOrStdout(), "  Gateway already running (pid %d) — skipping.\n", pid)
+		if note != "" {
+			fmt.Fprintf(c.OutOrStdout(), "  (%s)\n", note)
+		}
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	case gatewayUpProceed:
+		if note != "" {
+			fmt.Fprintf(c.OutOrStdout(), "  Stale gateway pid detected: %s\n", note)
+		}
+	}
 
 	self, err := os.Executable()
 	if err != nil {
@@ -889,9 +1112,11 @@ func setupRunReferenceBranch(c *cobra.Command, ctx context.Context) error {
 
 	// Step 4: persist the URI to config so it can be referenced later.
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg, loadErr := config.Load(cfgPath)
+	cfg, loadErr := loadConfigOrWarn(c, cfgPath)
 	if loadErr != nil {
-		cfg = config.Default()
+		fmt.Fprintf(c.ErrOrStderr(), "  Error: %v\n", loadErr)
+		os.Exit(exitcode.OperationFailed)
+		return nil
 	}
 	cfg.DefaultProviderRef = uri
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
