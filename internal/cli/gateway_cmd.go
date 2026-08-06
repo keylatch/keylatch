@@ -255,6 +255,11 @@ func newGatewayUpCmd() *cobra.Command {
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
 				Budget:            budgetCounter,
+				// PolicyPath: default policy location (H7). New() treats a
+				// missing file as "not configured" and stays pass-through —
+				// this does not change behavior for operators who have
+				// never created a policy file.
+				PolicyPath: paths.Policy(env),
 			}
 
 			srv, err := gateway.New(opts)
