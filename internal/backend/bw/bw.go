@@ -490,21 +490,24 @@ func (b *BitwardenBackend) sync(ctx context.Context) error {
 	return nil
 }
 
-// runWithSession invokes the bw CLI with BW_SESSION injected via subprocess env.
-// Session is NEVER passed as a --session argument; it goes in the env map
-// via the CommandRunner's stdin-pipe mechanism. Since our CommandRunner interface
-// does not expose env injection directly, we use the exec.EnvRunner wrapper if
-// available, otherwise fall back to a no-env run (test mocks capture calls).
+// runWithSession invokes the bw CLI with BW_SESSION injected via the
+// CommandRunner.RunEnv seam (append-to-inherited semantics: BW_SESSION is
+// appended after the inherited process environment, so it overrides any
+// ambient BW_SESSION already present). Session is NEVER passed as a
+// --session argument and never appears in argv.
 //
-// Note: The real exec.defaultRunner sets cmd.Env = os.Environ() which means
-// BW_SESSION must be in the process env. For tests, MockRunner records the
-// args — the env injection is verified by asserting --session is absent.
+// b.session is populated once, in Open(), from either an ambient BW_SESSION
+// (opts.Env lookup) or — when ambient is absent — a cached session token
+// (see session_cache.go / H5). Real subprocess exec no longer depends on
+// ambient os.Environ() inheritance alone, so this works under daemon/
+// sandboxed exec paths where the parent's env is not implicitly passed
+// through.
 func (b *BitwardenBackend) runWithSession(ctx context.Context, args []string, stdin []byte) ([]byte, []byte, int, error) {
-	// NEVER pass --session as an argument. Session is in the process env
-	// (set by the user before launching keylatch) and inherited by subprocesses.
-	// For test overrides, the MockRunner does not inspect env, but tests verify
-	// that no arg contains "--session" or the session value.
-	return b.opts.Runner.Run(ctx, b.bin, args, stdin)
+	var extraEnv []string
+	if b.session != "" {
+		extraEnv = []string{"BW_SESSION=" + b.session}
+	}
+	return b.opts.Runner.RunEnv(ctx, b.bin, args, stdin, extraEnv)
 }
 
 // resolveFolderID returns the ID for a folder name by listing folders.

@@ -139,7 +139,11 @@ type noopCall struct {
 	args []string
 }
 
-func (r *noopRunner) Run(_ context.Context, bin string, args []string, _ []byte) ([]byte, []byte, int, error) {
+func (r *noopRunner) Run(ctx context.Context, bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return r.RunEnv(ctx, bin, args, stdin, nil)
+}
+
+func (r *noopRunner) RunEnv(_ context.Context, bin string, args []string, _ []byte, _ []string) ([]byte, []byte, int, error) {
 	r.mu.Lock()
 	r.calls = append(r.calls, noopCall{bin: bin, args: args})
 	r.mu.Unlock()

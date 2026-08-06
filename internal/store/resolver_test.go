@@ -43,7 +43,13 @@ type mockRunner struct {
 	err      error
 }
 
-func (m *mockRunner) Run(_ context.Context, bin string, args []string, _ []byte) ([]byte, []byte, int, error) {
+func (m *mockRunner) Run(ctx context.Context, bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return m.RunEnv(ctx, bin, args, stdin, nil)
+}
+
+// RunEnv satisfies store.CommandRunner's mirrored RunEnv method. extraEnv is
+// ignored — no resolver_test.go case exercises env injection.
+func (m *mockRunner) RunEnv(_ context.Context, bin string, args []string, _ []byte, _ []string) ([]byte, []byte, int, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, capturedCall{bin: bin, args: args})
 	m.mu.Unlock()

@@ -32,6 +32,12 @@ type MockCall struct {
 	Name  string
 	Args  []string
 	Stdin []byte
+
+	// Env records the extraEnv passed to RunEnv ("KEY=VALUE" strings).
+	// Nil when the call came through Run (or RunEnv with no overrides).
+	// Assertions on injected secrets (e.g. BW_SESSION) read this field
+	// instead of Args, proving the value never crossed into argv.
+	Env []string
 }
 
 // MockResponse is the canned response returned for a matching arg-signature key.
@@ -42,17 +48,26 @@ type MockResponse struct {
 	Err      error
 }
 
-// Run implements CommandRunner for MockRunner.
-// Records the call, optionally sleeps for SimulatedLatency, then returns the
-// registered response (or zeroed values if no response matches).
-// Thread-safe: concurrent Run calls are serialized via mu.
-func (m *MockRunner) Run(_ context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+// Run implements CommandRunner for MockRunner. Equivalent to
+// RunEnv(ctx, name, args, stdin, nil).
+func (m *MockRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return m.RunEnv(ctx, name, args, stdin, nil)
+}
+
+// RunEnv implements CommandRunner for MockRunner.
+// Records the call (including extraEnv, for injected-secret assertions),
+// optionally sleeps for SimulatedLatency, then returns the registered
+// response (or zeroed values if no response matches). The lookup key is
+// built from name+args only — extraEnv does not affect response matching.
+// Thread-safe: concurrent Run/RunEnv calls are serialized via mu.
+func (m *MockRunner) RunEnv(_ context.Context, name string, args []string, stdin []byte, extraEnv []string) ([]byte, []byte, int, error) {
 	m.mu.Lock()
 	m.Calls = append(m.Calls, MockCall{
 		Time:  time.Now(),
 		Name:  name,
 		Args:  args,
 		Stdin: stdin,
+		Env:   extraEnv,
 	})
 
 	latency := m.SimulatedLatency
