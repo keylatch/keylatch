@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
+	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/gateway/docker"
@@ -160,6 +162,7 @@ func newGatewayUpCmd() *cobra.Command {
 		proxyPort     int
 		budgetPerHour float64
 		budgetPerDay  float64
+		force         bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -167,13 +170,25 @@ func newGatewayUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 
-			// Check if gateway is already running.
+			// Check if gateway is already running. L2: with --force, a
+			// "running" pid is not taken at face value — it may be a stale
+			// pid file pointing at a recycled, unrelated process.
 			pidPath := paths.GatewayPID(env)
-			if pid, running := gateway.IsRunning(pidPath); running {
-				fmt.Fprintf(c.ErrOrStderr(), "Error: Gateway is already running (pid: %d).\n\n", pid)
+			action, runningPID, note := resolveGatewayUpRunning(c.Context(), pidPath, force, kexec.DefaultRunner, kexec.Resolve("ps"))
+			switch action {
+			case gatewayUpRefuse:
+				fmt.Fprintf(c.ErrOrStderr(), "Error: Gateway is already running (pid: %d).\n", runningPID)
+				if note != "" {
+					fmt.Fprintf(c.ErrOrStderr(), "  %s\n", note)
+				}
+				fmt.Fprintln(c.ErrOrStderr())
 				fmt.Fprintln(c.ErrOrStderr(), "  Use `keylatch gateway down` to stop it.")
 				os.Exit(exitcode.UserError)
 				return nil
+			case gatewayUpProceed:
+				if note != "" {
+					fmt.Fprintf(c.OutOrStdout(), "gateway: %s\n", note)
+				}
 			}
 
 			if detach {
@@ -349,7 +364,58 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
+	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
+}
+
+// gatewayUpAction is the decision resolveGatewayUpRunning returns to RunE.
+type gatewayUpAction int
+
+const (
+	// gatewayUpProceed: no gateway is running (or a stale PID was
+	// successfully recovered) — safe to continue starting a new one.
+	gatewayUpProceed gatewayUpAction = iota
+	// gatewayUpRefuse: a gateway is running (and, if --force was used,
+	// process identity verification confirmed it, or verification is
+	// unsupported/inconclusive without --force) — RunE must exit non-zero.
+	gatewayUpRefuse
+)
+
+// resolveGatewayUpRunning checks whether the gateway is already running and,
+// if force is true, attempts best-effort stale-PID recovery via process
+// identity verification (L2): IsRunning only signal-0-probes the pid, so a
+// recycled pid can false-positive as "gateway running".
+//
+// Side effect: when recovery succeeds (pid confirmed stale, or identity is
+// inconclusive and force was explicitly requested), the PID file is removed
+// so gateway up can proceed to start a fresh instance.
+//
+// Kept as a standalone, side-effect-isolated function (rather than inlined
+// in RunE) so it is unit-testable with a mocked runner and without starting
+// a real server.
+func resolveGatewayUpRunning(ctx context.Context, pidPath string, force bool, runner kexec.CommandRunner, psBin string) (action gatewayUpAction, pid int, note string) {
+	pid, running := gateway.IsRunning(pidPath)
+	if !running {
+		return gatewayUpProceed, 0, ""
+	}
+	if !force {
+		return gatewayUpRefuse, pid, ""
+	}
+	if runtime.GOOS == "windows" {
+		return gatewayUpRefuse, pid, "--force stale-PID recovery via process-identity verification is not supported on this platform; stop the running gateway with `keylatch gateway down` or `keylatch daemon stop --force` (removes the PID file without signaling)."
+	}
+
+	matched, checked := gateway.VerifyProcessIdentity(ctx, runner, psBin, pid)
+	switch {
+	case checked && matched:
+		return gatewayUpRefuse, pid, "process identity verification confirmed pid belongs to a running keylatch gateway — refusing even with --force."
+	case checked && !matched:
+		_ = gateway.RemovePID(pidPath)
+		return gatewayUpProceed, pid, fmt.Sprintf("stale PID file recovered — pid %d does not look like a keylatch process; removed and starting fresh.", pid)
+	default:
+		_ = gateway.RemovePID(pidPath)
+		return gatewayUpProceed, pid, fmt.Sprintf("could not verify process identity for pid %d (--force requested) — removed PID file and starting fresh.", pid)
+	}
 }
 
 // resolveAndValidateGatewayBindAddr wraps gateway.ResolveBindAddr with the
