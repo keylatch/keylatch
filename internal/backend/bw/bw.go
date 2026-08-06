@@ -147,7 +147,10 @@ func (b *BitwardenBackend) Unlock(ctx context.Context, masterPassword []byte) (s
 	}
 	if exitCode != 0 {
 		stderrStr := strings.ToLower(string(stderr))
-		if isLocked(string(stderr)) || strings.Contains(stderrStr, "invalid master password") {
+		// Real bw CLI wording is "Master password is invalid. Try again."
+		// (word order: subject first) — match on the fragment shared by any
+		// wording, not "invalid master password".
+		if isLocked(string(stderr)) || strings.Contains(stderrStr, "master password is invalid") {
 			return "", fmt.Errorf("%w: invalid master password (or vault already in an unexpected state)", backend.ErrLocked)
 		}
 		return "", fmt.Errorf("bw unlock: bw exited %d", exitCode)
