@@ -52,6 +52,57 @@ func TestVerifyProcessIdentity_Mismatch(t *testing.T) {
 	}
 }
 
+// TestVerifyProcessIdentity_FalsePositive_ArgvSubstring verifies the review
+// fix (warn-3): a command whose *argument* contains "keylatch" as a
+// substring — but whose executable is unrelated — must NOT match. This is
+// the exact false-positive shape the old strings.Contains-on-full-line
+// matching was vulnerable to (e.g. an editor opened on a path inside a
+// keylatch checkout).
+func TestVerifyProcessIdentity_FalsePositive_ArgvSubstring(t *testing.T) {
+	cases := []string{
+		"vim /repos/keylatch/main.go",
+		"grep keylatch /var/log/app.log",
+		"/Applications/Visual Studio Code.app/Contents/MacOS/Electron /Users/x/keylatch",
+	}
+	for _, cmdline := range cases {
+		t.Run(cmdline, func(t *testing.T) {
+			runner := &kexec.MockRunner{
+				Responses: map[string]kexec.MockResponse{
+					"/bin/ps|-p|4242|-o|command=": {
+						Stdout:   []byte(cmdline + "\n"),
+						ExitCode: 0,
+					},
+				},
+			}
+			matched, checked := gateway.VerifyProcessIdentity(context.Background(), runner, "/bin/ps", 4242)
+			if !checked {
+				t.Fatal("VerifyProcessIdentity: expected checked=true")
+			}
+			if matched {
+				t.Errorf("VerifyProcessIdentity: false positive — %q must not match (executable is not keylatch/keylatchd)", cmdline)
+			}
+		})
+	}
+}
+
+// TestVerifyProcessIdentity_MatchesBareExecutableName verifies that a
+// process invoked by bare name (no directory component) still matches by
+// exact basename equality.
+func TestVerifyProcessIdentity_MatchesBareExecutableName(t *testing.T) {
+	runner := &kexec.MockRunner{
+		Responses: map[string]kexec.MockResponse{
+			"/bin/ps|-p|4242|-o|command=": {
+				Stdout:   []byte("keylatchd --detach\n"),
+				ExitCode: 0,
+			},
+		},
+	}
+	matched, checked := gateway.VerifyProcessIdentity(context.Background(), runner, "/bin/ps", 4242)
+	if !checked || !matched {
+		t.Errorf("VerifyProcessIdentity: expected matched=true, checked=true for bare executable name; got matched=%v checked=%v", matched, checked)
+	}
+}
+
 // TestVerifyProcessIdentity_ExecError verifies that a runner error surfaces
 // as checked=false, so callers know verification could not be performed.
 func TestVerifyProcessIdentity_ExecError(t *testing.T) {
