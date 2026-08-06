@@ -165,6 +165,19 @@ func (k *KeychainBackend) finishInit(ctx context.Context, _ string, pw string, w
 		// already exists — proceed normally
 	}
 
+	// `security create-keychain` creates the keychain-db file with the
+	// process's default umask-derived permissions, which can be as loose as
+	// 0644 (world-readable) depending on the caller's umask — the db is only
+	// password-protected, not filesystem-protected, by default. Force 0600
+	// explicitly. Runs unconditionally (both on fresh create and the exit-48
+	// "already exists" branch above) so re-running Init/ForceReinit also
+	// repairs a pre-existing keychain-db that was left with loose permissions.
+	if chmodErr := os.Chmod(k.opts.KeychainPath, 0o600); chmodErr != nil {
+		// Non-fatal — the keychain is still password-protected; log and
+		// continue so a permissions quirk never blocks setup/repair.
+		slog.Warn("keychain Init: could not chmod keychain-db to 0600", "path", k.opts.KeychainPath, "error", chmodErr)
+	}
+
 	// Store the unlock password in the LOGIN keychain (no -k flag) with
 	// -T {binaryPath}, but only when the caller determined this is safe —
 	// see the decision table in Init's doc comment. When writeUnlockItem is
