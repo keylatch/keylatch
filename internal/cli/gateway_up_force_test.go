@@ -96,7 +96,14 @@ func TestResolveGatewayUpRunning_ForceMismatch_RecoversStalePID(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "stale PID file should have been removed")
 }
 
-func TestResolveGatewayUpRunning_ForceUnchecked_RecoversAndProceeds(t *testing.T) {
+// TestResolveGatewayUpRunning_ForceUnchecked_RefusesFailSafe verifies the
+// review fix (warn-4): when process-identity verification is inconclusive
+// (ps itself failed — could mean the original process legitimately died, or
+// could mean ps failed while the process is still alive and healthy),
+// resolveGatewayUpRunning must fail safe and refuse rather than guess by
+// removing the PID file and starting a second gateway alongside a possibly
+// live one.
+func TestResolveGatewayUpRunning_ForceUnchecked_RefusesFailSafe(t *testing.T) {
 	dir := t.TempDir()
 	pidPath := filepath.Join(dir, "gateway.pid")
 	mypid := os.Getpid()
@@ -111,10 +118,13 @@ func TestResolveGatewayUpRunning_ForceUnchecked_RecoversAndProceeds(t *testing.T
 	}
 
 	action, pid, note := resolveGatewayUpRunning(context.Background(), pidPath, true, runner, "/bin/ps")
-	require.Equal(t, gatewayUpProceed, action)
+	require.Equal(t, gatewayUpRefuse, action)
 	require.Equal(t, mypid, pid)
 	require.Contains(t, note, "could not verify process identity")
+	require.Contains(t, note, "inconclusive evidence")
 
-	_, err := os.Stat(pidPath)
-	require.True(t, os.IsNotExist(err), "PID file should have been removed when --force is used and identity is inconclusive")
+	// The PID file must survive untouched — never remove it on
+	// inconclusive evidence, since the original process may still be alive.
+	_, stillRunning := gateway.IsRunning(pidPath)
+	require.True(t, stillRunning, "PID file must not be removed when identity verification is inconclusive")
 }

@@ -413,8 +413,18 @@ func resolveGatewayUpRunning(ctx context.Context, pidPath string, force bool, ru
 		_ = gateway.RemovePID(pidPath)
 		return gatewayUpProceed, pid, fmt.Sprintf("stale PID file recovered — pid %d does not look like a keylatch process; removed and starting fresh.", pid)
 	default:
-		_ = gateway.RemovePID(pidPath)
-		return gatewayUpProceed, pid, fmt.Sprintf("could not verify process identity for pid %d (--force requested) — removed PID file and starting fresh.", pid)
+		// Inconclusive (review finding, warn-4): checked=false covers both
+		// "the process legitimately died between IsRunning's probe and this
+		// ps call" (safe to proceed) and "ps itself failed for an unrelated
+		// reason — missing binary, sandboxed environment, permission issue —
+		// while the original process is still alive and healthy" (NOT safe
+		// to proceed: removing the PID file here would let a second gateway
+		// start alongside a live one, with the PID file only tracking the
+		// new instance). VerifyProcessIdentity gives no way to distinguish
+		// these, so fail safe: refuse and never touch the PID file on
+		// inconclusive evidence — require an explicit human decision instead
+		// of guessing.
+		return gatewayUpRefuse, pid, fmt.Sprintf("could not verify process identity for pid %d — refusing to remove its PID file on inconclusive evidence. If you have confirmed pid %d is not a keylatch process, stop it or delete %s yourself, then retry.", pid, pid, pidPath)
 	}
 }
 
