@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,7 +43,69 @@ func newGatewayCmd() *cobra.Command {
 	cmd.AddCommand(newGatewayStatusCmd())
 	cmd.AddCommand(newGatewayTokenCmd())
 	cmd.AddCommand(newGatewayLogsCmd())
+	cmd.AddCommand(newGatewayInstallCmd())
 	return cmd
+}
+
+// desktopAppRunningFunc and launchctlRunFunc are declared as vars (mirroring
+// stdinScannerFn in setup_cmd.go) so tests can substitute fakes without ever
+// touching the real process table or invoking the real launchctl binary.
+var (
+	desktopAppRunningFunc = desktopAppRunning
+	launchctlRunFunc      = func(args ...string) ([]byte, error) {
+		return exec.Command("launchctl", args...).CombinedOutput() //nolint:gosec // args are fixed, non-user-controlled
+	}
+)
+
+// newGatewayInstallCmd returns the `keylatch gateway install` command.
+// On macOS it writes the keylatchd launchd plist and loads it via launchctl.
+// On other platforms it prints an unsupported message.
+func newGatewayInstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Install keylatchd as a launchd service (macOS only)",
+		RunE: func(c *cobra.Command, _ []string) error {
+			if runtime.GOOS != "darwin" {
+				fmt.Fprintln(c.OutOrStdout(), "  gateway install is not supported on this platform")
+				return nil
+			}
+
+			if desktopAppRunningFunc() {
+				fmt.Fprintln(c.OutOrStdout(), "  Keylatch.app is already managing keylatchd — skipping launchd install to avoid a port 7890 conflict.")
+				return nil
+			}
+
+			plistPath := launchdPlistPath()
+			if err := installLaunchdPlist(plistPath); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "  gateway install: %v\n", err)
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+
+			// Idempotency check: `launchctl load -w` on an already-loaded
+			// label can hard-error on some macOS versions ("service already
+			// loaded") even though nothing is actually wrong. `launchctl
+			// list <label>` exits 0 iff the label is currently loaded — skip
+			// the load call entirely in that case rather than risking a
+			// spurious failure on a harmless re-run.
+			if _, err := launchctlRunFunc("list", launchdServiceLabel()); err == nil {
+				fmt.Fprintf(c.OutOrStdout(), "  keylatchd already installed and loaded (label: %s) — skipping\n", launchdServiceLabel())
+				return nil
+			}
+
+			if out, err := launchctlRunFunc("load", "-w", plistPath); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "  gateway install: launchctl load: %v\n", err)
+				if len(out) > 0 {
+					fmt.Fprintf(c.ErrOrStderr(), "  %s\n", strings.TrimSpace(string(out)))
+				}
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+
+			fmt.Fprintf(c.OutOrStdout(), "  keylatchd installed and loaded from %s\n", filepath.Base(plistPath))
+			return nil
+		},
+	}
 }
 
 // --- gateway init ---

@@ -172,6 +172,72 @@ func checkACLKeychainUnlock() Check {
 	}
 }
 
+// checkKeychainDBPermissions verifies the keychain-db file is not
+// world/group-readable (M10). `security create-keychain` creates the file
+// using the process's umask-derived default permissions, which can be as
+// loose as 0644 depending on the caller's umask — the db is only
+// password-protected, not filesystem-protected, unless the file mode is
+// tightened. Informational tier (OK, no Warn): loose permissions do not fail
+// the whole doctor run, matching the H11 pattern where an optional/repairable
+// condition is surfaced without being exit-code-blocking.
+func checkKeychainDBPermissions() Check {
+	return func(_ context.Context) Status {
+		const checkName = "keychain.db_permissions"
+		const section = "providers"
+
+		if runtime.GOOS != "darwin" {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  "keychain-db permissions check: skipped (not macOS)",
+				Tags:    []string{"acl", "permissions"},
+			}
+		}
+
+		keychainDB, err := keychain.DefaultDBPath()
+		if err != nil {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  fmt.Sprintf("keychain-db permissions check: cannot resolve home: %v", err),
+				Tags:    []string{"acl", "permissions"},
+			}
+		}
+
+		info, statErr := os.Stat(keychainDB)
+		if statErr != nil {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  "keychain-db permissions check: skipped (keychain not initialised)",
+				Tags:    []string{"acl", "permissions"},
+			}
+		}
+
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			return Status{
+				Name:    checkName,
+				Section: section,
+				OK:      true,
+				Detail:  fmt.Sprintf("keychain-db permissions are %04o (expected 0600) — the file is readable by more than its owner", perm),
+				Fix:     fmt.Sprintf("chmod 600 %s", keychainDB),
+				Tags:    []string{"acl", "permissions"},
+			}
+		}
+
+		return Status{
+			Name:    checkName,
+			Section: section,
+			OK:      true,
+			Detail:  "keychain-db permissions: ok (0600)",
+			Tags:    []string{"acl", "permissions"},
+		}
+	}
+}
+
 // checkAgentGuard warns when no agent exfiltration guard is installed for
 // any supported agent.
 func checkAgentGuard() Check {
@@ -197,7 +263,7 @@ func checkAgentGuard() Check {
 			Section: "environment",
 			OK:      true,
 			Warn:    true,
-			Detail:  "no agent exfiltration guard detected (detection currently covers claude-code)",
+			Detail:  "no agent exfiltration guard detected",
 			Fix:     "keylatch install-guard <agent>",
 			Tags:    []string{"guard"},
 		}
@@ -697,6 +763,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"external", checkExternalAWSSM(env, probe)},
 		{"external", checkExternalHashiVault(env, probe)},
 		{"providers", checkACLKeychainUnlock()},
+		{"providers", checkKeychainDBPermissions()},
 		{"environment", checkHookPreToolUse(env)},
 		{"environment", checkCosignInstalled(probe)},
 		// Soft checks.

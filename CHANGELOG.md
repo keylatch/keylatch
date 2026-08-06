@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Historical note**: the tag `v1.0.0-rc.1` predates a 2026-05-28 history
+> rewrite and has no merge-base with current `main`. It is kept (not deleted)
+> as a pointer into the pre-rewrite history, but does not correspond to any
+> entry in this changelog and is not part of the `v0.9.x` release train
+> below — do not treat it as "ahead of" or otherwise related to the current
+> version numbering.
+
 ## [Unreleased]
 
 ## [0.9.5] - 2026-07-31
