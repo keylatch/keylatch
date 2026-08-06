@@ -201,3 +201,60 @@ func TestInit_RefusesToRegeneratePassword_WhenExistingItemDoesNotUnlockDB(t *tes
 		t.Errorf("Init (refusal path): expected zero unlock-item writes, got %d", n)
 	}
 }
+
+// TestInit_ChmodsKeychainDBTo0600 is the M10 regression test: `security
+// create-keychain` creates the keychain-db file with the process's
+// umask-derived default permissions, which can be as loose as 0644
+// (world-readable). Init must force the file to 0600 every time it runs —
+// including on the "verify/no-op" re-run path exercised here, so that
+// re-running `keylatch keychain-init` also repairs a keychain-db that was
+// left with loose permissions by an earlier, unpatched binary.
+func TestInit_ChmodsKeychainDBTo0600(t *testing.T) {
+	tmpDir := t.TempDir()
+	keychainPath := filepath.Join(tmpDir, "test-chmod.keychain-db")
+	lockPath := filepath.Join(tmpDir, "test-chmod.keychain.lock")
+	secBin := "/usr/bin/security"
+
+	// Simulate a keychain-db that already exists on disk with loose,
+	// world-readable permissions — e.g. left over from a prior
+	// `security create-keychain` call that ran under a permissive umask.
+	if err := os.WriteFile(keychainPath, []byte("fake-keychain-db"), 0o644); err != nil {
+		t.Fatalf("seed keychain-db: %v", err)
+	}
+
+	runner := &kexec.MockRunner{
+		Responses: map[string]kexec.MockResponse{
+			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
+				Stdout: []byte("existing-unlock-pw\n"),
+			},
+			secBin + "|unlock-keychain|-p|existing-unlock-pw|" + keychainPath: {},
+			secBin + "|lock-keychain|" + keychainPath:                         {},
+			// No manifest yet.
+			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + keychainPath: {
+				ExitCode: 44,
+			},
+		},
+	}
+
+	b, err := keychain.Open(keychain.Options{
+		KeychainPath: keychainPath,
+		LockPath:     lockPath,
+		SecurityBin:  secBin,
+		Runner:       runner,
+	})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	if err := b.Init(context.Background(), "default"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	info, statErr := os.Stat(keychainPath)
+	if statErr != nil {
+		t.Fatalf("stat keychain-db after Init: %v", statErr)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("keychain-db permissions after Init: got %o, want %o", got, 0o600)
+	}
+}
