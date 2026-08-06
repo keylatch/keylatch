@@ -97,6 +97,24 @@ func TestLoad_VersionMismatch(t *testing.T) {
 	assert.Equal(t, 1, vm.Want)
 }
 
+// TestMigrate_NoPathForUnknownVersion verifies the migration scaffold fails
+// loudly (rather than silently defaulting) when no migration is registered
+// for a config's version — currently every version except 1 (M2 scaffold).
+func TestMigrate_NoPathForUnknownVersion(t *testing.T) {
+	_, err := config.Migrate(config.Config{Version: 99})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no migration path")
+}
+
+// TestMigrate_AlreadyCurrentIsNoop verifies Migrate is a no-op when the
+// config is already at currentVersion (no migration lookup needed).
+func TestMigrate_AlreadyCurrentIsNoop(t *testing.T) {
+	c := config.Default()
+	got, err := config.Migrate(c)
+	require.NoError(t, err)
+	assert.Equal(t, c, got)
+}
+
 func TestSave_AtomicWrite(t *testing.T) {
 	tmp := t.TempDir()
 	p := filepath.Join(tmp, "config.json")

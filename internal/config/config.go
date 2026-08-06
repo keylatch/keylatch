@@ -161,6 +161,33 @@ func (e *VersionMismatch) Error() string {
 	return fmt.Sprintf("config version mismatch: got %d, want %d", e.Got, e.Want)
 }
 
+// migrations maps a source schema version to the function that upgrades a
+// Config from that version to the next one. Currently empty: v1 is the only
+// version this build understands, so there is nothing to migrate yet. This
+// is a scaffold — when currentVersion is bumped, add the v(N)->v(N+1) step
+// here rather than reaching for a fresh config.Default() on every mismatch
+// (see Migrate and loadConfigOrWarn in internal/cli/setup_cmd.go).
+var migrations = map[int]func(Config) (Config, error){}
+
+// Migrate upgrades c to currentVersion by walking the migrations chain.
+// Returns an error if no migration is registered for c.Version (including
+// when c.Version == currentVersion — callers should check that first via
+// Load's *VersionMismatch and only call Migrate on an actual mismatch).
+func Migrate(c Config) (Config, error) {
+	for c.Version != currentVersion {
+		step, ok := migrations[c.Version]
+		if !ok {
+			return Config{}, fmt.Errorf("no migration path from config version %d to %d", c.Version, currentVersion)
+		}
+		next, err := step(c)
+		if err != nil {
+			return Config{}, fmt.Errorf("migrate config from version %d: %w", c.Version, err)
+		}
+		c = next
+	}
+	return c, nil
+}
+
 // Default returns a Config populated with safe defaults.
 func Default() Config {
 	return Config{
