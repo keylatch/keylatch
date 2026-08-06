@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -14,7 +16,11 @@ import (
 )
 
 // checkBackendSelected checks that the configured backend is valid and
-// supported on the current platform.
+// supported on the current platform. The allowed set is derived from
+// backend.KnownCanonicalNames() (H4) rather than a hardcoded literal, so
+// registering a new backend (vault, aws-sm, gcp-sm, azure-kv, doppler,
+// infisical, op-connect, ...) doesn't also require a doctor update to avoid
+// a spurious hard FAIL for anyone using it.
 func checkBackendSelected(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		cfgPath := paths.Config(env)
@@ -23,22 +29,18 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 			// Config missing — use default.
 			cfg = config.Default()
 		}
-		backend := cfg.Backend
-		allowed := map[string]bool{
-			"file": true, "keychain": true, "op": true, "bw": true,
-			"proton-pass": true, "keeper": true, "lastpass": true,
-		}
-		if !allowed[backend] {
+		canonical, ok := backend.CanonicalName(cfg.Backend)
+		if !ok {
 			return Status{
 				Name:    "backend.selected",
 				Section: "backends",
 				OK:      false,
-				Detail:  fmt.Sprintf("backend=%q is not a recognised value", backend),
-				Fix:     "Set backend to one of: file, keychain, op, bw, proton-pass, keeper, lastpass",
+				Detail:  fmt.Sprintf("backend=%q is not a recognised value", cfg.Backend),
+				Fix:     "Set backend to one of: " + strings.Join(backend.KnownCanonicalNames(), ", "),
 				Tags:    []string{"backend"},
 			}
 		}
-		if backend == "keychain" && runtime.GOOS != "darwin" {
+		if canonical == "keychain" && runtime.GOOS != "darwin" {
 			return Status{
 				Name:    "backend.selected",
 				Section: "backends",
@@ -52,7 +54,7 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 			Name:    "backend.selected",
 			Section: "backends",
 			OK:      true,
-			Detail:  fmt.Sprintf("backend=%s platform_supported=true", backend),
+			Detail:  fmt.Sprintf("backend=%s platform_supported=true", canonical),
 			Tags:    []string{"backend"},
 		}
 	}
@@ -117,7 +119,12 @@ func checkBackendKeychain(probe kexec.Probe) Check {
 	}
 }
 
-// checkBackendOP checks whether the `op` CLI is available.
+// checkBackendOP checks whether the `op` CLI is available. It only warns
+// about authentication when op is the SELECTED backend (H3) — a merely-
+// installed op CLI on a machine configured to use a different backend is
+// informational, not something requiring action. session=unknown/signed_in=
+// unknown literals were removed rather than fabricated: real auth-state
+// probing (without exposing the token) is checkBackendOPAuth's job.
 func checkBackendOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
 		bin := "op"
@@ -144,20 +151,37 @@ func checkBackendOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 		ver, _ := probe.Version(ctx, p)
+
+		cfgPath := paths.Config(env)
+		cfg, cfgErr := config.Load(cfgPath)
+		if cfgErr != nil {
+			cfg = config.Default()
+		}
+		if cfg.Backend != "op" {
+			return Status{
+				Name:    "backend.op",
+				Section: "backends",
+				OK:      true,
+				Detail:  fmt.Sprintf("op_bin=%s version=%s (backend not selected)", p, ver),
+				Tags:    []string{"backend", "op"},
+			}
+		}
 		return Status{
 			Name:    "backend.op",
 			Section: "backends",
 			OK:      true,
 			Warn:    true,
-			Detail:  fmt.Sprintf("op_bin=%s version=%s signed_in=unknown", p, ver),
+			Detail:  fmt.Sprintf("op_bin=%s version=%s", p, ver),
 			Fix:     "Run `op signin` to authenticate with 1Password.",
 			Tags:    []string{"backend", "op"},
 		}
 	}
 }
 
-// checkBackendBW checks whether the `bw` CLI is available.
-func checkBackendBW(probe kexec.Probe) Check {
+// checkBackendBW checks whether the `bw` CLI is available. See checkBackendOP
+// for the H3 rationale: only warns when bw is the SELECTED backend, and
+// drops the fabricated session=unknown literal.
+func checkBackendBW(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
 		p, ok, err := probe.Find(ctx, "bw")
 		if err != nil {
@@ -179,12 +203,27 @@ func checkBackendBW(probe kexec.Probe) Check {
 			}
 		}
 		ver, _ := probe.Version(ctx, p)
+
+		cfgPath := paths.Config(env)
+		cfg, cfgErr := config.Load(cfgPath)
+		if cfgErr != nil {
+			cfg = config.Default()
+		}
+		if cfg.Backend != "bw" {
+			return Status{
+				Name:    "backend.bw",
+				Section: "backends",
+				OK:      true,
+				Detail:  fmt.Sprintf("bw_bin=%s version=%s (backend not selected)", p, ver),
+				Tags:    []string{"backend", "bw"},
+			}
+		}
 		return Status{
 			Name:    "backend.bw",
 			Section: "backends",
 			OK:      true,
 			Warn:    true,
-			Detail:  fmt.Sprintf("bw_bin=%s version=%s session=unknown", p, ver),
+			Detail:  fmt.Sprintf("bw_bin=%s version=%s", p, ver),
 			Fix:     "Run `bw login` and export BW_SESSION to use Bitwarden backend.",
 			Tags:    []string{"backend", "bw"},
 		}

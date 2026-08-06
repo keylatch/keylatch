@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
 )
@@ -281,6 +282,22 @@ func TestE2E_masked_exits_0_in_llm_session(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
+// TestE2E_VersionSubcommand_MatchesVersionFlag verifies the C6 fix:
+// `keylatch version` (documented in docs/installation.md as the post-install
+// verification step) exists and produces the exact same output as
+// `keylatch --version`.
+func TestE2E_VersionSubcommand_MatchesVersionFlag(t *testing.T) {
+	homeDir := t.TempDir()
+
+	stdoutCmd, _, codeCmd := runKeylatch(t, map[string]string{"HOME": homeDir}, "version")
+	stdoutFlag, _, codeFlag := runKeylatch(t, map[string]string{"HOME": homeDir}, "--version")
+
+	assert.Equal(t, 0, codeCmd, "keylatch version must exit 0")
+	assert.Equal(t, 0, codeFlag, "keylatch --version must exit 0")
+	assert.Equal(t, string(stdoutFlag), string(stdoutCmd), "keylatch version must print the same output as --version")
+	assert.Contains(t, string(stdoutCmd), "keylatch ")
+}
+
 // TestE2E_help_exits_0_in_llm_session verifies --help works in LLM sessions.
 func TestE2E_help_exits_0_in_llm_session(t *testing.T) {
 	homeDir := t.TempDir()
@@ -453,11 +470,150 @@ func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 		"inject", "openrouter")
 
 	// exit 1 = UserError: cobra unknown command (inject removed).
-	// SilenceErrors = true: cobra does not print the error text, main.go prints
-	// the doctor hint only. The invariant is a non-zero exit code.
+	// root.SilenceErrors=true so cobra itself never prints anything, but
+	// main.go (C5) prints cobra's "unknown command" error text to stderr
+	// before the doctor hint. The invariant checked here is a non-zero exit
+	// code and no stdout leak; stderr content is covered by TestE2E_C5_*.
 	assert.NotEqual(t, 0, code, "inject must exit non-zero in v1.0.0 — command is removed")
 	assert.Empty(t, stdout, "stdout must be empty for unknown command")
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
+}
+
+// TestE2E_C5_UnknownCommandPrintsError verifies that an unknown command
+// prints cobra's "unknown command" error to stderr (not just the doctor
+// hint) — the specific symptom C5 fixes.
+func TestE2E_C5_UnknownCommandPrintsError(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"totally-not-a-real-command")
+
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, string(stderr), "unknown command", "stderr must contain cobra's unknown-command error, not just the doctor hint")
+	assert.Contains(t, string(stderr), cli.DoctorHint, "stderr must still contain the doctor hint")
+}
+
+// TestE2E_C5_MissingArgsPrintsError verifies that a cobra arg-count error
+// (e.g. a required positional argument omitted) is printed to stderr.
+func TestE2E_C5_MissingArgsPrintsError(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"keychain-clear") // requires exactly 1 arg
+
+	assert.NotEqual(t, 0, code)
+	assert.NotEmpty(t, stderr, "stderr must contain the cobra arg-count error, not just the doctor hint")
+}
+
+// TestE2E_Approve_LLMSession_PrintsErrorExactlyOnce is a regression test for
+// the code-review Finding-001 double-print bug: approve_cmd.go's LLM-session
+// guard used to print a formatted error via cmderr.Format AND return a
+// *cli.CLIError, so main.go's C5 error-printing printed the same message a
+// second time (in a different format). The guard now returns the *CLIError
+// without printing directly — main.go is the single place that prints it.
+func TestE2E_Approve_LLMSession_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
+		"approve", "sometoken")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "not permitted inside an LLM session"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+}
+
+// TestE2E_Deny_LLMSession_PrintsErrorExactlyOnce mirrors the approve case for deny.
+func TestE2E_Deny_LLMSession_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
+		"deny", "sometoken")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "not permitted inside an LLM session"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+}
+
+// TestE2E_BrokerStatus_OutOfProcess_PrintsErrorExactlyOnce verifies the same
+// double-print bug is fixed for `broker status` when the broker singleton is
+// not running in-process (the default state for any freshly-invoked CLI).
+// broker_status_cmd.go used to print "error[BrokerOutOfProcess]: ..." itself
+// and then return a *CLIError that main.go printed again as
+// "error[SecurityBlock]: ...". It now returns the *CLIError without
+// printing directly, so "broker not running in-process" appears exactly once.
+func TestE2E_BrokerStatus_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"broker", "status")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "broker not running in-process"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+	assert.Equal(t, 1, strings.Count(string(stderr), "error["),
+		"exactly one formatted error[...] line must appear, got: %s", stderr)
+}
+
+// TestE2E_BrokerDryRun_OutOfProcess_PrintsErrorExactlyOnce mirrors the broker
+// status case for `broker dry-run`.
+func TestE2E_BrokerDryRun_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"broker", "dry-run", "openrouter", "node")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "broker not running in-process"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+	assert.Equal(t, 1, strings.Count(string(stderr), "error["),
+		"exactly one formatted error[...] line must appear, got: %s", stderr)
+}
+
+// TestE2E_BrokerRevoke_OutOfProcess_PrintsErrorExactlyOnce mirrors the broker
+// status case for `broker revoke <id>`.
+func TestE2E_BrokerRevoke_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"broker", "revoke", "sometokenid")
+
+	assert.Equal(t, 2, code, "expected exit 2 (SecurityBlock)")
+	assert.Equal(t, 1, strings.Count(string(stderr), "broker not running in-process"),
+		"error message must appear exactly once in stderr, got: %s", stderr)
+	assert.Equal(t, 1, strings.Count(string(stderr), "error["),
+		"exactly one formatted error[...] line must appear, got: %s", stderr)
+}
+
+// TestE2E_Doctor_RepairQuietWithoutYes_RejectedFastNoHang is the review
+// Finding-005 regression test: `doctor --repair --quiet` without --yes used
+// to write its confirmation prompt to a discarded writer while still
+// blocking on stdin — invisible and indistinguishable from a hang. It must
+// now be rejected immediately with a usage error mentioning --yes.
+func TestE2E_Doctor_RepairQuietWithoutYes_RejectedFastNoHang(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"doctor", "--repair", "--quiet")
+
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, string(stderr), "--yes")
+}
+
+// TestE2E_Doctor_RepairQuietWithYes_DoesNotHang verifies the same
+// combination is accepted once --yes is also passed. The subprocess's stdin
+// reads from /dev/null (runKeylatch never sets cmd.Stdin), so a genuine hang
+// on a real prompt read would surface as this test never returning (failing
+// the whole test binary via go test's default timeout) rather than as an
+// assertion failure — the real value of this test is that runKeylatch's
+// blocking cmd.Run() returns at all.
+func TestE2E_Doctor_RepairQuietWithYes_DoesNotHang(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, _ := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"doctor", "--repair", "--quiet", "--yes")
+
+	assert.NotContains(t, string(stderr), "--repair --quiet requires --yes",
+		"the quiet+yes combination itself must not be rejected")
 }
 
 // TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate verifies that a

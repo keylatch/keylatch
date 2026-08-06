@@ -34,9 +34,16 @@ var agentMarkers = []agentMarker{
 // checkIntegrationMarkers implements the I3: integration-markers doctor check.
 //
 // It walks the current working directory looking for known agent marker files.
-// If any markers are found but .keylatch/integration.yml is absent, it emits a
-// warning with a link to the relevant integration guide. If the integration
-// config exists, the check passes.
+// If any markers are found but .keylatch/integration.yml is absent, it reports
+// this informationally with a link to the relevant integration guide. If the
+// integration config exists, the check passes.
+//
+// H11: this used to Warn (forcing doctor's exit code to 1) whenever ANY
+// agent marker (CLAUDE.md, AGENTS.md, .cursor/rules, ...) was present without
+// integration config — extremely common simply because a project uses an AI
+// coding agent for unrelated reasons, not because anything about the
+// keylatch install itself is unhealthy. It no longer sets Warn; the
+// suggestion remains visible via Detail/Fix with `--verbose` or `--json`.
 //
 // Security invariant: the check is value-free — it only tests for path
 // existence, never reads file contents or emits credential-adjacent data.
@@ -85,10 +92,11 @@ func checkIntegrationMarkers() Check {
 			}
 		}
 
-		// Build a concise warning message.
+		// Build a concise informational message (H11: no longer Warn — see
+		// the doc comment above).
 		first := detected[0]
 		detail := fmt.Sprintf(
-			"I3: agent marker detected (%s → %s) but no Keylatch integration config found",
+			"I3: agent marker detected (%s → %s) but no Keylatch integration config found (optional)",
 			first.path, first.agent,
 		)
 		if len(detected) > 1 {
@@ -106,7 +114,6 @@ func checkIntegrationMarkers() Check {
 			Name:    checkName,
 			Section: section,
 			OK:      true,
-			Warn:    true,
 			Detail:  detail,
 			Fix:     fix,
 			Tags:    []string{"integration"},

@@ -7,7 +7,7 @@
 | `--json` | Output in JSON format |
 | `--quiet` | Suppress non-essential output |
 | `--log-level` | Set log verbosity (`debug`, `info`, `warn`, `error`) |
-| `--version` | Print version information and exit |
+| `--version` | Print version information and exit (equivalent to the `keylatch version` subcommand below) |
 
 ## Exit codes
 
@@ -138,8 +138,8 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
 | `--redact-paths` | Hash path values in output (for support bundles) |
 | `--category` | Comma-separated list of categories to run (e.g. `environment,backends`) |
 | `--quiet` | Suppress table output; only exit with the appropriate code |
-| `--repair` | Attempt supported repairs for failed checks |
-| `--yes` | Confirm repair prompts non-interactively |
+| `--repair` | Attempt automated repair for checks that have a safe, idempotent fix. Currently supported: `acl.keychain_unlock` only (re-issues the keychain ACL via the same logic as `keylatch keychain-repair-acl`). Every other failing/warning check prints `[no automated repair] <name>: run: <fix hint>` instead — most failure classes (missing bootstrap, wrong backend selected, an external CLI not installed) have no safe automated fix. |
+| `--yes` | Skip the interactive per-check confirmation prompt that `--repair` shows before repairing |
 
 **JSON v1 schema (`--json`):**
 
@@ -159,7 +159,26 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
 - `F2 bootstrap.config` — verifies `~/.keylatch/config.json` is present and parseable
 
 **Integration check (I3):**
-- `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.windsurf/hooks`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, emits a `[warn]` with a link to the relevant integration guide. Passes with `[ok]` if `.keylatch/integration.yml` exists.
+- `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.windsurf/hooks`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.
+
+**Optional-feature checks (informational, not warnings):** `gateway.running` (gateway not started), `F3 plaintext_retention` (runtime monitor / `keylatch ui` not started), and `connections.configured` (no connections added yet) report `[ok]` with an informational detail rather than `[warn]` when the corresponding optional feature simply hasn't been enabled — none of these force doctor's exit code away from `0`.
+
+**`--repair` scope:** currently repairs `acl.keychain_unlock` only, by re-running `RepairACL`/`RepairItemACLs` (the same operations `keylatch keychain-repair-acl` performs). Every other failing/warning check is reported as `[no automated repair] <name>: run: <fix hint>` rather than repaired.
+
+---
+
+### `keylatch version`
+
+Print version information and exit — identical output to the `--version`
+global flag (see [Verify the installation](./installation.md#verify-the-installation)).
+
+```
+keylatch version [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output `{"Version":..., "Commit":..., "BuildDate":...}` |
 
 ---
 
@@ -1084,8 +1103,19 @@ keylatch receipts tail --follow
 Initialize or verify the dedicated Keylatch keychain (`~/.keylatch/keylatch.keychain-db`).
 
 ```
-keylatch keychain-init [service] [--verify-acl]
+keylatch keychain-init [service] [--verify-acl] [--force]
 ```
+
+Safe to re-run (e.g. during `keylatch setup`): if a working unlock credential
+already exists, `keychain-init` reuses it and only repairs the ACL — it never
+generates a new one unless neither the keychain-db nor the login-keychain
+unlock item exists yet. Re-running it never orphans secrets stored under the
+current credential.
+
+`--force` regenerates the unlock credential unconditionally, even if this would
+orphan secrets stored under the current one. Only use it after confirming you
+accept that data loss (e.g. the login-keychain unlock item was lost or
+corrupted and the existing keychain-db is unrecoverable anyway).
 
 ### `keylatch keychain-repair-acl`
 

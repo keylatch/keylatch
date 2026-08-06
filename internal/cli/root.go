@@ -48,7 +48,7 @@ const DoctorHint = "Run `keylatch doctor` for a health check, or visit keylatch.
 func IsDoctorHintSuppressed(c *cobra.Command) bool {
 	name := c.Name()
 	switch name {
-	case "doctor", "help", "completion", "__complete", "__completeNoDesc":
+	case "doctor", "help", "completion", "__complete", "__completeNoDesc", "version":
 		return true
 	}
 	// Suppress if --help or --version was requested.
@@ -143,6 +143,31 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
+// newVersionCmd returns the `version` subcommand (C6). It produces the same
+// output as the `--version` flag handled in PersistentPreRunE above —
+// docs/installation.md documents `keylatch version` as the post-install
+// verification step, but only the flag existed until this command was added.
+// NOT guarded — version metadata is not a credential.
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version information and exit",
+		RunE: func(c *cobra.Command, _ []string) error {
+			jsonOut, _ := c.Flags().GetBool("json")
+			if jsonOut {
+				b, err := json.Marshal(version.JSON())
+				if err != nil {
+					return fmt.Errorf("keylatch version: marshal: %w", err)
+				}
+				fmt.Fprintln(c.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintln(c.OutOrStdout(), version.String())
+			return nil
+		},
+	}
+}
+
 // addCmd is a helper that adds a command to root with a groupID set.
 func addCmd(root *cobra.Command, cmd *cobra.Command, groupID string) {
 	cmd.GroupID = groupID
@@ -159,6 +184,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newConnectCmd(), "start")
 	addCmd(root, newAgentCmd(), "start")
 	addCmd(root, newDoctorCmdImpl(), "start")
+	addCmd(root, newVersionCmd(), "start")
 	addCmd(root, newUICmd(), "start")
 	addCmd(root, newBootstrapCmd(), "start")
 	addCmd(root, newInstallGuardCmd(), "start")

@@ -55,17 +55,19 @@ Requires the broker to be running in-process.`,
 			// Obtain a handle — out-of-process returns ErrBrokerOutOfProcess.
 			handle := brokerHandleFactory()
 
+			// All branches below return a *CLIError without printing directly
+			// — main.go prints it exactly once (C5). Printing here too would
+			// double-print (Finding-001); it would also break the existing
+			// in-process tests (e.g. TestBrokerDryRun_OutOfProcess) that call
+			// cmd.Execute() and assert on the returned error/output, which an
+			// os.Exit here would defeat by killing the test process.
 			result, err := handle.DryRunExchange(provider, command)
 			if err != nil {
 				if errors.Is(err, broker.ErrBrokerOutOfProcess) {
-					fmt.Fprintln(c.ErrOrStderr(), "error[BrokerOutOfProcess]:", err.Error())
 					return NewSecurityBlock("broker not running in-process: %s", err.Error())
 				}
 				if errors.Is(err, broker.ErrProviderNoBrokerConfig) {
-					fmt.Fprintf(c.ErrOrStderr(), "error[ProviderNoBrokerConfig]: %v\n", err)
-					fmt.Fprintf(c.ErrOrStderr(), "  Provider %q has no broker configuration.\n", provider)
-					fmt.Fprintln(c.ErrOrStderr(), "  Run 'keylatch list' to see configured providers.")
-					return NewUsageError("provider %q has no broker configuration", provider)
+					return NewUsageError("provider %q has no broker configuration — run 'keylatch list' to see configured providers", provider)
 				}
 				return NewInternalError("dry-run exchange: %v", err)
 			}
