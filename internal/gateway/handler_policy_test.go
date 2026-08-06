@@ -175,6 +175,69 @@ func TestGatewayNew_PolicyLoad_MalformedFails(t *testing.T) {
 	}
 }
 
+// TestGatewayNew_RejectsCommandsCWDsRule is the regression test for review
+// finding non-blocking-1 (2026-08-06): a gateway-loaded policy rule with a
+// Commands or CWDs constraint can never match gateway traffic (the
+// gateway's policy.Request never sets Command/CWD — there is no shell
+// command or working directory for an HTTP request). Such a rule must be
+// rejected at load time instead of silently never applying.
+func TestGatewayNew_RejectsCommandsCWDsRule(t *testing.T) {
+	key := make([]byte, 32)
+	rand.Read(key) //nolint:errcheck
+	dir := t.TempDir()
+
+	cases := []struct {
+		name string
+		rule policy.Rule
+	}{
+		{
+			name: "commands",
+			rule: policy.Rule{
+				ID:           "commands-rule",
+				Actor:        "*",
+				Connections:  []string{"openrouter"},
+				Capabilities: []string{"openrouter.*"},
+				Commands:     []string{"tsx scripts/openrouter/*"},
+			},
+		},
+		{
+			name: "cwds",
+			rule: policy.Rule{
+				ID:           "cwds-rule",
+				Actor:        "*",
+				Connections:  []string{"openrouter"},
+				Capabilities: []string{"openrouter.*"},
+				CWDs:         []string{"/home/*/project"},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			policyPath := writeTestPolicy(t, policy.Policy{
+				SchemaVersion: policy.SchemaVersion,
+				Mode:          policy.ModeEnforcing,
+				Rules:         []policy.Rule{tc.rule},
+			})
+
+			_, err := gateway.New(gateway.ServerOptions{
+				Bind:           "127.0.0.1:0",
+				SigningKey:     key,
+				ApprovalsDir:   filepath.Join(dir, "approvals"),
+				TokenStorePath: filepath.Join(dir, "tokens.json"),
+				Env:            llmcontext.DefaultLookup,
+				PolicyPath:     policyPath,
+			})
+			if err == nil {
+				t.Fatal("expected New to reject a commands/cwds rule, got nil error")
+			}
+			if !strings.Contains(err.Error(), tc.rule.ID) {
+				t.Errorf("error should name the offending rule ID, got %q", err.Error())
+			}
+		})
+	}
+}
+
 // TestHandler_Policy_Allow verifies that a configured policy with a matching
 // allow rule lets the request proceed through to the upstream call, and
 // records an "allow" policy_check audit event.
