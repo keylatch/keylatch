@@ -47,6 +47,16 @@ func newGatewayCmd() *cobra.Command {
 	return cmd
 }
 
+// desktopAppRunningFunc and launchctlRunFunc are declared as vars (mirroring
+// stdinScannerFn in setup_cmd.go) so tests can substitute fakes without ever
+// touching the real process table or invoking the real launchctl binary.
+var (
+	desktopAppRunningFunc = desktopAppRunning
+	launchctlRunFunc      = func(args ...string) ([]byte, error) {
+		return exec.Command("launchctl", args...).CombinedOutput() //nolint:gosec // args are fixed, non-user-controlled
+	}
+)
+
 // newGatewayInstallCmd returns the `keylatch gateway install` command.
 // On macOS it writes the keylatchd launchd plist and loads it via launchctl.
 // On other platforms it prints an unsupported message.
@@ -60,7 +70,7 @@ func newGatewayInstallCmd() *cobra.Command {
 				return nil
 			}
 
-			if desktopAppRunning() {
+			if desktopAppRunningFunc() {
 				fmt.Fprintln(c.OutOrStdout(), "  Keylatch.app is already managing keylatchd — skipping launchd install to avoid a port 7890 conflict.")
 				return nil
 			}
@@ -72,8 +82,7 @@ func newGatewayInstallCmd() *cobra.Command {
 				return nil
 			}
 
-			loadCmd := exec.Command("launchctl", "load", "-w", plistPath) //nolint:gosec // plistPath is a fixed system path
-			if out, err := loadCmd.CombinedOutput(); err != nil {
+			if out, err := launchctlRunFunc("load", "-w", plistPath); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "  gateway install: launchctl load: %v\n", err)
 				if len(out) > 0 {
 					fmt.Fprintf(c.ErrOrStderr(), "  %s\n", strings.TrimSpace(string(out)))
