@@ -197,7 +197,7 @@ func checkAgentGuard() Check {
 			Section: "environment",
 			OK:      true,
 			Warn:    true,
-			Detail:  "no agent exfiltration guard detected (detection currently covers claude-code)",
+			Detail:  "no agent exfiltration guard detected",
 			Fix:     "keylatch install-guard <agent>",
 			Tags:    []string{"guard"},
 		}
