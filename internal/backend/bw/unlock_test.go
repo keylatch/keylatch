@@ -51,7 +51,8 @@ func TestUnlock_InvalidPassword_ErrLocked(t *testing.T) {
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
 			argKey(fakeBWBin, "unlock", "--raw"): {
-				Stderr:   []byte("Invalid master password."),
+				// Real bw CLI wording: "Master password is invalid. Try again."
+				Stderr:   []byte("Master password is invalid. Try again."),
 				ExitCode: 1,
 			},
 		},
