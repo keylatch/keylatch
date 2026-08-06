@@ -335,13 +335,28 @@ func ResolveStdinFields(stdinFields []string) (map[string]string, error) {
 
 // setupStep1DetectPlatform handles [1/5] — detect OS and recommend the best backend.
 // Returns the recommended backend slug.
+//
+// H2: on resume (an existing config already names a backend), the OS
+// recommendation is not returned here — recommending a different backend
+// than what's configured is exactly what lets Enter-through resume silently
+// switch backends and orphan stored secrets. The OS recommendation is only
+// for fresh installs; setupStep2BackendSetup independently re-checks the
+// configured backend and gates any switch behind an explicit confirmation.
 func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 	fmt.Fprintln(c.OutOrStdout(), "[1/5] Detecting platform...")
 	fmt.Fprintln(c.OutOrStdout())
 
-	recommended, recDesc := platformBackend()
 	goos := runtime.GOOS
 	fmt.Fprintf(c.OutOrStdout(), "  Platform: %s\n", goos)
+
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	if cfg, err := config.Load(cfgPath); err == nil && cfg.Backend != "" {
+		fmt.Fprintf(c.OutOrStdout(), "  Configured backend: %s (from existing config)\n", cfg.Backend)
+		fmt.Fprintln(c.OutOrStdout())
+		return cfg.Backend, nil
+	}
+
+	recommended, recDesc := platformBackend()
 	fmt.Fprintf(c.OutOrStdout(), "  Recommended backend: %s (%s)\n", recommended, recDesc)
 	fmt.Fprintln(c.OutOrStdout())
 
@@ -350,6 +365,13 @@ func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 
 // setupStep2BackendSetup handles [2/5] — confirm backend and run bootstrap.
 // Takes the recommended backend from step 1; returns the chosen backend.
+//
+// H2: an existing config with a backend already set means secrets may
+// already be stored under that backend. On resume, this defaults the prompt
+// to *keeping* the configured backend rather than the OS recommendation,
+// and requires a typed "switch" confirmation before actually persisting a
+// different backend — Enter-through resume must never silently orphan
+// stored secrets.
 func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended string) (string, error) {
 	fmt.Fprintln(c.OutOrStdout(), "[2/5] Backend setup...")
 	fmt.Fprintln(c.OutOrStdout())
@@ -357,25 +379,45 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	advanced, _ := c.Flags().GetBool("advanced")
 	flagBackend, _ := c.Flags().GetString("backend")
 
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	configuredBackend := ""
+	if cfg, err := config.Load(cfgPath); err == nil {
+		configuredBackend = cfg.Backend
+	}
+
 	chosen := recommended
 	telemetrySetting := ""
+	// explicitFlagOverride: --backend is an unambiguous, deliberate choice
+	// (not an accidental Enter-through) — it bypasses the switch
+	// confirmation below, matching prior behavior for non-interactive/CI
+	// callers that already pass --backend explicitly.
+	explicitFlagOverride := flagBackend != ""
 
-	if flagBackend != "" {
-		// --backend flag overrides the recommendation.
+	switch {
+	case explicitFlagOverride:
 		chosen = flagBackend
 		fmt.Fprintf(c.OutOrStdout(), "  Using --backend=%s\n", chosen)
 		// Honour --telemetry off flag even in non-advanced mode.
 		if tf, _ := c.Flags().GetString("telemetry"); strings.ToLower(tf) == "off" {
 			telemetrySetting = "off"
 		}
-	} else if advanced {
+	case advanced:
 		// Advanced mode: show all 10 backend options and telemetry prompt.
 		chosen, telemetrySetting = setupPromptAdvancedBackend(c, recommended)
-	} else {
-		// Standard: prompt "Use recommended backend? (Y/n)".
+	case configuredBackend != "":
+		// Resume: default to *keeping* the configured backend, not the OS
+		// recommendation.
+		fmt.Fprintf(c.OutOrStdout(), "  Keep current backend [%s]? (Y/n): ", configuredBackend)
+		ans := strings.ToLower(strings.TrimSpace(readLine()))
+		if ans == "n" || ans == "no" {
+			chosen = setupPromptBasicBackend(c, configuredBackend)
+		} else {
+			chosen = configuredBackend
+		}
+	default:
+		// Fresh install: prompt "Use recommended backend? (Y/n)".
 		fmt.Fprintf(c.OutOrStdout(), "  Use recommended backend [%s]? (Y/n): ", recommended)
-		ans := readLine()
-		ans = strings.ToLower(strings.TrimSpace(ans))
+		ans := strings.ToLower(strings.TrimSpace(readLine()))
 		if ans == "n" || ans == "no" {
 			chosen = setupPromptBasicBackend(c, recommended)
 		}
@@ -386,6 +428,22 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		return "", fmt.Errorf("unknown backend %q (valid: %s)", chosen, strings.Join(backend.KnownCanonicalNames(), ", "))
 	}
 	chosen = canonical
+
+	// H2: switching away from the configured backend orphans whatever is
+	// already stored under it (nothing migrates). Require an explicit typed
+	// confirmation before persisting the switch — anything else keeps the
+	// configured backend.
+	if !explicitFlagOverride && configuredBackend != "" && chosen != configuredBackend {
+		fmt.Fprintln(c.OutOrStdout())
+		fmt.Fprintf(c.OutOrStdout(), "  WARNING: switching backend from %q to %q.\n", configuredBackend, chosen)
+		fmt.Fprintf(c.OutOrStdout(), "  Secrets stored under %q will NOT be visible under %q — nothing is migrated.\n", configuredBackend, chosen)
+		fmt.Fprintf(c.OutOrStdout(), "  Type \"switch\" to confirm, or anything else to keep %q: ", configuredBackend)
+		confirm := strings.ToLower(strings.TrimSpace(readLine()))
+		if confirm != "switch" {
+			fmt.Fprintf(c.OutOrStdout(), "  Keeping current backend %q.\n\n", configuredBackend)
+			chosen = configuredBackend
+		}
+	}
 
 	fmt.Fprintf(c.OutOrStdout(), "  Configuring backend %q...\n", chosen)
 
