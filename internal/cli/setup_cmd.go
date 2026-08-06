@@ -26,7 +26,6 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
-	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -821,21 +820,58 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 	fmt.Fprintln(c.OutOrStdout())
 }
 
+// setupGatewayPSRunner and setupGatewayPSBin back setupStep3SpawnDaemon's
+// process-identity verification (review finding, warn-2). Declared as vars
+// so tests can inject a mock without touching the real ps binary — same
+// injectable-var pattern as stdinScannerFn/storeNewResolver above.
+var (
+	setupGatewayPSRunner kexec.CommandRunner = kexec.DefaultRunner
+	setupGatewayPSBin                        = kexec.Resolve("ps")
+)
+
 // setupStep3SpawnDaemon handles [3/5] — initialise and start the gateway.
 //
 // M1: on a resumed setup where the gateway is already running, shelling out
 // to `gateway up --detach` anyway makes the child's expected "already
 // running" refusal look like a setup failure. Check IsRunning ourselves
 // first and present it as the success case it actually is.
+//
+// warn-2 (review finding): IsRunning alone only signal-0-probes the pid —
+// if the gateway crashed and its pid got recycled by an unrelated process,
+// IsRunning false-positives as "running" and setup would report a
+// misleading success with no functioning gateway. Reuse the same
+// resolveGatewayUpRunning/VerifyProcessIdentity best-effort check `gateway
+// up --force` uses (force=true mirrors --force's stale-PID recovery
+// semantics): a confirmed match or an inconclusive check both resolve to
+// "skip" here (inconclusive fails safe — see warn-4), but a confirmed
+// mismatch means the pid is stale, so setup removes it and proceeds to
+// actually start the gateway instead of silently doing nothing.
 func setupStep3SpawnDaemon(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "[3/5] Gateway setup...")
 	fmt.Fprintln(c.OutOrStdout())
 
+	ctx := c.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	pidPath := paths.GatewayPID(llmcontext.DefaultLookup)
-	if pid, running := gateway.IsRunning(pidPath); running {
+	action, pid, note := resolveGatewayUpRunning(ctx, pidPath, true, setupGatewayPSRunner, setupGatewayPSBin)
+	switch action {
+	case gatewayUpRefuse:
+		// Covers both a confirmed match (genuinely running) and an
+		// inconclusive check (fail-safe, see warn-4) — either way the
+		// correct action here is the same: skip starting a new one.
 		fmt.Fprintf(c.OutOrStdout(), "  Gateway already running (pid %d) — skipping.\n", pid)
+		if note != "" {
+			fmt.Fprintf(c.OutOrStdout(), "  (%s)\n", note)
+		}
 		fmt.Fprintln(c.OutOrStdout())
 		return
+	case gatewayUpProceed:
+		if note != "" {
+			fmt.Fprintf(c.OutOrStdout(), "  Stale gateway pid detected: %s\n", note)
+		}
 	}
 
 	self, err := os.Executable()
