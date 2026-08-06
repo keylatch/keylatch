@@ -374,10 +374,14 @@ func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 	fmt.Fprintf(c.OutOrStdout(), "  Platform: %s\n", goos)
 
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	if cfg, err := config.Load(cfgPath); err == nil && cfg.Backend != "" {
-		fmt.Fprintf(c.OutOrStdout(), "  Configured backend: %s (from existing config)\n", cfg.Backend)
+	configuredBackend, err := loadConfiguredBackend(c, cfgPath)
+	if err != nil {
+		return "", err
+	}
+	if configuredBackend != "" {
+		fmt.Fprintf(c.OutOrStdout(), "  Configured backend: %s (from existing config)\n", configuredBackend)
 		fmt.Fprintln(c.OutOrStdout())
-		return cfg.Backend, nil
+		return configuredBackend, nil
 	}
 
 	recommended, recDesc := platformBackend()
@@ -404,9 +408,9 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	flagBackend, _ := c.Flags().GetString("backend")
 
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	configuredBackend := ""
-	if cfg, err := config.Load(cfgPath); err == nil {
-		configuredBackend = cfg.Backend
+	configuredBackend, err := loadConfiguredBackend(c, cfgPath)
+	if err != nil {
+		return "", err
 	}
 
 	chosen := recommended
@@ -471,7 +475,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 
 	fmt.Fprintf(c.OutOrStdout(), "  Configuring backend %q...\n", chosen)
 
-	_, err := bootstrap.Run(ctx, bootstrap.Options{
+	_, err = bootstrap.Run(ctx, bootstrap.Options{
 		DryRun:  false,
 		Backend: chosen,
 		Env:     llmcontext.DefaultLookup,
@@ -607,6 +611,39 @@ func loadConfigOrWarn(c *cobra.Command, cfgPath string) (config.Config, error) {
 		fmt.Fprintf(c.ErrOrStderr(), "Warning: could not back up the unusable config at %s (%v) — proceeding without a backup.\n", cfgPath, writeErr)
 	}
 	return config.Default(), nil
+}
+
+// loadConfiguredBackend inspects cfgPath for an existing backend selection,
+// using the same three-way classification as loadConfigOrWarn (review
+// finding, warn-1) so a permission/IO read failure can't silently look like
+// "no existing config" and let a resume skip H2's switch-confirmation gate:
+//
+//  1. Not exist → ("", nil): fresh install, no configured backend.
+//  2. Read/IO error → ("", err): the caller must abort. Silently treating
+//     this as "no config" would let a resume that genuinely has a
+//     configured backend skip the confirmation entirely.
+//  3. Content unusable (parse/version/validation error) → ("", nil), but
+//     prints the same "existing config is unusable" warning
+//     loadConfigOrWarn prints, at prompt time — so the user sees this is a
+//     broken existing install, not a fresh one, before being asked to pick
+//     a backend. This function does not itself back up or reset the file:
+//     that happens exactly once, later, inside loadConfigOrWarn when the
+//     chosen backend is actually persisted.
+func loadConfiguredBackend(c *cobra.Command, cfgPath string) (string, error) {
+	data, readErr := os.ReadFile(cfgPath)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", fmt.Errorf("config at %s could not be read (%w) — refusing to continue setup; check file permissions and retry", cfgPath, readErr)
+	}
+
+	cfg, parseErr := config.LoadBytes(cfgPath, data)
+	if parseErr != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "Warning: existing config at %s is unusable (%v); treating this as a fresh install for backend selection — it will be reset to defaults once setup finishes.\n", cfgPath, parseErr)
+		return "", nil
+	}
+	return cfg.Backend, nil
 }
 
 // setupPromptBasicBackend shows the standard 4-option backend menu.
