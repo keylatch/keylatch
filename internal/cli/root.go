@@ -68,7 +68,7 @@ func NewRootCommand() *cobra.Command {
 		Short: "Keylatch — zero-trust credential vault CLI",
 		Long:  "Keylatch manages credentials with LLM-session blocking and gateway-aware runtime modes.",
 		// Version is used by cobra to respond to --version; the template below
-		// formats the output as a short one-liner (e.g. "keylatch v1.0.0-dev").
+		// formats the output as a short one-liner (e.g. "keylatch v0.0.0-devbuild").
 		Version: version.String(),
 		// PersistentPreRunE handles --version and registry initialisation before
 		// any subcommand runs.
