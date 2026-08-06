@@ -544,7 +544,10 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 
 func persistSetupBackend(c *cobra.Command, chosen string) error {
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg := loadConfigOrWarn(c, cfgPath)
+	cfg, err := loadConfigOrWarn(c, cfgPath)
+	if err != nil {
+		return err
+	}
 	cfg.Backend = chosen
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		return fmt.Errorf("persist backend %q: %w", chosen, saveErr)
@@ -552,41 +555,58 @@ func persistSetupBackend(c *cobra.Command, chosen string) error {
 	return nil
 }
 
-// loadConfigOrWarn loads the config at cfgPath, distinguishing a fresh
-// install (file does not exist — silently returns config.Default(), no
-// warning, nothing to lose) from an existing file that is unreadable,
-// corrupt, or a version mismatch (M2). In the latter case, resetting to
-// config.Default() would silently wipe every field the user has ever set
-// (backend, namespace, audit/UI/telemetry settings, provider-ref URI...),
-// so this instead: (1) prints a loud warning naming the path and the
-// underlying error, (2) backs up the unreadable file to
-// "<cfgPath>.bak.<unix-nano>" before it can be overwritten by whatever the
-// caller does next with the returned Default(), and (3) proceeds.
+// loadConfigOrWarn loads the config at cfgPath, classifying failures into
+// three distinct cases (review finding, blocking) so a transient/permission
+// read failure is never treated the same as a genuinely corrupt file —
+// which would otherwise let the caller silently overwrite (via
+// config.Save's rename, which only needs directory write permission, not
+// permission on the target file itself) a perfectly healthy config it was
+// merely unable to open:
+//
+//  1. File does not exist — fresh install. Silently returns config.Default()
+//     with a nil error: nothing was ever there to lose.
+//  2. The file exists but could not be READ (permission denied, transient
+//     I/O error, EBUSY, etc.) — the bytes were never even inspected, so
+//     there is no way to tell whether the config is fine or broken. Returns
+//     a non-nil error and config.Config{}; callers MUST abort the operation
+//     (propagate the error) rather than fall back to config.Default().
+//  3. The file was read successfully but its CONTENT is unusable (malformed
+//     JSON, unknown fields, version mismatch, failed validation) — this is
+//     the only case that resets to defaults. The bytes already read are
+//     backed up to "<cfgPath>.bak.<unix-nano>" — no second read: a repeat
+//     read isn't guaranteed to see the same bytes, and if the original
+//     failure involved I/O flakiness a second read could fail for the same
+//     reason a case-2 caller would need to abort for anyway.
 //
 // This is the write-path helper (persist*/setupStep* call sites that need
-// graceful degradation instead of silent data loss). Callers that only need
-// to know whether a backend is already configured (H2 resume detection)
-// should call config.Load directly and treat any error as "no existing
-// config" without invoking this warn/backup path.
-func loadConfigOrWarn(c *cobra.Command, cfgPath string) config.Config {
-	cfg, err := config.Load(cfgPath)
-	if err == nil {
-		return cfg
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return config.Default()
+// graceful degradation instead of silent data loss). setupStep1DetectPlatform
+// and setupStep2BackendSetup's resume detection use the same classification
+// via loadConfiguredBackend so a case-2 read failure can't silently look
+// like "no existing config" and skip the H2 switch-confirmation gate.
+func loadConfigOrWarn(c *cobra.Command, cfgPath string) (config.Config, error) {
+	data, readErr := os.ReadFile(cfgPath)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			return config.Default(), nil
+		}
+		// Case 2: the read itself failed — do not touch the file, abort.
+		return config.Config{}, fmt.Errorf("config at %s could not be read (%w) — refusing to reset it; check file permissions and retry", cfgPath, readErr)
 	}
 
-	fmt.Fprintf(c.ErrOrStderr(), "Warning: existing config at %s could not be loaded (%v); resetting to defaults.\n", cfgPath, err)
-	if data, readErr := os.ReadFile(cfgPath); readErr == nil {
-		backupPath := fmt.Sprintf("%s.bak.%d", cfgPath, time.Now().UnixNano())
-		if writeErr := os.WriteFile(backupPath, data, 0o600); writeErr == nil {
-			fmt.Fprintf(c.ErrOrStderr(), "Warning: backed up the unreadable config to %s before overwriting it.\n", backupPath)
-		} else {
-			fmt.Fprintf(c.ErrOrStderr(), "Warning: could not back up the unreadable config at %s (%v) — proceeding without a backup.\n", cfgPath, writeErr)
-		}
+	cfg, parseErr := config.LoadBytes(cfgPath, data)
+	if parseErr == nil {
+		return cfg, nil
 	}
-	return config.Default()
+
+	// Case 3: bytes were read fine, content is unusable.
+	fmt.Fprintf(c.ErrOrStderr(), "Warning: existing config at %s is unusable (%v); resetting to defaults.\n", cfgPath, parseErr)
+	backupPath := fmt.Sprintf("%s.bak.%d", cfgPath, time.Now().UnixNano())
+	if writeErr := os.WriteFile(backupPath, data, 0o600); writeErr == nil {
+		fmt.Fprintf(c.ErrOrStderr(), "Warning: backed up the unusable config to %s before overwriting it.\n", backupPath)
+	} else {
+		fmt.Fprintf(c.ErrOrStderr(), "Warning: could not back up the unusable config at %s (%v) — proceeding without a backup.\n", cfgPath, writeErr)
+	}
+	return config.Default(), nil
 }
 
 // setupPromptBasicBackend shows the standard 4-option backend menu.
@@ -749,7 +769,12 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 
 	// Persist the mode via config.
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg := loadConfigOrWarn(c, cfgPath)
+	cfg, loadErr := loadConfigOrWarn(c, cfgPath)
+	if loadErr != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  Error: %v\n", loadErr)
+		fmt.Fprintln(c.OutOrStdout())
+		return
+	}
 	cfg.Mode = answer
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "  Warning: could not persist operating mode: %v\n", saveErr)
@@ -1014,7 +1039,12 @@ func setupRunReferenceBranch(c *cobra.Command, ctx context.Context) error {
 
 	// Step 4: persist the URI to config so it can be referenced later.
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg := loadConfigOrWarn(c, cfgPath)
+	cfg, loadErr := loadConfigOrWarn(c, cfgPath)
+	if loadErr != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  Error: %v\n", loadErr)
+		os.Exit(exitcode.OperationFailed)
+		return nil
+	}
 	cfg.DefaultProviderRef = uri
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "  Error: could not persist provider-ref URI: %v\n", saveErr)
