@@ -4,20 +4,29 @@ package gateway
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	kexec "github.com/keylatch/keylatch/internal/exec"
 )
 
-// processIdentityKeywords are substrings that indicate a `ps` command-line
-// output belongs to a keylatch gateway/daemon process.
-var processIdentityKeywords = []string{"keylatchd", "keylatch"}
+// processIdentityExeNames are the exact (case-insensitive) executable
+// basenames that identify a keylatch gateway/daemon process.
+var processIdentityExeNames = []string{"keylatchd", "keylatch"}
 
 // VerifyProcessIdentity best-effort checks whether pid's command line looks
 // like a keylatch gateway/daemon process, by running
-// `ps -p <pid> -o command=` through runner and matching the output against
-// processIdentityKeywords.
+// `ps -p <pid> -o command=` through runner and checking whether the
+// basename of the first whitespace-separated token (the executable — ps
+// -o command= does not shell-quote arguments, so a plain field-split is
+// enough) exactly matches processIdentityExeNames.
+//
+// Anchoring on the executable token (rather than a substring match against
+// the full command line, the previous behavior) avoids false positives like
+// `vim /repos/keylatch/main.go` or `grep keylatch app.log` — commands whose
+// *arguments* happen to contain "keylatch" but whose executable is
+// completely unrelated.
 //
 // This is NOT a security boundary — it exists purely to disambiguate
 // ordinary PID-reuse races for `gateway up --force` stale-PID recovery
@@ -40,13 +49,19 @@ func VerifyProcessIdentity(ctx context.Context, runner kexec.CommandRunner, psBi
 		return false, false
 	}
 
-	out := strings.ToLower(strings.TrimSpace(string(stdout)))
-	if out == "" {
+	line := strings.TrimSpace(string(stdout))
+	if line == "" {
 		return false, false
 	}
 
-	for _, kw := range processIdentityKeywords {
-		if strings.Contains(out, kw) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return false, false
+	}
+	exe := strings.ToLower(filepath.Base(fields[0]))
+
+	for _, name := range processIdentityExeNames {
+		if exe == name {
 			return true, true
 		}
 	}
