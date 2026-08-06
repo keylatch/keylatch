@@ -6,8 +6,10 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -315,14 +317,27 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 
 		// check presence only — never expose BW_SESSION value.
 		sessionSet := env("BW_SESSION") != ""
-		if !sessionSet {
+
+		// H5: a cached session (from `keylatch bw unlock`) is an equally
+		// valid source of BW_SESSION — checkBackendBWSession must not warn
+		// just because the ambient env var itself is unset. StatSession
+		// reads only the sidecar metadata file, never the token.
+		cacheStatus, cacheErr := bw.StatSession(env)
+		cachedValid := cacheErr == nil && cacheStatus.Present && !cacheStatus.Expired
+
+		if !sessionSet && !cachedValid {
+			detail := "BW_SESSION not set and no cached session; vault may be locked"
+			if cacheErr == nil && cacheStatus.Present && cacheStatus.Expired {
+				detail = fmt.Sprintf("cached session expired at %s; vault may be locked",
+					cacheStatus.ExpiresAt.Format(time.RFC3339))
+			}
 			return Status{
 				Name:    "backend.bw.session",
 				Section: "backends",
 				OK:      true,
 				Warn:    true,
-				Detail:  "BW_SESSION not set; vault may be locked",
-				Fix:     "Run `bw unlock --raw` and export the result as BW_SESSION.",
+				Detail:  detail,
+				Fix:     "Run `keylatch bw unlock` (or export BW_SESSION yourself — see README §Non-interactive use).",
 				Tags:    []string{"backend", "bw", "session"},
 			}
 		}
@@ -340,13 +355,19 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// do not print BW_SESSION; just report binary path and session presence.
+		// do not print BW_SESSION or the cached token; just report binary
+		// path and session presence/source.
 		_ = bin
+		detail := "BW_SESSION is set (value redacted); vault lock state unknown without bw status call"
+		if !sessionSet && cachedValid {
+			detail = fmt.Sprintf("cached session present (value redacted), expires_at=%s",
+				cacheStatus.ExpiresAt.Format(time.RFC3339))
+		}
 		return Status{
 			Name:    "backend.bw.session",
 			Section: "backends",
 			OK:      true,
-			Detail:  "BW_SESSION is set (value redacted); vault lock state unknown without bw status call",
+			Detail:  detail,
 			Tags:    []string{"backend", "bw", "session"},
 		}
 	}

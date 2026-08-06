@@ -75,12 +75,21 @@ type BitwardenBackend struct {
 	opts    Options
 	bin     string
 	session string // BW_SESSION — never exposed, passed via subprocess env only
-	cache   sync.Map
-	sf      singleflight.Group
+
+	// sessionFromCache is true when session was sourced from the H5 session
+	// cache (LoadSession) rather than the ambient BW_SESSION env var. Only
+	// cache-sourced sessions are invalidated on an auth failure — an
+	// explicit, user-set ambient BW_SESSION is left alone so we never mask
+	// the user's own env-var mistake behind a silent cache-clear.
+	sessionFromCache bool
+
+	cache sync.Map
+	sf    singleflight.Group
 }
 
-// Open validates options, resolves the `bw` binary, reads BW_SESSION from env,
-// and returns an initialized BitwardenBackend.
+// Open validates options, resolves the `bw` binary, resolves a BW_SESSION
+// (ambient env first, then the H5 session cache — see session_cache.go), and
+// returns an initialized BitwardenBackend.
 func Open(opts Options) (*BitwardenBackend, error) {
 	// Reject non-https server URLs.
 	if opts.Server != "" && !strings.HasPrefix(opts.Server, "https://") {
@@ -107,12 +116,47 @@ func Open(opts Options) (*BitwardenBackend, error) {
 	// Read BW_SESSION from env into unexported field. Never assign to
 	// a logged or exported variable.
 	session := opts.Env("BW_SESSION")
+	fromCache := false
+	if session == "" {
+		if cached, ok, _ := LoadSession(opts.Env); ok {
+			session = cached
+			fromCache = true
+		}
+	}
 
 	return &BitwardenBackend{
-		opts:    opts,
-		bin:     bin,
-		session: session,
+		opts:             opts,
+		bin:              bin,
+		session:          session,
+		sessionFromCache: fromCache,
 	}, nil
+}
+
+// Unlock runs `bw unlock --raw`, piping masterPassword via stdin (never as
+// an argument or env var), and returns the raw session token on success. The
+// token is never logged; callers are responsible for persisting it (see
+// SaveSession) and for zeroing masterPassword/the returned token once done.
+//
+// This does not mutate b.session — a fresh BitwardenBackend (or the next
+// keylatch invocation) picks up the newly cached token through Open()'s
+// LoadSession seam.
+func (b *BitwardenBackend) Unlock(ctx context.Context, masterPassword []byte) (string, error) {
+	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin, []string{"unlock", "--raw"}, masterPassword)
+	if err != nil {
+		return "", fmt.Errorf("bw unlock: runner error: %w", err)
+	}
+	if exitCode != 0 {
+		stderrStr := strings.ToLower(string(stderr))
+		if isLocked(string(stderr)) || strings.Contains(stderrStr, "invalid master password") {
+			return "", fmt.Errorf("%w: invalid master password (or vault already in an unexpected state)", backend.ErrLocked)
+		}
+		return "", fmt.Errorf("bw unlock: bw exited %d", exitCode)
+	}
+	token := strings.TrimSpace(string(stdout))
+	if token == "" {
+		return "", fmt.Errorf("bw unlock: bw returned an empty session token")
+	}
+	return token, nil
 }
 
 // Name implements backend.Backend.
@@ -225,7 +269,7 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 		}
 		if exitCode != 0 {
 			if isLocked(string(stderr)) {
-				return fmt.Errorf("%w: set BW_SESSION (see README §Non-interactive use)", backend.ErrLocked)
+				return b.lockedGuidance()
 			}
 			return fmt.Errorf("bw Set: bw exited %d", exitCode)
 		}
@@ -264,7 +308,7 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 		}
 		if exitCode != 0 {
 			if isLocked(string(stderr)) {
-				return fmt.Errorf("%w: set BW_SESSION (see README §Non-interactive use)", backend.ErrLocked)
+				return b.lockedGuidance()
 			}
 			return fmt.Errorf("bw Set: bw exited %d", exitCode)
 		}
@@ -323,7 +367,7 @@ func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.E
 	}
 	if exitCode != 0 {
 		if isLocked(string(stderr)) {
-			return nil, fmt.Errorf("%w: set BW_SESSION (see README §Non-interactive use)", backend.ErrLocked)
+			return nil, b.lockedGuidance()
 		}
 		return nil, fmt.Errorf("bw List: bw exited %d", exitCode)
 	}
@@ -441,13 +485,7 @@ func (b *BitwardenBackend) fetchItemDirect(ctx context.Context, connection strin
 		stderrStr := string(stderr)
 		// Do not echo raw stderr; map to typed errors.
 		if isLocked(stderrStr) {
-			// Call bw status to confirm lock state.
-			if confirmed := b.confirmLocked(ctx); confirmed {
-				return bwItem{}, fmt.Errorf("%w: set BW_SESSION (see README §Non-interactive use)",
-					backend.ErrLocked)
-			}
-			return bwItem{}, fmt.Errorf("%w: set BW_SESSION (see README §Non-interactive use)",
-				backend.ErrLocked)
+			return bwItem{}, b.lockedGuidance()
 		}
 		if isNotFound(stderrStr) {
 			return bwItem{}, fmt.Errorf("%w: %s", backend.ErrNotFound, connection)
@@ -462,19 +500,6 @@ func (b *BitwardenBackend) fetchItemDirect(ctx context.Context, connection strin
 	return item, nil
 }
 
-// confirmLocked runs `bw status` to verify the vault is locked.
-func (b *BitwardenBackend) confirmLocked(ctx context.Context) bool {
-	stdout, _, exitCode, err := b.runWithSession(ctx, []string{"status"}, nil)
-	if err != nil || exitCode != 0 {
-		return true // assume locked on error
-	}
-	var st bwStatus
-	if err := json.Unmarshal(stdout, &st); err != nil {
-		return true
-	}
-	return st.Status == "locked" || st.Status == "unauthenticated"
-}
-
 // sync runs `bw sync` and discards stdout; checks exit code only.
 func (b *BitwardenBackend) sync(ctx context.Context) error {
 	_, stderr, exitCode, err := b.runWithSession(ctx, []string{"sync"}, nil)
@@ -483,7 +508,7 @@ func (b *BitwardenBackend) sync(ctx context.Context) error {
 	}
 	if exitCode != 0 {
 		if isLocked(string(stderr)) {
-			return fmt.Errorf("%w: set BW_SESSION (see README §Non-interactive use)", backend.ErrLocked)
+			return b.lockedGuidance()
 		}
 		return fmt.Errorf("bw sync: exited %d", exitCode)
 	}
@@ -508,6 +533,19 @@ func (b *BitwardenBackend) runWithSession(ctx context.Context, args []string, st
 		extraEnv = []string{"BW_SESSION=" + b.session}
 	}
 	return b.opts.Runner.RunEnv(ctx, b.bin, args, stdin, extraEnv)
+}
+
+// lockedGuidance returns the standard ErrLocked guidance error and, when
+// this backend instance's session came from the H5 cache rather than an
+// explicit ambient BW_SESSION, best-effort invalidates that cache entry so
+// a rejected session isn't retried indefinitely. An explicit ambient
+// BW_SESSION set by the user is left untouched — we never silently clear a
+// cache the user didn't ask us to manage.
+func (b *BitwardenBackend) lockedGuidance() error {
+	if b.sessionFromCache {
+		_ = ClearSession(b.opts.Env)
+	}
+	return fmt.Errorf("%w: run `keylatch bw unlock` (or set BW_SESSION — see README §Non-interactive use)", backend.ErrLocked)
 }
 
 // resolveFolderID returns the ID for a folder name by listing folders.
