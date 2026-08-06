@@ -27,4 +27,10 @@ const (
 
 	// InsecureArgv is returned when a sensitive value is passed via argv (shell history leak).
 	InsecureArgv = 8
+
+	// NotImplemented is returned when a registered command exists but its
+	// implementation is a stub (e.g. `keylatch trust enroll`/`trust approve`
+	// hardware-root ceremonies). Distinct from UserError (1) so scripts can
+	// tell "you used the CLI wrong" apart from "this feature isn't built yet".
+	NotImplemented = 10
 )

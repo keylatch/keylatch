@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Gateway request handling now evaluates a real request policy (`internal/policy`) at Step 6 instead of an unconditional pass-through. When `keylatch gateway up` is started with a configured policy file, matching rules are enforced and violations are denied (403 `policy_denied`) with an audit event; requests requiring approval (`rule.Approval`/`ApprovalRootReq`) are denied (403 `policy_approval_required`) since the gateway has no synchronous approval mechanism. Operators who have never configured a policy see no behavior change (pass-through allow is preserved).
+
+### Changed
+
+- `keylatch trust` is now marked experimental in its help text. `trust enroll <type>` (all five root types) and `trust approve <challenge-id>`'s signing step are unimplemented hardware-root ceremonies — they are hidden from `trust --help`, still directly runnable, and now exit with a distinct code (`NotImplemented`, 10) and a message pointing at this entry and `docs/experimental.md`, instead of a generic error. `trust list`, `trust doctor`, and `trust challenge` remain fully functional and visible. `docs/cli-reference.md`'s `keylatch trust` section previously documented commands that do not exist (`trust status`, `trust add`, `trust remove`) — corrected to match the real command surface.
+
 ## [0.9.5] - 2026-07-31
 
 ### Added

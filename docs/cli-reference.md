@@ -19,6 +19,11 @@
 | `3` | Missing | Requested resource not found |
 | `4` | BackendUnavailable | Credential backend is not reachable |
 | `5` | OperationFailed | Internal or unrecoverable error |
+| `6` | SecretNotFound | No credential stored for this connection |
+| `7` | BootstrapMissing | `keylatch bootstrap` has not been run |
+| `8` | InsecureArgv | A sensitive value was passed via argv (shell history leak) |
+| `9` | InternalError | Unexpected internal failure |
+| `10` | NotImplemented | Command is registered but its implementation is a stub (e.g. `keylatch trust enroll`/`trust approve`) |
 
 ---
 
@@ -517,6 +522,7 @@ error[RuntimeNotAvailable]: openrouter + gateway_sdk: failed to mint session tok
 | `SecurityBlock` | 2 | Blocked by LLM session guard |
 | `ApprovalRequired` | 4 | Human approval required |
 | `InternalError` | 9 | Unexpected internal failure |
+| `NotImplemented` | 10 | Command exists but its implementation is a stub |
 
 ---
 
@@ -720,6 +726,15 @@ Starts the local process gateway. Binds to `127.0.0.1:<port>` by default.
 The gateway reads credentials from the AEAD-encrypted vault at the canonical
 path `<namespace>/<category>/<provider>/<field>` (e.g. `default/ai/openrouter/api_key`).
 
+If a policy file exists at the default policy path (see `keylatch policy`,
+below) when the gateway starts, every request is evaluated against it
+(actor/connection/capability/runtime, sourced only from the verified
+session token and the matched route). No policy file present is
+pass-through allow, not default-deny — see the `default_deny` note in the
+`keylatch policy` section for how to make a policy fail-secure. The policy
+is loaded once at startup; editing the file requires a `gateway down` /
+`gateway up` restart to take effect.
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `7878` | Port to listen on |
@@ -855,6 +870,26 @@ keylatch policy allow <actor> <path> [--capability <cap>] [--command <cmd>] [--t
 keylatch policy list [--actor <actor>] [--json]
 keylatch policy revoke <id>
 ```
+
+**`default_deny` defaults to `false`.** A policy file that only lists
+allow-style rules (no `"default_deny": true`) falls through to
+default-**allow** for every request that doesn't match any rule — not
+default-deny. If you're authoring a deny-only or allow-list policy (e.g.
+"only these connections/capabilities may be used, deny everything else"),
+you must set `"default_deny": true` explicitly for the policy to actually
+be fail-secure; omitting it is a common authoring mistake that silently
+allows everything unlisted. This applies to both the gateway (`keylatch
+gateway up`, below) and direct/CLI policy enforcement.
+
+Two other constraints specific to a **gateway-loaded** policy
+(`gateway up`'s `PolicyPath`, see below):
+
+- `"mode": "permissive"` is rejected at gateway startup — the gateway can
+  always receive LLM-session requests, which permissive mode forbids.
+- Rules with a `commands` or `cwds` constraint are rejected at gateway
+  startup — the gateway has no shell command or working directory to match
+  against, so such a rule (typically copied from a rule meant for CLI
+  enforcement) can never match gateway traffic.
 
 ---
 
@@ -999,13 +1034,35 @@ keylatch broker revoke --all --actor alice --yes
 
 ### `keylatch trust`
 
-Root-of-trust management.
+Root-of-trust management. **Experimental — not yet functional** for
+hardware enrolment and approval; see [Experimental Features](./experimental.md).
+
+Working today:
 
 ```
-keylatch trust list              # List configured roots
-keylatch trust status            # Health check all roots
-keylatch trust add <type>        # Configure a new root (passphrase, keychain, op, bw, pkcs11, ...)
-keylatch trust remove <id>       # Remove a root configuration
+keylatch trust list              # List registered root-of-trust adapter types
+keylatch trust doctor            # Probe all registered adapters
+keylatch trust challenge         # Issue a pending approval challenge, print its ID
+```
+
+**Not implemented** (exit code 10, `NotImplemented`) — hidden from
+`trust --help` but still directly runnable, printing a message pointing at
+the tracking state:
+
+```
+keylatch trust enroll secure-enclave | ssh-agent | pkcs11 | gpg-card | fido2
+keylatch trust approve <challenge-id>   # challenge lookup/expiry check is real;
+                                         # the signing step itself is a stub
+```
+
+**Registered but no-op** (exits 0 without persisting anything —
+`revoke`/`allowlist add` do not yet read or write any state; treat both as
+placeholders, not functioning commands):
+
+```
+keylatch trust revoke <root-id>
+keylatch trust allowlist add <module-path>
+keylatch trust allowlist list
 ```
 
 ---
