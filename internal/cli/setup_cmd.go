@@ -5,6 +5,7 @@ import (
 	"context"
 	cryptoRand "crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -493,7 +494,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		}
 	}
 
-	if err := persistSetupBackend(chosen); err != nil {
+	if err := persistSetupBackend(c, chosen); err != nil {
 		return "", err
 	}
 
@@ -519,17 +520,51 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	return chosen, nil
 }
 
-func persistSetupBackend(chosen string) error {
+func persistSetupBackend(c *cobra.Command, chosen string) error {
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg, loadErr := config.Load(cfgPath)
-	if loadErr != nil {
-		cfg = config.Default()
-	}
+	cfg := loadConfigOrWarn(c, cfgPath)
 	cfg.Backend = chosen
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		return fmt.Errorf("persist backend %q: %w", chosen, saveErr)
 	}
 	return nil
+}
+
+// loadConfigOrWarn loads the config at cfgPath, distinguishing a fresh
+// install (file does not exist — silently returns config.Default(), no
+// warning, nothing to lose) from an existing file that is unreadable,
+// corrupt, or a version mismatch (M2). In the latter case, resetting to
+// config.Default() would silently wipe every field the user has ever set
+// (backend, namespace, audit/UI/telemetry settings, provider-ref URI...),
+// so this instead: (1) prints a loud warning naming the path and the
+// underlying error, (2) backs up the unreadable file to
+// "<cfgPath>.bak.<unix-nano>" before it can be overwritten by whatever the
+// caller does next with the returned Default(), and (3) proceeds.
+//
+// This is the write-path helper (persist*/setupStep* call sites that need
+// graceful degradation instead of silent data loss). Callers that only need
+// to know whether a backend is already configured (H2 resume detection)
+// should call config.Load directly and treat any error as "no existing
+// config" without invoking this warn/backup path.
+func loadConfigOrWarn(c *cobra.Command, cfgPath string) config.Config {
+	cfg, err := config.Load(cfgPath)
+	if err == nil {
+		return cfg
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return config.Default()
+	}
+
+	fmt.Fprintf(c.ErrOrStderr(), "Warning: existing config at %s could not be loaded (%v); resetting to defaults.\n", cfgPath, err)
+	if data, readErr := os.ReadFile(cfgPath); readErr == nil {
+		backupPath := fmt.Sprintf("%s.bak.%d", cfgPath, time.Now().UnixNano())
+		if writeErr := os.WriteFile(backupPath, data, 0o600); writeErr == nil {
+			fmt.Fprintf(c.ErrOrStderr(), "Warning: backed up the unreadable config to %s before overwriting it.\n", backupPath)
+		} else {
+			fmt.Fprintf(c.ErrOrStderr(), "Warning: could not back up the unreadable config at %s (%v) — proceeding without a backup.\n", cfgPath, writeErr)
+		}
+	}
+	return config.Default()
 }
 
 // setupPromptBasicBackend shows the standard 4-option backend menu.
@@ -692,10 +727,7 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 
 	// Persist the mode via config.
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg, loadErr := config.Load(cfgPath)
-	if loadErr != nil {
-		cfg = config.Default()
-	}
+	cfg := loadConfigOrWarn(c, cfgPath)
 	cfg.Mode = answer
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "  Warning: could not persist operating mode: %v\n", saveErr)
@@ -960,10 +992,7 @@ func setupRunReferenceBranch(c *cobra.Command, ctx context.Context) error {
 
 	// Step 4: persist the URI to config so it can be referenced later.
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
-	cfg, loadErr := config.Load(cfgPath)
-	if loadErr != nil {
-		cfg = config.Default()
-	}
+	cfg := loadConfigOrWarn(c, cfgPath)
 	cfg.DefaultProviderRef = uri
 	if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "  Error: could not persist provider-ref URI: %v\n", saveErr)
