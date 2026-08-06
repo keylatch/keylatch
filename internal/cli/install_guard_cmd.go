@@ -27,7 +27,7 @@ from an LLM agent. Supported agents:
   aider         pre-tool-use-hook in ~/.aider.conf.yml
   windsurf      Manual — set CREDENTIALS_LLM_SESSION=windsurf in shell rc
   codex         PreToolUse hook in ~/.codex/hooks.json
-  copilot       Shell wrapper (native hook path unconfirmed)
+  copilot       Shell wrapper (patches shell rc to intercept copilot invocations)
   gemini        BeforeTool hook in ~/.gemini/settings.json
   opencode      TypeScript plugin (tool.execute.before hook)
   antigravity   Manual — set CREDENTIALS_LLM_SESSION=antigravity in shell rc
@@ -175,9 +175,8 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 		fmt.Fprintln(w, "Guard installed for Codex CLI.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
 	case guard.AgentCopilot:
-		fmt.Fprintln(w, "Installing shell wrapper (native Copilot CLI hook config path unconfirmed).")
+		fmt.Fprintln(w, "Installing shell wrapper for GitHub Copilot CLI.")
 		fmt.Fprintln(w, "Wrapper intercepts copilot invocations.")
-		fmt.Fprintln(w, "For native hook support verify current docs at keylatch.dev/integrations/copilot")
 		if settingsPath != "" {
 			fmt.Fprintf(w, "Shell RC patched: %s\n", settingsPath)
 		}

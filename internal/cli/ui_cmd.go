@@ -191,15 +191,31 @@ func openBrowser(url string) error {
 	return nil
 }
 
-// Approve/deny/recipes stubs — wired to root from ui_cmd_stubs.go.
+// Approve/deny stubs — wired to root from ui_cmd_stubs.go.
 
-// newUIRecipesCmd is a stub for `keylatch recipes`.
+// newUIRecipesCmd returns the `keylatch recipes` command with common usage patterns.
 func newUIRecipesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "recipes",
 		Short: "Show common keylatch usage recipes",
 		RunE: func(c *cobra.Command, _ []string) error {
-			fmt.Fprintln(c.OutOrStdout(), "recipes: coming soon")
+			w := c.OutOrStdout()
+			fmt.Fprintln(w, "Common recipes:")
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Run a command with credentials injected:")
+			fmt.Fprintln(w, "    keylatch run openrouter -- curl https://api.openrouter.ai/...")
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Connect a provider:")
+			fmt.Fprintln(w, "    keylatch connect openrouter")
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Check health:")
+			fmt.Fprintln(w, "    keylatch doctor")
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Install agent guard:")
+			fmt.Fprintln(w, "    keylatch install-guard claude-code")
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Start the gateway:")
+			fmt.Fprintln(w, "    keylatch gateway up")
 			return nil
 		},
 	}
