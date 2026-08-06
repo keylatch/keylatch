@@ -153,7 +153,9 @@ func (le *loggerEmitter) Emit(ctx context.Context, e Event) error {
 	return le.l.Log(ctx, e)
 }
 
-// Event is an audit log entry. All fields are value-free per .
+// Event is an audit log entry. All fields are value-free: paths identify
+// secrets by location only, and Accessor/Actor are HMAC'd identifiers —
+// no raw secret value or plaintext identity is ever recorded.
 type Event struct {
 	// Timestamp is the RFC3339Nano time of the event.
 	Timestamp time.Time `json:"ts"`
