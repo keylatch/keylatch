@@ -726,6 +726,15 @@ Starts the local process gateway. Binds to `127.0.0.1:<port>` by default.
 The gateway reads credentials from the AEAD-encrypted vault at the canonical
 path `<namespace>/<category>/<provider>/<field>` (e.g. `default/ai/openrouter/api_key`).
 
+If a policy file exists at the default policy path (see `keylatch policy`,
+below) when the gateway starts, every request is evaluated against it
+(actor/connection/capability/runtime, sourced only from the verified
+session token and the matched route). No policy file present is
+pass-through allow, not default-deny — see the `default_deny` note in the
+`keylatch policy` section for how to make a policy fail-secure. The policy
+is loaded once at startup; editing the file requires a `gateway down` /
+`gateway up` restart to take effect.
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `7878` | Port to listen on |
@@ -861,6 +870,26 @@ keylatch policy allow <actor> <path> [--capability <cap>] [--command <cmd>] [--t
 keylatch policy list [--actor <actor>] [--json]
 keylatch policy revoke <id>
 ```
+
+**`default_deny` defaults to `false`.** A policy file that only lists
+allow-style rules (no `"default_deny": true`) falls through to
+default-**allow** for every request that doesn't match any rule — not
+default-deny. If you're authoring a deny-only or allow-list policy (e.g.
+"only these connections/capabilities may be used, deny everything else"),
+you must set `"default_deny": true` explicitly for the policy to actually
+be fail-secure; omitting it is a common authoring mistake that silently
+allows everything unlisted. This applies to both the gateway (`keylatch
+gateway up`, below) and direct/CLI policy enforcement.
+
+Two other constraints specific to a **gateway-loaded** policy
+(`gateway up`'s `PolicyPath`, see below):
+
+- `"mode": "permissive"` is rejected at gateway startup — the gateway can
+  always receive LLM-session requests, which permissive mode forbids.
+- Rules with a `commands` or `cwds` constraint are rejected at gateway
+  startup — the gateway has no shell command or working directory to match
+  against, so such a rule (typically copied from a rule meant for CLI
+  enforcement) can never match gateway traffic.
 
 ---
 
