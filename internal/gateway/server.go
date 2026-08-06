@@ -218,6 +218,25 @@ func New(opts ServerOptions) (*Server, error) {
 						"(the gateway can always receive LLM-session requests, which permissive mode forbids; use %q instead)",
 					opts.PolicyPath, p.Mode, policy.ModeEnforcing)
 			}
+			// Review finding (2026-08-06, non-blocking-1): the gateway's
+			// policy.Request never sets Command/CWD (handler.go's Step 6 —
+			// there is no shell command or working directory for an HTTP
+			// request), so a rule with a non-empty Commands or CWDs
+			// constraint can never match gateway traffic (ruleMatches
+			// treats a non-empty pattern list as required, and
+			// match.MatchCommand("", nil)/match.MatchCWD(pattern, "") only
+			// ever succeed for a bare "*"). A rule authored for CLI
+			// enforcement (internal/runner.CheckPolicy, which does
+			// populate both) and reused verbatim for the gateway would
+			// silently never apply, with no error anywhere. Reject such
+			// rules at load time instead.
+			if badRules := rulesWithGatewayUnsupportedFields(p.Rules); len(badRules) > 0 {
+				return nil, fmt.Errorf(
+					"gateway: policy %q has rule(s) with commands/cwds constraints, which never match gateway "+
+						"traffic (the gateway has no shell command or working directory to match against): %s — "+
+						"remove the commands/cwds fields, or use a separate policy file for direct/CLI enforcement",
+					opts.PolicyPath, strings.Join(badRules, ", "))
+			}
 			loadedPolicy = &p
 		case errors.Is(err, fs.ErrNotExist):
 			// Not configured yet — pass-through preserved.
@@ -308,6 +327,26 @@ func New(opts ServerOptions) (*Server, error) {
 	}
 
 	return s, nil
+}
+
+// rulesWithGatewayUnsupportedFields returns the IDs (or index if ID is
+// empty) of every rule with a non-empty Commands or CWDs constraint —
+// fields the gateway's policy.Request never populates, so such rules can
+// never match gateway traffic. See the New() call site for the full
+// rationale (review finding, 2026-08-06, non-blocking-1).
+func rulesWithGatewayUnsupportedFields(rules []policy.Rule) []string {
+	var bad []string
+	for i, rule := range rules {
+		if len(rule.Commands) == 0 && len(rule.CWDs) == 0 {
+			continue
+		}
+		id := rule.ID
+		if id == "" {
+			id = fmt.Sprintf("rules[%d]", i)
+		}
+		bad = append(bad, id)
+	}
+	return bad
 }
 
 // Serve starts the HTTP server and blocks until ctx is cancelled.
