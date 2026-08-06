@@ -6,6 +6,11 @@ import "errors"
 
 var errNotSupported = errors.New("not supported on this platform")
 
+// launchdServiceLabel is a stub on non-Darwin platforms.
+func launchdServiceLabel() string {
+	return ""
+}
+
 // launchdPlistPath is a stub on non-Darwin platforms.
 func launchdPlistPath() string {
 	return ""

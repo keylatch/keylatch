@@ -4,6 +4,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,9 +112,13 @@ func TestNewGatewayInstallCmd_MockedLaunchctlNeverInvokesReal(t *testing.T) {
 
 	desktopAppRunningFunc = func() bool { return false }
 
-	var gotArgs []string
+	var calls [][]string
 	launchctlRunFunc = func(args ...string) ([]byte, error) {
-		gotArgs = args
+		calls = append(calls, args)
+		if len(args) > 0 && args[0] == "list" {
+			// Not loaded yet — `launchctl list <label>` exits non-zero.
+			return nil, errors.New("exit status 1")
+		}
 		return []byte("ok"), nil
 	}
 
@@ -141,10 +146,68 @@ func TestNewGatewayInstallCmd_MockedLaunchctlNeverInvokesReal(t *testing.T) {
 		t.Fatalf("RunE: %v", err)
 	}
 
-	if len(gotArgs) < 2 || gotArgs[0] != "load" || gotArgs[1] != "-w" {
-		t.Errorf("launchctlRunFunc args: got %v, want [\"load\" \"-w\" <plistPath>]", gotArgs)
+	if len(calls) != 2 {
+		t.Fatalf("launchctlRunFunc: got %d calls, want 2 (list, then load): %v", len(calls), calls)
+	}
+	if calls[0][0] != "list" {
+		t.Errorf("first launchctlRunFunc call: got %v, want [\"list\" <label>]", calls[0])
+	}
+	if len(calls[1]) < 2 || calls[1][0] != "load" || calls[1][1] != "-w" {
+		t.Errorf("second launchctlRunFunc call: got %v, want [\"load\" \"-w\" <plistPath>]", calls[1])
 	}
 	if !strings.Contains(out.String(), "keylatchd installed and loaded") {
 		t.Errorf("expected success message, got: %q", out.String())
+	}
+}
+
+// TestNewGatewayInstallCmd_SkipsLoadWhenAlreadyLoaded verifies the
+// idempotency guard: when `launchctl list <label>` reports the label is
+// already loaded (exit 0), RunE must print a "skipping" message and never
+// call `launchctl load -w` at all — re-running `gateway install` on an
+// already-installed daemon must not risk the "service already loaded" hard
+// failure some macOS versions return from `launchctl load`.
+func TestNewGatewayInstallCmd_SkipsLoadWhenAlreadyLoaded(t *testing.T) {
+	origDesktopApp := desktopAppRunningFunc
+	origLaunchctl := launchctlRunFunc
+	t.Cleanup(func() {
+		desktopAppRunningFunc = origDesktopApp
+		launchctlRunFunc = origLaunchctl
+	})
+
+	desktopAppRunningFunc = func() bool { return false }
+
+	var calls [][]string
+	launchctlRunFunc = func(args ...string) ([]byte, error) {
+		calls = append(calls, args)
+		if len(args) > 0 && args[0] == "list" {
+			// Already loaded — `launchctl list <label>` exits 0.
+			return []byte("{ \"PID\" = 1; }"), nil
+		}
+		t.Fatalf("launchctl load must not be called when already loaded, got args: %v", args)
+		return nil, nil
+	}
+
+	binDir := t.TempDir()
+	fakeKeylatchd := filepath.Join(binDir, "keylatchd")
+	if err := os.WriteFile(fakeKeylatchd, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write fake keylatchd: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HOME", t.TempDir())
+
+	cmd := newGatewayInstallCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("RunE: %v", err)
+	}
+
+	if len(calls) != 1 || calls[0][0] != "list" {
+		t.Fatalf("launchctlRunFunc calls: got %v, want exactly one [\"list\" <label>] call", calls)
+	}
+	if !strings.Contains(out.String(), "already installed and loaded") {
+		t.Errorf("expected already-loaded skip message, got: %q", out.String())
 	}
 }

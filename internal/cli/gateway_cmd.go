@@ -82,6 +82,17 @@ func newGatewayInstallCmd() *cobra.Command {
 				return nil
 			}
 
+			// Idempotency check: `launchctl load -w` on an already-loaded
+			// label can hard-error on some macOS versions ("service already
+			// loaded") even though nothing is actually wrong. `launchctl
+			// list <label>` exits 0 iff the label is currently loaded — skip
+			// the load call entirely in that case rather than risking a
+			// spurious failure on a harmless re-run.
+			if _, err := launchctlRunFunc("list", launchdServiceLabel()); err == nil {
+				fmt.Fprintf(c.OutOrStdout(), "  keylatchd already installed and loaded (label: %s) — skipping\n", launchdServiceLabel())
+				return nil
+			}
+
 			if out, err := launchctlRunFunc("load", "-w", plistPath); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "  gateway install: launchctl load: %v\n", err)
 				if len(out) > 0 {
