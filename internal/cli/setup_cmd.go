@@ -525,7 +525,7 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	fmt.Fprintln(c.OutOrStdout(), "    5)  proton-pass     — Proton Pass CLI")
 	fmt.Fprintln(c.OutOrStdout(), "    6)  keeper          — Keeper Commander CLI")
 	fmt.Fprintln(c.OutOrStdout(), "    7)  lastpass        — LastPass CLI")
-	fmt.Fprintln(c.OutOrStdout(), "    8)  vault           — HashiCorp Vault")
+	fmt.Fprintln(c.OutOrStdout(), "    8)  vault           — HashiCorp Vault (credential storage — not `keylatch backend vault`, which is root-of-trust key-wrapping)")
 	fmt.Fprintln(c.OutOrStdout(), "    9)  aws-sm          — AWS Secrets Manager")
 	fmt.Fprintln(c.OutOrStdout(), "    10) gcp-sm          — GCP Secret Manager")
 	fmt.Fprintln(c.OutOrStdout(), "    11) azure-kv        — Azure Key Vault")

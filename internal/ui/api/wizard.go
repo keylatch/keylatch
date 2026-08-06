@@ -117,7 +117,7 @@ var backendMeta = map[string]struct{ display, hint string }{
 	"keychain":   {"macOS Keychain", ""},
 	"op":         {"1Password CLI", "Install: brew install 1password-cli"},
 	"bw":         {"Bitwarden CLI", "Install: brew install bitwarden-cli"},
-	"vault":      {"HashiCorp Vault", ""},
+	"vault":      {"HashiCorp Vault", "Credential storage backend — not the same as `keylatch backend vault` (root-of-trust key-wrapping)"},
 	"aws-sm":     {"AWS Secrets Manager", ""},
 	"op-connect": {"1Password Connect", ""},
 	"gcp-sm":     {"GCP Secret Manager", ""},
