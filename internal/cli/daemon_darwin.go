@@ -42,6 +42,12 @@ const launchdPlistContentTpl = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
+// launchdServiceLabel returns the launchd service label used to identify
+// keylatchd (e.g. for `launchctl list <label>`).
+func launchdServiceLabel() string {
+	return launchdLabel
+}
+
 // launchdPlistPath returns the canonical path for the keylatchd launchd plist.
 func launchdPlistPath() string {
 	return os.ExpandEnv("$HOME/Library/LaunchAgents/" + launchdPlistName)
