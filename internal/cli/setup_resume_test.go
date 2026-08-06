@@ -184,3 +184,32 @@ func TestSetupResume_DeclineSwitch_KeepsOldBackend(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "op", cfg.Backend)
 }
+
+// TestSetupSecurityBlockMessage_NamesTriggeringSignal verifies the LLM
+// session guard explains itself with the concrete env var that fired,
+// instead of a generic refusal (M8).
+func TestSetupSecurityBlockMessage_NamesTriggeringSignal(t *testing.T) {
+	env := func(k string) string {
+		if k == "CLAUDE_CODE" {
+			return "1"
+		}
+		return ""
+	}
+
+	msg := setupSecurityBlockMessage(env)
+	require.Contains(t, msg, "must be run interactively")
+	require.Contains(t, msg, "CLAUDE_CODE")
+	require.Contains(t, msg, "--headless")
+}
+
+// TestSetupSecurityBlockMessage_NoEnvSignal covers the case where the block
+// came from a stronger signal than an env var (ticket/daemon) — Reasons()
+// reports nothing, so the message must not claim a specific env var fired.
+func TestSetupSecurityBlockMessage_NoEnvSignal(t *testing.T) {
+	env := func(string) string { return "" }
+
+	msg := setupSecurityBlockMessage(env)
+	require.Contains(t, msg, "must be run interactively")
+	require.Contains(t, msg, "not an environment variable")
+	require.Contains(t, msg, "--headless")
+}
