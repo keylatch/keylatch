@@ -193,7 +193,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/sdk/") {
 			policyRuntime = string(policy.RuntimeGatewaySDK)
 		}
-		decision := s.policy.Check(policy.Request{
+		decision := checkPolicySafe(*s.policy, policy.Request{
 			Actor:      t.Actor,
 			Connection: rt.Provider,
 			Capability: rt.Capability,
@@ -519,6 +519,31 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 // isErr checks errors with errors.Is semantics.
 func isErr(err, target error) bool {
 	return errors.Is(err, target)
+}
+
+// checkPolicySafe evaluates p.Check(req) with a recover() guard, mirroring
+// internal/cli/policy_cmd.go's identical wrapping of the same call.
+//
+// Review finding (2026-08-06, blocking, belt-and-braces layer): policy.Check
+// panics whenever req.LLMSession && p.Mode == ModePermissive. gateway.New
+// already rejects ModePermissive policies at load time so this should be
+// unreachable in practice, but Step 6 is a network-reachable call site —
+// an unguarded panic here would surface as a bare connection reset with no
+// 403 body and no audit event (Go's net/http recovers per-connection, so
+// the process survives, but the request does not get a proper response).
+// If p.Check ever panics for any reason — including future policy-engine
+// changes this call site doesn't know about — convert it to an explicit
+// deny instead of letting it propagate.
+func checkPolicySafe(p policy.Policy, req policy.Request) (d policy.Decision) {
+	defer func() {
+		if r := recover(); r != nil {
+			d = policy.Decision{
+				Allow:  false,
+				Reason: fmt.Sprintf("policy evaluation panicked: %v", r),
+			}
+		}
+	}()
+	return p.Check(req)
 }
 
 // logAudit writes an audit event; safe when AuditLogger is nil.
