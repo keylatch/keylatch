@@ -47,6 +47,26 @@ func TestReview_SharedSecret_Rotate(t *testing.T) {
 	}
 }
 
+// TestReview_ActiveItem_Keep verifies the default case in Review's switch —
+// an item that is neither stale nor a shared secret is recommended "keep".
+func TestReview_ActiveItem_Keep(t *testing.T) {
+	items := []inventory.Item{
+		{ID: "grant-1", Type: inventory.ItemGrant, OwnerHMAC: "hmac-1", Stale: false, CreatedAt: time.Now()},
+	}
+	tt := &team.Team{ID: "team-test"}
+
+	results, err := review.Review(context.Background(), tt, items)
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Action != "keep" {
+		t.Errorf("active item action = %q, want keep", results[0].Action)
+	}
+}
+
 // TestRevokeUnused_StaleGrant_ReturnsExplicitError verifies that a stale
 // grant-type item produces an explicit error naming the item (M9a) instead
 // of the previous silent-no-op "success" — reaching this call site with a
