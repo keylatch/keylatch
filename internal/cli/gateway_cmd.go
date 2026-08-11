@@ -516,18 +516,87 @@ func resolveAndValidateGatewayBindAddr(port int, listenAddr string, unsafeBindAl
 
 // --- gateway down ---
 
+// gatewayDownAction is the decision resolveGatewayDownAction returns to RunE.
+type gatewayDownAction int
+
+const (
+	// gatewayDownProceed: process identity verification confirmed the PID
+	// belongs to a keylatch process (or verification is unsupported on this
+	// platform, or was overridden with --force) — safe to signal it.
+	gatewayDownProceed gatewayDownAction = iota
+	// gatewayDownStalePID: verification confirmed the PID does NOT belong to
+	// a keylatch process — do not signal an unrelated process; just clean up
+	// the stale PID file.
+	gatewayDownStalePID
+	// gatewayDownRefuse: verification was inconclusive and --force was not
+	// given — refuse to signal on unverifiable evidence rather than risk
+	// killing an unrelated process that happens to have reused the PID.
+	gatewayDownRefuse
+)
+
+// resolveGatewayDownAction mirrors resolveGatewayUpRunning's process-identity
+// verification (L2) for the stop path: IsRunning only signal-0-probes the
+// pid, so a recycled pid can belong to a completely unrelated process by the
+// time `gateway down` runs — sending SIGTERM there kills someone else's
+// process instead of doing nothing. `gateway up --force` already gets this
+// protection; `down` previously had none.
+//
+// Kept as a standalone, side-effect-isolated function (rather than inlined
+// in RunE) so it is unit-testable with a mocked runner and without sending a
+// real signal.
+func resolveGatewayDownAction(ctx context.Context, pid int, pidPath string, force bool, runner kexec.CommandRunner, psBin string) (action gatewayDownAction, note string) {
+	if runtime.GOOS == "windows" {
+		// ps-based identity verification is unavailable on this platform;
+		// behave as before (matches resolveGatewayUpRunning's Windows note,
+		// which tells users `gateway down` still works unconditionally).
+		return gatewayDownProceed, ""
+	}
+
+	matched, checked := gateway.VerifyProcessIdentity(ctx, runner, psBin, pid)
+	switch {
+	case checked && matched:
+		return gatewayDownProceed, ""
+	case checked && !matched:
+		return gatewayDownStalePID, fmt.Sprintf(
+			"pid %d does not look like a keylatch process (stale PID file) — not sending a signal to it; removing the stale PID file instead.", pid)
+	default:
+		if force {
+			return gatewayDownProceed, fmt.Sprintf(
+				"could not verify process identity for pid %d — proceeding anyway because --force was given.", pid)
+		}
+		return gatewayDownRefuse, fmt.Sprintf(
+			"could not verify process identity for pid %d — refusing to signal it on inconclusive evidence. If you have confirmed pid %d is the keylatch gateway, retry with --force, or stop it yourself and remove %s.", pid, pid, pidPath)
+	}
+}
+
 func newGatewayDownCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "down",
 		Short: "Stop the running gateway",
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 			pidPath := paths.GatewayPID(env)
+			force, _ := c.Flags().GetBool("force")
 
 			pid, running := gateway.IsRunning(pidPath)
 			if !running {
 				fmt.Fprintln(c.OutOrStdout(), "gateway: not running (no PID file)")
 				return nil
+			}
+
+			action, note := resolveGatewayDownAction(c.Context(), pid, pidPath, force, kexec.DefaultRunner, kexec.Resolve("ps"))
+			switch action {
+			case gatewayDownStalePID:
+				fmt.Fprintf(c.ErrOrStderr(), "gateway down: %s\n", note)
+				if err := gateway.RemovePID(pidPath); err != nil {
+					return fmt.Errorf("gateway down: %w", err)
+				}
+				return nil
+			case gatewayDownRefuse:
+				return fmt.Errorf("gateway down: %s", note)
+			}
+			if note != "" {
+				fmt.Fprintf(c.OutOrStdout(), "gateway: %s\n", note)
 			}
 
 			if err := gateway.SendTerm(pidPath); err != nil {
@@ -537,6 +606,8 @@ func newGatewayDownCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("force", false, "signal the PID even when process identity could not be verified")
+	return cmd
 }
 
 // --- gateway status ---

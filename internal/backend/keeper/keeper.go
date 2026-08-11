@@ -128,6 +128,14 @@ func (b *KeeperBackend) Get(ctx context.Context, path string) ([]byte, backend.M
 			return result{err: b.mapGetError(string(stderr))}, nil
 		}
 
+		// exitCode == 0 with empty stdout indicates an expired/stale Keeper
+		// session that keeper did not surface as a non-zero exit — without
+		// this guard json.Unmarshal on empty bytes produces a confusing
+		// parse error instead of actionable login guidance.
+		if len(stdout) == 0 {
+			return result{err: fmt.Errorf("%w: Keeper session unavailable; run 'keeper login'", backend.ErrLocked)}, nil
+		}
+
 		var record keeperGetResult
 		if err := json.Unmarshal(stdout, &record); err != nil {
 			return result{err: fmt.Errorf("%w: keeper get failed to parse response", backend.ErrUnavailable)}, nil
@@ -219,6 +227,12 @@ func (b *KeeperBackend) List(ctx context.Context, prefix string) ([]backend.Entr
 			return nil, fmt.Errorf("%w: Keeper session unavailable; run 'keeper login'", backend.ErrLocked)
 		}
 		return nil, fmt.Errorf("%w: keeper list failed", backend.ErrUnavailable)
+	}
+
+	// See Get: exitCode == 0 with empty stdout indicates an expired/stale
+	// session, not valid empty JSON.
+	if len(stdout) == 0 {
+		return nil, fmt.Errorf("%w: Keeper session unavailable; run 'keeper login'", backend.ErrLocked)
 	}
 
 	var records []keeperRecord

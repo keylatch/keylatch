@@ -129,6 +129,14 @@ func (b *ProtonPassBackend) Get(ctx context.Context, path string) ([]byte, backe
 			return result{err: b.mapGetError(string(stderr))}, nil
 		}
 
+		// exitCode == 0 with empty stdout indicates an expired/stale Proton
+		// Pass session that pass-cli did not surface as a non-zero exit —
+		// without this guard json.Unmarshal on empty bytes produces a
+		// confusing parse error instead of actionable signin guidance.
+		if len(stdout) == 0 {
+			return result{err: fmt.Errorf("%w: not signed in to Proton Pass; run 'pass-cli auth login'", backend.ErrLocked)}, nil
+		}
+
 		var item passGetResult
 		if err := json.Unmarshal(stdout, &item); err != nil {
 			return result{err: fmt.Errorf("%w: proton-pass get failed to parse response", backend.ErrUnavailable)}, nil
@@ -219,6 +227,12 @@ func (b *ProtonPassBackend) List(ctx context.Context, prefix string) ([]backend.
 			return nil, fmt.Errorf("%w: not signed in to Proton Pass; run 'pass-cli auth login'", backend.ErrLocked)
 		}
 		return nil, fmt.Errorf("%w: proton-pass list failed", backend.ErrUnavailable)
+	}
+
+	// See Get: exitCode == 0 with empty stdout indicates an expired/stale
+	// session, not valid empty JSON.
+	if len(stdout) == 0 {
+		return nil, fmt.Errorf("%w: not signed in to Proton Pass; run 'pass-cli auth login'", backend.ErrLocked)
 	}
 
 	var items []passItem

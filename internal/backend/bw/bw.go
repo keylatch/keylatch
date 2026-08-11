@@ -375,6 +375,12 @@ func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.E
 		return nil, fmt.Errorf("bw List: bw exited %d", exitCode)
 	}
 
+	// See fetchItemDirect: exitCode == 0 with empty stdout indicates a
+	// locked/stale session, not valid empty JSON.
+	if len(stdout) == 0 {
+		return nil, b.lockedGuidance()
+	}
+
 	var items []bwItem
 	if err := json.Unmarshal(stdout, &items); err != nil {
 		return nil, fmt.Errorf("bw List: decode response: %w", err)
@@ -496,6 +502,15 @@ func (b *BitwardenBackend) fetchItemDirect(ctx context.Context, connection strin
 		return bwItem{}, fmt.Errorf("bw: get item exited %d", exitCode)
 	}
 
+	// exitCode == 0 with empty stdout happens when the vault is locked or
+	// the session is stale — the bw CLI does not always signal this via a
+	// non-zero exit + stderr message. Without this guard, json.Unmarshal
+	// on empty bytes produces a confusing "unexpected end of JSON input"
+	// instead of actionable locked-vault guidance.
+	if len(stdout) == 0 {
+		return bwItem{}, b.lockedGuidance()
+	}
+
 	var item bwItem
 	if err := json.Unmarshal(stdout, &item); err != nil {
 		return bwItem{}, fmt.Errorf("bw: decode item: %w", err)
@@ -556,6 +571,11 @@ func (b *BitwardenBackend) resolveFolderID(ctx context.Context, name string) (st
 	stdout, _, exitCode, err := b.runWithSession(ctx, []string{"list", "folders"}, nil)
 	if err != nil || exitCode != 0 {
 		return "", fmt.Errorf("bw: list folders failed")
+	}
+	// See fetchItemDirect: exitCode == 0 with empty stdout indicates a
+	// locked/stale session, not valid empty JSON.
+	if len(stdout) == 0 {
+		return "", b.lockedGuidance()
 	}
 	var folders []bwFolder
 	if err := json.Unmarshal(stdout, &folders); err != nil {
