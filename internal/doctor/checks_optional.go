@@ -731,7 +731,7 @@ type namedCheck struct {
 
 // gatherChecks returns all checks in canonical order as namedCheck values.
 // The section field enables pre-execution category filtering.
-func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
+func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) []namedCheck {
 	return []namedCheck{
 		// F1/F2: bootstrap presence checks — run first so other checks have context.
 		{"environment", checkBootstrapKeyring(env)},
@@ -748,7 +748,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"backends", checkBackendSelected(env)},
 		{"backends", checkBackendKeychain(probe)},
 		{"backends", checkBackendOP(env, probe)},
-		{"backends", checkBackendOPAuth(env, probe)},
+		{"backends", checkBackendOPAuth(env, probe, runner)},
 		{"backends", checkBackendBW(env, probe)},
 		{"backends", checkBackendBWSession(env, probe)},
 		{"backends", checkBackendProtonPass(probe)},
@@ -759,7 +759,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe) []namedCheck {
 		{"daemon", checkExternalSOPS(probe)},
 		// External password-manager CLI checks (op, aws, vault) — skipped when no
 		// --provider-ref connections are configured.
-		{"external", checkExternalOP(env, probe)},
+		{"external", checkExternalOP(env, probe, runner)},
 		{"external", checkExternalAWSSM(env, probe)},
 		{"external", checkExternalHashiVault(env, probe)},
 		{"providers", checkACLKeychainUnlock()},

@@ -14,9 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-08-11
+
 ### Security
 
 - Gateway request handling now evaluates a real request policy (`internal/policy`) at Step 6 instead of an unconditional pass-through. When `keylatch gateway up` is started with a configured policy file, matching rules are enforced and violations are denied (403 `policy_denied`) with an audit event; requests requiring approval (`rule.Approval`/`ApprovalRootReq`) are denied (403 `policy_approval_required`) since the gateway has no synchronous approval mechanism. Operators who have never configured a policy see no behavior change (pass-through allow is preserved).
+- `keylatch doctor`'s 1Password auth checks (`backend.op.auth`, `external.op`) previously reported OK based only on `OP_SERVICE_ACCOUNT_TOKEN` being non-empty (`backend.op.auth`) or `op --version` succeeding (`external.op`) — neither actually confirmed the token/session authenticates. A revoked or expired token reported a false OK. Both checks now run `op whoami --format=json` and report failure/warn on a non-zero exit.
+- `keylatch gateway down` sent SIGTERM to whatever process currently held the gateway's PID with no identity verification — unlike `gateway up --force`, which refuses to act on an unverified/mismatched PID. A stale PID file (confirmed to occur in practice) could cause `gateway down` to signal an unrelated process. `down` now runs the same process-identity verification as `up`: a confirmed mismatch is treated as a stale PID (cleaned up, nothing signaled); inconclusive evidence refuses by default (new `--force` to override), rather than guessing.
+
+### Fixed
+
+- `bw`/`op`/`keeper`/`lastpass`/`proton-pass` backends could report a cryptic `"unexpected end of JSON input"` instead of actionable unlock/signin guidance when the CLI exits 0 with empty stdout (a locked vault or expired session that does not always surface as a non-zero exit). All five backends' `Get`/`List` (and bw's `resolveFolderID`) now detect empty stdout before decoding and return the same locked/auth-failure guidance already used for non-zero exits.
+- `keylatch setup`'s backend-setup step (`[2/5]`) silently configured `bw` and `op` with zero readiness validation — unlike `keychain`, which already verified/initialized before proceeding. A locked Bitwarden vault or signed-out 1Password session would sail through setup and only surface as a confusing failure at step 4 (connect provider). `bw` now prompts to unlock and caches a session inline; `op` checks auth readiness and warns clearly if not signed in. Both fall back to the encrypted file backend on decline/failure, matching the existing `keychain` UX. Scoped to fresh/changed backend selection only — resuming setup with an already-configured, unchanged backend is unaffected.
+- `keylatch connect custom` could silently orphan a stored secret: the connection-metadata write (needed for `list`/`doctor` to recognize the connection) had its error discarded, so a failure there left the secret stored-but-invisible while `connect` still reported success. The metadata write's error is now checked, with rollback of the just-stored secret on failure.
 
 ### Changed
 

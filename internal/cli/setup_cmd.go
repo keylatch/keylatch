@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
+	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
@@ -519,6 +521,67 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		}
 	}
 
+	// Bitwarden backend requires an unlocked vault before secrets can be
+	// stored. Without this, step 4 (connect provider) fails with a
+	// confusing decode error instead of a clear unlock prompt. Only runs
+	// when bw is newly chosen (fresh install or an explicit switch) — a
+	// resume that keeps an already-configured bw backend unchanged must not
+	// introduce a new prompt (matches the keep-current resume contract).
+	if chosen == "bw" && chosen != configuredBackend {
+		fmt.Fprintln(c.OutOrStdout(), "  Bitwarden vault must be unlocked to store credentials.")
+		if unlockErr := setupUnlockBW(c, ctx, llmcontext.DefaultLookup); unlockErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Error: %v\n", unlockErr)
+			fmt.Fprintln(c.ErrOrStderr(), "  Bitwarden vault could not be unlocked in this terminal.")
+			fmt.Fprintf(c.OutOrStdout(), "  Use encrypted file backend instead? (Y/n): ")
+			ans := strings.ToLower(strings.TrimSpace(readLine()))
+			if ans == "" || ans == "y" || ans == "yes" {
+				chosen = "file"
+				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
+				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
+					DryRun:  false,
+					Backend: chosen,
+					Env:     llmcontext.DefaultLookup,
+				}); fallbackErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
+					return "", fmt.Errorf("bw unlock failed (%w); fallback bootstrap failed: %w", unlockErr, fallbackErr)
+				}
+			} else {
+				return "", fmt.Errorf("bw unlock: %w", unlockErr)
+			}
+		}
+	}
+
+	// 1Password backend requires an authenticated session (service-account
+	// token, or a prior `op signin`/biometric unlock) before secrets can be
+	// stored. keylatch cannot safely automate op's signin flow — it varies
+	// by account setup (browser, biometric, device auth) — so this only
+	// checks readiness and warns rather than attempting to drive it. Only
+	// runs when op is newly chosen (see bw comment above for why resume
+	// with an unchanged backend must not introduce a new prompt).
+	if chosen == "op" && chosen != configuredBackend {
+		if authErr := checkOPAuthReady(ctx, llmcontext.DefaultLookup); authErr != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Warning: 1Password is not signed in (%v).\n", authErr)
+			fmt.Fprintln(c.ErrOrStderr(), "  Run `op signin` (or set OP_SERVICE_ACCOUNT_TOKEN) before connecting a")
+			fmt.Fprintln(c.ErrOrStderr(), "  provider, or step 4 below will fail.")
+			fmt.Fprintf(c.OutOrStdout(), "  Use encrypted file backend instead? (Y/n): ")
+			ans := strings.ToLower(strings.TrimSpace(readLine()))
+			if ans == "" || ans == "y" || ans == "yes" {
+				chosen = "file"
+				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
+				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
+					DryRun:  false,
+					Backend: chosen,
+					Env:     llmcontext.DefaultLookup,
+				}); fallbackErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
+					return "", fmt.Errorf("op not authenticated (%w); fallback bootstrap failed: %w", authErr, fallbackErr)
+				}
+			}
+			// Otherwise proceed with op anyway — the user may complete
+			// signin themselves before reaching step 4.
+		}
+	}
+
 	if err := persistSetupBackend(c, chosen); err != nil {
 		return "", err
 	}
@@ -543,6 +606,69 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 
 	fmt.Fprintf(c.OutOrStdout(), "  Backend %q configured.\n\n", chosen)
 	return chosen, nil
+}
+
+// setupUnlockBW prompts for the Bitwarden master password on the terminal,
+// unlocks the vault, and caches the resulting session token so subsequent
+// keylatch commands (including step 4's `connect`) pick it up automatically.
+// Mirrors `keylatch bw unlock` (internal/cli/bw_cmds.go) but returns a plain
+// error for setup's own fallback-to-file handling instead of an exit-code
+// string, since setup already guarantees an interactive, non-LLM session.
+func setupUnlockBW(c *cobra.Command, ctx context.Context, env llmcontext.Lookup) error {
+	cfg := loadCLIConfig(c)
+	cfg.Backend = "bw"
+	dispatch.ClearCached()
+
+	b, err := dispatch.Select(ctx, cfg, env)
+	if err != nil {
+		if errors.Is(err, backend.ErrUnavailable) {
+			return fmt.Errorf("Bitwarden CLI not available. Run: brew install bitwarden-cli")
+		}
+		return err
+	}
+	bwBackend, ok := b.(*bw.BitwardenBackend)
+	if !ok {
+		return fmt.Errorf("backend is not a BitwardenBackend")
+	}
+
+	password, err := promptHidden("  Bitwarden master password")
+	if err != nil {
+		return fmt.Errorf("failed to read master password: %w", err)
+	}
+	token, unlockErr := bwBackend.Unlock(ctx, password)
+	zeroBytes(password)
+	if unlockErr != nil {
+		if errors.Is(unlockErr, backend.ErrLocked) {
+			return fmt.Errorf("unlock failed — invalid master password")
+		}
+		return fmt.Errorf("unlock failed: %w", unlockErr)
+	}
+
+	if err := bw.SaveSession(env, token, bw.DefaultSessionTTL); err != nil {
+		return fmt.Errorf("unlocked but failed to cache session: %w", err)
+	}
+
+	fmt.Fprintf(c.OutOrStdout(), "  Bitwarden vault unlocked; session cached (expires in %s)\n", bw.DefaultSessionTTL)
+	return nil
+}
+
+// checkOPAuthReady reports whether the 1Password CLI has a usable
+// authenticated session (service-account token, or an existing `op signin`/
+// biometric session) by running a cheap `op whoami` probe. Returns nil when
+// ready, or an error describing why it is not.
+func checkOPAuthReady(ctx context.Context, env llmcontext.Lookup) error {
+	if env("OP_SERVICE_ACCOUNT_TOKEN") != "" {
+		return nil
+	}
+	binPath, findErr := exec.LookPath("op")
+	if findErr != nil {
+		return fmt.Errorf("op CLI not found on PATH")
+	}
+	_, _, exitCode, runErr := kexec.DefaultRunner.Run(ctx, binPath, []string{"whoami", "--format=json"}, nil)
+	if runErr != nil || exitCode != 0 {
+		return fmt.Errorf("not signed in")
+	}
+	return nil
 }
 
 func persistSetupBackend(c *cobra.Command, chosen string) error {

@@ -233,9 +233,10 @@ func checkBackendBW(env llmcontext.Lookup, probe kexec.Probe) Check {
 }
 
 // checkBackendOPAuth checks 1Password authentication without exposing the token.
-// It verifies OP_SERVICE_ACCOUNT_TOKEN is set (not empty) and optionally runs
-// `op whoami --format=json` to confirm auth. token value never in output.
-func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
+// It verifies OP_SERVICE_ACCOUNT_TOKEN is set (not empty) and runs
+// `op whoami --format=json` to confirm the token actually authenticates —
+// token value never in output, only its exit-code-derived verdict.
+func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) Check {
 	return func(ctx context.Context) Status {
 		// Only run when op backend is selected.
 		cfgPath := paths.Config(env)
@@ -268,11 +269,12 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// Attempt op whoami to verify the token works.
+		// Resolve the op binary so we can actually verify the token works,
+		// rather than just trusting that it is non-empty.
 		bin := env("KEYLATCH_OP_BIN")
 		if bin == "" {
 			var ok bool
-			bin, ok, _ = probe.Find(ctx, "op") //nolint:ineffassign,staticcheck // SA4006/ineffassign: bin resolved for future exec call
+			bin, ok, _ = probe.Find(ctx, "op")
 			if !ok {
 				return Status{
 					Name:    "backend.op.auth",
@@ -285,11 +287,26 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
+		// Run `op whoami --format=json` to confirm the token actually
+		// authenticates. A revoked/expired OP_SERVICE_ACCOUNT_TOKEN must not
+		// report OK here — that was the entire point of this check's name.
+		_, _, exitCode, runErr := runner.Run(ctx, bin, []string{"whoami", "--format=json"}, nil)
+		if runErr != nil || exitCode != 0 {
+			return Status{
+				Name:    "backend.op.auth",
+				Section: "backends",
+				OK:      false,
+				Detail:  "OP_SERVICE_ACCOUNT_TOKEN is set but `op whoami` failed — token may be revoked or expired",
+				Fix:     "Generate a fresh service account token, or run `op signin` for an interactive session.",
+				Tags:    []string{"backend", "op", "auth"},
+			}
+		}
+
 		return Status{
 			Name:    "backend.op.auth",
 			Section: "backends",
 			OK:      true,
-			Detail:  "OP_SERVICE_ACCOUNT_TOKEN is set (value redacted)",
+			Detail:  "OP_SERVICE_ACCOUNT_TOKEN is set and verified via `op whoami` (value redacted)",
 			Tags:    []string{"backend", "op", "auth"},
 		}
 	}

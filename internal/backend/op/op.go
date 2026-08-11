@@ -243,6 +243,12 @@ func (b *OnePasswordBackend) List(ctx context.Context, prefix string) ([]backend
 		return nil, fmt.Errorf("op List: op exited %d", exitCode)
 	}
 
+	// See fetchItemDirect: exitCode == 0 with empty stdout indicates a
+	// stale/expired session, not valid empty JSON.
+	if len(stdout) == 0 {
+		return nil, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
+	}
+
 	var items []opItem
 	if err := json.Unmarshal(stdout, &items); err != nil {
 		return nil, fmt.Errorf("op List: decode response: %w", err)
@@ -355,6 +361,14 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 		}
 		// Generic failure — do not expose raw stderr.
 		return opItem{}, fmt.Errorf("op: item get exited %d", exitCode)
+	}
+
+	// exitCode == 0 with empty stdout indicates a stale/expired session
+	// that op did not surface as a non-zero exit — without this guard the
+	// decode attempts below fail with a confusing "invalid JSON" error
+	// instead of actionable signin guidance.
+	if len(stdout) == 0 {
+		return opItem{}, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
 	}
 
 	// Try to decode as a single item first.
