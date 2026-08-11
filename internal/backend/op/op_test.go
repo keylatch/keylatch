@@ -60,6 +60,29 @@ func TestOpen_DefaultVault(t *testing.T) {
 	require.NotNil(t, b)
 }
 
+// TestOpen_DefaultRunner covers the Options.Runner == nil default branch —
+// Open must substitute kexec.DefaultRunner without invoking it.
+func TestOpen_DefaultRunner(t *testing.T) {
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Vault: "Keylatch"})
+	require.NoError(t, err)
+	require.NotNil(t, b)
+	assert.Equal(t, "op", b.Name())
+}
+
+// TestOpen_ResolvesBinaryFromPATH covers the Options.Bin == "" branch where
+// kexec.Resolve successfully finds the binary on PATH (as opposed to
+// TestOpen_MissingBinary_ErrUnavailable, which covers the not-found case).
+func TestOpen_ResolvesBinaryFromPATH(t *testing.T) {
+	dir := t.TempDir()
+	fakeBin := filepath.Join(dir, "op")
+	require.NoError(t, os.WriteFile(fakeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	t.Setenv("PATH", dir)
+
+	b, err := op.Open(op.Options{Runner: &kexec.MockRunner{}, Env: func(string) string { return "" }})
+	require.NoError(t, err)
+	require.NotNil(t, b)
+}
+
 func TestOpen_MissingBinary_ErrUnavailable(t *testing.T) {
 	// Resolve is controlled by PATH — use an env that won't find 'op'.
 	// We simulate this by not providing Bin and using a Runner that would fail.
@@ -149,6 +172,98 @@ func TestGet_VaultEnvOverride(t *testing.T) {
 	val, _, err := b.Get(context.Background(), "default/openrouter/api_key")
 	require.NoError(t, err)
 	assert.Equal(t, "KEYLATCH_CANARY_PHASE2_0xDEADBEEF", string(val))
+}
+
+// TestGet_InvalidPath_Error covers Get's parsePath error branch — a path
+// without at least a connection/field segment.
+func TestGet_InvalidPath_Error(t *testing.T) {
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: &kexec.MockRunner{}, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	_, _, err = b.Get(context.Background(), "nopath")
+	require.Error(t, err)
+}
+
+// TestGet_RunnerError_Propagates covers fetchItemDirect's RunEnv-level
+// error branch (distinct from a non-zero exit code).
+func TestGet_RunnerError_Propagates(t *testing.T) {
+	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
+	runner := makeRunner(key, kexec.MockResponse{Err: errors.New("exec failed to start")})
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runner error")
+}
+
+// TestGet_NotFoundStderr_ErrNotFound covers fetchItemDirect's isNotFound
+// stderr-classification branch (distinct from the JSON-empty-array case).
+func TestGet_NotFoundStderr_ErrNotFound(t *testing.T) {
+	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
+	runner := makeRunner(key, kexec.MockResponse{Stderr: []byte("[ERROR] item not found"), ExitCode: 1})
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, backend.ErrNotFound))
+}
+
+// TestGet_AmbiguousStderr_ErrAmbiguous covers fetchItemDirect's stderr-based
+// isAmbiguous branch (distinct from the JSON-array-of->1 case already
+// covered by TestGet_MultipleItems_ErrAmbiguous).
+func TestGet_AmbiguousStderr_ErrAmbiguous(t *testing.T) {
+	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
+	runner := makeRunner(key, kexec.MockResponse{Stderr: []byte("[ERROR] more than one item matches"), ExitCode: 1})
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	var ambig op.ErrAmbiguous
+	require.True(t, errors.As(err, &ambig), "expected ErrAmbiguous, got: %v", err)
+	assert.Equal(t, "openrouter", ambig.Connection)
+}
+
+// TestGet_SingleItemArray_ReturnsItem covers fetchItemDirect's array-decode
+// path when op returns exactly one item wrapped in a JSON array.
+func TestGet_SingleItemArray_ReturnsItem(t *testing.T) {
+	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
+	stdout := []byte(`[{"id":"abc123opitem","title":"openrouter","fields":[{"label":"api_key","value":"sk-solo"}]}]`)
+	runner := makeRunner(key, kexec.MockResponse{Stdout: stdout, ExitCode: 0})
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	val, _, err := b.Get(context.Background(), "default/openrouter/api_key")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-solo", string(val))
+}
+
+// TestGet_EmptyArrayResponse_ErrNotFound covers fetchItemDirect's
+// zero-length-array decode branch.
+func TestGet_EmptyArrayResponse_ErrNotFound(t *testing.T) {
+	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
+	runner := makeRunner(key, kexec.MockResponse{Stdout: []byte(`[]`), ExitCode: 0})
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, backend.ErrNotFound))
+}
+
+// TestGet_InvalidJSONResponse_DecodeError covers fetchItemDirect's final
+// fallback when stdout decodes as neither a single item nor an array.
+func TestGet_InvalidJSONResponse_DecodeError(t *testing.T) {
+	key := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
+	runner := makeRunner(key, kexec.MockResponse{Stdout: []byte("not valid json at all"), ExitCode: 0})
+	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode item response")
 }
 
 // --- List tests ---
