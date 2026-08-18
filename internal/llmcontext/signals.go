@@ -19,4 +19,5 @@ var Signals = []Signal{
 	{EnvKey: "AIDER_SESSION", MatchRule: "non-empty", Label: "AIDER_SESSION"},
 	{EnvKey: "GEMINI_SESSION", MatchRule: "non-empty", Label: "GEMINI_SESSION"},
 	{EnvKey: "OPENCODE_SESSION", MatchRule: "non-empty", Label: "OPENCODE_SESSION"},
+	{EnvKey: "WINDSURF_EXTENSION_ENABLED", MatchRule: "non-empty", Label: "WINDSURF_EXTENSION_ENABLED"},
 }

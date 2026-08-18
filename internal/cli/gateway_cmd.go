@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,6 +22,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
+	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/gateway/docker"
@@ -40,7 +45,69 @@ func newGatewayCmd() *cobra.Command {
 	cmd.AddCommand(newGatewayStatusCmd())
 	cmd.AddCommand(newGatewayTokenCmd())
 	cmd.AddCommand(newGatewayLogsCmd())
+	cmd.AddCommand(newGatewayInstallCmd())
 	return cmd
+}
+
+// desktopAppRunningFunc and launchctlRunFunc are declared as vars (mirroring
+// stdinScannerFn in setup_cmd.go) so tests can substitute fakes without ever
+// touching the real process table or invoking the real launchctl binary.
+var (
+	desktopAppRunningFunc = desktopAppRunning
+	launchctlRunFunc      = func(args ...string) ([]byte, error) {
+		return exec.Command("launchctl", args...).CombinedOutput() //nolint:gosec // args are fixed, non-user-controlled
+	}
+)
+
+// newGatewayInstallCmd returns the `keylatch gateway install` command.
+// On macOS it writes the keylatchd launchd plist and loads it via launchctl.
+// On other platforms it prints an unsupported message.
+func newGatewayInstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Install keylatchd as a launchd service (macOS only)",
+		RunE: func(c *cobra.Command, _ []string) error {
+			if runtime.GOOS != "darwin" {
+				fmt.Fprintln(c.OutOrStdout(), "  gateway install is not supported on this platform")
+				return nil
+			}
+
+			if desktopAppRunningFunc() {
+				fmt.Fprintln(c.OutOrStdout(), "  Keylatch.app is already managing keylatchd — skipping launchd install to avoid a port 7890 conflict.")
+				return nil
+			}
+
+			plistPath := launchdPlistPath()
+			if err := installLaunchdPlist(plistPath); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "  gateway install: %v\n", err)
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+
+			// Idempotency check: `launchctl load -w` on an already-loaded
+			// label can hard-error on some macOS versions ("service already
+			// loaded") even though nothing is actually wrong. `launchctl
+			// list <label>` exits 0 iff the label is currently loaded — skip
+			// the load call entirely in that case rather than risking a
+			// spurious failure on a harmless re-run.
+			if _, err := launchctlRunFunc("list", launchdServiceLabel()); err == nil {
+				fmt.Fprintf(c.OutOrStdout(), "  keylatchd already installed and loaded (label: %s) — skipping\n", launchdServiceLabel())
+				return nil
+			}
+
+			if out, err := launchctlRunFunc("load", "-w", plistPath); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "  gateway install: launchctl load: %v\n", err)
+				if len(out) > 0 {
+					fmt.Fprintf(c.ErrOrStderr(), "  %s\n", strings.TrimSpace(string(out)))
+				}
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+
+			fmt.Fprintf(c.OutOrStdout(), "  keylatchd installed and loaded from %s\n", filepath.Base(plistPath))
+			return nil
+		},
+	}
 }
 
 // --- gateway init ---
@@ -75,18 +142,57 @@ func newGatewayInitCmd() *cobra.Command {
 				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key already exists")
 			}
 
-			// Write gateway config.
+			// Write gateway config. M1: a re-run must not clobber a
+			// previously customised bind/mode — only missing fields are
+			// filled with defaults, existing values are kept as-is.
 			cfgPath := paths.GatewayConfig(env)
-			cfg := map[string]interface{}{
+			defaults := map[string]interface{}{
 				"version": version.Version,
 				"bind":    "127.0.0.1:7878",
 				"mode":    "local_process",
 			}
+
+			cfg := map[string]interface{}{}
+			existed := false
+			if data, readErr := os.ReadFile(cfgPath); readErr == nil {
+				existed = true
+				if jsonErr := json.Unmarshal(data, &cfg); jsonErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: warning: existing config at %s is not valid JSON (%v) — rewriting with defaults\n", cfgPath, jsonErr)
+					cfg = map[string]interface{}{}
+					existed = false
+				}
+			}
+
+			var kept, filled []string
+			for k, v := range defaults {
+				if k == "version" {
+					// version always tracks the current build; it is not a
+					// user-customisable field.
+					cfg[k] = v
+					continue
+				}
+				if _, ok := cfg[k]; ok {
+					kept = append(kept, k)
+					continue
+				}
+				cfg[k] = v
+				filled = append(filled, k)
+			}
+
 			cfgData, _ := json.MarshalIndent(cfg, "", "  ")
 			if err := os.WriteFile(cfgPath, cfgData, 0o600); err != nil {
 				return fmt.Errorf("gateway init: write config: %w", err)
 			}
 			_ = os.Chmod(cfgPath, 0o600)
+
+			if existed && len(kept) > 0 {
+				sort.Strings(kept)
+				fmt.Fprintf(c.OutOrStdout(), "gateway: kept existing values: %s\n", strings.Join(kept, ", "))
+			}
+			if len(filled) > 0 {
+				sort.Strings(filled)
+				fmt.Fprintf(c.OutOrStdout(), "gateway: filled missing fields with defaults: %s\n", strings.Join(filled, ", "))
+			}
 			fmt.Fprintf(c.OutOrStdout(), "gateway: config written to %s\n", cfgPath)
 
 			// Optionally write Docker Compose.
@@ -120,6 +226,7 @@ func newGatewayUpCmd() *cobra.Command {
 		proxyPort     int
 		budgetPerHour float64
 		budgetPerDay  float64
+		force         bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -127,13 +234,25 @@ func newGatewayUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 
-			// Check if gateway is already running.
+			// Check if gateway is already running. L2: with --force, a
+			// "running" pid is not taken at face value — it may be a stale
+			// pid file pointing at a recycled, unrelated process.
 			pidPath := paths.GatewayPID(env)
-			if pid, running := gateway.IsRunning(pidPath); running {
-				fmt.Fprintf(c.ErrOrStderr(), "Error: Gateway is already running (pid: %d).\n\n", pid)
+			action, runningPID, note := resolveGatewayUpRunning(c.Context(), pidPath, force, kexec.DefaultRunner, kexec.Resolve("ps"))
+			switch action {
+			case gatewayUpRefuse:
+				fmt.Fprintf(c.ErrOrStderr(), "Error: Gateway is already running (pid: %d).\n", runningPID)
+				if note != "" {
+					fmt.Fprintf(c.ErrOrStderr(), "  %s\n", note)
+				}
+				fmt.Fprintln(c.ErrOrStderr())
 				fmt.Fprintln(c.ErrOrStderr(), "  Use `keylatch gateway down` to stop it.")
 				os.Exit(exitcode.UserError)
 				return nil
+			case gatewayUpProceed:
+				if note != "" {
+					fmt.Fprintf(c.OutOrStdout(), "gateway: %s\n", note)
+				}
 			}
 
 			if detach {
@@ -255,6 +374,11 @@ func newGatewayUpCmd() *cobra.Command {
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
 				Budget:            budgetCounter,
+				// PolicyPath: default policy location (H7). New() treats a
+				// missing file as "not configured" and stays pass-through —
+				// this does not change behavior for operators who have
+				// never created a policy file.
+				PolicyPath: paths.Policy(env),
 			}
 
 			srv, err := gateway.New(opts)
@@ -309,7 +433,68 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
+	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
+}
+
+// gatewayUpAction is the decision resolveGatewayUpRunning returns to RunE.
+type gatewayUpAction int
+
+const (
+	// gatewayUpProceed: no gateway is running (or a stale PID was
+	// successfully recovered) — safe to continue starting a new one.
+	gatewayUpProceed gatewayUpAction = iota
+	// gatewayUpRefuse: a gateway is running (and, if --force was used,
+	// process identity verification confirmed it, or verification is
+	// unsupported/inconclusive without --force) — RunE must exit non-zero.
+	gatewayUpRefuse
+)
+
+// resolveGatewayUpRunning checks whether the gateway is already running and,
+// if force is true, attempts best-effort stale-PID recovery via process
+// identity verification (L2): IsRunning only signal-0-probes the pid, so a
+// recycled pid can false-positive as "gateway running".
+//
+// Side effect: when recovery succeeds (pid confirmed stale, or identity is
+// inconclusive and force was explicitly requested), the PID file is removed
+// so gateway up can proceed to start a fresh instance.
+//
+// Kept as a standalone, side-effect-isolated function (rather than inlined
+// in RunE) so it is unit-testable with a mocked runner and without starting
+// a real server.
+func resolveGatewayUpRunning(ctx context.Context, pidPath string, force bool, runner kexec.CommandRunner, psBin string) (action gatewayUpAction, pid int, note string) {
+	pid, running := gateway.IsRunning(pidPath)
+	if !running {
+		return gatewayUpProceed, 0, ""
+	}
+	if !force {
+		return gatewayUpRefuse, pid, ""
+	}
+	if runtime.GOOS == "windows" {
+		return gatewayUpRefuse, pid, "--force stale-PID recovery via process-identity verification is not supported on this platform; stop the running gateway with `keylatch gateway down` or `keylatch daemon stop --force` (removes the PID file without signaling)."
+	}
+
+	matched, checked := gateway.VerifyProcessIdentity(ctx, runner, psBin, pid)
+	switch {
+	case checked && matched:
+		return gatewayUpRefuse, pid, "process identity verification confirmed pid belongs to a running keylatch gateway — refusing even with --force."
+	case checked && !matched:
+		_ = gateway.RemovePID(pidPath)
+		return gatewayUpProceed, pid, fmt.Sprintf("stale PID file recovered — pid %d does not look like a keylatch process; removed and starting fresh.", pid)
+	default:
+		// Inconclusive (review finding, warn-4): checked=false covers both
+		// "the process legitimately died between IsRunning's probe and this
+		// ps call" (safe to proceed) and "ps itself failed for an unrelated
+		// reason — missing binary, sandboxed environment, permission issue —
+		// while the original process is still alive and healthy" (NOT safe
+		// to proceed: removing the PID file here would let a second gateway
+		// start alongside a live one, with the PID file only tracking the
+		// new instance). VerifyProcessIdentity gives no way to distinguish
+		// these, so fail safe: refuse and never touch the PID file on
+		// inconclusive evidence — require an explicit human decision instead
+		// of guessing.
+		return gatewayUpRefuse, pid, fmt.Sprintf("could not verify process identity for pid %d — refusing to remove its PID file on inconclusive evidence. If you have confirmed pid %d is not a keylatch process, stop it or delete %s yourself, then retry.", pid, pid, pidPath)
+	}
 }
 
 // resolveAndValidateGatewayBindAddr wraps gateway.ResolveBindAddr with the
@@ -331,18 +516,87 @@ func resolveAndValidateGatewayBindAddr(port int, listenAddr string, unsafeBindAl
 
 // --- gateway down ---
 
+// gatewayDownAction is the decision resolveGatewayDownAction returns to RunE.
+type gatewayDownAction int
+
+const (
+	// gatewayDownProceed: process identity verification confirmed the PID
+	// belongs to a keylatch process (or verification is unsupported on this
+	// platform, or was overridden with --force) — safe to signal it.
+	gatewayDownProceed gatewayDownAction = iota
+	// gatewayDownStalePID: verification confirmed the PID does NOT belong to
+	// a keylatch process — do not signal an unrelated process; just clean up
+	// the stale PID file.
+	gatewayDownStalePID
+	// gatewayDownRefuse: verification was inconclusive and --force was not
+	// given — refuse to signal on unverifiable evidence rather than risk
+	// killing an unrelated process that happens to have reused the PID.
+	gatewayDownRefuse
+)
+
+// resolveGatewayDownAction mirrors resolveGatewayUpRunning's process-identity
+// verification (L2) for the stop path: IsRunning only signal-0-probes the
+// pid, so a recycled pid can belong to a completely unrelated process by the
+// time `gateway down` runs — sending SIGTERM there kills someone else's
+// process instead of doing nothing. `gateway up --force` already gets this
+// protection; `down` previously had none.
+//
+// Kept as a standalone, side-effect-isolated function (rather than inlined
+// in RunE) so it is unit-testable with a mocked runner and without sending a
+// real signal.
+func resolveGatewayDownAction(ctx context.Context, pid int, pidPath string, force bool, runner kexec.CommandRunner, psBin string) (action gatewayDownAction, note string) {
+	if runtime.GOOS == "windows" {
+		// ps-based identity verification is unavailable on this platform;
+		// behave as before (matches resolveGatewayUpRunning's Windows note,
+		// which tells users `gateway down` still works unconditionally).
+		return gatewayDownProceed, ""
+	}
+
+	matched, checked := gateway.VerifyProcessIdentity(ctx, runner, psBin, pid)
+	switch {
+	case checked && matched:
+		return gatewayDownProceed, ""
+	case checked && !matched:
+		return gatewayDownStalePID, fmt.Sprintf(
+			"pid %d does not look like a keylatch process (stale PID file) — not sending a signal to it; removing the stale PID file instead.", pid)
+	default:
+		if force {
+			return gatewayDownProceed, fmt.Sprintf(
+				"could not verify process identity for pid %d — proceeding anyway because --force was given.", pid)
+		}
+		return gatewayDownRefuse, fmt.Sprintf(
+			"could not verify process identity for pid %d — refusing to signal it on inconclusive evidence. If you have confirmed pid %d is the keylatch gateway, retry with --force, or stop it yourself and remove %s.", pid, pid, pidPath)
+	}
+}
+
 func newGatewayDownCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "down",
 		Short: "Stop the running gateway",
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 			pidPath := paths.GatewayPID(env)
+			force, _ := c.Flags().GetBool("force")
 
 			pid, running := gateway.IsRunning(pidPath)
 			if !running {
 				fmt.Fprintln(c.OutOrStdout(), "gateway: not running (no PID file)")
 				return nil
+			}
+
+			action, note := resolveGatewayDownAction(c.Context(), pid, pidPath, force, kexec.DefaultRunner, kexec.Resolve("ps"))
+			switch action {
+			case gatewayDownStalePID:
+				fmt.Fprintf(c.ErrOrStderr(), "gateway down: %s\n", note)
+				if err := gateway.RemovePID(pidPath); err != nil {
+					return fmt.Errorf("gateway down: %w", err)
+				}
+				return nil
+			case gatewayDownRefuse:
+				return fmt.Errorf("gateway down: %s", note)
+			}
+			if note != "" {
+				fmt.Fprintf(c.OutOrStdout(), "gateway: %s\n", note)
 			}
 
 			if err := gateway.SendTerm(pidPath); err != nil {
@@ -352,6 +606,8 @@ func newGatewayDownCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("force", false, "signal the PID even when process identity could not be verified")
+	return cmd
 }
 
 // --- gateway status ---

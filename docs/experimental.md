@@ -50,6 +50,19 @@ a per-process override.
 > with `KEYLATCH_EXPERIMENTAL=1` set. The package has been removed rather than half-wired; a
 > future NordPass backend would need a confirmed CLI/API contract and full catalog wiring.
 
+> **Not implemented**: `keylatch trust enroll <type>` (all five root types —
+> secure-enclave, ssh-agent, pkcs11, gpg-card, fido2) and `keylatch trust
+> approve <challenge-id>` (the signing step, once past a real challenge
+> lookup) are registered CLI commands with unimplemented ceremonies. They
+> are hidden from `trust --help`, still directly runnable, and exit
+> `NotImplemented` (code 10) with a message pointing here. `trust list`,
+> `trust doctor`, and `trust challenge` are backed by working code and stay
+> visible. `trust revoke`/`trust allowlist add` are registered but do not
+> yet persist any state — treat them as placeholders. Unlike the removed
+> NordPass stub, these commands are not gated behind `KEYLATCH_EXPERIMENTAL`
+> — they were never functional to begin with, so there is no working
+> behavior to opt into.
+
 ---
 
 ## Graduation policy

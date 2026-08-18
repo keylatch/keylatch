@@ -49,7 +49,7 @@ func TestJSON_DefaultValues(t *testing.T) {
 	var m map[string]string
 	require.NoError(t, json.Unmarshal(b, &m))
 
-	assert.Equal(t, "1.0.0-dev", m["Version"])
+	assert.Equal(t, "0.0.0-devbuild", m["Version"])
 	assert.Equal(t, "unknown", m["Commit"])
 	assert.Equal(t, "unknown", m["BuildDate"])
 }

@@ -234,7 +234,12 @@ type fakeRunner struct {
 	err    error
 }
 
-func (f *fakeRunner) Run(_ context.Context, _ string, _ []string, _ []byte) ([]byte, []byte, int, error) {
+func (f *fakeRunner) Run(ctx context.Context, bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return f.RunEnv(ctx, bin, args, stdin, nil)
+}
+
+// RunEnv satisfies store.CommandRunner's mirrored RunEnv method (extraEnv unused).
+func (f *fakeRunner) RunEnv(_ context.Context, _ string, _ []string, _ []byte, _ []string) ([]byte, []byte, int, error) {
 	return f.stdout, nil, 0, f.err
 }
 

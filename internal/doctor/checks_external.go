@@ -86,7 +86,7 @@ func externalSkippedStatus(name string) Status {
 //
 // Verifies that the `op` CLI is present and authenticated (or at least reachable)
 // when any op:// connection exists. `op whoami` exits non-zero when not signed in.
-func checkExternalOP(env llmcontext.Lookup, probe kexec.Probe) Check {
+func checkExternalOP(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) Check {
 	return func(ctx context.Context) Status {
 		if !hasExternalRefConnections(env) {
 			return externalSkippedStatus("external.op")
@@ -112,17 +112,20 @@ func checkExternalOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 				Tags:    []string{"external", "op"},
 			}
 		}
-		// Run `op --version` to confirm the binary is usable.
-		// We report binary found with a nudge to sign in rather than failing hard,
-		// because `op` can still be present but unauthenticated in some environments.
-		ver, whoamiErr := probe.Version(ctx, p)
-		if whoamiErr != nil {
+		// Run `op whoami --format=json` to confirm the binary is actually
+		// signed in — `op --version` (the previous check here) succeeds
+		// regardless of auth state, so it never caught a signed-out CLI.
+		// We report binary found with a nudge to sign in rather than failing
+		// hard, because `op` can still be present but unauthenticated in
+		// some environments.
+		_, _, exitCode, runErr := runner.Run(ctx, p, []string{"whoami", "--format=json"}, nil)
+		if runErr != nil || exitCode != 0 {
 			return Status{
 				Name:    "external.op",
 				Section: externalSection,
 				OK:      true,
 				Warn:    true,
-				Detail:  fmt.Sprintf("op binary found at %s but version check failed — run: op whoami", p),
+				Detail:  fmt.Sprintf("op binary found at %s but not signed in — run: op signin", p),
 				Fix:     "op signin",
 				Tags:    []string{"external", "op"},
 			}
@@ -131,7 +134,7 @@ func checkExternalOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 			Name:    "external.op",
 			Section: externalSection,
 			OK:      true,
-			Detail:  fmt.Sprintf("op_bin=%s version=%s", p, ver),
+			Detail:  fmt.Sprintf("op_bin=%s signed in (verified via op whoami)", p),
 			Tags:    []string{"external", "op"},
 		}
 	}
