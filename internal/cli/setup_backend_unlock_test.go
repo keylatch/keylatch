@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend/bw"
@@ -30,10 +31,18 @@ import (
 func writeFakeBin(t *testing.T, name string, exitCode int) {
 	t.Helper()
 	binDir := t.TempDir()
-	script := filepath.Join(binDir, name)
-	content := fmt.Sprintf("#!/bin/sh\nexit %d\n", exitCode)
+	script, content := fakeExecutable(binDir, name, fmt.Sprintf("exit %d", exitCode))
 	require.NoError(t, os.WriteFile(script, []byte(content), 0o755))
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// fakeExecutable creates a PATH-resolvable command for the current platform.
+// Windows resolves command files through PATHEXT; POSIX uses a shell script.
+func fakeExecutable(dir, name, command string) (string, string) {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(dir, name+".cmd"), "@echo off\r\n" + command + "\r\n"
+	}
+	return filepath.Join(dir, name), "#!/bin/sh\n" + command + "\n"
 }
 
 // isolatePATH points PATH at an empty temp dir so no real op/bw/etc. on the
@@ -117,8 +126,7 @@ func TestSetupUnlockBW_BinaryPresent_NoTTY_FailsAtPasswordPrompt(t *testing.T) {
 func writeFakeBWUnlock(t *testing.T, token string) {
 	t.Helper()
 	binDir := t.TempDir()
-	script := filepath.Join(binDir, "bw")
-	content := fmt.Sprintf("#!/bin/sh\necho %q\n", token)
+	script, content := fakeExecutable(binDir, "bw", "echo "+token)
 	require.NoError(t, os.WriteFile(script, []byte(content), 0o755))
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
