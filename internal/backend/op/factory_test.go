@@ -61,7 +61,7 @@ func TestOPFactory_EnvAsRawFunc(t *testing.T) {
 	factory, ok := backend.Default.Get("op")
 	require.True(t, ok, "op backend not registered; import side-effect missing")
 
-	var rawFn func(string) string = func(string) string { return "" }
+	rawFn := func(string) string { return "" }
 	cfg := backend.BackendConfig{
 		Name: "op",
 		Settings: map[string]interface{}{

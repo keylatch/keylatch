@@ -622,7 +622,7 @@ func setupUnlockBW(c *cobra.Command, ctx context.Context, env llmcontext.Lookup)
 	b, err := dispatch.Select(ctx, cfg, env)
 	if err != nil {
 		if errors.Is(err, backend.ErrUnavailable) {
-			return fmt.Errorf("Bitwarden CLI not available. Run: brew install bitwarden-cli")
+			return fmt.Errorf("bitwarden CLI not available; run: brew install bitwarden-cli")
 		}
 		return err
 	}

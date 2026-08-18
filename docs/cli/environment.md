@@ -107,6 +107,7 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_BW_SERVER` | Bitwarden/Vaultwarden server URL | No | Never | — |
 | `KEYLATCH_BW_FOLDER` | Bitwarden folder filter | No | Never | — |
 | `KEYLATCH_BW_COLLECTION` | Bitwarden collection filter | No | Never | — |
+| `KEYLATCH_BW_SESSION_DIR` | Directory for cached Bitwarden session tokens and expiry metadata (default: `~/.keylatch/sessions`) | Yes | Never | — |
 | `KEYLATCH_PROTON_PASS_BIN` | Override path to the Proton Pass CLI binary | No | Never | — |
 | `KEYLATCH_PROTON_PASS_VAULT` | Proton Pass vault name | No | Never | — |
 | `KEYLATCH_PROTON_PASS_ITEM_PREFIX` | Prefix for Proton Pass item names | No | Never | — |
