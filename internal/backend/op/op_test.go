@@ -75,6 +75,9 @@ func TestOpen_DefaultRunner(t *testing.T) {
 func TestOpen_ResolvesBinaryFromPATH(t *testing.T) {
 	dir := t.TempDir()
 	fakeBin := filepath.Join(dir, "op")
+	if runtime.GOOS == "windows" {
+		fakeBin += ".exe"
+	}
 	require.NoError(t, os.WriteFile(fakeBin, []byte("#!/bin/sh\nexit 0\n"), 0o755))
 	t.Setenv("PATH", dir)
 
