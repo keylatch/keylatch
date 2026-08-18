@@ -42,6 +42,8 @@ func withMockSetupGatewayPS(t *testing.T, runner kexec.CommandRunner, psBin stri
 // shelling out to `gateway up --detach` and reporting the child's expected
 // refusal as a setup failure (M1).
 func TestSetupStep3SpawnDaemon_AlreadyRunning_IdentityConfirmed(t *testing.T) {
+	requirePSIdentityVerification(t)
+
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
 
@@ -82,6 +84,8 @@ func TestSetupStep3SpawnDaemon_AlreadyRunning_IdentityConfirmed(t *testing.T) {
 // PID file — but must say the check was inconclusive rather than silently
 // implying a confirmed match.
 func TestSetupStep3SpawnDaemon_StaleIdentityInconclusive_SkipsWithNote(t *testing.T) {
+	requirePSIdentityVerification(t)
+
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
 
