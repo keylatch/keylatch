@@ -28,7 +28,14 @@ func newBackendCmd() *cobra.Command {
 func newBackendVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
-		Short: "Manage the Vault Transit root-of-trust backend",
+		Short: "Manage the Vault Transit root-of-trust backend (NOT the 'vault' credential storage backend)",
+		Long: `Manage the HashiCorp Vault Transit root-of-trust key-wrapping backend.
+
+This wraps/unwraps keylatch's own local master key using Vault's Transit
+secrets engine — it does NOT store your provider credentials. This is a
+different feature from the 'vault' credential storage backend (where your
+API keys/secrets themselves live). For that, see 'keylatch setup' or the
+'config' command's backend selection.`,
 	}
 	cmd.AddCommand(newBackendVaultInitCmd())
 	cmd.AddCommand(newBackendVaultTestCmd())

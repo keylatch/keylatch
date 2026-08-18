@@ -14,18 +14,107 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 )
 
-// Init implements the keychain-init CLI command lifecycle:
-//  1. Generate a random 32-byte unlock password
-//  2. Create the custom keychain (-p $pw)
-//  3. Store the unlock password in the LOGIN keychain with -T {binaryPath}
-//  4. Set keychain to never auto-lock
-//  5. Call RepairACL to bind the ACL to code-signing identity
-//  6. Set a canary entry to validate the keychain is writable
-//  7. Call RepairItemACLs
+// Init implements the keychain-init CLI command lifecycle. It is safe to run
+// repeatedly (e.g. on setup re-run): it never generates a new unlock
+// password when a usable one already exists.
 //
-// Idempotent: running Init twice on the same path does not corrupt the keychain.
+//  1. Read the existing login-keychain unlock item (if any) BEFORE deciding
+//     whether to generate a password.
+//  2. If both the unlock item and the custom keychain-db already exist and
+//     the item's password successfully unlocks the db, Init is a verify/
+//     no-op: the existing password is reused, the login-keychain unlock
+//     item is left untouched, and only the ACL/canary/item-ACL repair steps
+//     run.
+//  3. If only the unlock item exists (no keychain-db yet — e.g. a fresh
+//     install that inherited a stale login-keychain item), the existing
+//     password is reused to create the new, currently-empty keychain-db.
+//     Nothing is at risk of being orphaned because no keychain-db exists yet.
+//  4. If neither exists, this is a genuine first run: a new random password
+//     is generated.
+//  5. Any other combination (an unlock item that does not unlock the
+//     existing keychain-db, or a keychain-db with no unlock item at all)
+//     means the stored password has already been lost or the two are out of
+//     sync. Init refuses to generate a replacement password in that case —
+//     doing so would silently overwrite the login-keychain unlock item and
+//     permanently orphan any secrets already stored under the old one (the
+//     original C1 data-loss bug). Call ForceReinit to proceed anyway after
+//     the caller has confirmed the user accepts losing access to existing
+//     secrets.
 func (k *KeychainBackend) Init(ctx context.Context, service string) error {
-	// Step 1: generate random 32-byte unlock password (base64-encoded for ASCII safety).
+	return k.init(ctx, service, false)
+}
+
+// ForceReinit re-initializes the keychain unconditionally: it always
+// generates a brand-new random unlock password and overwrites the
+// login-keychain unlock item, even if a keychain-db and/or a working unlock
+// item already exist. Any secrets stored under the previous password become
+// permanently unrecoverable. Callers MUST have already obtained explicit
+// user confirmation of this data loss (see `keylatch keychain-init --force`).
+func (k *KeychainBackend) ForceReinit(ctx context.Context, service string) error {
+	return k.init(ctx, service, true)
+}
+
+// init is the shared Init/ForceReinit implementation. See Init's doc comment
+// for the decision table; force short-circuits the two refusal branches.
+//
+// KNOWN GAP (review Finding-003, not fixed here): unlike Get/Set/Delete
+// (keychain.go), this read-decide-write sequence does NOT call acquireFlock.
+// Two concurrent Init/ForceReinit invocations (e.g. overlapping `keylatch
+// setup` runs, or `setup` racing `doctor --repair --yes`, which also calls
+// RepairACL) can both observe "no unlock item, no db yet", each generate a
+// different random password, and race on the final login-keychain upsert —
+// a race-triggered variant of the C1 data-loss bug this function otherwise
+// fixes for the deterministic-rerun case. Left as a follow-up: wrap this
+// sequence (and RepairACL, acl.go) in acquireFlock(k.opts.LockPath).
+func (k *KeychainBackend) init(ctx context.Context, service string, force bool) error {
+	dbExists := k.keychainDBExists()
+	existingPW, hasUnlockItem, err := k.tryReadUnlockPassword(ctx)
+	if err != nil {
+		return fmt.Errorf("keychain Init: check existing unlock item: %w", err)
+	}
+
+	switch {
+	case hasUnlockItem && dbExists:
+		if unlockErr := k.unlockKeychain(ctx, existingPW); unlockErr == nil {
+			// The stored password still unlocks the existing keychain-db —
+			// nothing to regenerate. Lock back immediately (this was only a
+			// verification probe) and finish with the existing password,
+			// leaving the login-keychain unlock item untouched.
+			_ = k.lockKeychain(ctx)
+			return k.finishInit(ctx, service, existingPW, false)
+		}
+		if !force {
+			return fmt.Errorf(
+				"keychain Init: an unlock item exists in the login keychain but does not unlock %s — "+
+					"refusing to generate a new password (this would permanently orphan any secrets "+
+					"already stored under the current one). Run `keylatch keychain-init --force` only "+
+					"after confirming you accept losing access to existing secrets",
+				k.opts.KeychainPath)
+		}
+		// force=true: fall through to generate a fresh password below.
+	case hasUnlockItem && !dbExists:
+		// Stale unlock item with no keychain-db behind it yet — reusing the
+		// existing password is safe because there is no existing data that
+		// could be orphaned.
+		return k.finishInit(ctx, service, existingPW, true)
+	case !hasUnlockItem && dbExists:
+		if !force {
+			return fmt.Errorf(
+				"keychain Init: %s already exists but no unlock item was found in the login keychain — "+
+					"refusing to generate a new password (this would permanently orphan any secrets "+
+					"already stored). Run `keylatch keychain-init --force` only after confirming you "+
+					"accept losing access to existing secrets",
+				k.opts.KeychainPath)
+		}
+		// force=true: fall through to generate a fresh password below.
+	default:
+		// Neither the keychain-db nor an unlock item exists: genuine first
+		// run — fall through to generate a fresh password below.
+	}
+
+	// Generate a random 32-byte unlock password (base64-encoded for ASCII
+	// safety). Only reached on a genuine first run, or force=true after an
+	// explicit data-loss confirmation by the caller.
 	var pwRaw [32]byte
 	if _, err := rand.Read(pwRaw[:]); err != nil {
 		return fmt.Errorf("keychain Init: generate password: %w", err)
@@ -38,6 +127,18 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		}
 	}()
 
+	return k.finishInit(ctx, service, pw, true)
+}
+
+// finishInit runs the remaining Init steps using pw as the already-decided
+// unlock password: it creates the keychain-db if needed, optionally
+// (re)writes the login-keychain unlock item, disables auto-lock, repairs the
+// ACL, and validates writability with a canary entry.
+//
+// writeUnlockItem is false only on the "verified existing password" path in
+// init — every other caller passes true because either nothing exists yet
+// (nothing to overwrite) or the caller has forced an explicit reset.
+func (k *KeychainBackend) finishInit(ctx context.Context, _ string, pw string, writeUnlockItem bool) error {
 	currentBin, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("keychain Init: os.Executable: %w", err)
@@ -49,7 +150,7 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		return fmt.Errorf("keychain Init: mkdir %q: %w", keylatchDir, err)
 	}
 
-	// Step 2: create the custom keychain (skip if already exists).
+	// Create the custom keychain (skip if already exists).
 	_, _, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"create-keychain", "-p", pw, k.opts.KeychainPath},
 		nil)
@@ -64,24 +165,42 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		// already exists — proceed normally
 	}
 
-	// Step 3: store unlock password in LOGIN keychain (no -k flag) with -T {binaryPath}.
-	_, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"add-generic-password",
-			"-U",
-			"-s", "keylatch-keychain",
-			"-a", "unlock",
-			"-w", pw,
-			"-T", currentBin,
-		},
-		nil)
-	if err != nil {
-		return fmt.Errorf("keychain Init: store unlock password: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("keychain Init: store unlock password: security exited %d: %s", exitCode, strings.TrimSpace(string(stderr)))
+	// `security create-keychain` creates the keychain-db file with the
+	// process's default umask-derived permissions, which can be as loose as
+	// 0644 (world-readable) depending on the caller's umask — the db is only
+	// password-protected, not filesystem-protected, by default. Force 0600
+	// explicitly. Runs unconditionally (both on fresh create and the exit-48
+	// "already exists" branch above) so re-running Init/ForceReinit also
+	// repairs a pre-existing keychain-db that was left with loose permissions.
+	if chmodErr := os.Chmod(k.opts.KeychainPath, 0o600); chmodErr != nil {
+		// Non-fatal — the keychain is still password-protected; log and
+		// continue so a permissions quirk never blocks setup/repair.
+		slog.Warn("keychain Init: could not chmod keychain-db to 0600", "path", k.opts.KeychainPath, "error", chmodErr)
 	}
 
-	// Step 4: set keychain to never auto-lock.
+	// Store the unlock password in the LOGIN keychain (no -k flag) with
+	// -T {binaryPath}, but only when the caller determined this is safe —
+	// see the decision table in Init's doc comment. When writeUnlockItem is
+	// false, an already-verified existing item is left untouched.
+	if writeUnlockItem {
+		_, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
+			[]string{"add-generic-password",
+				"-U",
+				"-s", "keylatch-keychain",
+				"-a", "unlock",
+				"-w", pw,
+				"-T", currentBin,
+			},
+			nil)
+		if err != nil {
+			return fmt.Errorf("keychain Init: store unlock password: %w", err)
+		}
+		if exitCode != 0 {
+			return fmt.Errorf("keychain Init: store unlock password: security exited %d: %s", exitCode, strings.TrimSpace(string(stderr)))
+		}
+	}
+
+	// Set keychain to never auto-lock.
 	_, _, _, err = k.opts.Runner.Run(ctx, k.opts.SecurityBin,
 		[]string{"set-keychain-settings", "-lut", "0", k.opts.KeychainPath},
 		nil)
@@ -89,25 +208,54 @@ func (k *KeychainBackend) Init(ctx context.Context, service string) error {
 		return fmt.Errorf("keychain Init: set-keychain-settings: %w", err)
 	}
 
-	// Step 5: RepairACL to bind ACL to code-signing identity.
+	// RepairACL to bind ACL to code-signing identity.
 	if err := k.RepairACL(ctx); err != nil {
 		// Non-fatal — log but continue.
 		slog.Warn("keychain RepairACL failed", "error", err)
 	}
 
-	// Step 6: validate keychain is writable with a canary entry.
+	// Validate keychain is writable with a canary entry.
 	canaryPath := "default/__init__/canary"
 	meta := backend.Meta{Path: canaryPath, Backend: "keychain", Version: 1}
 	if err := k.Set(ctx, canaryPath, []byte("keylatch-init-ok"), meta); err != nil {
 		return fmt.Errorf("keychain Init: write canary entry: %w", err)
 	}
 
-	// Step 7: RepairItemACLs for per-item ACL enforcement.
+	// RepairItemACLs for per-item ACL enforcement.
 	if err := k.RepairItemACLs(ctx); err != nil {
 		return fmt.Errorf("keychain Init: RepairItemACLs: %w", err)
 	}
 
 	return nil
+}
+
+// keychainDBExists reports whether the custom keychain-db file is already
+// present on disk.
+func (k *KeychainBackend) keychainDBExists() bool {
+	_, statErr := os.Stat(k.opts.KeychainPath)
+	return statErr == nil
+}
+
+// tryReadUnlockPassword attempts to read the existing login-keychain unlock
+// item. Unlike readUnlockPassword (keychain.go), it treats "not found" (or
+// any other non-zero exit) as a normal, expected outcome — exists=false,
+// err=nil — rather than an error, since Init's job is only to decide whether
+// a reusable password already exists.
+func (k *KeychainBackend) tryReadUnlockPassword(ctx context.Context) (pw string, exists bool, err error) {
+	stdout, _, exitCode, runErr := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
+		[]string{"find-generic-password",
+			"-s", "keylatch-keychain",
+			"-a", "unlock",
+			"-w",
+		},
+		nil)
+	if runErr != nil {
+		return "", false, fmt.Errorf("security find-generic-password: %w", runErr)
+	}
+	if exitCode != 0 {
+		return "", false, nil
+	}
+	return strings.TrimRight(string(stdout), "\n"), true, nil
 }
 
 // homeDir returns the user's home directory, falling back to "" on error.
@@ -119,8 +267,8 @@ func homeDir() string {
 	return home
 }
 
-// zeroizeString zeroes a string's backing bytes (unsafe but useful for passwords).
-// We accept the limitation of Go's string immutability.
+// zeroizeBytes zeroes a byte slice's contents in place (best-effort; unsafe
+// but useful for scrubbing password/secret buffers before they go out of scope).
 //
 //nolint:unused // planned: called during keychain shutdown when session cleanup is added
 func zeroizeBytes(b []byte) {
