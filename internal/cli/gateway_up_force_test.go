@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -19,6 +20,13 @@ import (
 // matching the arg-signature construction used by kexec.MockRunner.
 func psKey(psBin string, pid int) string {
 	return psBin + "|-p|" + strconv.Itoa(pid) + "|-o|command="
+}
+
+func requirePSIdentityVerification(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("ps-based identity verification is unavailable on Windows")
+	}
 }
 
 func TestResolveGatewayUpRunning_NotRunning(t *testing.T) {
@@ -47,6 +55,8 @@ func TestResolveGatewayUpRunning_RunningNoForce(t *testing.T) {
 }
 
 func TestResolveGatewayUpRunning_ForceMatch_Refuses(t *testing.T) {
+	requirePSIdentityVerification(t)
+
 	dir := t.TempDir()
 	pidPath := filepath.Join(dir, "gateway.pid")
 	mypid := os.Getpid()
@@ -72,6 +82,8 @@ func TestResolveGatewayUpRunning_ForceMatch_Refuses(t *testing.T) {
 }
 
 func TestResolveGatewayUpRunning_ForceMismatch_RecoversStalePID(t *testing.T) {
+	requirePSIdentityVerification(t)
+
 	dir := t.TempDir()
 	pidPath := filepath.Join(dir, "gateway.pid")
 	mypid := os.Getpid()
@@ -104,6 +116,8 @@ func TestResolveGatewayUpRunning_ForceMismatch_RecoversStalePID(t *testing.T) {
 // removing the PID file and starting a second gateway alongside a possibly
 // live one.
 func TestResolveGatewayUpRunning_ForceUnchecked_RefusesFailSafe(t *testing.T) {
+	requirePSIdentityVerification(t)
+
 	dir := t.TempDir()
 	pidPath := filepath.Join(dir, "gateway.pid")
 	mypid := os.Getpid()

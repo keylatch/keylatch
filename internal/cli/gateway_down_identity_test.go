@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"runtime"
 	"testing"
 
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -20,6 +19,8 @@ import (
 // outcomes for the stop path.
 
 func TestResolveGatewayDownAction_Match_Proceeds(t *testing.T) {
+	requirePSIdentityVerification(t)
+
 	mypid := os.Getpid()
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
@@ -36,9 +37,7 @@ func TestResolveGatewayDownAction_Match_Proceeds(t *testing.T) {
 }
 
 func TestResolveGatewayDownAction_Mismatch_DoesNotSignal(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("ps-based identity verification is unavailable on Windows")
-	}
+	requirePSIdentityVerification(t)
 
 	mypid := os.Getpid()
 	runner := &kexec.MockRunner{
@@ -61,9 +60,7 @@ func TestResolveGatewayDownAction_Mismatch_DoesNotSignal(t *testing.T) {
 // refuse to signal rather than guess — the previous behavior would have
 // sent SIGTERM regardless.
 func TestResolveGatewayDownAction_InconclusiveNoForce_RefusesFailSafe(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("ps-based identity verification is unavailable on Windows")
-	}
+	requirePSIdentityVerification(t)
 
 	mypid := os.Getpid()
 	runner := &kexec.MockRunner{
@@ -82,9 +79,7 @@ func TestResolveGatewayDownAction_InconclusiveNoForce_RefusesFailSafe(t *testing
 }
 
 func TestResolveGatewayDownAction_InconclusiveWithForce_Proceeds(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("ps-based identity verification is unavailable on Windows")
-	}
+	requirePSIdentityVerification(t)
 
 	mypid := os.Getpid()
 	runner := &kexec.MockRunner{
