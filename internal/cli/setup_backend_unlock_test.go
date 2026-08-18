@@ -90,7 +90,7 @@ func TestSetupUnlockBW_NoBinary_ReturnsClearGuidance(t *testing.T) {
 	c := &cobra.Command{}
 	err := setupUnlockBW(c, context.Background(), llmcontext.DefaultLookup)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Bitwarden CLI not available")
+	assert.Contains(t, err.Error(), "bitwarden CLI not available")
 	assert.Contains(t, err.Error(), "brew install bitwarden-cli")
 }
 
