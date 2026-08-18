@@ -82,6 +82,10 @@ func TestResolveGatewayDownAction_InconclusiveNoForce_RefusesFailSafe(t *testing
 }
 
 func TestResolveGatewayDownAction_InconclusiveWithForce_Proceeds(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ps-based identity verification is unavailable on Windows")
+	}
+
 	mypid := os.Getpid()
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
