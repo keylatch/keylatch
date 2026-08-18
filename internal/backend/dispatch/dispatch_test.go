@@ -139,6 +139,7 @@ func TestSelect_Reset(t *testing.T) {
 func TestSelect_OPUnavailable(t *testing.T) {
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
+	t.Setenv("PATH", t.TempDir())
 
 	cfg := tempDirConfig(t)
 	cfg.Backend = "op"
@@ -152,6 +153,7 @@ func TestSelect_OPUnavailable(t *testing.T) {
 func TestSelect_BWUnavailable(t *testing.T) {
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
+	t.Setenv("PATH", t.TempDir())
 
 	cfg := tempDirConfig(t)
 	cfg.Backend = "bw"
