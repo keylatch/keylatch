@@ -109,7 +109,10 @@ func (fb *FileBackend) SetVersionedEncrypted(
 	}
 
 	// Write ciphertext.
-	p := valuePath(fb.dir, canonical, vm.Version)
+	p, err := valuePath(fb.dir, canonical, vm.Version)
+	if err != nil {
+		return err
+	}
 	if err := ensureDir(p); err != nil {
 		return err
 	}
@@ -151,7 +154,10 @@ func (fb *FileBackend) GetVersionedEncrypted(
 	}
 
 	// Read ciphertext.
-	p := valuePath(fb.dir, canonical, vm.Version)
+	p, err := valuePath(fb.dir, canonical, vm.Version)
+	if err != nil {
+		return nil, err
+	}
 	ct, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -49,8 +49,8 @@ func TestSecurityRegression_F36_VersionedRecordRelocation(t *testing.T) {
 	}
 }
 
-// KNOWN-FAILING (F37): DeleteVersioned does not confine the resolved path
-// to the vault root, so a "../"-prefixed key can delete a file outside it.
+// F37: DeleteVersioned confines the resolved path to the vault root, so a
+// "../"-prefixed key is rejected before any file is touched.
 func TestSecurityRegression_F37_DeleteVersionedTraversal(t *testing.T) {
 	root := t.TempDir()
 	d := filepath.Join(root, "vault")

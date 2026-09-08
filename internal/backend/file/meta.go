@@ -3,7 +3,6 @@ package file
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,14 +16,9 @@ import (
 // getMetaFromDisk reads and returns the value-free metadata for a canonical path.
 // Returns backend.ErrNotFound if the metadata file does not exist.
 func getMetaFromDisk(root, path string) (vmeta.Meta, error) {
-	p := metadataPath(root, path)
-
-	// Path-traversal guard — mirrors the guard in
-	// file.go's Set/Delete. Metadata reads/writes go through metadataPath
-	// rather than FileBackend.Set/Delete's own guard, so a path containing
-	// "../" segments must be defended here independently.
-	if !strings.HasPrefix(filepath.Clean(p), filepath.Clean(root)+string(filepath.Separator)) {
-		return vmeta.Meta{}, fmt.Errorf("file backend: path escapes vault root")
+	p, err := metadataPath(root, path)
+	if err != nil {
+		return vmeta.Meta{}, err
 	}
 
 	data, err := os.ReadFile(p)
@@ -45,11 +39,9 @@ func getMetaFromDisk(root, path string) (vmeta.Meta, error) {
 // SetMeta writes value-free metadata for path atomically:
 // temp file + fsync + rename. Uses mode 0o600.
 func (fb *FileBackend) SetMeta(_ context.Context, path string, m vmeta.Meta) error {
-	p := metadataPath(fb.dir, path)
-
-	// Path-traversal guard — see getMetaFromDisk.
-	if !strings.HasPrefix(filepath.Clean(p), filepath.Clean(fb.dir)+string(filepath.Separator)) {
-		return fmt.Errorf("file backend: path escapes vault root")
+	p, err := metadataPath(fb.dir, path)
+	if err != nil {
+		return err
 	}
 
 	if err := ensureDir(p); err != nil {

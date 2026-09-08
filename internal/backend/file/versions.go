@@ -80,7 +80,11 @@ func (fb *FileBackend) GetVersioned(ctx context.Context, path string, version in
 // that GetVersioned can reconstruct the binding for decryption without
 // requiring vault-layer metadata.
 func (fb *FileBackend) writeVersionMeta(path string, version int, binding vmeta.AADBinding) error {
-	p := valuePath(fb.dir, path, version) + ".versionmeta"
+	vp, err := valuePath(fb.dir, path, version)
+	if err != nil {
+		return err
+	}
+	p := vp + ".versionmeta"
 	data, err := json.Marshal(binding)
 	if err != nil {
 		return fmt.Errorf("file: marshal version meta: %w", err)
@@ -90,7 +94,11 @@ func (fb *FileBackend) writeVersionMeta(path string, version int, binding vmeta.
 
 // readVersionMeta reads the sidecar AADBinding for a version.
 func (fb *FileBackend) readVersionMeta(path string, version int) (vmeta.AADBinding, error) {
-	p := valuePath(fb.dir, path, version) + ".versionmeta"
+	vp, err := valuePath(fb.dir, path, version)
+	if err != nil {
+		return vmeta.AADBinding{}, err
+	}
+	p := vp + ".versionmeta"
 	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -108,8 +116,11 @@ func (fb *FileBackend) readVersionMeta(path string, version int) (vmeta.AADBindi
 // DeleteVersioned removes the value file for a specific version. Idempotent —
 // returns nil if the file does not exist.
 func (fb *FileBackend) DeleteVersioned(_ context.Context, path string, version int) error {
-	p := valuePath(fb.dir, path, version)
-	err := os.Remove(p)
+	p, err := valuePath(fb.dir, path, version)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(p)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
