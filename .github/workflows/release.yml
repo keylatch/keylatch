@@ -725,20 +725,32 @@ jobs:
           merge-multiple: true
           path: all-artifacts/
       - name: collect release artifacts
+        # Desktop installers (.dmg/.exe/.AppImage/.deb) are excluded from the
+        # public release by default: the Tauri IPC/bootstrap contract (F45)
+        # and the shared broker socket's process-global umask handling (F48)
+        # are unresolved, and the manifest marks tauri_desktop Unavailable.
+        # desktop-bundles still builds them (as a CI check on the Tauri/Go
+        # code), it just doesn't get published. Set the repo variable
+        # DESKTOP_ARTIFACTS_PUBLISH to "true" once F45/F48 are fixed and this
+        # cohort is re-certified — no other code change required.
         run: |
           mkdir -p release-files
           find all-artifacts -type f \( \
             -name "keylatch_*.tar.gz" \
             -o -name "keylatch_*.zip" \
             -o -name "*_checksums.txt" \
-            -o -name "*.dmg" \
-            -o -name "*-setup.exe" \
-            -o -name "*.AppImage" -o -name "*.deb" \
             -o -name "*.cdx.json" -o -name "*.spdx.json" \
             -o -name "*.sig" -o -name "*.pem" \
             -o -name "*.intoto.jsonl" \
             -o -name "keylatch-*.json" \
           \) -exec cp {} release-files/ \;
+          if [ "${{ vars.DESKTOP_ARTIFACTS_PUBLISH }}" = "true" ]; then
+            find all-artifacts -type f \( \
+              -name "*.dmg" \
+              -o -name "*-setup.exe" \
+              -o -name "*.AppImage" -o -name "*.deb" \
+            \) -exec cp {} release-files/ \;
+          fi
           echo "--- collected ---" && ls -1 release-files/
       - name: mark unsigned desktop artifacts
         # Unsigned/unnotarized desktop artifacts must not look identical to
