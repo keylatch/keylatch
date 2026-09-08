@@ -1,7 +1,3 @@
-//go:build securitysuite
-
-// Requires the securitysuite build tag; excluded from the ordinary
-// go test ./... run. Run with: go test -tags securitysuite ./...
 package api
 
 import (
@@ -11,9 +7,11 @@ import (
 	"github.com/keylatch/keylatch/internal/team"
 )
 
-// KNOWN-FAILING (F38): AdminHandler authorizes solely from the
-// caller-supplied X-Keylatch-Role header instead of a verified JWT/session,
-// so any caller can self-assert an admin role.
+// F38: AdminHandler is gated unavailable for M1 — every request is denied
+// before the role/CSRF checks run, so the caller-supplied X-Keylatch-Role
+// header can no longer authorize anything, with or without a JWT. Real
+// server-authenticated role/full-claims/active-membership verification is
+// expansion work for when the admin surface re-enters scope.
 func TestSecurityRegression_F38_AdminHeaderTrust(t *testing.T) {
 	h := &AdminHandler{Team: &team.Team{}, JWTSigningKey: []byte("not-presented-to-client")}
 	r := httptest.NewRequest("GET", "/admin/team", nil)

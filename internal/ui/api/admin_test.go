@@ -46,6 +46,13 @@ func newTestTeam() *team.Team {
 
 const testCSRFSecret = "test-secret"
 
+// F38: AdminHandler.ServeHTTP is gated unavailable for M1 (see admin.go) —
+// every request is denied before role/CSRF logic runs. The tests below now
+// assert that gate holds regardless of role/token shape; the role/CSRF/
+// value-free assertions they previously made stay meaningful for when the
+// admin surface re-enters scope, so the request shapes are unchanged.
+const wantAdminUnavailableCode = http.StatusNotFound
+
 // newAdminHandler returns an AdminHandler wired to the test team.
 func newAdminHandler() *api.AdminHandler {
 	return &api.AdminHandler{
@@ -72,8 +79,8 @@ func TestAdminHandler_NonAdmin_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for developer role, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 	var resp map[string]string
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -92,8 +99,8 @@ func TestAdminHandler_Viewer_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for viewer role, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -105,11 +112,14 @@ func TestAdminHandler_NoAuth_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 with no auth, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
+// TestAdminHandler_AdminRole_Passes previously asserted that a valid admin
+// role header was accepted; F38 gates the whole surface unavailable for M1,
+// so an admin role header can no longer reach a 200 either.
 func TestAdminHandler_AdminRole_Passes(t *testing.T) {
 	h := newAdminHandler()
 	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
@@ -118,8 +128,8 @@ func TestAdminHandler_AdminRole_Passes(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200 for admin role, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -131,8 +141,8 @@ func TestAdminHandler_OwnerRole_Passes(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200 for owner role, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -164,8 +174,8 @@ func TestAdminJWT_AlgNone_Returns403(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer "+noneJWT)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	if w.Code != http.StatusForbidden {
-		t.Errorf("alg:none JWT must return 403, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("alg:none JWT: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -186,8 +196,8 @@ func TestAdminHandler_UnsignedJWT_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for unsigned JWT, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("unsigned JWT: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -201,8 +211,8 @@ func TestAdminHandler_BearerToken_DeveloperRole_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("developer bearer token: expected 403, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("developer bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -214,8 +224,8 @@ func TestAdminHandler_BearerToken_ViewerRole_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("viewer bearer token: expected 403, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("viewer bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -227,8 +237,8 @@ func TestAdminHandler_BearerToken_AdminRole_Passes(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("admin bearer token: expected 200, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("admin bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -240,8 +250,8 @@ func TestAdminHandler_BearerToken_OwnerRole_Passes(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("owner bearer token: expected 200, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("owner bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -253,8 +263,8 @@ func TestAdminHandler_BearerToken_NoAuth_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("no auth: expected 403, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("no auth: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
@@ -270,11 +280,14 @@ func TestAdminHandler_MutationWithoutCSRF_Returns403(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for missing CSRF token, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("missing CSRF token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
+// TestAdminHandler_MutationWithCSRF_Passes previously asserted a mutation
+// with a valid CSRF token was accepted; F38 gates the whole surface
+// unavailable for M1, so even a correctly CSRF-guarded mutation is denied.
 func TestAdminHandler_MutationWithCSRF_Passes(t *testing.T) {
 	h := newAdminHandler()
 	body := `{"email_hmac":"hmac-x","role":"developer"}`
@@ -289,13 +302,17 @@ func TestAdminHandler_MutationWithCSRF_Passes(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200 with valid CSRF token, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("valid CSRF token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
 // --- Team list value-free ---
 
+// TestAdminHandler_TeamList_ValueFree previously verified member emails
+// never leak raw in the team-list response; F38 gates the whole surface
+// unavailable for M1, so the response now carries no team data at all
+// (trivially value-free) — this asserts the gate holds on this route.
 func TestAdminHandler_TeamList_ValueFree(t *testing.T) {
 	h := newAdminHandler()
 	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
@@ -304,32 +321,20 @@ func TestAdminHandler_TeamList_ValueFree(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Fatalf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 	body := w.Body.String()
-	// Value-free: no raw emails in response.
 	if strings.Contains(body, "@example.com") || strings.Contains(body, "@") {
-		t.Error("team list response contains raw email — value-free invariant violated")
-	}
-	var resp map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("body not JSON: %v", err)
-	}
-	if resp["team_id"] != "team-test" {
-		t.Errorf("team_id = %v, want team-test", resp["team_id"])
-	}
-	members, ok := resp["members"].([]interface{})
-	if !ok {
-		t.Fatal("members field missing or wrong type")
-	}
-	if len(members) != 2 {
-		t.Errorf("expected 2 members, got %d", len(members))
+		t.Error("admin-unavailable response contains raw email — value-free invariant violated")
 	}
 }
 
 // --- Policy handler ---
 
+// TestAdminHandler_PolicyGet previously verified the policy GET route
+// returns an active-status payload; F38 gates the whole surface unavailable
+// for M1, so this route is now denied like every other admin route.
 func TestAdminHandler_PolicyGet(t *testing.T) {
 	h := newAdminHandler()
 	r := httptest.NewRequest(http.MethodGet, "/admin/policy", nil)
@@ -338,20 +343,16 @@ func TestAdminHandler_PolicyGet(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-	var resp map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("body not JSON: %v", err)
-	}
-	if resp["status"] != "active" {
-		t.Errorf("policy status = %v, want active", resp["status"])
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
 // --- Approvals handler ---
 
+// TestAdminHandler_ApprovalsGet previously verified the approvals GET route
+// returns an empty-inbox payload; F38 gates the whole surface unavailable
+// for M1, so this route is now denied like every other admin route.
 func TestAdminHandler_ApprovalsGet(t *testing.T) {
 	h := newAdminHandler()
 	r := httptest.NewRequest(http.MethodGet, "/admin/approvals", nil)
@@ -360,8 +361,8 @@ func TestAdminHandler_ApprovalsGet(t *testing.T) {
 
 	h.ServeHTTP(w, r)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+	if w.Code != wantAdminUnavailableCode {
+		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
 	}
 }
 
