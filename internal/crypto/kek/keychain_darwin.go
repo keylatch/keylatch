@@ -4,7 +4,6 @@ package kek
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
@@ -20,13 +19,12 @@ type keychainKEK struct {
 // Replaceable in tests via MockRunner.
 type CommandRunner func(name string, args ...string) ([]byte, error)
 
-// defaultRunner runs the real command via exec.Command.
+// defaultRunner runs the real command through runManagerCLI, bounded by the
+// same timeout/output limits as the op/bw manager CLIs (F47) — an
+// unresponsive "security" call (e.g. blocked on a keychain-unlock prompt)
+// must not hang indefinitely either.
 var defaultRunner CommandRunner = func(name string, args ...string) ([]byte, error) {
-	out, err := exec.Command(name, args...).Output() //nolint:gosec // G204: name is either "security" (macOS system binary) or a test mock; not user input
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
+	return runManagerCLI(name, args)
 }
 
 // KeychainKEK retrieves a 32-byte generic-password item from the macOS Keychain
