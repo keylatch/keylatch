@@ -20,6 +20,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/team"
 	"github.com/keylatch/keylatch/internal/team/sharedsecret"
 	"github.com/keylatch/keylatch/internal/trust"
@@ -422,10 +423,19 @@ func approvalDir() string {
 // ---- shared-secret commands ----
 
 // newSharedSecretCmd returns the `shared-secret` subcommand group.
+// F43: team/shared-secret hardware paths are unavailable in M1 — every
+// subcommand is denied before it runs. Signed, fresh, replay-resistant
+// hardware presence proof is expansion work for when this re-enters scope.
 func newSharedSecretCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shared-secret",
 		Short: "Manage team shared secrets (AGE-encrypted)",
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			if !manifest.M1().Enabled("team") {
+				return fmt.Errorf("shared-secret: team governance unavailable in this build")
+			}
+			return nil
+		},
 	}
 	cmd.AddCommand(newSharedSecretCreateCmd())
 	cmd.AddCommand(newSharedSecretRewrapCmd())
