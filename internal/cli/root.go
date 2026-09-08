@@ -28,6 +28,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/proxy"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -786,16 +787,27 @@ func newRunCmd() *cobra.Command {
 			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
 			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
 
+			// M1 excludes direct_brokered, gateway_proxy, and
+			// direct_classic_sandboxed from the supported runtime set
+			// (F12) — WithManifestGuard makes each unreachable regardless
+			// of runtime.Resolve's fallback hierarchy, so a denied or
+			// unavailable gateway can never fall back into a direct
+			// secret-injection mode.
+			m1 := manifest.M1()
 			dr := runner.DispatchRunner{
 				Guard: guardFn,
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.
-					string(runtime.RuntimeGatewayTyped):   runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeGatewaySDK):     runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeDirectBrokered): runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil),
-					string(runtime.RuntimeGatewayProxy):   runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
+					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
+					string(runtime.RuntimeGatewaySDK):   runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
+					string(runtime.RuntimeDirectBrokered): runner.WithManifestGuard(
+						runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil), m1, "direct_brokered"),
+					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
+						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
+						m1, "gateway_proxy"),
 					// direct_classic_sandboxed reinstated.
-					string(runtime.RuntimeDirectClassicSandboxed): runner.NewClassicSandboxedDriver(nil),
+					string(runtime.RuntimeDirectClassicSandboxed): runner.WithManifestGuard(
+						runner.NewClassicSandboxedDriver(nil), m1, "direct_classic_sandboxed"),
 				},
 			}
 
