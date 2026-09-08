@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-// KNOWN-FAILING (F26): ApprovalsHandler has no approval-store dependency —
-// every action returns {"status":"accepted"} regardless of whether the
-// referenced request exists.
+// TestSecurityRegression_F26_ApprovalActionRequiresPendingRequest verifies
+// ApprovalsHandler (F26) never fakes acceptance of an approval action: the
+// inbox has no store backing it in M1, so every action returns an explicit
+// unavailable response instead of {"status":"accepted"}.
 func TestSecurityRegression_F26_ApprovalActionRequiresPendingRequest(t *testing.T) {
 	for _, action := range []string{"approve", "deny"} {
 		t.Run(action, func(t *testing.T) {
