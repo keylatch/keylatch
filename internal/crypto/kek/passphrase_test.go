@@ -114,27 +114,17 @@ func TestPassphraseZeroedAfterDerive(t *testing.T) {
 	}
 }
 
-func TestOPKEKMocked(t *testing.T) {
-	// Test OPKEK with a mock runner.
-	dek := make([]byte, 32)
-	for i := range dek {
-		dek[i] = byte(i + 5)
-	}
-
-	// Mock runner returns a hex-encoded 32-byte key.
-	hexKey := make([]byte, 64)
-	for i := 0; i < 32; i++ {
-		hexKey[2*i] = "0123456789abcdef"[dek[i]>>4]
-		hexKey[2*i+1] = "0123456789abcdef"[dek[i]&0xf]
-	}
-
-	// Use the exported opKEKWithRunner test helper via an internal test.
-	// Since we are in package kek_test, we use OPKEK directly.
-	// In the actual test we rely on the exported behavior: OPKEK fails when
-	// the op CLI is not available, which returns ErrKEKUnavailable.
+// TestOPKEKNoCLIAvailable exercises OPKEK's not-found error path. PATH is
+// pointed at an empty directory so "op" is deterministically absent
+// regardless of what is installed on the machine running this test —
+// ordinary `go test ./...` must never shell out to a real op CLI (F47).
+// Runner-level mocked round trips live in kek_internal_test.go
+// (opKEKWithRunner); real-CLI coverage is opt-in via live_manager_test.go.
+func TestOPKEKNoCLIAvailable(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
 	_, err := kek.OPKEK("vault", "item", "field")
 	if err == nil {
-		t.Skip("op CLI is available; skipping mock test")
+		t.Fatal("expected error when op CLI is not on PATH")
 	}
 	if err.Error() == "" {
 		t.Error("expected non-empty error")
@@ -142,7 +132,7 @@ func TestOPKEKMocked(t *testing.T) {
 }
 
 func TestBWKEKMocked(t *testing.T) {
-	// BWKEK without BW_SESSION should fail.
+	// BWKEK without BW_SESSION should fail before any subprocess is run.
 	t.Setenv("BW_SESSION", "")
 	_, err := kek.BWKEK("item-id", "field-name")
 	if err == nil {

@@ -2,7 +2,6 @@ package kek
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
@@ -21,11 +20,7 @@ type opKEK struct {
 // The field value is used as the wrapping key.
 func OPKEK(vaultName, itemTitle, fieldName string) (KEK, error) {
 	runner := func(args ...string) ([]byte, error) {
-		out, err := exec.Command("op", args...).Output() //nolint:gosec // G204: "op" is the 1Password CLI binary; it is a fixed string, not user input
-		if err != nil {
-			return nil, err
-		}
-		return out, nil
+		return runManagerCLI("op", args)
 	}
 	return opKEKWithRunner(vaultName, itemTitle, fieldName, runner)
 }
