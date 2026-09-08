@@ -1,7 +1,3 @@
-//go:build securitysuite
-
-// Requires the securitysuite build tag; excluded from the ordinary
-// go test ./... run. Run with: go test -tags securitysuite ./...
 package gateway
 
 import (
@@ -15,9 +11,10 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/approval"
 )
 
-// KNOWN-FAILING (F30): the approvals HTTP endpoints require no caller
-// authentication, so an anonymous request can list pending approval tokens
-// and approve them by ID.
+// TestSecurityRegression_F30_AnonymousApproval verifies the approvals HTTP
+// endpoints (F30) are unreachable in M1: an anonymous request cannot list
+// pending approval tokens or mutate an approval's status through the real
+// mux, regardless of authentication.
 func TestSecurityRegression_F30_AnonymousApproval(t *testing.T) {
 	d := t.TempDir()
 	ar, e := approval.RequestNew(context.Background(), d, "synthetic-actor", "test.write", "test", "bound", time.Hour)

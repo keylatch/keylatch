@@ -13,7 +13,6 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/budget"
-	"github.com/keylatch/keylatch/internal/gateway/approval"
 	"github.com/keylatch/keylatch/internal/gateway/redact"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/gateway/substitution"
@@ -159,7 +158,9 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// direct_classic_sandboxed in LLM sessions requires two-person approval.
 		// If the token was minted with ApprovalRootHMAC set (sandboxed approval path)
-		// but TwoPerson is false, block the request.
+		// but TwoPerson is false, block the request. token.Mint now rejects any
+		// hardware approval claim outright (F34), so ApprovalRootHMAC is never
+		// set on an M1 token; this check is retained as defense in depth.
 		if t.ApprovalRootHMAC != "" && !t.TwoPerson {
 			writeError(w, http.StatusForbidden, "llm_session_requires_two_person_approval",
 				"direct_classic_sandboxed in an LLM session requires two-person approval")
@@ -462,31 +463,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(redactedBody) //nolint:gosec // G705: body is run through redact.Body which strips secrets; this is an API gateway, not an HTML context
 }
 
-// approveHandler proxies to approval.Approve.
+// approveHandler is unreachable in M1 (F30, F32): approval mutation is not
+// implemented, so it returns an honest unavailable response for any token
+// rather than calling into the approval package.
 func (s *Server) approveHandler(w http.ResponseWriter, r *http.Request) {
-	tok := strings.TrimPrefix(r.URL.Path, "/approve/")
-	if tok == "" {
-		writeError(w, http.StatusBadRequest, "missing_token", "approval token required")
-		return
-	}
-	if err := approval.Approve(r.Context(), s.opts.ApprovalsDir, tok); err != nil {
-		writeError(w, http.StatusBadRequest, "approval_error", "failed to approve")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"approved"}`)
+	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in M1")
 }
 
-// approvalsHandler returns pending approvals.
+// approvalsHandler is unreachable in M1 (F26, F30): the approval inbox is
+// not implemented, so it returns an honest unavailable response instead of
+// disclosing (or falsely accepting mutations against) pending approvals.
 func (s *Server) approvalsHandler(w http.ResponseWriter, r *http.Request) {
-	pending, err := approval.Pending(r.Context(), s.opts.ApprovalsDir)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "approvals_error", "failed to list approvals")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	b, _ := json.Marshal(pending)
-	_, _ = w.Write(b)
+	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in M1")
 }
 
 // injectAuth injects the access token into the upstream request per AuthPlacement.
