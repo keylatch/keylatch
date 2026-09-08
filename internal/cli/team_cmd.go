@@ -18,6 +18,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/team"
 )
 
@@ -148,7 +149,13 @@ func newTeamInviteCmd() *cobra.Command {
 
 // requireCallerAdmin loads the caller's member from the team and enforces admin role.
 // Used by mutating team commands to enforce role checks at the CLI layer.
+// F39: team mutation is gated unavailable for M1 — denied before the
+// environment-selected caller identity is even looked up. Active
+// authenticated subject plus session/rotation revocation is expansion work.
 func requireCallerAdmin(t *team.Team) error {
+	if !manifest.M1().Enabled("team") {
+		return fmt.Errorf("team: team governance unavailable in this build")
+	}
 	callerID := os.Getenv("KEYLATCH_MEMBER_ID")
 	if callerID == "" {
 		return fmt.Errorf("team: caller identity not available — authenticate first (set KEYLATCH_MEMBER_ID)")
