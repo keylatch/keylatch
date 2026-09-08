@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -80,7 +81,8 @@ func newGatewayServerWithAudit(t *testing.T) (port int, cancel context.CancelFun
 
 // --- approveHandler tests ---
 
-// TestApproveHandler_MissingToken verifies 400 when token is empty.
+// TestApproveHandler_MissingToken verifies approval is unavailable in M1
+// even when the token is empty.
 func TestApproveHandler_MissingToken(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -109,13 +111,14 @@ func TestApproveHandler_MissingToken(t *testing.T) {
 		t.Fatalf("POST /approve/: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
+	if resp.StatusCode != http.StatusServiceUnavailable {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("expected 400 for missing approval token; got %d (body: %s)", resp.StatusCode, body)
+		t.Errorf("expected 503 approval_unavailable; got %d (body: %s)", resp.StatusCode, body)
 	}
 }
 
-// TestApproveHandler_InvalidToken verifies 400 when token is not found.
+// TestApproveHandler_InvalidToken verifies approval is unavailable in M1
+// even when the token does not exist.
 func TestApproveHandler_InvalidToken(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -144,13 +147,14 @@ func TestApproveHandler_InvalidToken(t *testing.T) {
 		t.Fatalf("POST /approve/nonexistent-token: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
+	if resp.StatusCode != http.StatusServiceUnavailable {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("expected 400 for nonexistent approval token; got %d (body: %s)", resp.StatusCode, body)
+		t.Errorf("expected 503 approval_unavailable; got %d (body: %s)", resp.StatusCode, body)
 	}
 }
 
-// TestApprovalsHandler_Empty verifies GET /approvals returns empty list when no approvals.
+// TestApprovalsHandler_Empty verifies GET /approvals is unavailable in M1
+// rather than disclosing a (real or fake) pending-approval list.
 func TestApprovalsHandler_Empty(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
@@ -178,12 +182,11 @@ func TestApprovalsHandler_Empty(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusServiceUnavailable {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 200; got %d (body: %s)", resp.StatusCode, body)
+		t.Fatalf("expected 503 approval_unavailable; got %d (body: %s)", resp.StatusCode, body)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	// Should be null or [] — both are valid JSON.
 	var result interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
 		t.Errorf("response is not valid JSON: %s", body)
@@ -992,16 +995,17 @@ func TestServer_New_ValidLoopbackAddresses(t *testing.T) {
 	}
 }
 
-// TestGateway_LLMSession_RequiresTwoPersonApproval verifies the two-person approval
-// gate in LLM sessions (ApprovalRootHMAC set but TwoPerson=false → 403).
+// TestGateway_LLMSession_RequiresTwoPersonApproval verifies that a spec
+// simulating an LLM session with a hardware approval claim (ApprovalRootID
+// set, TwoPerson=false) can never reach the gateway's two-person gate: Mint
+// rejects it outright (F34; see also token.TestMint_RejectsHardwareApprovalClaims).
 func TestGateway_LLMSession_RequiresTwoPersonApproval(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "tokens.json")
 
-	// Mint a token simulating an LLM session with ApprovalRootID set but TwoPerson=false.
-	jwtStr, _, err := token.Mint(token.TokenSpec{
+	_, _, err := token.Mint(token.TokenSpec{
 		Actor:          "llm-actor",
 		Capabilities:   []string{"sentry.error_reporting"},
 		TTL:            1 * time.Hour,
@@ -1011,33 +1015,8 @@ func TestGateway_LLMSession_RequiresTwoPersonApproval(t *testing.T) {
 		SigningKey:     key,
 		StorePath:      storePath,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	port := freePort(t)
-	srv, err := gateway.New(gateway.ServerOptions{
-		Bind:           fmt.Sprintf("127.0.0.1:%d", port),
-		SigningKey:     key,
-		ApprovalsDir:   dir + "/approvals",
-		TokenStorePath: storePath,
-		Env:            llmcontext.DefaultLookup,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go srv.Serve(ctx) //nolint:errcheck
-	time.Sleep(100 * time.Millisecond)
-
-	resp := doGatewayRequest(t, port, jwtStr, "/api/sentry/error_reporting", "{}")
-	defer resp.Body.Close()
-
-	// Should be 403 for llm_session_requires_two_person_approval.
-	if resp.StatusCode != http.StatusForbidden {
-		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("expected 403 for two-person approval gate; got %d (body: %s)", resp.StatusCode, body)
+	if !errors.Is(err, token.ErrHardwareApprovalUnsupported) {
+		t.Fatalf("expected ErrHardwareApprovalUnsupported, got %v", err)
 	}
 }
 

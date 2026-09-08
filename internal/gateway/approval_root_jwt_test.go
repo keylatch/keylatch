@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,53 +70,32 @@ func readBody(t *testing.T, resp *http.Response) (int, string) {
 	return resp.StatusCode, code
 }
 
-// TestGateway_TwoPerson_LLMSession_Missing_403 verifies that llm_session=true +
-// two_person=false + ApprovalRootHMAC set → 403 llm_session_requires_two_person_approval.
-func TestGateway_TwoPerson_LLMSession_Missing_403(t *testing.T) {
+// TestMint_RejectsHardwareApprovalClaims verifies token.Mint (F34) refuses
+// to produce a gateway token from a TokenSpec carrying hardware approval
+// claims, with or without TwoPerson set — M1 has no hardware attestation
+// workflow, so no caller (CLI, API, or library) can mint a token the
+// downstream two-person LLM session gate would ever need to evaluate.
+func TestMint_RejectsHardwareApprovalClaims(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	dir := t.TempDir()
 	storePath := filepath.Join(dir, "tokens.json")
 
-	// Mint a token: LLMSession=true, ApprovalRootHMAC present, TwoPerson=false.
-	jwtStr, _, err := token.Mint(token.TokenSpec{
+	_, _, err := token.Mint(token.TokenSpec{
 		Actor:          "llm-actor",
 		Capabilities:   []string{"sentry.error_reporting"},
 		TTL:            1 * time.Hour,
 		LLMSession:     true,
-		ApprovalRootID: "some-root-id", // triggers ApprovalRootHMAC in token
+		ApprovalRootID: "some-root-id",
 		TwoPerson:      false,
 		SigningKey:     key,
 		StorePath:      storePath,
 	})
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, token.ErrHardwareApprovalUnsupported) {
+		t.Fatalf("expected ErrHardwareApprovalUnsupported, got %v", err)
 	}
 
-	port, cancel := approvalRootTestServer(t, key, storePath)
-	defer cancel()
-
-	resp := doApprovalRootRequest(t, port, jwtStr, "/api/sentry/error_reporting")
-	status, errCode := readBody(t, resp)
-	if status != http.StatusForbidden {
-		t.Errorf("expected 403, got %d (error=%s)", status, errCode)
-		return
-	}
-	if errCode != "llm_session_requires_two_person_approval" {
-		t.Errorf("expected llm_session_requires_two_person_approval, got %q", errCode)
-	}
-}
-
-// TestGateway_TwoPerson_LLMSession_Present_Allowed verifies that llm_session=true +
-// two_person=true + ApprovalRootHMAC set → passes the two-person gate (exception).
-func TestGateway_TwoPerson_LLMSession_Present_Allowed(t *testing.T) {
-	key := make([]byte, 32)
-	rand.Read(key)
-	dir := t.TempDir()
-	storePath := filepath.Join(dir, "tokens.json")
-
-	// Mint with TwoPerson=true.
-	jwtStr, _, err := token.Mint(token.TokenSpec{
+	_, _, err = token.Mint(token.TokenSpec{
 		Actor:           "llm-actor",
 		Capabilities:    []string{"sentry.error_reporting"},
 		TTL:             1 * time.Hour,
@@ -126,20 +106,8 @@ func TestGateway_TwoPerson_LLMSession_Present_Allowed(t *testing.T) {
 		SigningKey:      key,
 		StorePath:       storePath,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	port, cancel := approvalRootTestServer(t, key, storePath)
-	defer cancel()
-
-	resp := doApprovalRootRequest(t, port, jwtStr, "/api/sentry/error_reporting")
-	// The request will proceed past the two-person gate and reach broker.Exchange,
-	// which returns ErrExchangeUnsupported in the test environment → 503.
-	// Any status other than 403 (two_person_approval) means the gate passed.
-	status, errCode := readBody(t, resp)
-	if status == http.StatusForbidden && errCode == "llm_session_requires_two_person_approval" {
-		t.Errorf("expected two-person gate to pass, but got 403 two_person_approval_required")
+	if !errors.Is(err, token.ErrHardwareApprovalUnsupported) {
+		t.Fatalf("expected ErrHardwareApprovalUnsupported, got %v", err)
 	}
 }
 
