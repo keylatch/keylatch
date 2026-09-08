@@ -290,6 +290,9 @@ func Register(root *cobra.Command) {
 
 	// runtime group is now implemented.
 	addCmd(root, newRuntimeCmd(), "advanced")
+
+	// `scope` — prints the support manifest (internal/manifest).
+	addCmd(root, newScopeCmd(), "advanced")
 }
 
 // newRegistryCmd returns the `registry` subcommand group.
