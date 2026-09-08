@@ -2,10 +2,6 @@
 // in the current release milestone. CLI help/doctor, the web UI, packaging,
 // and tests are all meant to consume this manifest rather than hardcoding
 // their own copy of the scope table (F20).
-//
-// The M1 table below mirrors vault/plans/keylatch/2026/09/07/
-// internal-production-readiness-plan.md, section "1. Release scope" and its
-// "Explicit exclusions" subsection. Update that plan and this file together.
 package manifest
 
 import "fmt"
