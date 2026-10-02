@@ -270,8 +270,10 @@ func (s *Server) groupsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) groupHandler(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+func (s *Server) groupHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.WriteHeader(http.StatusNotImplemented)
+	_, _ = w.Write([]byte(`{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"501","detail":"SCIM Groups endpoint not yet implemented"}`))
 }
 
 // memberToSCIM converts a team.Member to a SCIM user (value-free).

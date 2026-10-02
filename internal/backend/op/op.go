@@ -24,6 +24,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // compile-time interface check.
@@ -103,7 +104,13 @@ func (b *OnePasswordBackend) Capabilities() []backend.Capability {
 
 // Get returns the plaintext bytes for a canonical path via `op item get`.
 // Uses single-flight collapse and a 60-second metadata cache.
+//
+// Checks runner.OK before returning plaintext (C2).
 func (b *OnePasswordBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
+	if !runner.OK(ctx) {
+		return nil, backend.Meta{}, backend.ErrLocked
+	}
+
 	connection, field, err := parsePath(path)
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("op Get: %w", err)
@@ -168,7 +175,7 @@ func (b *OnePasswordBackend) Set(ctx context.Context, path string, value []byte,
 		}
 	}
 
-	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin, args, nil)
+	stdout, stderr, exitCode, err := b.runWithEnv(ctx, args, nil)
 	if err != nil {
 		return fmt.Errorf("op Set: runner error: %w", err)
 	}
@@ -201,7 +208,7 @@ func (b *OnePasswordBackend) Delete(ctx context.Context, path string) error {
 	// Invalidate cache.
 	b.cache.Delete(connection)
 
-	_, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin,
+	_, stderr, exitCode, err := b.runWithEnv(ctx,
 		[]string{"item", "delete", connection, "--vault=" + b.opts.Vault},
 		nil)
 	if err != nil {
@@ -219,7 +226,7 @@ func (b *OnePasswordBackend) Delete(ctx context.Context, path string) error {
 
 // List returns metadata-only entries with zero-filled field values.
 func (b *OnePasswordBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
-	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin,
+	stdout, stderr, exitCode, err := b.runWithEnv(ctx,
 		[]string{"item", "list",
 			"--vault=" + b.opts.Vault,
 			"--tags=keylatch",
@@ -234,6 +241,12 @@ func (b *OnePasswordBackend) List(ctx context.Context, prefix string) ([]backend
 			return nil, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
 		}
 		return nil, fmt.Errorf("op List: op exited %d", exitCode)
+	}
+
+	// See fetchItemDirect: exitCode == 0 with empty stdout indicates a
+	// stale/expired session, not valid empty JSON.
+	if len(stdout) == 0 {
+		return nil, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
 	}
 
 	var items []opItem
@@ -328,7 +341,7 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 		args = append(args, "--account="+account)
 	}
 
-	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin, args, nil)
+	stdout, stderr, exitCode, err := b.runWithEnv(ctx, args, nil)
 	if err != nil {
 		return opItem{}, fmt.Errorf("op: runner error: %w", err)
 	}
@@ -350,6 +363,14 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 		return opItem{}, fmt.Errorf("op: item get exited %d", exitCode)
 	}
 
+	// exitCode == 0 with empty stdout indicates a stale/expired session
+	// that op did not surface as a non-zero exit — without this guard the
+	// decode attempts below fail with a confusing "invalid JSON" error
+	// instead of actionable signin guidance.
+	if len(stdout) == 0 {
+		return opItem{}, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
+	}
+
 	// Try to decode as a single item first.
 	var item opItem
 	if err := json.Unmarshal(stdout, &item); err == nil {
@@ -369,6 +390,26 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 	}
 
 	return opItem{}, fmt.Errorf("op: decode item response: invalid JSON")
+}
+
+// runWithEnv invokes the op CLI via CommandRunner.RunEnv, explicitly
+// forwarding OP_SERVICE_ACCOUNT_TOKEN (when present) through opts.Env rather
+// than relying solely on ambient os.Environ() inheritance. Options.Env was
+// previously read once at Open() and then never consulted again (M3) — every
+// op subprocess call now depends on the injected lookup, which matters under
+// daemon/sandboxed exec paths where the parent's ambient env is not
+// implicitly passed through to the op CLI process.
+//
+// op's interactive/biometric session state (op signin, Touch ID) is managed
+// entirely by op's own daemon — this seam only forwards the service-account
+// token; it does not maintain a keylatch-side session cache (see H5:
+// newOPSigninCmd's Long help for why op deliberately has no cache).
+func (b *OnePasswordBackend) runWithEnv(ctx context.Context, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	var extraEnv []string
+	if tok := b.opts.Env("OP_SERVICE_ACCOUNT_TOKEN"); tok != "" {
+		extraEnv = append(extraEnv, "OP_SERVICE_ACCOUNT_TOKEN="+tok)
+	}
+	return b.opts.Runner.RunEnv(ctx, b.bin, args, stdin, extraEnv)
 }
 
 // isAmbiguous returns true when stderr indicates multiple items match.

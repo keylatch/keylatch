@@ -419,7 +419,10 @@ func newConnectCmd() *cobra.Command {
 			}
 
 			// Write connection metadata so `keylatch doctor` and list commands
-			// recognise this as a configured connection.
+			// recognise this as a configured connection. If this write fails,
+			// the secret above would otherwise be stored but invisible to
+			// list/doctor while still being reported as a success — roll the
+			// secret back and report a real error instead.
 			metaPath := fmt.Sprintf("default/custom/%s/meta", name)
 			conn := connections.Connection{
 				Provider:  name,
@@ -428,12 +431,29 @@ func newConnectCmd() *cobra.Command {
 				Status:    "untested",
 			}
 			connBytes, marshalErr := json.Marshal(conn)
-			if marshalErr == nil {
-				_ = st.Set(ctx, metaPath, connBytes, backend.Meta{
-					Path:    metaPath,
-					Backend: cfg.Backend,
-					Version: 1,
-				})
+			if marshalErr != nil {
+				rollbackErr := st.Delete(ctx, fieldPath)
+				if rollbackErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: encode connection metadata: %v (rollback also failed: %v)\n", marshalErr, rollbackErr)
+				} else {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: encode connection metadata: %v (credential rolled back)\n", marshalErr)
+				}
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+			if metaErr := st.Set(ctx, metaPath, connBytes, backend.Meta{
+				Path:    metaPath,
+				Backend: cfg.Backend,
+				Version: 1,
+			}); metaErr != nil {
+				rollbackErr := st.Delete(ctx, fieldPath)
+				if rollbackErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: credential stored but metadata write failed, and rollback also failed: %v (metadata error: %v)\n", rollbackErr, metaErr)
+				} else {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: metadata write failed; credential rolled back: %v\n", metaErr)
+				}
+				os.Exit(exitcode.OperationFailed)
+				return nil
 			}
 
 			fmt.Fprintf(c.OutOrStdout(), "  Connected: custom/%s (%s saved)\n", name, field)

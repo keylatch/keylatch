@@ -22,3 +22,6 @@ src-tauri/target/
 .cache/
 internal/ui/web/tsconfig.tsbuildinfo
 dist/
+
+# graphify code-graph tool output (local dev only, not a build artifact)
+graphify-out/

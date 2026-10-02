@@ -1,0 +1,14 @@
+# Caddyfile for the Vaultwarden E2E test fixture (docker-compose.vaultwarden.yml).
+#
+# `tls internal` tells Caddy to mint a certificate from its own internal CA
+# (generated on first run, persisted under the caddy_data volume at
+# /data/caddy/pki/authorities/local/) instead of trying ACME/Let's Encrypt —
+# there is no public DNS name here, so a real cert isn't possible or needed.
+#
+# This is a TEST-ONLY fixture. It is not shipped in any production image and
+# is not referenced by any non-test code path — see contrib/vaultwarden-e2e.md
+# for how to trust this CA locally when running `make test-e2e-bw`.
+:8443 {
+	tls internal
+	reverse_proxy vaultwarden:80
+}

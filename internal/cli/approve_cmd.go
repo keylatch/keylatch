@@ -8,7 +8,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway/approval"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -57,61 +56,54 @@ CLAUDE_CODE env vars set). Approvals must be performed by a human operator.`,
 			env := llmcontext.DefaultLookup
 
 			// LLM session guard: approvals must not run inside LLM sessions.
+			// Returns a *CLIError rather than printing directly here — main.go
+			// is the single place that prints it (C5). Printing here too
+			// would double-print (Finding-001); it would also break the
+			// existing in-process tests (e.g. TestApprove_NotFound) that
+			// call cmd.Execute() and assert on the returned error, which an
+			// os.Exit here would defeat by killing the test process.
 			if llmcontext.IsLLMSession(env) {
-				cerr := cmderr.Wrap(
-					"approve: command is not permitted inside an LLM session",
-					nil,
-					"Approvals must be performed by a human operator outside of an LLM session.",
-					"KL-4101",
-				)
-				cmderr.Format(c.ErrOrStderr(), cerr)
-				return NewSecurityBlock("approve: command is not permitted inside an LLM session")
+				return &CLIError{
+					Class:   "SecurityBlock",
+					Code:    exitcode.SecurityBlock,
+					Message: "approve: command is not permitted inside an LLM session. Approvals must be performed by a human operator outside of an LLM session. (KL-4101)",
+				}
 			}
 
 			token := args[0]
 			approvalsDir := paths.ApprovalsDir(env)
 
+			// All branches below return a *CLIError without printing —
+			// main.go prints it exactly once (see the guard above).
 			if err := approval.ApproveWithReason(c.Context(), approvalsDir, token, reason); err != nil {
 				if errors.Is(err, approval.ErrNotFound) {
-					cerr := cmderr.Wrap(
-						fmt.Sprintf("approval %q not found", token),
-						err,
-						"Check the token with 'keylatch ui' or the Approval Inbox.",
-						"KL-4102",
-					)
-					cmderr.Format(c.ErrOrStderr(), cerr)
-					return &CLIError{Class: "Missing", Code: exitcode.Missing, Message: cerr.Summary}
+					return &CLIError{
+						Class:   "Missing",
+						Code:    exitcode.Missing,
+						Message: fmt.Sprintf("approval %q not found. Check the token with 'keylatch ui' or the Approval Inbox. (KL-4102)", token),
+					}
 				}
 				// ErrExpiredTTL satisfies errors.Is(ErrExpired) and ErrAlreadyActed.
 				var expErr *approval.ErrExpiredTTL
 				if errors.As(err, &expErr) {
-					cerr := cmderr.Wrap(
-						fmt.Sprintf("approval %q %s", token, expErr.Error()),
-						err,
-						"The request TTL has elapsed. Ask the agent to re-submit.",
-						"KL-4104",
-					)
-					cmderr.Format(c.ErrOrStderr(), cerr)
-					return &CLIError{Class: "UserError", Code: exitcode.UserError, Message: cerr.Summary}
+					return &CLIError{
+						Class:   "UserError",
+						Code:    exitcode.UserError,
+						Message: fmt.Sprintf("approval %q %s. The request TTL has elapsed. Ask the agent to re-submit. (KL-4104)", token, expErr.Error()),
+					}
 				}
 				if errors.Is(err, approval.ErrAlreadyActed) {
-					cerr := cmderr.Wrap(
-						fmt.Sprintf("approval %q has already been approved or denied", token),
-						err,
-						"",
-						"KL-4103",
-					)
-					cmderr.Format(c.ErrOrStderr(), cerr)
-					return &CLIError{Class: "UserError", Code: exitcode.UserError, Message: cerr.Summary}
+					return &CLIError{
+						Class:   "UserError",
+						Code:    exitcode.UserError,
+						Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4103)", token),
+					}
 				}
-				cerr := cmderr.Wrap(
-					fmt.Sprintf("failed to approve %q", token),
-					err,
-					"",
-					"KL-4100",
-				)
-				cmderr.Format(c.ErrOrStderr(), cerr)
-				return &CLIError{Class: "OperationFailed", Code: exitcode.OperationFailed, Message: cerr.Summary}
+				return &CLIError{
+					Class:   "OperationFailed",
+					Code:    exitcode.OperationFailed,
+					Message: fmt.Sprintf("failed to approve %q: %v. (KL-4100)", token, err),
+				}
 			}
 
 			out := approveOutput{

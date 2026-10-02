@@ -37,11 +37,41 @@ func RegisterCommands(root *cobra.Command, groupID string) {
 	root.AddCommand(ssCmd)
 }
 
+// trustExperimentalNotice is printed to stderr before every `trust`
+// subcommand runs (see PersistentPreRunE below). Kept as a constant so the
+// group help text (Long, below) and the runtime notice stay in sync.
+const trustExperimentalNotice = "[keylatch] trust: experimental command group — " +
+	"hardware-root enrolment/approval (`trust enroll`, `trust approve`) is not " +
+	"yet implemented; `trust list`/`trust doctor`/`trust challenge` are real. " +
+	"See docs/experimental.md."
+
 // newTrustCmd returns the `trust` subcommand group.
+//
+// H8: this group is marked experimental rather than fully hidden because
+// part of it genuinely works today — `list`, `doctor`, `challenge`,
+// `revoke`, and `allowlist` are backed by real internal/trust code paths.
+// Only the hardware-root ceremonies (`enroll`, `approve`) are stubs; those
+// two commands are individually hidden from `trust --help` and exit with
+// exitcode.NotImplemented instead of a generic error.
 func newTrustCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trust",
-		Short: "Manage root-of-trust adapters, enrolment, and approvals",
+		Short: "Manage root-of-trust adapters, enrolment, and approvals (experimental — not yet functional)",
+		Long: `Manage root-of-trust adapters, enrolment, and approvals.
+
+EXPERIMENTAL — not yet functional. Hardware-root enrolment ("trust enroll")
+and challenge approval ("trust approve") are registered commands but their
+implementations are stubs: every root type (secure-enclave, ssh-agent,
+pkcs11, gpg-card, fido2) returns a not-implemented error (exit code 10).
+
+"trust list", "trust doctor", and "trust challenge" are backed by working
+code today and remain fully visible and supported.
+
+Status is tracked in CHANGELOG.md (Unreleased) and docs/experimental.md.`,
+		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
+			fmt.Fprintln(c.ErrOrStderr(), trustExperimentalNotice)
+			return nil
+		},
 	}
 	cmd.AddCommand(newTrustListCmd())
 	cmd.AddCommand(newTrustDoctorCmd())
@@ -51,6 +81,20 @@ func newTrustCmd() *cobra.Command {
 	cmd.AddCommand(newTrustRevokeCmd())
 	cmd.AddCommand(newTrustAllowlistCmd())
 	return cmd
+}
+
+// trustNotImplemented prints a message pointing at the tracking state and
+// exits the process with exitcode.NotImplemented (10) — a code distinct
+// from both UserError (1) and SecurityBlock (2), so callers/scripts can
+// tell "this feature is not built yet" apart from "you used the CLI
+// wrong" or "the LLM-session guard blocked you". It never returns.
+func trustNotImplemented(c *cobra.Command, what string) {
+	fmt.Fprintf(c.ErrOrStderr(),
+		"[keylatch] trust: %s is not yet implemented (hardware-root ceremonies are stubs).\n"+
+			"Tracking: CHANGELOG.md (Unreleased), docs/experimental.md.\n"+
+			"Working today: keylatch trust list, keylatch trust doctor.\n",
+		what)
+	os.Exit(exitcode.NotImplemented)
 }
 
 // newTrustListCmd returns `keylatch trust list [--json]`.
@@ -113,21 +157,27 @@ func newTrustDoctorCmd() *cobra.Command {
 }
 
 // newTrustEnrollCmd returns `keylatch trust enroll <type> [flags]`.
+//
+// H8: every root type below is a stub — none has an implemented enrolment
+// ceremony. The whole "enroll" group is hidden from `trust --help` since
+// 100% of it is non-functional; it remains directly runnable by name.
 func newTrustEnrollCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "enroll <type>",
-		Short: "Enroll a new root-of-trust adapter",
+		Use:    "enroll <type>",
+		Short:  "Enroll a new root-of-trust adapter (not implemented)",
+		Hidden: true,
 	}
 
 	seCmd := &cobra.Command{
 		Use:   "secure-enclave",
-		Short: "Enroll the macOS Secure Enclave as a root of trust",
+		Short: "Enroll the macOS Secure Enclave as a root of trust (not implemented)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Blocked: trust enroll is not permitted in LLM sessions")
 				os.Exit(exitcode.SecurityBlock)
 			}
-			return fmt.Errorf("enroll secure-enclave: enrolment ceremony not yet implemented")
+			trustNotImplemented(c, "enroll secure-enclave")
+			return nil
 		},
 	}
 	seCmd.Flags().String("namespace", "", "key namespace")
@@ -135,13 +185,14 @@ func newTrustEnrollCmd() *cobra.Command {
 
 	sshCmd := &cobra.Command{
 		Use:   "ssh-agent",
-		Short: "Enroll an SSH agent key as a root of trust",
+		Short: "Enroll an SSH agent key as a root of trust (not implemented)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Blocked: trust enroll is not permitted in LLM sessions")
 				os.Exit(exitcode.SecurityBlock)
 			}
-			return fmt.Errorf("enroll ssh-agent: enrolment ceremony not yet implemented")
+			trustNotImplemented(c, "enroll ssh-agent")
+			return nil
 		},
 	}
 	sshCmd.Flags().String("fingerprint", "", "SSH key fingerprint")
@@ -150,13 +201,14 @@ func newTrustEnrollCmd() *cobra.Command {
 
 	p11Cmd := &cobra.Command{
 		Use:   "pkcs11",
-		Short: "Enroll a PKCS#11 token as a root of trust",
+		Short: "Enroll a PKCS#11 token as a root of trust (not implemented)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Blocked: trust enroll is not permitted in LLM sessions")
 				os.Exit(exitcode.SecurityBlock)
 			}
-			return fmt.Errorf("enroll pkcs11: enrolment ceremony not yet implemented")
+			trustNotImplemented(c, "enroll pkcs11")
+			return nil
 		},
 	}
 	p11Cmd.Flags().String("module", "", "path to PKCS#11 shared library")
@@ -165,26 +217,28 @@ func newTrustEnrollCmd() *cobra.Command {
 
 	gpgCmd := &cobra.Command{
 		Use:   "gpg-card",
-		Short: "Enroll a GnuPG smartcard as a root of trust",
+		Short: "Enroll a GnuPG smartcard as a root of trust (not implemented)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Blocked: trust enroll is not permitted in LLM sessions")
 				os.Exit(exitcode.SecurityBlock)
 			}
-			return fmt.Errorf("enroll gpg-card: enrolment ceremony not yet implemented")
+			trustNotImplemented(c, "enroll gpg-card")
+			return nil
 		},
 	}
 	gpgCmd.Flags().String("keygrip", "", "GPG keygrip")
 
 	fidoCmd := &cobra.Command{
 		Use:   "fido2",
-		Short: "Enroll a FIDO2 token as a root of trust",
+		Short: "Enroll a FIDO2 token as a root of trust (not implemented)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Blocked: trust enroll is not permitted in LLM sessions")
 				os.Exit(exitcode.SecurityBlock)
 			}
-			return fmt.Errorf("enroll fido2: enrolment ceremony not yet implemented (requires hardware)")
+			trustNotImplemented(c, "enroll fido2 (requires hardware)")
+			return nil
 		},
 	}
 	fidoCmd.Flags().String("device", "", "path to FIDO2 device")
@@ -260,11 +314,17 @@ func newTrustChallengeCmd() *cobra.Command {
 }
 
 // newTrustApproveCmd returns `keylatch trust approve <challenge-id>`.
+//
+// H8: challenge lookup/parse/expiry validation below are real (backed by
+// on-disk state written by `trust challenge`), but the actual signing step
+// is a stub — no root type has an implemented signing ceremony to satisfy
+// the challenge with. Hidden from `trust --help`; still directly runnable.
 func newTrustApproveCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "approve <challenge-id>",
-		Short: "Approve a pending challenge using a root of trust",
-		Args:  cobra.ExactArgs(1),
+		Use:    "approve <challenge-id>",
+		Short:  "Approve a pending challenge using a root of trust (not implemented)",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true,
 		RunE: func(c *cobra.Command, args []string) error {
 			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 				fmt.Fprintln(c.ErrOrStderr(), "[keylatch] Blocked: trust approve is not permitted in LLM sessions")
@@ -287,7 +347,8 @@ func newTrustApproveCmd() *cobra.Command {
 				return fmt.Errorf("trust approve: %w", trust.ErrTokenExpired)
 			}
 
-			return fmt.Errorf("trust approve: signing not yet implemented — enroll a hardware root first (run: keylatch trust enroll <type>)")
+			trustNotImplemented(c, "approve (signing) — enroll a hardware root first (run: keylatch trust enroll <type>)")
+			return nil
 		},
 	}
 	cmd.Flags().String("root", "", "root spec ID to use for signing")

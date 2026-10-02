@@ -23,9 +23,7 @@ func init() {
 }
 
 // genericPreset is a helper that implements the common preset pattern.
-type genericPreset struct {
-	name string //nolint:unused // planned: used by preset display name in agent listing
-}
+type genericPreset struct{}
 
 func (g *genericPreset) setupAgent(ctx context.Context, agentName string, opts SetupOptions, store connections.Store) (Receipt, error) {
 	profile, err := agentsnippet.GenerateProfile(ctx, agentName, opts.Mode, store)

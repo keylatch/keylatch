@@ -93,15 +93,6 @@ func (b *bwLogin) zero() {
 	b.Username = ""
 }
 
-// bwStatus is the JSON shape returned by `bw status`.
-type bwStatus struct {
-	ServerURL string `json:"serverUrl"`
-	LastSync  string `json:"lastSync,omitempty"`
-	UserEmail string `json:"userEmail,omitempty"`
-	UserID    string `json:"userId,omitempty"`
-	Status    string `json:"status"` // "locked" | "unlocked" | "unauthenticated"
-}
-
 // bwFolder is the JSON shape for a Bitwarden folder.
 type bwFolder struct {
 	ID   string `json:"id"`

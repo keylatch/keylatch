@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -110,6 +111,17 @@ Exit codes:
 			redactPaths, _ := c.Flags().GetBool("redact-paths")
 			quiet, _ := c.Flags().GetBool("quiet")
 			categoryStr, _ := c.Flags().GetString("category")
+			repair, _ := c.Flags().GetBool("repair")
+			yes, _ := c.Flags().GetBool("yes")
+
+			// review Finding-005: --repair's per-check confirmation prompt
+			// is written to stdout, which --quiet discards — without --yes
+			// the prompt would be invisible while the process still blocks
+			// on real stdin, looking like a hang. Fail fast with a usage
+			// error instead of running anything.
+			if repair && quiet && !yes {
+				return NewUsageError("--repair --quiet requires --yes (no prompt can be shown in quiet mode)")
+			}
 
 			var categories []string
 			if categoryStr != "" {
@@ -120,17 +132,32 @@ Exit codes:
 				}
 			}
 
+			env := llmcontext.DefaultLookup
 			report, err := doctor.Run(c.Context(), doctor.Options{
 				JSON:        jsonOut,
 				Verbose:     verbose || jsonOut, // JSON always shows all checks
 				RedactPaths: redactPaths,
 				Quiet:       quiet,
 				Categories:  categories,
-				Env:         llmcontext.DefaultLookup,
+				Env:         env,
 			})
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "doctor: %v\n", err)
 				os.Exit(doctorExitFailure)
+			}
+
+			// H1: --repair attempts the (currently narrow) set of safe,
+			// idempotent automated repairs, then re-runs doctor so the
+			// report/exit code reflect the post-repair state. The
+			// --quiet-without---yes combination was already rejected above,
+			// so the io.Discard branch below never has a pending prompt to
+			// hide (yes is guaranteed true whenever quiet is true here).
+			if repair && !quiet {
+				fmt.Fprintln(c.OutOrStdout(), "Repair:")
+				report = runDoctorRepair(c.Context(), c.OutOrStdout(), c.ErrOrStderr(), report, env, yes)
+				fmt.Fprintln(c.OutOrStdout())
+			} else if repair {
+				report = runDoctorRepair(c.Context(), io.Discard, io.Discard, report, env, yes)
 			}
 
 			// Determine exit code (three-tier: C2).
@@ -164,8 +191,8 @@ Exit codes:
 	cmd.Flags().Bool("json", false, "output as JSON (v1 schema: _schema, exit, checks, summary)")
 	cmd.Flags().Bool("verbose", false, "show all checks, including passing ones")
 	cmd.Flags().Bool("redact-paths", false, "hash path values in output (for support bundles)")
-	cmd.Flags().Bool("repair", false, "attempt supported repairs for failed checks")
-	cmd.Flags().Bool("yes", false, "confirm repair prompts")
+	cmd.Flags().Bool("repair", false, "attempt automated repair for checks with a safe, idempotent fix (currently: keychain ACL only); prints 'no automated repair' for everything else")
+	cmd.Flags().Bool("yes", false, "skip the interactive confirmation prompt for --repair (required when combined with --quiet --repair)")
 	cmd.Flags().Bool("quiet", false, "suppress table output; only exits with the appropriate code")
 	cmd.Flags().String("category", "", "comma-separated list of categories to run (e.g. environment,backends)")
 	// NOTE: --connection flag for gateway scoping is deferred.

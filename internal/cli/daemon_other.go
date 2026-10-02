@@ -1,0 +1,27 @@
+//go:build !darwin
+
+package cli
+
+import "errors"
+
+var errNotSupported = errors.New("not supported on this platform")
+
+// launchdServiceLabel is a stub on non-Darwin platforms.
+func launchdServiceLabel() string {
+	return ""
+}
+
+// launchdPlistPath is a stub on non-Darwin platforms.
+func launchdPlistPath() string {
+	return ""
+}
+
+// installLaunchdPlist is a stub on non-Darwin platforms.
+func installLaunchdPlist(_ string) error {
+	return errNotSupported
+}
+
+// desktopAppRunning is a stub on non-Darwin platforms — always false.
+func desktopAppRunning() bool {
+	return false
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/bw"
@@ -18,6 +19,151 @@ import (
 func RegisterBWCommands(root *cobra.Command) {
 	root.AddCommand(newBWInitCmd())
 	root.AddCommand(newBWListCmd())
+	root.AddCommand(newBWParentCmd())
+}
+
+// newBWParentCmd returns the `bw` command group (session orchestration: H5).
+func newBWParentCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bw",
+		Short: "Bitwarden/Vaultwarden session management (unlock, lock, status)",
+	}
+	cmd.AddCommand(newBWUnlockCmd())
+	cmd.AddCommand(newBWLockCmd())
+	cmd.AddCommand(newBWStatusCmd())
+	return cmd
+}
+
+// newBWUnlockCmd returns the `bw unlock` command.
+func newBWUnlockCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "unlock",
+		Short: "Unlock the Bitwarden/Vaultwarden vault and cache a session token",
+		Long: `bw unlock runs "bw unlock --raw" — the master password is piped to bw
+via stdin, never passed as an argument or printed — and caches the
+resulting session token under ~/.keylatch/sessions/ (mode 0600) for --ttl
+(default 8h). Subsequent keylatch commands using the bw backend pick the
+cached session up automatically (no BW_SESSION export required) via the
+env-injection seam in internal/backend/bw.
+
+Interactive terminals only: refuses to run inside an LLM-driven session and
+requires a TTY on stdin. The session token itself is NEVER printed, logged,
+or included in any error message.`,
+	}
+	cmd.Flags().Duration("ttl", bw.DefaultSessionTTL, "how long the cached session remains valid")
+
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		ctx := c.Context()
+		env := llmcontext.DefaultLookup
+
+		if llmcontext.IsLLMSession(env) {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: 'bw unlock' is interactive-only — blocked in LLM session (exit 2)\n")
+			return fmt.Errorf("exit %d", exitcode.SecurityBlock)
+		}
+		if !stdinIsTTY() {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: 'bw unlock' requires an interactive terminal (no TTY on stdin)\n")
+			return fmt.Errorf("exit %d", exitcode.UserError)
+		}
+
+		ttl, _ := c.Flags().GetDuration("ttl")
+
+		cfg := loadCLIConfig(c)
+		cfg.Backend = "bw"
+		dispatch.ClearCached()
+
+		b, err := dispatch.Select(ctx, cfg, env)
+		if err != nil {
+			if errors.Is(err, backend.ErrUnavailable) {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: Bitwarden CLI not available. Run: brew install bitwarden-cli\n")
+				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+			}
+			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+			return err
+		}
+
+		bwBackend, ok := b.(*bw.BitwardenBackend)
+		if !ok {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: backend is not a BitwardenBackend\n")
+			return fmt.Errorf("exit %d", exitcode.UserError)
+		}
+
+		password, err := promptHidden("Master password")
+		if err != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: failed to read master password: %v\n", err)
+			return fmt.Errorf("exit %d", exitcode.UserError)
+		}
+
+		token, unlockErr := bwBackend.Unlock(ctx, password)
+		zeroBytes(password)
+		if unlockErr != nil {
+			if errors.Is(unlockErr, backend.ErrLocked) {
+				fmt.Fprintln(c.ErrOrStderr(), "Error: unlock failed — invalid master password")
+				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+			}
+			fmt.Fprintf(c.ErrOrStderr(), "Error: unlock failed: %v\n", unlockErr)
+			return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+		}
+
+		if err := bw.SaveSession(env, token, ttl); err != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: unlocked but failed to cache session: %v\n", err)
+			return fmt.Errorf("exit %d", exitcode.OperationFailed)
+		}
+
+		fmt.Fprintf(c.OutOrStdout(), "Bitwarden vault unlocked; session cached (expires in %s)\n", ttl)
+		return nil
+	}
+
+	return cmd
+}
+
+// newBWLockCmd returns the `bw lock` command.
+func newBWLockCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "lock",
+		Short: "Clear the cached Bitwarden session",
+		Long: `bw lock removes the session token cached by "keylatch bw unlock".
+
+It does NOT invoke "bw lock" against the Bitwarden CLI — the vault's actual
+lock state remains managed by bw itself. This only clears keylatch's local
+cache, so subsequent keylatch commands stop reusing the cached session and
+fall back to requiring BW_SESSION (or a fresh "keylatch bw unlock").`,
+		RunE: func(c *cobra.Command, args []string) error {
+			env := llmcontext.DefaultLookup
+			if err := bw.ClearSession(env); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				return err
+			}
+			fmt.Fprintln(c.OutOrStdout(), "Cached Bitwarden session cleared")
+			return nil
+		},
+	}
+}
+
+// newBWStatusCmd returns the `bw status` command.
+func newBWStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show cached Bitwarden session presence and expiry (never the token)",
+		RunE: func(c *cobra.Command, args []string) error {
+			env := llmcontext.DefaultLookup
+			st, err := bw.StatSession(env)
+			if err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				return err
+			}
+			if !st.Present {
+				fmt.Fprintln(c.OutOrStdout(), "No cached Bitwarden session (run: keylatch bw unlock)")
+				return nil
+			}
+			if st.Expired {
+				fmt.Fprintf(c.OutOrStdout(), "Cached Bitwarden session EXPIRED at %s (run: keylatch bw unlock)\n",
+					st.ExpiresAt.Format(time.RFC3339))
+				return nil
+			}
+			fmt.Fprintf(c.OutOrStdout(), "Cached Bitwarden session valid until %s\n", st.ExpiresAt.Format(time.RFC3339))
+			return nil
+		},
+	}
 }
 
 // newBWInitCmd returns the `bw-init <service>` command.

@@ -18,6 +18,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/gateway/substitution"
 	"github.com/keylatch/keylatch/internal/gateway/token"
+	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/telemetry"
 )
@@ -46,7 +47,8 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 //  4. router.Match(method, path) → rt | 404
 //  5. Check t.Capabilities ⊇ {rt.Capability} | 403
 //     5b. LLM-session gate (from JWT claim, NOT from server env)
-//  6. policy check (always allow via CheckPolicy for now)
+//  6. policy check — evaluate s.policy (if configured) against actor/
+//     provider/capability/runtime | 403 on deny or unsatisfiable approval
 //     6-budget. per-actor budget CheckAndRecord | 429 with value-free denial receipt
 //     6a. substitution.CheckRequest | 400
 //  7. vault.Get (canonical path for provider) → rootCredential
@@ -169,8 +171,66 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 6: Policy check (pass-through; full policy enforcement not yet implemented).
-	// Placeholder — no policy evaluation yet.
+	// Step 6: Policy check.
+	//
+	// s.policy is nil when no ServerOptions.PolicyPath was configured (or
+	// the configured file does not exist yet) — this is pass-through allow,
+	// preserving the gateway's pre-wiring behavior (H7 is wiring, not a new
+	// default-deny for operators who have never touched policy). When a
+	// policy is configured, evaluate the same Actor/Connection/Capability/
+	// Runtime/LLMSession model the CLI-side engine uses
+	// (internal/runner.CheckPolicy), sourced only from the JWT-verified
+	// token and the route — never from client-supplied headers.
+	//
+	// ApprovalRequired decisions (rule.Approval or rule.ApprovalRootReq) are
+	// treated as denied here: the gateway request path is a single
+	// synchronous HTTP round-trip with no mechanism to solicit or await an
+	// out-of-band approval mid-request. Denying with a distinct error code
+	// is the honest behavior for this call site — silently allowing would
+	// defeat the rule, and blocking the request would just be a hang.
+	if s.policy != nil {
+		policyRuntime := string(policy.RuntimeGatewayTyped)
+		if strings.HasPrefix(r.URL.Path, "/sdk/") {
+			policyRuntime = string(policy.RuntimeGatewaySDK)
+		}
+		decision := checkPolicySafe(*s.policy, policy.Request{
+			Actor:      t.Actor,
+			Connection: rt.Provider,
+			Capability: rt.Capability,
+			LLMSession: t.LLMSession,
+			Runtime:    policyRuntime,
+		})
+		policyResult := "allow"
+		if !decision.Allow {
+			policyResult = "deny"
+		} else if decision.ApprovalRequired {
+			policyResult = "approval_required"
+		}
+		policyID := ""
+		if decision.MatchedRule != nil {
+			policyID = decision.MatchedRule.ID
+			policyResult += ":rule:" + policyID
+		}
+		if !decision.Allow || decision.ApprovalRequired {
+			code := "policy_denied"
+			msg := "request denied by policy"
+			if decision.ApprovalRequired {
+				code = "policy_approval_required"
+				msg = "policy requires approval that cannot be satisfied at the gateway"
+			}
+			writeError(w, http.StatusForbidden, code, msg)
+			s.logAudit(ctx, audit.ActionPolicyCheck, audit.OutcomeDenied, map[string]any{
+				"policy_id": policyID,
+				"result":    policyResult,
+			})
+			outcome = audit.OutcomeDenied
+			return
+		}
+		s.logAudit(ctx, audit.ActionPolicyCheck, audit.OutcomeOK, map[string]any{
+			"policy_id": policyID,
+			"result":    policyResult,
+		})
+	}
 
 	// Step 6-budget: per-actor budget enforcement. CheckAndRecord is atomic
 	// (no TOCTOU between check and record, C-4); the actor identity comes from
@@ -459,6 +519,31 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 // isErr checks errors with errors.Is semantics.
 func isErr(err, target error) bool {
 	return errors.Is(err, target)
+}
+
+// checkPolicySafe evaluates p.Check(req) with a recover() guard, mirroring
+// internal/cli/policy_cmd.go's identical wrapping of the same call.
+//
+// Review finding (2026-08-06, blocking, belt-and-braces layer): policy.Check
+// panics whenever req.LLMSession && p.Mode == ModePermissive. gateway.New
+// already rejects ModePermissive policies at load time so this should be
+// unreachable in practice, but Step 6 is a network-reachable call site —
+// an unguarded panic here would surface as a bare connection reset with no
+// 403 body and no audit event (Go's net/http recovers per-connection, so
+// the process survives, but the request does not get a proper response).
+// If p.Check ever panics for any reason — including future policy-engine
+// changes this call site doesn't know about — convert it to an explicit
+// deny instead of letting it propagate.
+func checkPolicySafe(p policy.Policy, req policy.Request) (d policy.Decision) {
+	defer func() {
+		if r := recover(); r != nil {
+			d = policy.Decision{
+				Allow:  false,
+				Reason: fmt.Sprintf("policy evaluation panicked: %v", r),
+			}
+		}
+	}()
+	return p.Check(req)
 }
 
 // logAudit writes an audit event; safe when AuditLogger is nil.

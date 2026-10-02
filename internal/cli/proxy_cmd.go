@@ -173,6 +173,14 @@ func newProxyUpCmd() *cobra.Command {
 			}
 			defer ln.Close() //nolint:errcheck
 
+			// Register signal handler before writing the PID file so that a SIGINT
+			// delivered immediately after PID file creation is always caught.
+			// If the handler is registered after the write, the test (or any caller)
+			// that polls for the PID file and then sends SIGINT can race the
+			// registration window and kill the process instead of cancelling ctx.
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+			defer cancel()
+
 			// Write PID file and state file (C3: store port alongside PID).
 			if err := gateway.WritePID(pidPath, os.Getpid()); err != nil {
 				return fmt.Errorf("proxy up: write PID: %w", err)
@@ -200,9 +208,6 @@ func newProxyUpCmd() *cobra.Command {
 
 			fmt.Fprintf(c.OutOrStdout(), "proxy: listening on %s\n", addr)
 			fmt.Fprintln(c.OutOrStdout(), "proxy: press Ctrl+C to stop")
-
-			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-			defer cancel()
 
 			// Accept connections until context cancelled.
 			go func() {

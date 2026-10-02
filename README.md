@@ -475,7 +475,9 @@ make check          # full pre-commit suite
 
 # Backend-specific E2E
 make test-e2e-op    # requires KEYLATCH_E2E_OP=1 and op CLI
-make test-e2e-bw    # requires Docker (starts Vaultwarden)
+make test-e2e-bw    # requires the Vaultwarden+Caddy fixture already running —
+                     # see contrib/vaultwarden-e2e.md for the full runbook
+                     # (docker compose up, CA trust, KEYLATCH_E2E_BW_SERVER/BW_SESSION)
 
 # Web UI
 make build-web      # build SPA into web/dist/

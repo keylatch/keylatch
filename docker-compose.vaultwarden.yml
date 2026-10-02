@@ -1,18 +1,31 @@
 version: "3.8"
 # Vaultwarden E2E test fixture.
-# Starts a Vaultwarden instance on a random available port.
-# Used by `make test-e2e-bw`.
 #
-# TLS is disabled here for test-only use.
-# Production deployments must use TLS.
+# bw.Open() (internal/backend/bw/bw.go) hard-requires an https:// server URL
+# — Keylatch never bypasses TLS verification, even for self-hosted
+# Vaultwarden. Vaultwarden itself runs HTTP-only here (ROCKET_TLS unset);
+# the `caddy` sidecar below terminates TLS in front of it using Caddy's
+# `tls internal` self-signed CA, so the https:// requirement can actually be
+# satisfied end-to-end in a local/CI fixture without a real certificate.
+#
+# Used by `make test-e2e-bw`. See contrib/vaultwarden-e2e.md for the full
+# workflow: bringing the stack up, finding the published Caddy port,
+# trusting (or pointing NODE_EXTRA_CA_CERTS at) Caddy's internal CA so the
+# bw CLI itself accepts the self-signed cert, and running the tests.
 services:
   vaultwarden:
     image: vaultwarden/server:latest
     environment:
       DISABLE_ADMIN_TOKEN: "true"
       WEBSOCKET_ENABLED: "false"
-      # Test-only: disable HTTPS. Production always requires HTTPS.
+      # HTTP-only — the `caddy` service is the TLS termination point, not
+      # vaultwarden itself. Never set this to a self-signed cert directly;
+      # that would just move the "insecure TLS" problem instead of fixing
+      # it, and production deployments must use a real cert regardless.
       ROCKET_TLS: ""
+    # Published for local debugging over plain HTTP only (e.g. curl the
+    # admin UI directly). The E2E tests always talk to the `caddy` service
+    # below over https:// — bw.Open() rejects a bare http:// server URL.
     ports:
       - "0:80"
     healthcheck:
@@ -20,3 +33,29 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      vaultwarden:
+        condition: service_healthy
+    # Random host port, mirroring vaultwarden's own "0:80" pattern — avoids
+    # port collisions between parallel CI runs / local test invocations.
+    # Find the assigned port with:
+    #   docker compose -f docker-compose.vaultwarden.yml port caddy 8443
+    ports:
+      - "0:8443"
+    volumes:
+      - ./contrib/vaultwarden-e2e/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    healthcheck:
+      # caddy:2-alpine has no curl (busybox wget only); --no-check-certificate
+      # is fine here — this only proves Caddy itself is answering, not that
+      # the cert is trusted (that's the bw-CLI-trust step in the doc).
+      test: ["CMD", "wget", "--no-check-certificate", "-q", "-O", "-", "https://localhost:8443/alive"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  caddy_data:

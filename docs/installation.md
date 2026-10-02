@@ -82,10 +82,12 @@ those.
 keylatch version
 ```
 
+(`keylatch --version` prints the identical string.)
+
 Expected output (version will vary):
 
 ```
-keylatch 0.1.0 (commit abc1234, built 2025-01-01T00:00:00Z)
+keylatch 0.1.0 (abc1234) built 2025-01-01T00:00:00Z
 ```
 
 ## Next step

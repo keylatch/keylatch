@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/route"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/telemetry"
 	"github.com/keylatch/keylatch/internal/ui"
@@ -111,6 +113,12 @@ type Server struct {
 	// actorHashKey is the domain-separated key for HMAC'ing actor IDs in
 	// budget denial receipts (derived from SigningKey, never the raw key).
 	actorHashKey []byte
+	// policy is the loaded request policy. nil means no policy is
+	// configured (ServerOptions.PolicyPath == "" or the file does not yet
+	// exist) — the handler's Step 6 treats nil as pass-through allow to
+	// preserve pre-wiring behavior (H7). Non-nil means Step 6 evaluates
+	// every request against it.
+	policy *policy.Policy
 }
 
 // RuntimeDecision describes the routing + credential decision for a request.
@@ -180,6 +188,63 @@ func New(opts ServerOptions) (*Server, error) {
 		return nil, fmt.Errorf("gateway: compile routes: %w", err)
 	}
 
+	// Load the request policy, if configured (H7 wiring).
+	//
+	// opts.PolicyPath == "" means the operator has not opted into gateway
+	// policy enforcement — leave loadedPolicy nil so the handler's Step 6
+	// stays pass-through, exactly like before this field was wired. A
+	// configured-but-not-yet-created file is treated the same way: there is
+	// nothing to enforce yet, not an error. Any other Load failure
+	// (malformed JSON, bad permissions, invalid schema) fails server
+	// startup — starting a gateway with a policy file the operator believes
+	// is active but which cannot actually be read would be worse than
+	// refusing to start.
+	var loadedPolicy *policy.Policy
+	if opts.PolicyPath != "" {
+		p, err := policy.Load(opts.PolicyPath)
+		switch {
+		case err == nil:
+			// Review finding (2026-08-06, blocking): ModePermissive is only
+			// legal outside LLM sessions (policy.Check panics whenever
+			// req.LLMSession && Mode==ModePermissive — see policy.go's
+			// invariant check). The gateway can receive LLMSession=true
+			// requests on every request (t.LLMSession comes from the
+			// verified JWT, Step 5b), so a permissive-mode policy file is
+			// never safe to load here — reject it at startup instead of
+			// letting the first LLM-session request panic mid-handler.
+			if p.Mode == policy.ModePermissive {
+				return nil, fmt.Errorf(
+					"gateway: policy %q has mode=%q — permissive mode is not valid for a gateway-loaded policy "+
+						"(the gateway can always receive LLM-session requests, which permissive mode forbids; use %q instead)",
+					opts.PolicyPath, p.Mode, policy.ModeEnforcing)
+			}
+			// Review finding (2026-08-06, non-blocking-1): the gateway's
+			// policy.Request never sets Command/CWD (handler.go's Step 6 —
+			// there is no shell command or working directory for an HTTP
+			// request), so a rule with a non-empty Commands or CWDs
+			// constraint can never match gateway traffic (ruleMatches
+			// treats a non-empty pattern list as required, and
+			// match.MatchCommand("", nil)/match.MatchCWD(pattern, "") only
+			// ever succeed for a bare "*"). A rule authored for CLI
+			// enforcement (internal/runner.CheckPolicy, which does
+			// populate both) and reused verbatim for the gateway would
+			// silently never apply, with no error anywhere. Reject such
+			// rules at load time instead.
+			if badRules := rulesWithGatewayUnsupportedFields(p.Rules); len(badRules) > 0 {
+				return nil, fmt.Errorf(
+					"gateway: policy %q has rule(s) with commands/cwds constraints, which never match gateway "+
+						"traffic (the gateway has no shell command or working directory to match against): %s — "+
+						"remove the commands/cwds fields, or use a separate policy file for direct/CLI enforcement",
+					opts.PolicyPath, strings.Join(badRules, ", "))
+			}
+			loadedPolicy = &p
+		case errors.Is(err, fs.ErrNotExist):
+			// Not configured yet — pass-through preserved.
+		default:
+			return nil, fmt.Errorf("gateway: load policy: %w", err)
+		}
+	}
+
 	b := staticbroker.New()
 
 	// Build per-provider HTTP client pool (gap P1).
@@ -216,6 +281,7 @@ func New(opts ServerOptions) (*Server, error) {
 		telemetrySink:     opts.TelemetrySink,
 		budget:            opts.Budget,
 		actorHashKey:      budget.DeriveActorHashKey(opts.SigningKey),
+		policy:            loadedPolicy,
 	}
 
 	// hostOverrideBlockerMiddleware is configured with an empty allowedHosts
@@ -261,6 +327,26 @@ func New(opts ServerOptions) (*Server, error) {
 	}
 
 	return s, nil
+}
+
+// rulesWithGatewayUnsupportedFields returns the IDs (or index if ID is
+// empty) of every rule with a non-empty Commands or CWDs constraint —
+// fields the gateway's policy.Request never populates, so such rules can
+// never match gateway traffic. See the New() call site for the full
+// rationale (review finding, 2026-08-06, non-blocking-1).
+func rulesWithGatewayUnsupportedFields(rules []policy.Rule) []string {
+	var bad []string
+	for i, rule := range rules {
+		if len(rule.Commands) == 0 && len(rule.CWDs) == 0 {
+			continue
+		}
+		id := rule.ID
+		if id == "" {
+			id = fmt.Sprintf("rules[%d]", i)
+		}
+		bad = append(bad, id)
+	}
+	return bad
 }
 
 // Serve starts the HTTP server and blocks until ctx is cancelled.

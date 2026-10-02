@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
+	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -14,7 +18,11 @@ import (
 )
 
 // checkBackendSelected checks that the configured backend is valid and
-// supported on the current platform.
+// supported on the current platform. The allowed set is derived from
+// backend.KnownCanonicalNames() (H4) rather than a hardcoded literal, so
+// registering a new backend (vault, aws-sm, gcp-sm, azure-kv, doppler,
+// infisical, op-connect, ...) doesn't also require a doctor update to avoid
+// a spurious hard FAIL for anyone using it.
 func checkBackendSelected(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		cfgPath := paths.Config(env)
@@ -23,22 +31,18 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 			// Config missing — use default.
 			cfg = config.Default()
 		}
-		backend := cfg.Backend
-		allowed := map[string]bool{
-			"file": true, "keychain": true, "op": true, "bw": true,
-			"proton-pass": true, "keeper": true, "lastpass": true,
-		}
-		if !allowed[backend] {
+		canonical, ok := backend.CanonicalName(cfg.Backend)
+		if !ok {
 			return Status{
 				Name:    "backend.selected",
 				Section: "backends",
 				OK:      false,
-				Detail:  fmt.Sprintf("backend=%q is not a recognised value", backend),
-				Fix:     "Set backend to one of: file, keychain, op, bw, proton-pass, keeper, lastpass",
+				Detail:  fmt.Sprintf("backend=%q is not a recognised value", cfg.Backend),
+				Fix:     "Set backend to one of: " + strings.Join(backend.KnownCanonicalNames(), ", "),
 				Tags:    []string{"backend"},
 			}
 		}
-		if backend == "keychain" && runtime.GOOS != "darwin" {
+		if canonical == "keychain" && runtime.GOOS != "darwin" {
 			return Status{
 				Name:    "backend.selected",
 				Section: "backends",
@@ -52,7 +56,7 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 			Name:    "backend.selected",
 			Section: "backends",
 			OK:      true,
-			Detail:  fmt.Sprintf("backend=%s platform_supported=true", backend),
+			Detail:  fmt.Sprintf("backend=%s platform_supported=true", canonical),
 			Tags:    []string{"backend"},
 		}
 	}
@@ -117,7 +121,12 @@ func checkBackendKeychain(probe kexec.Probe) Check {
 	}
 }
 
-// checkBackendOP checks whether the `op` CLI is available.
+// checkBackendOP checks whether the `op` CLI is available. It only warns
+// about authentication when op is the SELECTED backend (H3) — a merely-
+// installed op CLI on a machine configured to use a different backend is
+// informational, not something requiring action. session=unknown/signed_in=
+// unknown literals were removed rather than fabricated: real auth-state
+// probing (without exposing the token) is checkBackendOPAuth's job.
 func checkBackendOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
 		bin := "op"
@@ -144,20 +153,37 @@ func checkBackendOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 		ver, _ := probe.Version(ctx, p)
+
+		cfgPath := paths.Config(env)
+		cfg, cfgErr := config.Load(cfgPath)
+		if cfgErr != nil {
+			cfg = config.Default()
+		}
+		if cfg.Backend != "op" {
+			return Status{
+				Name:    "backend.op",
+				Section: "backends",
+				OK:      true,
+				Detail:  fmt.Sprintf("op_bin=%s version=%s (backend not selected)", p, ver),
+				Tags:    []string{"backend", "op"},
+			}
+		}
 		return Status{
 			Name:    "backend.op",
 			Section: "backends",
 			OK:      true,
 			Warn:    true,
-			Detail:  fmt.Sprintf("op_bin=%s version=%s signed_in=unknown", p, ver),
+			Detail:  fmt.Sprintf("op_bin=%s version=%s", p, ver),
 			Fix:     "Run `op signin` to authenticate with 1Password.",
 			Tags:    []string{"backend", "op"},
 		}
 	}
 }
 
-// checkBackendBW checks whether the `bw` CLI is available.
-func checkBackendBW(probe kexec.Probe) Check {
+// checkBackendBW checks whether the `bw` CLI is available. See checkBackendOP
+// for the H3 rationale: only warns when bw is the SELECTED backend, and
+// drops the fabricated session=unknown literal.
+func checkBackendBW(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
 		p, ok, err := probe.Find(ctx, "bw")
 		if err != nil {
@@ -179,12 +205,27 @@ func checkBackendBW(probe kexec.Probe) Check {
 			}
 		}
 		ver, _ := probe.Version(ctx, p)
+
+		cfgPath := paths.Config(env)
+		cfg, cfgErr := config.Load(cfgPath)
+		if cfgErr != nil {
+			cfg = config.Default()
+		}
+		if cfg.Backend != "bw" {
+			return Status{
+				Name:    "backend.bw",
+				Section: "backends",
+				OK:      true,
+				Detail:  fmt.Sprintf("bw_bin=%s version=%s (backend not selected)", p, ver),
+				Tags:    []string{"backend", "bw"},
+			}
+		}
 		return Status{
 			Name:    "backend.bw",
 			Section: "backends",
 			OK:      true,
 			Warn:    true,
-			Detail:  fmt.Sprintf("bw_bin=%s version=%s session=unknown", p, ver),
+			Detail:  fmt.Sprintf("bw_bin=%s version=%s", p, ver),
 			Fix:     "Run `bw login` and export BW_SESSION to use Bitwarden backend.",
 			Tags:    []string{"backend", "bw"},
 		}
@@ -192,9 +233,10 @@ func checkBackendBW(probe kexec.Probe) Check {
 }
 
 // checkBackendOPAuth checks 1Password authentication without exposing the token.
-// It verifies OP_SERVICE_ACCOUNT_TOKEN is set (not empty) and optionally runs
-// `op whoami --format=json` to confirm auth. token value never in output.
-func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
+// It verifies OP_SERVICE_ACCOUNT_TOKEN is set (not empty) and runs
+// `op whoami --format=json` to confirm the token actually authenticates —
+// token value never in output, only its exit-code-derived verdict.
+func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) Check {
 	return func(ctx context.Context) Status {
 		// Only run when op backend is selected.
 		cfgPath := paths.Config(env)
@@ -227,11 +269,12 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// Attempt op whoami to verify the token works.
+		// Resolve the op binary so we can actually verify the token works,
+		// rather than just trusting that it is non-empty.
 		bin := env("KEYLATCH_OP_BIN")
 		if bin == "" {
 			var ok bool
-			bin, ok, _ = probe.Find(ctx, "op") //nolint:ineffassign,staticcheck // SA4006/ineffassign: bin resolved for future exec call
+			bin, ok, _ = probe.Find(ctx, "op")
 			if !ok {
 				return Status{
 					Name:    "backend.op.auth",
@@ -244,11 +287,26 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
+		// Run `op whoami --format=json` to confirm the token actually
+		// authenticates. A revoked/expired OP_SERVICE_ACCOUNT_TOKEN must not
+		// report OK here — that was the entire point of this check's name.
+		_, _, exitCode, runErr := runner.Run(ctx, bin, []string{"whoami", "--format=json"}, nil)
+		if runErr != nil || exitCode != 0 {
+			return Status{
+				Name:    "backend.op.auth",
+				Section: "backends",
+				OK:      false,
+				Detail:  "OP_SERVICE_ACCOUNT_TOKEN is set but `op whoami` failed — token may be revoked or expired",
+				Fix:     "Generate a fresh service account token, or run `op signin` for an interactive session.",
+				Tags:    []string{"backend", "op", "auth"},
+			}
+		}
+
 		return Status{
 			Name:    "backend.op.auth",
 			Section: "backends",
 			OK:      true,
-			Detail:  "OP_SERVICE_ACCOUNT_TOKEN is set (value redacted)",
+			Detail:  "OP_SERVICE_ACCOUNT_TOKEN is set and verified via `op whoami` (value redacted)",
 			Tags:    []string{"backend", "op", "auth"},
 		}
 	}
@@ -276,14 +334,27 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 
 		// check presence only — never expose BW_SESSION value.
 		sessionSet := env("BW_SESSION") != ""
-		if !sessionSet {
+
+		// H5: a cached session (from `keylatch bw unlock`) is an equally
+		// valid source of BW_SESSION — checkBackendBWSession must not warn
+		// just because the ambient env var itself is unset. StatSession
+		// reads only the sidecar metadata file, never the token.
+		cacheStatus, cacheErr := bw.StatSession(env)
+		cachedValid := cacheErr == nil && cacheStatus.Present && !cacheStatus.Expired
+
+		if !sessionSet && !cachedValid {
+			detail := "BW_SESSION not set and no cached session; vault may be locked"
+			if cacheErr == nil && cacheStatus.Present && cacheStatus.Expired {
+				detail = fmt.Sprintf("cached session expired at %s; vault may be locked",
+					cacheStatus.ExpiresAt.Format(time.RFC3339))
+			}
 			return Status{
 				Name:    "backend.bw.session",
 				Section: "backends",
 				OK:      true,
 				Warn:    true,
-				Detail:  "BW_SESSION not set; vault may be locked",
-				Fix:     "Run `bw unlock --raw` and export the result as BW_SESSION.",
+				Detail:  detail,
+				Fix:     "Run `keylatch bw unlock` (or export BW_SESSION yourself — see README §Non-interactive use).",
 				Tags:    []string{"backend", "bw", "session"},
 			}
 		}
@@ -301,13 +372,19 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 			}
 		}
 
-		// do not print BW_SESSION; just report binary path and session presence.
+		// do not print BW_SESSION or the cached token; just report binary
+		// path and session presence/source.
 		_ = bin
+		detail := "BW_SESSION is set (value redacted); vault lock state unknown without bw status call"
+		if !sessionSet && cachedValid {
+			detail = fmt.Sprintf("cached session present (value redacted), expires_at=%s",
+				cacheStatus.ExpiresAt.Format(time.RFC3339))
+		}
 		return Status{
 			Name:    "backend.bw.session",
 			Section: "backends",
 			OK:      true,
-			Detail:  "BW_SESSION is set (value redacted); vault lock state unknown without bw status call",
+			Detail:  detail,
 			Tags:    []string{"backend", "bw", "session"},
 		}
 	}

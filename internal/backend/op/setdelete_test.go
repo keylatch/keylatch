@@ -86,6 +86,67 @@ func TestSet_InvalidPath(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestSet_GenericFailure_NonAuthStderr: op exits non-zero with stderr that
+// matches neither the auth-failure nor not-found heuristics — Set must
+// surface a generic "op exited N" error rather than misclassifying it.
+func TestSet_GenericFailure_NonAuthStderr(t *testing.T) {
+	createKey := argKey(fakeOpBin, "item", "create",
+		"--category=Password",
+		"--title=openrouter",
+		"--vault=Keylatch",
+		"--tags=keylatch,ns:default",
+		"plain[string]=v",
+		"--format=json",
+	)
+	runner := makeRunner(createKey, kexec.MockResponse{
+		Stderr: []byte("[ERROR] some unrelated failure"), ExitCode: 1,
+	})
+	b := openWithRunner(t, runner)
+
+	err := b.Set(context.Background(), "default/openrouter/plain", []byte("v"), backend.Meta{})
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, backend.ErrLocked))
+	assert.Contains(t, err.Error(), "op exited 1")
+}
+
+// TestSet_RunnerError covers the RunEnv-level error branch (distinct from a
+// non-zero exit code) — e.g. the subprocess failed to start at all.
+func TestSet_RunnerError(t *testing.T) {
+	createKey := argKey(fakeOpBin, "item", "create",
+		"--category=Password",
+		"--title=openrouter",
+		"--vault=Keylatch",
+		"--tags=keylatch,ns:default",
+		"plain[string]=v",
+		"--format=json",
+	)
+	runner := makeRunner(createKey, kexec.MockResponse{Err: errors.New("exec failed to start")})
+	b := openWithRunner(t, runner)
+
+	err := b.Set(context.Background(), "default/openrouter/plain", []byte("v"), backend.Meta{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runner error")
+}
+
+// TestSet_MalformedResponseJSON_NonFatal: op exits 0 (item was written) but
+// returns a response body that isn't valid JSON. Set must treat this as
+// non-fatal — the write already happened, we just can't parse the accessor.
+func TestSet_MalformedResponseJSON_NonFatal(t *testing.T) {
+	createKey := argKey(fakeOpBin, "item", "create",
+		"--category=API Credential",
+		"--title=openrouter",
+		"--vault=Keylatch",
+		"--tags=keylatch,ns:default",
+		"api_key[concealed]=sk-new",
+		"--format=json",
+	)
+	runner := makeRunner(createKey, kexec.MockResponse{Stdout: []byte("not json"), ExitCode: 0})
+	b := openWithRunner(t, runner)
+
+	err := b.Set(context.Background(), "default/openrouter/api_key", []byte("sk-new"), backend.Meta{})
+	require.NoError(t, err, "malformed accessor response must be non-fatal")
+}
+
 func TestDelete_Success(t *testing.T) {
 	delKey := argKey(fakeOpBin, "item", "delete", "openrouter", "--vault=Keylatch")
 	runner := makeRunner(delKey, kexec.MockResponse{ExitCode: 0})
@@ -111,11 +172,45 @@ func TestDelete_InvalidPath(t *testing.T) {
 	require.Error(t, b.Delete(context.Background(), "nopath"))
 }
 
+// TestDelete_RunnerError covers the RunEnv-level error branch (distinct
+// from a non-zero exit code).
+func TestDelete_RunnerError(t *testing.T) {
+	delKey := argKey(fakeOpBin, "item", "delete", "openrouter", "--vault=Keylatch")
+	runner := makeRunner(delKey, kexec.MockResponse{Err: errors.New("exec failed to start")})
+	b := openWithRunner(t, runner)
+
+	err := b.Delete(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runner error")
+}
+
+// TestDelete_GenericFailure: op exits non-zero with stderr matching neither
+// the not-found heuristic, so Delete must surface a generic error.
+func TestDelete_GenericFailure(t *testing.T) {
+	delKey := argKey(fakeOpBin, "item", "delete", "openrouter", "--vault=Keylatch")
+	runner := makeRunner(delKey, kexec.MockResponse{Stderr: []byte("[ERROR] unexpected"), ExitCode: 2})
+	b := openWithRunner(t, runner)
+
+	err := b.Delete(context.Background(), "default/openrouter/api_key")
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, backend.ErrNotFound))
+	assert.Contains(t, err.Error(), "op exited 2")
+}
+
 func TestIdentityAndClose(t *testing.T) {
 	b := openWithRunner(t, &kexec.MockRunner{})
 	assert.Equal(t, "op", b.Name())
 	assert.NotEmpty(t, b.Capabilities())
 	assert.NoError(t, b.Close())
+}
+
+// TestID_ReturnsVaultQualifiedIdentifier covers phase4_stubs.go's ID(), a
+// stub method for the versioned-storage stubs file: 1Password has no
+// versioned metadata support, but a stable per-vault backend identifier is
+// still required (used as the BackendID in AADBinding).
+func TestID_ReturnsVaultQualifiedIdentifier(t *testing.T) {
+	b := openWithRunner(t, &kexec.MockRunner{})
+	assert.Equal(t, "op:Keylatch", b.ID())
 }
 
 // Versioned/meta stubs must consistently return ErrNotSupported.
@@ -181,4 +276,41 @@ func TestList_BadJSON(t *testing.T) {
 
 	_, err := b.List(context.Background(), "")
 	require.Error(t, err)
+}
+
+// TestList_RunnerError covers the RunEnv-level error branch (distinct from
+// a non-zero exit code).
+func TestList_RunnerError(t *testing.T) {
+	listKey := argKey(fakeOpBin, "item", "list", "--vault=Keylatch", "--tags=keylatch", "--format=json")
+	runner := makeRunner(listKey, kexec.MockResponse{Err: errors.New("exec failed to start")})
+	b := openWithRunner(t, runner)
+
+	_, err := b.List(context.Background(), "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runner error")
+}
+
+// TestList_GenericFailure: op exits non-zero with stderr matching neither
+// the auth-failure heuristic, so List must surface a generic error.
+func TestList_GenericFailure(t *testing.T) {
+	listKey := argKey(fakeOpBin, "item", "list", "--vault=Keylatch", "--tags=keylatch", "--format=json")
+	runner := makeRunner(listKey, kexec.MockResponse{Stderr: []byte("[ERROR] unexpected"), ExitCode: 3})
+	b := openWithRunner(t, runner)
+
+	_, err := b.List(context.Background(), "")
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, backend.ErrLocked))
+	assert.Contains(t, err.Error(), "op exited 3")
+}
+
+// TestList_EmptyStdout_ErrLocked: op exits 0 but returns empty stdout,
+// which indicates a stale/expired session rather than valid empty JSON.
+func TestList_EmptyStdout_ErrLocked(t *testing.T) {
+	listKey := argKey(fakeOpBin, "item", "list", "--vault=Keylatch", "--tags=keylatch", "--format=json")
+	runner := makeRunner(listKey, kexec.MockResponse{Stdout: nil, ExitCode: 0})
+	b := openWithRunner(t, runner)
+
+	_, err := b.List(context.Background(), "")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, backend.ErrLocked))
 }

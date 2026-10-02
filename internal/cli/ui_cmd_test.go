@@ -76,5 +76,5 @@ func TestRecipesCmd_Output(t *testing.T) {
 	root.SetArgs([]string{"recipes"})
 	err := root.Execute()
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "coming soon")
+	assert.Contains(t, buf.String(), "Common recipes:")
 }
