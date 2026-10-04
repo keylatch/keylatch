@@ -30,18 +30,29 @@ We acknowledge receipt within 2 business days and aim to provide a patch timelin
 
 ## Artifact Signing
 
-All release artifacts are signed with [cosign](https://docs.sigstore.dev/cosign/overview/)
-via GitHub Actions OIDC (keyless signing). Verify any release artifact with:
+Releases built by the current release workflow are published only after every CLI archive,
+the checksums file (`keylatch-<version>_checksums.txt`), both SBOMs and the release manifest
+carry a keyless [cosign](https://docs.sigstore.dev/cosign/overview/) signature and
+certificate, and SLSA provenance covers every archive. Homebrew and Scoop are updated only
+after that.
+
+Not every past release meets this bar. **v0.9.7 was published with no signatures, SBOMs or
+provenance**; see the [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md).
+[Verifying releases](docs/verifying-releases.md) lists what each release carries and how to
+verify it:
 
 ```bash
 cosign verify-blob \
-  --certificate-identity-regexp="github.com/keylatch" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  <artifact> \
-  --signature <artifact>.sig
+  --certificate-identity-regexp '^https://github\.com/keylatch/keylatch/\.github/workflows/(release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?|attest-release\.yml@refs/heads/main)$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --certificate keylatch-<version>_checksums.txt.pem \
+  --signature keylatch-<version>_checksums.txt.sig \
+  keylatch-<version>_checksums.txt
 ```
 
-`SHA256SUMS` and `SHA256SUMS.sig` are published alongside each release.
+## Security Advisories
+
+- [v0.9.7 published without signatures, SBOMs or provenance](docs/security/advisory-v0.9.7-unsigned-release.md)
 
 ## FIPS Build
 

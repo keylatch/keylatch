@@ -52,7 +52,7 @@ All of this lives in [`.github/workflows/release.yml`](../../.github/workflows/r
 
 | Job | Signs |
 |---|---|
-| `cosign-sign` | CLI archives (`*.tar.gz`, `*.zip`), `*_checksums.txt`, and the SBOM (`*.cdx.json`) |
+| `cosign-sign` | CLI archives (`*.tar.gz`, `*.zip`), `*_checksums.txt`, and both SBOMs (`*.cdx.json`, `*.spdx.json`) |
 | `manifest` | The JSON release manifest |
 | `publish` | The desktop installers (`.dmg`, `*-setup.exe`, `.AppImage`, `.deb`) — signed and re-verified before upload |
 
@@ -60,10 +60,10 @@ Each signed file ships with an adjacent `.sig` (signature) and `.pem` (certifica
 `publish` job inherits `id-token: write`, so desktop signing is keyless too — no certificate
 or password secret is involved.
 
-> **Note:** Desktop installer cosign signatures were added alongside the desktop-bundle
-> build. CLI archives, checksums, and the SBOM have been cosign-signed since earlier
-> releases; desktop installer `.sig`/`.pem` files appear from the first release built with
-> this pipeline change onward.
+The release is a draft until the `publish` job has verified every signature and the SLSA
+provenance (`release-checks/verify-release-assets.sh`); a missing file fails the release and
+leaves Homebrew and Scoop untouched. Earlier releases did not all get this far: v0.9.7 shipped
+unsigned. [Verifying releases](../verifying-releases.md) lists what each release carries.
 
 ## What cosign does *not* do
 
