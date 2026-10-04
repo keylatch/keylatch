@@ -40,6 +40,8 @@ type Adapter struct {
 	// When non-nil, it is used to HMAC the raw adapter ID before embedding it
 	// in PresenceProof.RootID (root IDs must be HMAC'd at emission).
 	HMACFunc func([]byte) []byte
+	// deriveKEK overrides the hardware hmac-secret assertion; nil means hardware.
+	deriveKEK func(context.Context) ([]byte, error)
 }
 
 // Enroll performs a FIDO2 registration ceremony and returns a new Adapter and RootSpec.
@@ -88,7 +90,7 @@ func (a *Adapter) Wrap(ctx context.Context, dek []byte) ([]byte, error) {
 	}
 	defer zeroBytes(dek)
 
-	kek, err := a.deriveKEK(ctx)
+	kek, err := a.kek(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +117,7 @@ func (a *Adapter) Unwrap(ctx context.Context, wrapped []byte) ([]byte, error) {
 		return nil, trust.ErrLLMSessionBlocked
 	}
 
-	kek, err := a.deriveKEK(ctx)
+	kek, err := a.kek(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +138,12 @@ func (a *Adapter) Unwrap(ctx context.Context, wrapped []byte) ([]byte, error) {
 	return gcm.Open(nil, wrapped[:ns], wrapped[ns:], nil)
 }
 
-// deriveKEK calls the FIDO2 assertion hmac-secret to derive a 32-byte wrapping key.
-// Stub: returns ErrRootUnavailable.
-func (a *Adapter) deriveKEK(_ context.Context) ([]byte, error) {
+// kek derives the 32-byte wrapping key from the FIDO2 hmac-secret assertion.
+// Without hardware support it returns ErrRootUnavailable.
+func (a *Adapter) kek(ctx context.Context) ([]byte, error) {
+	if a.deriveKEK != nil {
+		return a.deriveKEK(ctx)
+	}
 	return nil, fmt.Errorf("%w: FIDO2 assertion requires hardware", trust.ErrRootUnavailable)
 }
 
