@@ -14,7 +14,7 @@ Keylatch supports five runtime modes that control how credentials are injected i
 
 ## LLM Session Restrictions
 
-When keylatch detects an LLM session (e.g. `CLAUDE_CODE=1`, `CODEX_ENV` set), all five modes are permitted without restriction. Raw credential values are never returned to the agent process outside the sandboxed child environment.
+When keylatch detects an LLM session (e.g. `CLAUDECODE=1`, `CODEX_SANDBOX` set), all five modes are permitted without restriction. Raw credential values are never returned to the agent process outside the sandboxed child environment.
 
 `keylatch get` is always blocked in LLM sessions (exit 2, SecurityBlock).
 

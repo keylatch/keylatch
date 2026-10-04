@@ -10,7 +10,7 @@ type UISessionScope int
 
 const (
 	// ScopeStatusOnly: read-only status queries only. Assigned automatically
-	// when CLAUDE_CODE=1 (or any LLM session signal) is set.
+	// when CLAUDECODE=1 (or any LLM session signal) is set.
 	ScopeStatusOnly UISessionScope = iota
 
 	// ScopeSetup: first-run wizard; allows creating connections but not

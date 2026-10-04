@@ -16,6 +16,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/keylatch/keylatch/internal/trust"
 	"github.com/keylatch/keylatch/internal/trust/sshagent"
 )
@@ -177,6 +178,7 @@ func TestSSHAgentAdapter_HasCapWrap_RSA_False(t *testing.T) {
 // TestSSHAgentAdapter_RequirePresence_HMACRootID verifies that when HMACFunc is set,
 // PresenceProof.RootID is HMAC'd and does NOT equal the raw adapter ID.
 func TestSSHAgentAdapter_RequirePresence_HMACRootID(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
 	sockPath, fp, cleanup := startInProcessAgent(t)
 	defer cleanup()
 
@@ -213,6 +215,7 @@ func TestSSHAgentAdapter_RequirePresence_HMACRootID(t *testing.T) {
 // TestSSHAgentAdapter_RequirePresence_NoHMAC_FallsBackToRawID verifies backward compat:
 // when HMACFunc is nil, PresenceProof.RootID equals the raw adapter ID.
 func TestSSHAgentAdapter_RequirePresence_NoHMAC_FallsBackToRawID(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
 	sockPath, fp, cleanup := startInProcessAgent(t)
 	defer cleanup()
 

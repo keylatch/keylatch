@@ -1,8 +1,8 @@
 // Package actor derives and validates keylatch actor identities.
 // Priority order for Infer:
 // 1. env("KEYLATCH_ACTOR") — explicit override (Source="env")
-// 2. env("CLAUDE_CODE") non-empty → "claude-code" (Source="infer")
-// 3. env("CODEX_ENV") non-empty → "codex" (Source="infer")
+// 2. any Claude Code variable (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT, CLAUDE_CODE) → "claude-code" (Source="infer")
+// 3. any Codex CLI variable (CODEX_SANDBOX, CODEX_SANDBOX_NETWORK_DISABLED, CODEX_ENV) → "codex" (Source="infer")
 // 4. env("CREDENTIALS_LLM_SESSION") == "1" → "llm-session" (Source="infer")
 // 5. stdin is a terminal → "human-shell" (Source="infer")
 // 6. fallback → "unknown-non-tty" (Source="infer")
@@ -36,6 +36,20 @@ func Validate(name string) error {
 	return nil
 }
 
+var (
+	claudeCodeEnv = []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE"}
+	codexEnv      = []string{"CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_ENV"}
+)
+
+func anySet(env llmcontext.Lookup, keys []string) bool {
+	for _, k := range keys {
+		if env(k) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // Infer derives a conservative actor label from the environment.
 // It never returns an empty Name.
 func Infer(env llmcontext.Lookup) Actor {
@@ -44,11 +58,11 @@ func Infer(env llmcontext.Lookup) Actor {
 		return Actor{Name: v, Source: "env"}
 	}
 	// Priority 2: Claude Code LLM session.
-	if env("CLAUDE_CODE") != "" {
+	if anySet(env, claudeCodeEnv) {
 		return Actor{Name: "claude-code", Source: "infer"}
 	}
 	// Priority 3: Codex session.
-	if env("CODEX_ENV") != "" {
+	if anySet(env, codexEnv) {
 		return Actor{Name: "codex", Source: "infer"}
 	}
 	// Priority 4: generic LLM session signal.

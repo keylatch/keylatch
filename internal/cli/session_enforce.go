@@ -69,7 +69,10 @@ import (
 // unauthenticated raw-credential path) and is why the opt-out exists as a
 // first-class, permanent config field, not just an env var a human would
 // have to remember every session.
-const requireVerifiedSessionHint = "Provide a signed session ticket (KEYLATCH_LLM_TICKET), or set KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (or allow_unverified_session in config) to restore unverified access. Note: keylatchd only helps if it is actively tracking this session via its IPC socket (KEYLATCH_DAEMON_SOCKET) — merely being reachable is not sufficient corroboration."
+//
+// The refusal deliberately does not name the opt-out: the reader of this
+// message may be the agent the check exists to stop.
+const requireVerifiedSessionHint = "Run this command from a session keylatchd is tracking, or ask the operator to review the session settings in the Keylatch security docs."
 
 // RequireVerifiedSession enforces the raw-credential session gate for raw-credential-exposure paths.
 //

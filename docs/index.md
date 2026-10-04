@@ -92,7 +92,7 @@ How to integrate Keylatch with agents, languages, and CI systems. Start at the [
 | [CI (GitHub Actions / GitLab)](./integration/ci.md) | File backend in CI, vault secrets, log masking |
 | [Claude Code agent guide](./integration/agents/claude-code.md) | Hooks, detection, `CREDENTIALS_LLM_SESSION` |
 | [Cursor agent guide](./integration/agents/cursor.md) | Auto-detection, PreToolUse hook |
-| [Gemini CLI agent guide](./integration/agents/gemini.md) | `GEMINI_SESSION`, BeforeTool hook |
+| [Gemini CLI agent guide](./integration/agents/gemini.md) | `GEMINI_CLI`, BeforeTool hook |
 | [Windsurf agent guide](./integration/agents/windsurf.md) | Shell rc, `CREDENTIALS_LLM_SESSION` |
 | [Generic agent guide](./integration/agents/generic.md) | Universal recipe, detection heuristics |
 

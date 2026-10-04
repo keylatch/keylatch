@@ -37,6 +37,36 @@ func TestInferPriority(t *testing.T) {
 			wantSrc:  "infer",
 		},
 		{
+			name:     "CLAUDECODE from a real Claude Code shell",
+			env:      map[string]string{"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"},
+			wantName: "claude-code",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "CLAUDE_CODE_ENTRYPOINT alone",
+			env:      map[string]string{"CLAUDE_CODE_ENTRYPOINT": "sdk-ts"},
+			wantName: "claude-code",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "CODEX_SANDBOX from the Codex macOS sandbox",
+			env:      map[string]string{"CODEX_SANDBOX": "seatbelt"},
+			wantName: "codex",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "CODEX_SANDBOX_NETWORK_DISABLED from a Codex shell tool call",
+			env:      map[string]string{"CODEX_SANDBOX_NETWORK_DISABLED": "1"},
+			wantName: "codex",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "empty harness values do not count",
+			env:      map[string]string{"CLAUDECODE": "", "CODEX_SANDBOX": ""},
+			wantName: "unknown-non-tty",
+			wantSrc:  "infer",
+		},
+		{
 			name:     "CREDENTIALS_LLM_SESSION=1 priority 4",
 			env:      map[string]string{"CREDENTIALS_LLM_SESSION": "1"},
 			wantName: "llm-session",

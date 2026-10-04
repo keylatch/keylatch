@@ -90,8 +90,11 @@ func TestReasons_Labels(t *testing.T) {
 		{"AIDER_SESSION only", map[string]string{"AIDER_SESSION": "1"}, []string{"AIDER_SESSION"}},
 		{"GEMINI_SESSION only", map[string]string{"GEMINI_SESSION": "1"}, []string{"GEMINI_SESSION"}},
 		{"OPENCODE_SESSION only", map[string]string{"OPENCODE_SESSION": "1"}, []string{"OPENCODE_SESSION"}},
-		{"all three original", map[string]string{"CLAUDE_CODE": "1", "CODEX_ENV": "1", "CREDENTIALS_LLM_SESSION": "1"},
-			[]string{"CLAUDE_CODE", "CODEX_ENV", "CREDENTIALS_LLM_SESSION"}},
+		{"CLAUDECODE only", map[string]string{"CLAUDECODE": "1"}, []string{"CLAUDECODE"}},
+		{"real Claude Code shell", map[string]string{"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"},
+			[]string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"}},
+		{"manual flag with legacy aliases", map[string]string{"CLAUDE_CODE": "1", "CODEX_ENV": "1", "CREDENTIALS_LLM_SESSION": "1"},
+			[]string{"CREDENTIALS_LLM_SESSION", "CLAUDE_CODE", "CODEX_ENV"}},
 	}
 
 	for _, tc := range cases {
@@ -107,24 +110,45 @@ func TestReasons_Labels(t *testing.T) {
 
 func TestReasons_OrderStable(t *testing.T) {
 	t.Parallel()
-	env := map[string]string{
-		"CLAUDE_CODE":             "1",
-		"CODEX_ENV":               "1",
-		"CREDENTIALS_LLM_SESSION": "1",
-		"CURSOR_SESSION":          "1",
-		"AIDER_SESSION":           "1",
-		"GEMINI_SESSION":          "1",
-		"OPENCODE_SESSION":        "1",
+	env := map[string]string{}
+	want := make([]string, 0, len(llmcontext.Signals))
+	for _, sig := range llmcontext.Signals {
+		env[sig.EnvKey] = "1"
+		want = append(want, sig.Label)
 	}
-	r := llmcontext.Reasons(lookup(env))
-	require.Len(t, r, 7)
-	assert.Equal(t, "CLAUDE_CODE", r[0])
-	assert.Equal(t, "CODEX_ENV", r[1])
-	assert.Equal(t, "CREDENTIALS_LLM_SESSION", r[2])
-	assert.Equal(t, "CURSOR_SESSION", r[3])
-	assert.Equal(t, "AIDER_SESSION", r[4])
-	assert.Equal(t, "GEMINI_SESSION", r[5])
-	assert.Equal(t, "OPENCODE_SESSION", r[6])
+	assert.Equal(t, want, llmcontext.Reasons(lookup(env)))
+}
+
+// Each harness name is checked against what the harness really exports to
+// the shell tools it spawns; empty values must not count.
+func TestIsLLMSession_HarnessEnvNames(t *testing.T) {
+	t.Parallel()
+	names := []string{
+		"CLAUDECODE",
+		"CLAUDE_CODE_ENTRYPOINT",
+		"CODEX_SANDBOX",
+		"CODEX_SANDBOX_NETWORK_DISABLED",
+		"CURSOR_AGENT",
+		"CURSOR_TRACE_ID",
+		"GEMINI_CLI",
+		"OPENCODE",
+		"CLAUDE_CODE",
+		"CODEX_ENV",
+		"CURSOR_SESSION",
+		"AIDER_SESSION",
+		"GEMINI_SESSION",
+		"OPENCODE_SESSION",
+	}
+	for _, name := range names {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.True(t, llmcontext.IsLLMSession(lookup(map[string]string{name: "1"})), "%s=1 must be detected", name)
+			assert.Equal(t, []string{name}, llmcontext.Reasons(lookup(map[string]string{name: "1"})))
+			assert.Equal(t, llmcontext.SignalHeuristic, llmcontext.ClassifySession(lookup(map[string]string{name: "seatbelt"})))
+			assert.False(t, llmcontext.IsLLMSession(lookup(map[string]string{name: ""})), "empty %s must not be detected", name)
+		})
+	}
 }
 
 func TestReasons_NoValues(t *testing.T) {

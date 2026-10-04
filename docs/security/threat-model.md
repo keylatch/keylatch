@@ -22,9 +22,12 @@ exfiltrating a raw credential value.
 
 **How Keylatch defends:**
 - `keylatch get` is blocked in LLM sessions (exit 2, `SecurityBlock`) when any
-  of the known agent environment variables are set (`CLAUDE_CODE`, `CODEX_ENV`,
-  `CREDENTIALS_LLM_SESSION`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`,
-  `OPENCODE_SESSION`).
+  of the known agent environment variables are set (`CLAUDECODE`,
+  `CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`,
+  `CURSOR_AGENT`, `CURSOR_TRACE_ID`, `GEMINI_CLI`, `OPENCODE`, the manual
+  `CREDENTIALS_LLM_SESSION`, and legacy aliases; see `keylatch env`).
+- `keylatch approve` and `keylatch deny` require an interactive terminal on
+  stdin, independent of detection.
 - The `keylatch run` command wraps the subprocess with injected credentials but
   never prints them to stdout/stderr. In all four runtime modes, raw credential
   values are not returned to the calling process.
@@ -33,10 +36,15 @@ exfiltrating a raw credential value.
 - `GET /v1/connections` returns metadata only — no credential values.
 
 **Gap:**
-LLM session detection is heuristic (env var based). An adversary who controls
-the process environment could unset these variables before spawning Keylatch.
-This is mitigated by the gateway isolation model, which never returns credential
-values to the agent process at all.
+LLM session detection is heuristic (env var based) and is a convenience, not a
+security boundary. The agent controls its own environment and can unset these
+variables before spawning Keylatch. The terminal requirement on `approve` and
+`deny` can be defeated by an agent that allocates a pseudo-terminal. Keylatch
+also runs as the same user as the agent, so files under the config directory are
+readable by it. The gateway isolation model keeps provider keys out of the
+agent's environment, but a boundary against a same-user agent needs a broker
+outside the agent's user account plus proof of human presence for privileged
+operations.
 
 ---
 

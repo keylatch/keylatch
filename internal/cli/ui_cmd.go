@@ -44,7 +44,7 @@ still refused outright in LLM sessions (see below). Recommended container
 usage: -e KEYLATCH_UI_LISTEN=0.0.0.0:7890.
 
 Security notes:
-  - When CLAUDE_CODE=1 (or any LLM session signal) is set, the scope is
+  - When CLAUDECODE=1 (or any LLM session signal) is set, the scope is
     locked to status-only and write endpoints are not mounted (return 404).
   - --unsafe-bind-all and --listen/KEYLATCH_UI_LISTEN are both ignored in
     LLM sessions — non-loopback binds are refused unconditionally.

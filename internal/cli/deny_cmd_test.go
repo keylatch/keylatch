@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/gateway/approval"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // TestDenyCmd_NoArgs verifies deny fails without token argument.
@@ -27,8 +28,8 @@ func TestDenyCmd_NoArgs(t *testing.T) {
 func TestDenyCmd_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -50,8 +51,8 @@ func TestDenyCmd_Success(t *testing.T) {
 func TestDenyCmd_JSON_WithReason(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -112,8 +113,8 @@ func TestApproveAndDenyCmd_ErrorCodes(t *testing.T) {
 func TestDeny_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -134,8 +135,8 @@ func TestDeny_Success(t *testing.T) {
 // TestDeny_NotFound validates that the ErrNotFound error path is exercised.
 func TestDeny_NotFound(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	// Verify the store itself returns ErrNotFound for unknown tokens.
 	err := approval.Deny(context.Background(), approvalsDir, "apv_does_not_exist")
@@ -147,8 +148,8 @@ func TestDeny_NotFound(t *testing.T) {
 // TestDeny_AlreadyDecided validates that ErrAlreadyActed is returned on double-deny.
 func TestDeny_AlreadyDecided(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 	// Deny first.
@@ -168,8 +169,8 @@ func TestDeny_AlreadyDecided(t *testing.T) {
 func TestDeny_All_Confirmed(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	_ = createPendingApproval(t, approvalsDir)
 	_ = createPendingApproval(t, approvalsDir)
@@ -192,8 +193,8 @@ func TestDeny_All_Confirmed(t *testing.T) {
 func TestDeny_All_Aborted(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	_ = createPendingApproval(t, approvalsDir)
 
@@ -216,8 +217,8 @@ func TestDeny_All_Aborted(t *testing.T) {
 func TestDeny_All_YesSkipsPrompt(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -249,8 +250,8 @@ func TestDeny_All_YesSkipsPrompt(t *testing.T) {
 func TestDeny_All_SkipsPreDecidedEntries(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token1 := createPendingApproval(t, approvalsDir)
 	token2 := createPendingApproval(t, approvalsDir)
@@ -287,8 +288,8 @@ func TestDeny_All_SkipsPreDecidedEntries(t *testing.T) {
 func TestDeny_All_JSON(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
