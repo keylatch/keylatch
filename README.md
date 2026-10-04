@@ -39,22 +39,26 @@ brew install keylatch/tap/keylatch
 Download the latest release from the [releases page](https://github.com/keylatch/keylatch/releases) and verify the checksum:
 
 ```bash
-sha256sum -c SHA256SUMS --ignore-missing
+sha256sum --check --ignore-missing keylatch-<version>_checksums.txt
 ```
 
-Verify the release artifact with cosign (keyless signing via GitHub Actions OIDC):
+Verify the checksums file with cosign (keyless signing via GitHub Actions OIDC):
 
 ```bash
 cosign verify-blob \
-  --certificate-identity-regexp="github.com/keylatch" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  <artifact> \
-  --signature <artifact>.sig
+  --certificate-identity-regexp '^https://github\.com/keylatch/keylatch/\.github/workflows/(release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?|attest-release\.yml@refs/heads/main)$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --certificate keylatch-<version>_checksums.txt.pem \
+  --signature keylatch-<version>_checksums.txt.sig \
+  keylatch-<version>_checksums.txt
 ```
 
-> **Note on signing:** All release artifacts — CLI archives, checksums, the SBOM, and the
-> Linux desktop bundle — are cosign-signed; see [Verifying releases](docs/verifying-releases.md)
-> and [How signing works](docs/architecture/signing.md). The CLI is **not** OS code-signed:
+> **Note on signing:** A release is published only once its CLI archives, checksums, SBOMs and
+> Linux desktop bundle are cosign-signed and its SLSA provenance is attached. **v0.9.7 is the
+> exception: it shipped with no signatures, SBOMs or provenance** (see the
+> [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md)). Check what each
+> release carries in [Verifying releases](docs/verifying-releases.md); see also
+> [How signing works](docs/architecture/signing.md). The CLI is **not** OS code-signed:
 > install via **Homebrew or Scoop** to avoid any Gatekeeper/SmartScreen friction, or if you
 > download the raw macOS binary directly, run `xattr -dr com.apple.quarantine ./keylatch`.
 > Native macOS/Windows **desktop apps** (with Apple notarization / Windows Authenticode) are
@@ -63,7 +67,7 @@ cosign verify-blob \
 ### Scoop (Windows)
 
 ```powershell
-scoop bucket add keylatch https://github.com/keylatch/scoop-bucket
+scoop bucket add keylatch https://github.com/keylatch/scoop
 scoop install keylatch
 ```
 
@@ -416,7 +420,7 @@ keylatch run openrouter --clean-env --extra DATABASE_URL --extra REDIS_URL -- no
 - Audit log records every read, write, and injection — without values
 - `List` operations zero-fill field values before returning
 - Canary tokens are injected at test time to detect credential leaks
-- Release artifacts are cosign-signed via GitHub Actions OIDC
+- Releases are published only after cosign signing (GitHub Actions OIDC) and SLSA provenance; v0.9.7 is the exception, see [SECURITY.md](SECURITY.md)
 - Heap dump protection: on Linux keylatchd scans process memory for residual deprecated patterns on startup; on macOS/Windows OS-level protection applies
 
 For the vulnerability disclosure policy, SBOM, and artifact verification instructions, see [SECURITY.md](SECURITY.md).

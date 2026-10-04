@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- v0.9.7 was published without cosign signatures, SBOMs or SLSA provenance while the docs said every artifact was signed. See the [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md); the docs now state what each release carries.
+- Releases are created as drafts and published only after every archive, the checksums file, both SBOMs and the release manifest are cosign-signed and SLSA provenance covers every archive. Homebrew and Scoop are updated afterwards, from the signed checksums, and never for pre-releases.
+- Release tags must point at a commit on `main` whose required checks passed.
+- New `attest-release.yml` workflow rebuilds a published release from its tag and either signs and attests it or marks it unverified.
+- syft and trivy are downloaded at pinned versions and verified against committed SHA-256 digests instead of piping install scripts to `sh`; goreleaser is pinned.
+
 ## [0.9.5] - 2026-07-31
 
 ### Added

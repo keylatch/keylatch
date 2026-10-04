@@ -84,19 +84,7 @@ A Claude Code hook script (`contrib/agent-guards/claude-code/block-keylatch-exfi
 
 ## Artifact signing
 
-All release artifacts — CLI archives, the checksums file, the SBOM, and the desktop installers (`.dmg`/`.exe`/`.AppImage`/`.deb`) — are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) via GitHub Actions OIDC (keyless signing). No long-lived signing keys are stored. See [How Keylatch signing works](architecture/signing.md) for the full model, the keyless mechanism, and the cosign-vs-OS-code-signing trust boundary.
-
-To verify a release artifact:
-
-```bash
-cosign verify-blob \
-  --certificate-identity-regexp="https://github.com/keylatch/keylatch/.github/workflows/release.yml" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  --signature keylatch-v0.1.0.SHA256SUMS.sig \
-  keylatch-v0.1.0.SHA256SUMS
-```
-
-The `SHA256SUMS` file lists checksums for every binary and archive in the release.
+A release is published only after its CLI archives, the checksums file, both SBOMs, the release manifest and any Linux desktop bundles are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) via GitHub Actions OIDC (keyless signing) and SLSA provenance covers every archive. No long-lived signing keys are stored. **v0.9.7 was published without any of these**; see the [v0.9.7 advisory](security/advisory-v0.9.7-unsigned-release.md). See [How Keylatch signing works](architecture/signing.md) for the full model, and [Verifying releases](verifying-releases.md) for what each release carries and the verification commands.
 
 ## Provider template signing
 
@@ -123,10 +111,10 @@ go build -tags=fips ./cmd/keylatch
 
 ## SBOM
 
-Every release includes a software bill of materials (SBOM) in both SPDX and CycloneDX formats. Scan for CVEs with [grype](https://github.com/anchore/grype):
+Releases from v0.9.0 on include a software bill of materials (SBOM), except v0.9.1, v0.9.2 and v0.9.7; releases built by the current pipeline always ship both SPDX and CycloneDX. Scan for CVEs with [grype](https://github.com/anchore/grype):
 
 ```bash
-grype sbom:keylatch-v0.1.0-sbom.spdx.json
+grype sbom:keylatch-v<version>.spdx.json
 ```
 
 ## Cryptographic test vectors

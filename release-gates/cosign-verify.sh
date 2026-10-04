@@ -4,6 +4,7 @@
 # Example: cosign-verify.sh v1.0.0 dist/
 # Requires: cosign, curl (if downloading from GitHub releases)
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/../release-checks/lib.sh"
 
 version="${1:?version required (e.g. v1.0.0)}"
 dist_dir="${2:-dist}"
@@ -43,8 +44,8 @@ fi
 
 echo "==> Verifying cosign signature for $version"
 cosign verify-blob \
-  --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --certificate-identity-regexp="$COSIGN_IDENTITY_REGEXP" \
+  --certificate-oidc-issuer="$COSIGN_OIDC_ISSUER" \
   --certificate "$cert_file" \
   --signature "$sig_file" \
   "$sums_file"

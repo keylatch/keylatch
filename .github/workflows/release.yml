@@ -11,18 +11,46 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# Tool downloads are pinned to these digests, taken from each vendor's
+# Sigstore-verified checksums file.
+env:
+  SYFT_VERSION: 1.54.0
+  SYFT_SHA256: 54a87372498168b2d033e876fd41fa4e8035b872699e525a57046e1f2f09c860
+  TRIVY_VERSION: 0.75.0
+  TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+
 jobs:
   validate-tag:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
     steps:
-      - name: Validate tag format
-        run: echo "${{ github.ref_name }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: require the tag commit on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          bash release-checks/tag-on-main.sh "$GITHUB_REF_NAME" origin/main
+      - name: require passing checks on the tag commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash release-checks/required-checks-passed.sh "$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: release check scripts self-test
+        run: |
+          bash release-checks/release-checks.test.sh
+          bash release-checks/reproduce-and-compare.sh --self-test
 
   test:
     needs: validate-tag
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -32,7 +60,7 @@ jobs:
       - name: Run tests with coverage
         env:
           KEYLATCH_BACKEND: file
-        run: go test -coverprofile=coverage.out ./... -race -count=1 -timeout 120s
+        run: go test -coverprofile=coverage.out ./... -race -count=1 -timeout 15m
       - name: Check coverage threshold
         run: bash release-gates/coverage-threshold.sh coverage.out
       - run: bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh
@@ -70,15 +98,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Creates a draft release; the publish job attaches signatures, SBOMs and
+      # provenance, then makes it public.
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
-          version: latest
+          version: v2.18.2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
       - name: compute artifact hashes for SLSA provenance
         id: compute-hashes
         run: |
@@ -103,8 +130,12 @@ jobs:
           path: dist/
       - name: install syft
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin
+          set -euo pipefail
+          curl -sSfL -o "$RUNNER_TEMP/syft.tar.gz" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  $RUNNER_TEMP/syft.tar.gz" | sha256sum --strict -c -
+          tar -xzf "$RUNNER_TEMP/syft.tar.gz" -C "$RUNNER_TEMP" syft
+          sudo install -m 0755 "$RUNNER_TEMP/syft" /usr/local/bin/syft
       - name: generate SBOM (CycloneDX + SPDX)
         run: |
           mkdir -p dist/sbom
@@ -184,21 +215,19 @@ jobs:
           name: sbom
           path: dist/sbom/
       - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
-      - name: sign binaries
+      - name: sign archives, checksums and SBOMs
         run: |
-          for f in dist/*.tar.gz dist/*.zip dist/*_checksums.txt; do
-            [ -f "$f" ] || continue
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.tar.gz dist/*.zip dist/*_checksums.txt "dist/sbom/keylatch-${GITHUB_REF_NAME}.cdx.json" "dist/sbom/keylatch-${GITHUB_REF_NAME}.spdx.json")
+          for f in "${files[@]}"; do
+            [ -f "$f" ] || { echo "::error::missing release file $f"; exit 1; }
             cosign sign-blob --yes \
               --output-signature "${f}.sig" \
               --output-certificate "${f}.pem" \
               "${f}"
           done
-      - name: sign SBOM
-        run: |
-          cosign sign-blob --yes \
-            --output-signature dist/sbom/keylatch-${{ github.ref_name }}.cdx.json.sig \
-            --output-certificate dist/sbom/keylatch-${{ github.ref_name }}.cdx.json.pem \
-            dist/sbom/keylatch-${{ github.ref_name }}.cdx.json
+          echo "Signed ${#files[@]} files."
       - name: verify signatures
         run: bash release-gates/cosign-verify.sh ${{ github.ref_name }} dist/
       - uses: actions/upload-artifact@v4
@@ -238,14 +267,22 @@ jobs:
           # mirror that here (same pattern used by desktop-bundles job above).
           version="${GITHUB_REF_NAME#v}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - name: install trivy
+          # Pre-releases do not move :latest (docker_manifests skip_push: auto).
+          refs="ghcr.io/keylatch/keylatch:${version}"
+          [[ "$GITHUB_REF_NAME" == *-* ]] || refs="${refs} ghcr.io/keylatch/keylatch:latest"
+          echo "refs=${refs}" >> "$GITHUB_OUTPUT"
+      - name: install trivy and syft
         run: |
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin
-      - name: install syft
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin
+          set -euo pipefail
+          curl -sSfL -o "$RUNNER_TEMP/trivy.tar.gz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/syft.tar.gz" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          printf '%s  %s\n' "${TRIVY_SHA256}" "$RUNNER_TEMP/trivy.tar.gz" "${SYFT_SHA256}" "$RUNNER_TEMP/syft.tar.gz" \
+            | sha256sum --strict -c -
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
+          tar -xzf "$RUNNER_TEMP/syft.tar.gz" -C "$RUNNER_TEMP" syft
+          sudo install -m 0755 "$RUNNER_TEMP/trivy" "$RUNNER_TEMP/syft" /usr/local/bin/
       - name: trivy scan (linux/amd64)
         run: |
           # Trivy needs a resolvable single-arch image, so this scans the
@@ -267,23 +304,18 @@ jobs:
         id: digest
         run: |
           set -euo pipefail
-          version_tag="ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}"
-          latest_tag="ghcr.io/keylatch/keylatch:latest"
-          version_digest=$(docker buildx imagetools inspect "$version_tag" | awk '/^Digest:/{print $2; exit}')
-          latest_digest=$(docker buildx imagetools inspect "$latest_tag" | awk '/^Digest:/{print $2; exit}')
-          if [ -z "$version_digest" ] || [ -z "$latest_digest" ]; then
-            echo "::error::failed to resolve manifest-list digest for ${version_tag} or ${latest_tag}"
-            exit 1
-          fi
-          echo "version_digest=${version_digest}" >> "$GITHUB_OUTPUT"
-          echo "latest_digest=${latest_digest}" >> "$GITHUB_OUTPUT"
           # :{version} and :latest reference the same per-arch manifests within
           # a release, so they normally share one digest — dedupe so we don't
           # sign/attest the identical digest twice.
-          digests="${version_digest}"
-          if [ "${latest_digest}" != "${version_digest}" ]; then
-            digests="${digests} ${latest_digest}"
-          fi
+          digests=""
+          for ref in ${{ steps.image.outputs.refs }}; do
+            d=$(docker buildx imagetools inspect "$ref" | awk '/^Digest:/{print $2; exit}')
+            if [ -z "$d" ]; then
+              echo "::error::failed to resolve manifest-list digest for ${ref}"
+              exit 1
+            fi
+            case " ${digests} " in *" ${d} "*) ;; *) digests="${digests:+${digests} }${d}" ;; esac
+          done
           echo "digests=${digests}" >> "$GITHUB_OUTPUT"
       - name: sign container manifest-list (keyless OIDC)
         run: |
@@ -298,7 +330,7 @@ jobs:
           for d in ${{ steps.digest.outputs.digests }}; do
             short="${d#sha256:}"
             syft scan "ghcr.io/keylatch/keylatch@${d}" \
-              --output cyclonedx-json=dist/sbom/keylatch-image-${{ github.ref_name }}-${short:0:12}.cdx.json
+              --output "cyclonedx-json=dist/sbom/keylatch-image-${GITHUB_REF_NAME}-${short:0:12}.cdx.json"
           done
       - name: attest image SBOM (manifest-list digest)
         run: |
@@ -313,7 +345,7 @@ jobs:
       - name: verify manifest-list signature (as pulled by tag)
         run: |
           set -euo pipefail
-          for ref in "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}" "ghcr.io/keylatch/keylatch:latest"; do
+          for ref in ${{ steps.image.outputs.refs }}; do
             cosign verify \
               --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
@@ -322,7 +354,7 @@ jobs:
       - name: verify manifest-list attestation (as pulled by tag)
         run: |
           set -euo pipefail
-          for ref in "ghcr.io/keylatch/keylatch:${{ steps.image.outputs.version }}" "ghcr.io/keylatch/keylatch:latest"; do
+          for ref in ${{ steps.image.outputs.refs }}; do
             cosign verify-attestation \
               --type cyclonedx \
               --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
@@ -377,6 +409,7 @@ jobs:
         run: |
           cosign sign-blob --yes \
             --output-signature dist/release-manifest/keylatch-${{ github.ref_name }}.json.sig \
+            --output-certificate dist/release-manifest/keylatch-${{ github.ref_name }}.json.pem \
             dist/release-manifest/keylatch-${{ github.ref_name }}.json
       - uses: actions/upload-artifact@v4
         with:
@@ -550,7 +583,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write # softprops/action-gh-release uploads to the GH release
+      contents: write # uploads assets and publishes the draft release
       id-token: write # keyless OIDC signing via Fulcio
     steps:
       - name: assert at least one desktop bundle succeeded
@@ -601,35 +634,39 @@ jobs:
             signed=$((signed + 1))
           done
           echo "Cosigned $signed desktop installer(s)."
-      - name: verify desktop installer signatures
-        run: |
-          shopt -s nullglob
-          for f in release-files/*.dmg release-files/*-setup.exe release-files/*.AppImage release-files/*.deb; do
-            [ -e "$f" ] || continue
-            echo "Verifying $f"
-            cosign verify-blob \
-              --certificate-identity-regexp="^https://github\.com/keylatch/keylatch/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$" \
-              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-              --certificate "${f}.pem" \
-              --signature "${f}.sig" \
-              "$f"
-          done
-          echo "All desktop installer signatures verified."
-      - name: attach artifacts to GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          files: release-files/*
-          fail_on_unmatched_files: false
-          # Hyphenated tags (alpha/beta/rc) are prereleases and must not become
-          # the "Latest" download. A clean tag (v0.9.3) ships as Latest — the
-          # default grab for external testers.
-          prerelease: ${{ contains(github.ref_name, '-') }}
+      - uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # v2.7.1
+      - name: require every signature, SBOM and provenance
+        run: bash release-checks/verify-release-assets.sh release-files "$GITHUB_REF_NAME"
+      - name: attach artifacts and publish the draft release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "$GITHUB_REF_NAME" release-files/* --clobber
+          # Hyphenated tags (alpha/beta/rc) are prereleases and must not become
+          # the "Latest" download.
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest
+          fi
       - name: windows bundle status
         if: needs.desktop-bundles.outputs.windows_failed == 'true'
         run: |
           echo "::warning::Windows bundle build failed — Windows artifacts not included in this release"
+
+  package-managers:
+    needs: publish
+    if: ${{ !contains(github.ref_name, '-') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-packages.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+
   release-checklist:
     needs: publish
     runs-on: ubuntu-latest
