@@ -65,29 +65,12 @@ checksum:
 changelog:
   use: github
 
-brews:
-  - name: keylatch
-    repository:
-      owner: keylatch
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: https://github.com/keylatch/keylatch
-    description: Zero-trust credential vault CLI for AI-assisted workflows
-    license: Apache-2.0
-    install: |
-      bin.install "keylatch"
-      generate_completions_from_executable(bin/"keylatch", "completion")
-    test: |
-      system "#{bin}/keylatch", "--version"
-
-scoops:
-  - repository:
-      owner: keylatch
-      name: scoop
-      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
-    homepage: https://github.com/keylatch/keylatch
-    description: Zero-trust credential vault CLI for AI-assisted workflows
-    license: Apache-2.0
+# The release stays a draft until the publish job in release.yml has attached
+# and verified every signature, SBOM and provenance file. Homebrew and Scoop
+# are updated afterwards by publish-packages.yml, never from here.
+release:
+  draft: true
+  replace_existing_draft: true
 
 dockers:
   - id: keylatch-linux-amd64
@@ -115,20 +98,10 @@ docker_manifests:
       - ghcr.io/keylatch/keylatch:{{ .Version }}-amd64
       - ghcr.io/keylatch/keylatch:{{ .Version }}-arm64
   - name_template: ghcr.io/keylatch/keylatch:latest
+    skip_push: auto
     image_templates:
       - ghcr.io/keylatch/keylatch:{{ .Version }}-amd64
       - ghcr.io/keylatch/keylatch:{{ .Version }}-arm64
-
-aurs:
-  - name: keylatch-bin
-    homepage: https://github.com/keylatch/keylatch
-    description: Zero-trust credential vault CLI for AI-assisted workflows
-    license: Apache-2.0
-    maintainers:
-      - Patrik Michalicka <yay@patrikmichalicka.com>
-    git_url: ssh://aur@aur.archlinux.org/keylatch-bin.git
-    private_key: '{{ .Env.AUR_KEY }}'
-    skip_upload: '{{ if index .Env "AUR_KEY" }}false{{ else }}true{{ end }}'
 
 # FIPS build template
 # builds:

@@ -1,0 +1,199 @@
+name: Attest Release
+
+# For a release that was published without signatures, SBOMs or provenance:
+# rebuild every binary from the tag with the recorded toolchain and flags and
+# compare digests with the published archives.
+#   match    -> sign the published files, attach SBOMs and SLSA provenance
+#   mismatch -> drop "Latest", prepend the unverified-release note, fail
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to attest (for example v0.9.7)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: attest-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag }}
+  SYFT_VERSION: 1.54.0
+  SYFT_SHA256: 54a87372498168b2d033e876fd41fa4e8035b872699e525a57046e1f2f09c860
+
+jobs:
+  reproduce:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      matched: ${{ steps.compare.outputs.matched }}
+      hashes: ${{ steps.hashes.outputs.hashes }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: keep the release check scripts from main
+        run: |
+          set -euo pipefail
+          . release-checks/lib.sh
+          require_tag "$TAG"
+          cp -R release-checks "$RUNNER_TEMP/release-checks"
+      # The tag is checked out at the default workspace path, which is where
+      # the release was built; binaries without -trimpath embed that path.
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          clean: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.3.14'
+      - name: run the goreleaser before hooks
+        run: |
+          bash scripts/sync-embedded-ui.sh
+          go mod tidy
+      - name: download the published archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/published"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/published" \
+            --pattern 'keylatch_*.tar.gz' --pattern 'keylatch_*.zip' --pattern "keylatch-${TAG#v}_checksums.txt"
+      - name: rebuild and compare digests
+        id: compare
+        run: |
+          set -euo pipefail
+          status=0
+          bash "$RUNNER_TEMP/release-checks/reproduce-and-compare.sh" "$RUNNER_TEMP/published" "$TAG" "$GITHUB_WORKSPACE" || status=$?
+          case "$status" in
+            0) echo "matched=true" >>"$GITHUB_OUTPUT" ;;
+            1) echo "matched=false" >>"$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+      - name: hash the published files for provenance
+        id: hashes
+        if: steps.compare.outputs.matched == 'true'
+        working-directory: ${{ runner.temp }}/published
+        run: echo "hashes=$(sha256sum keylatch_*.tar.gz keylatch_*.zip keylatch-*_checksums.txt | base64 -w0)" >>"$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: steps.compare.outputs.matched == 'true'
+        with:
+          name: published
+          path: ${{ runner.temp }}/published/
+
+  mark-unverified:
+    needs: reproduce
+    if: needs.reproduce.outputs.matched == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: drop Latest and prepend the unverified-release note
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          sed "s/{{TAG}}/${TAG}/g" docs/release-notes/unverified-release.md >"$notes"
+          printf '\n---\n\n' >>"$notes"
+          gh release view "$TAG" --json body --jq .body >>"$notes"
+          gh release edit "$TAG" --latest=false --notes-file "$notes"
+          echo "::error::$TAG does not reproduce from its tag; it is marked unverified and is no longer Latest. Point package managers at the last signed release with publish-packages.yml."
+          exit 1
+
+  sign:
+    needs: reproduce
+    if: needs.reproduce.outputs.matched == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # keyless OIDC signing via Fulcio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          path: tag-source
+      - uses: actions/download-artifact@v4
+        with:
+          name: published
+          path: attest/
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - name: install syft
+        run: |
+          set -euo pipefail
+          curl -sSfL -o "$RUNNER_TEMP/syft.tar.gz" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  $RUNNER_TEMP/syft.tar.gz" | sha256sum --strict -c -
+          tar -xzf "$RUNNER_TEMP/syft.tar.gz" -C "$RUNNER_TEMP" syft
+          sudo install -m 0755 "$RUNNER_TEMP/syft" /usr/local/bin/syft
+      - name: generate SBOMs from the tag source
+        run: |
+          syft scan dir:tag-source \
+            --output "cyclonedx-json=attest/keylatch-${TAG}.cdx.json" \
+            --output "spdx-json=attest/keylatch-${TAG}.spdx.json"
+      - name: sign the published files and SBOMs
+        run: |
+          set -euo pipefail
+          . release-checks/lib.sh
+          for f in attest/keylatch_*.tar.gz attest/keylatch_*.zip attest/keylatch-*_checksums.txt attest/*.cdx.json attest/*.spdx.json; do
+            cosign sign-blob --yes --output-signature "${f}.sig" --output-certificate "${f}.pem" "$f"
+            cosign_verify_blob "$f"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attestations
+          path: |
+            attest/*.sig
+            attest/*.pem
+            attest/*.cdx.json
+            attest/*.spdx.json
+
+  provenance:
+    needs: reproduce
+    if: needs.reproduce.outputs.matched == 'true'
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.reproduce.outputs.hashes }}"
+      provenance-name: keylatch-${{ inputs.tag }}-provenance.intoto.jsonl
+      upload-assets: false
+
+  upload:
+    needs: [reproduce, sign, provenance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: attest/
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - uses: slsa-framework/slsa-verifier/actions/installer@ea584f4502babc6f60d9bc799dbbb13c1caa9ee6 # v2.7.1
+      - name: require every signature, SBOM and provenance
+        env:
+          PROVENANCE_SOURCE: main
+        run: bash release-checks/verify-release-assets.sh attest "$TAG"
+      - name: attach to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          gh release upload "$TAG" attest/*.sig attest/*.pem attest/*.cdx.json attest/*.spdx.json attest/*.intoto.jsonl

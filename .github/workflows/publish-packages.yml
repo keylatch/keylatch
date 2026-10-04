@@ -1,0 +1,63 @@
+name: Publish Packages
+
+# Points the Homebrew tap and Scoop bucket at a published, cosign-signed
+# release. Called by release.yml after publish; dispatch it by hand to move
+# package managers back to an earlier signed release.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: true
+      SCOOP_BUCKET_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Signed, published release tag (for example v0.9.5)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-packages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - name: verify the release and render manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          . release-checks/lib.sh
+          require_tag "$TAG"
+          if is_prerelease "$TAG"; then die "pre-releases are not published to package managers"; fi
+          [[ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" == "false" ]] || die "release $TAG is not published"
+          sums="keylatch-${TAG#v}_checksums.txt"
+          mkdir -p "$RUNNER_TEMP/pkg"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/pkg" --pattern "$sums" --pattern "$sums.sig" --pattern "$sums.pem"
+          cosign_verify_blob "$RUNNER_TEMP/pkg/$sums" || die "release $TAG has no valid signature on $sums"
+          bash release-checks/render-package-manifests.sh "$TAG" "$RUNNER_TEMP/pkg/$sums" "$RUNNER_TEMP/pkg/out"
+      - name: update Homebrew tap
+        env:
+          PUSH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: bash release-checks/push-package-manifest.sh keylatch/homebrew-tap keylatch.rb "$RUNNER_TEMP/pkg/out/keylatch.rb" "$TAG"
+      - name: update Scoop bucket
+        env:
+          PUSH_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: bash release-checks/push-package-manifest.sh keylatch/scoop keylatch.json "$RUNNER_TEMP/pkg/out/keylatch.json" "$TAG"
