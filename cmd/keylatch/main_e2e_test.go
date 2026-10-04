@@ -63,7 +63,16 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = os.Environ()
 	// Strip signals and XDG vars that leak runner state into the isolated subprocess env.
-	stripped := map[string]bool{"XDG_CONFIG_HOME": true, "KEYLATCH_CONFIG_DIR": true, llmcontext.TicketEnv: true}
+	// The session-bus vars are dropped so the subprocess never reaches the
+	// developer's Secret Service keyring.
+	stripped := map[string]bool{
+		"XDG_CONFIG_HOME":            true,
+		"KEYLATCH_CONFIG_DIR":        true,
+		"KEYLATCH_INSECURE_FILE_KEK": true,
+		"DBUS_SESSION_BUS_ADDRESS":   true,
+		"XDG_RUNTIME_DIR":            true,
+		llmcontext.TicketEnv:         true,
+	}
 	for _, sig := range llmcontext.Signals {
 		stripped[sig.EnvKey] = true
 	}
@@ -74,6 +83,9 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 		}
 	}
 	cmd.Env = filtered
+	if _, set := env["KEYLATCH_INSECURE_FILE_KEK"]; !set {
+		cmd.Env = append(cmd.Env, "KEYLATCH_INSECURE_FILE_KEK=1")
+	}
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}

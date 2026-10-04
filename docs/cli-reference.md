@@ -110,16 +110,17 @@ After running, edit `.keylatch/integration.yml` to set your actual provider name
 Initialize local keylatch configuration (scriptable).
 
 ```
-keylatch bootstrap [--dry-run] [--json] [--backend <name>]
+keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--insecure-file-kek]
 ```
 
-Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times.
+Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring and fails when none is usable, unless `--insecure-file-kek` is given. Re-running it moves a plaintext identity from an older install into the keyring.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print plan without writing anything |
 | `--json` | Output plan as JSON |
 | `--backend` | Set credential backend (`file`, `keychain`, `op`, `bw`) |
+| `--insecure-file-kek` | Keep the vault identity in a plaintext file next to the vault when no OS keyring is available. Any process running as you can then decrypt the vault. Same as `KEYLATCH_INSECURE_FILE_KEK=1` |
 
 ---
 
@@ -165,6 +166,9 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
 **Bootstrap checks:**
 - `bootstrap.keyring` — verifies `~/.keylatch/keyring/keyring.json` is present and non-empty
 - `bootstrap.config` — verifies `~/.keylatch/config.json` is present and parseable
+
+**KEK storage check:**
+- `backend.kek` — fails with "plaintext KEK on disk" when a plaintext vault identity has not been moved into the OS keyring or acknowledged, or remains beside a keyring item; warns when it was acknowledged with `--insecure-file-kek` or comes from `KEYLATCH_AGE_IDENTITY`
 
 **Integration check (I3):**
 - `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.windsurf/hooks`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.

@@ -72,6 +72,25 @@ func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
+func TestE2E_Bootstrap_NoKeyringRequiresInsecureOptIn(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("the macOS login keychain is always present")
+	}
+	homeDir := t.TempDir()
+	env := map[string]string{"HOME": homeDir, "KEYLATCH_INSECURE_FILE_KEK": ""}
+
+	_, stderr, code := runKeylatch(t, env, "bootstrap")
+	require.NotEqual(t, 0, code, "bootstrap without a keyring must fail")
+	assert.Contains(t, string(stderr), "--insecure-file-kek")
+	_, err := os.Stat(filepath.Join(homeDir, ".keylatch", "keyring", "identity"))
+	assert.True(t, os.IsNotExist(err), "no plaintext identity without the opt-in")
+
+	stdout, stderr, code := runKeylatch(t, env, "bootstrap", "--insecure-file-kek")
+	require.Equal(t, 0, code, "stderr: %s", stderr)
+	assert.Contains(t, string(stdout), "INSECURE")
+	assertPathMode(t, filepath.Join(homeDir, ".keylatch", "keyring", "identity"), 0o600, false)
+}
+
 // TestE2E_Bootstrap_Idempotent — running bootstrap twice produces all-noop.
 func TestE2E_Bootstrap_Idempotent(t *testing.T) {
 	homeDir := t.TempDir()

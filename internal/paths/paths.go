@@ -222,10 +222,10 @@ func fileExists(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// KeyringIdentityPath returns the path to the default age-env identity file.
-// Bootstrap creates this file when no platform keystore (macOS Keychain, etc.)
-// is available. At runtime the factory uses KEYLATCH_AGE_IDENTITY if set;
-// otherwise it falls back to this well-known path.
+// KeyringIdentityPath returns the path of the plaintext vault identity file.
+// Bootstrap writes it only with --insecure-file-kek; otherwise the identity
+// lives in the OS keyring and this path plus ".keyring" holds the reference.
+// At runtime the factory uses KEYLATCH_AGE_IDENTITY if set.
 //
 // Override: KEYLATCH_KEYRING_IDENTITY_PATH
 func KeyringIdentityPath(env Lookup) string {

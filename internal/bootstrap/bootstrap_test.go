@@ -10,6 +10,7 @@ import (
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,8 @@ func TestBootstrap_FreshHome(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		Env: env,
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		Env:           env,
 	})
 	require.NoError(t, err)
 
@@ -73,7 +75,9 @@ func TestBootstrap_FreshHome(t *testing.T) {
 	assertMode(t, krPath, 0o600, false)
 
 	identityPath := paths.KeyringIdentityPath(env)
-	assertMode(t, identityPath, 0o600, false)
+	_, err = os.Stat(identityPath)
+	assert.True(t, os.IsNotExist(err), "no plaintext identity may be written when a keyring is available")
+	assertMode(t, identityPath+".keyring", 0o600, false)
 }
 
 func TestBootstrap_Idempotent(t *testing.T) {
@@ -82,11 +86,11 @@ func TestBootstrap_Idempotent(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	// First run.
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	// Second run — all steps should be noop.
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	for _, s := range plan.Steps {
@@ -100,8 +104,9 @@ func TestBootstrap_DryRun(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		DryRun: true,
-		Env:    env,
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		DryRun:        true,
+		Env:           env,
 	})
 	require.NoError(t, err)
 
@@ -124,8 +129,9 @@ func TestBootstrap_UnknownBackend(t *testing.T) {
 	t.Setenv("HOME", tmp)
 
 	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		Backend: "unknown",
-		Env:     makeEnv(tmp, nil),
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		Backend:       "unknown",
+		Env:           makeEnv(tmp, nil),
 	})
 	require.Error(t, err)
 	var ub *bootstrap.UnknownBackend
@@ -139,8 +145,9 @@ func TestBootstrap_BackendPersisted(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		Backend: "op",
-		Env:     env,
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		Backend:       "op",
+		Env:           env,
 	})
 	require.NoError(t, err)
 
@@ -155,8 +162,9 @@ func TestBootstrap_RenderJSON(t *testing.T) {
 	t.Setenv("HOME", tmp)
 
 	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		DryRun: true,
-		Env:    makeEnv(tmp, nil),
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		DryRun:        true,
+		Env:           makeEnv(tmp, nil),
 	})
 	require.NoError(t, err)
 
@@ -172,7 +180,8 @@ func TestBootstrap_RenderText(t *testing.T) {
 	t.Setenv("HOME", tmp)
 
 	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		Env: makeEnv(tmp, nil),
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		Env:           makeEnv(tmp, nil),
 	})
 	require.NoError(t, err)
 
@@ -189,7 +198,7 @@ func TestBootstrap_ForceReinit(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	// First run — creates keyring.
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	krPath := paths.KeyringPath(env)
@@ -198,9 +207,10 @@ func TestBootstrap_ForceReinit(t *testing.T) {
 
 	// Force re-init — must overwrite the keyring with fresh random material.
 	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		Env:     env,
-		Force:   true,
-		Confirm: true,
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		Env:           env,
+		Force:         true,
+		Confirm:       true,
 	})
 	require.NoError(t, err)
 
@@ -234,7 +244,7 @@ func TestBootstrap_PassphraseEnvIgnored(t *testing.T) {
 	})
 
 	// Bootstrap must succeed despite the passphrase env var being set.
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err, "bootstrap must not use KEYLATCH_PASSPHRASE")
 
 	// The keyring must be created normally.

@@ -244,9 +244,10 @@ Exit codes:
 
 			// Run bootstrap with the chosen backend (non-interactive path).
 			_, err = bootstrap.Run(ctx, bootstrap.Options{
-				DryRun:  false,
-				Backend: backend,
-				Env:     llmcontext.DefaultLookup,
+				DryRun:          false,
+				Backend:         backend,
+				Env:             llmcontext.DefaultLookup,
+				InsecureFileKEK: insecureFileKEKFlag(c),
 			})
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "bootstrap: %v\n", err)
@@ -267,7 +268,13 @@ Exit codes:
 	cmd.Flags().Bool("no-daemon-start", false, "skip gateway start in step 3 (useful in CI or restricted environments)")
 	cmd.Flags().String("config", "", "path to keylatch.yaml config file")
 	cmd.Flags().String("telemetry", "", "telemetry setting: on|off")
+	cmd.Flags().Bool("insecure-file-kek", false, "store the vault key in a plaintext file next to the vault when no OS keyring is available (any process running as you can decrypt the vault)")
 	return cmd
+}
+
+func insecureFileKEKFlag(c *cobra.Command) bool {
+	v, _ := c.Flags().GetBool("insecure-file-kek")
+	return v
 }
 
 // runSetupHeadless runs setup in headless mode: accepts --backend, no prompts,
@@ -289,9 +296,10 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 	}
 
 	_, err := bootstrap.Run(ctx, bootstrap.Options{
-		DryRun:  false,
-		Backend: selectedBackend,
-		Env:     llmcontext.DefaultLookup,
+		DryRun:          false,
+		Backend:         selectedBackend,
+		Env:             llmcontext.DefaultLookup,
+		InsecureFileKEK: insecureFileKEKFlag(c),
 	})
 	if err != nil {
 		writeHeadlessResult(false, selectedBackend, err.Error())
@@ -437,9 +445,10 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	fmt.Fprintf(c.OutOrStdout(), "  Configuring backend %q...\n", chosen)
 
 	_, err = bootstrap.Run(ctx, bootstrap.Options{
-		DryRun:  false,
-		Backend: chosen,
-		Env:     llmcontext.DefaultLookup,
+		DryRun:          false,
+		Backend:         chosen,
+		Env:             llmcontext.DefaultLookup,
+		InsecureFileKEK: insecureFileKEKFlag(c),
 	})
 	if err != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "  bootstrap: %v\n", err)
@@ -468,9 +477,10 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 				chosen = "file"
 				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
 				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
-					DryRun:  false,
-					Backend: chosen,
-					Env:     llmcontext.DefaultLookup,
+					DryRun:          false,
+					Backend:         chosen,
+					Env:             llmcontext.DefaultLookup,
+					InsecureFileKEK: insecureFileKEKFlag(c),
 				}); fallbackErr != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
 					return "", fmt.Errorf("keychain init failed (%w); fallback bootstrap failed: %w", initErr, fallbackErr)
