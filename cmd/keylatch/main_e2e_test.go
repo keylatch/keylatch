@@ -63,16 +63,7 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = os.Environ()
 	// Strip signals and XDG vars that leak runner state into the isolated subprocess env.
-	// The session-bus vars are dropped so the subprocess never reaches the
-	// developer's Secret Service keyring.
-	stripped := map[string]bool{
-		"XDG_CONFIG_HOME":            true,
-		"KEYLATCH_CONFIG_DIR":        true,
-		"KEYLATCH_INSECURE_FILE_KEK": true,
-		"DBUS_SESSION_BUS_ADDRESS":   true,
-		"XDG_RUNTIME_DIR":            true,
-		llmcontext.TicketEnv:         true,
-	}
+	stripped := map[string]bool{"XDG_CONFIG_HOME": true, "KEYLATCH_CONFIG_DIR": true, llmcontext.TicketEnv: true}
 	for _, sig := range llmcontext.Signals {
 		stripped[sig.EnvKey] = true
 	}
@@ -83,9 +74,7 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 		}
 	}
 	cmd.Env = filtered
-	if _, set := env["KEYLATCH_INSECURE_FILE_KEK"]; !set {
-		cmd.Env = append(cmd.Env, "KEYLATCH_INSECURE_FILE_KEK=1")
-	}
+	cmd.Env = isolateFromKeyring(cmd.Env, env)
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -644,4 +633,22 @@ func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	assert.Equal(t, 7, code,
 		"raw run before bootstrap must exit 7 (BootstrapMissing) for a SignalNone session too, ahead of the session gate; stderr: %s", stderr)
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
+}
+
+// isolateFromKeyring drops the session-bus variables so the subprocess never
+// reaches the developer's Secret Service keyring, and opts into the file KEK
+// unless the test sets KEYLATCH_INSECURE_FILE_KEK itself.
+func isolateFromKeyring(environ []string, overrides map[string]string) []string {
+	out := make([]string, 0, len(environ)+1)
+	for _, e := range environ {
+		switch name, _, _ := strings.Cut(e, "="); name {
+		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_INSECURE_FILE_KEK":
+			continue
+		}
+		out = append(out, e)
+	}
+	if _, set := overrides["KEYLATCH_INSECURE_FILE_KEK"]; !set {
+		out = append(out, "KEYLATCH_INSECURE_FILE_KEK=1")
+	}
+	return out
 }
