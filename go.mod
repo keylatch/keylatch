@@ -1,6 +1,6 @@
 module github.com/keylatch/keylatch
 
-go 1.26.5
+go 1.26.8
 
 require (
 	cloud.google.com/go/secretmanager v1.20.0
