@@ -11,6 +11,7 @@ import (
 	"github.com/keylatch/keylatch/internal/doctor"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,7 +70,7 @@ func bootstrappedHome(t *testing.T) (string, llmcontext.Lookup) {
 		}
 		return ""
 	}
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: fullEnv})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: fullEnv})
 	require.NoError(t, err)
 	return tmp, fullEnv
 }

@@ -429,10 +429,10 @@ func openKeyringFromEnv() (*keyring.Keyring, filebe.KEK, string, error) {
 		kf.Salt = nil
 	}
 
-	// Try age identity KEK (non-interactive: uses bootstrap identity file).
-	identityPath := paths.KeyringIdentityPath(os.Getenv)
+	// Try the bootstrap vault identity (OS keyring or plaintext file).
+	vi := filebe.VaultIdentity{Path: paths.KeyringIdentityPath(os.Getenv), Store: filebe.DefaultIdentityStore()}
 	if len(kf.Salt) > 0 {
-		if k, kekErr := filebe.AgeIdentityKEKFromPath(identityPath, kf.Salt); kekErr == nil {
+		if k, kekErr := vi.KEK(kf.Salt); kekErr == nil {
 			if kr, openErr := keyring.Open(krPath, k); openErr == nil {
 				return kr, k, krPath, nil
 			}

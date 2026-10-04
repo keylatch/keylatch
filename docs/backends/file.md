@@ -14,7 +14,7 @@ external services or binaries are required.
 | Property | Detail |
 |----------|--------|
 | Encryption algorithm | XChaCha20-Poly1305 (default); AES-256-GCM in FIPS builds (`-tags=fips`, not an env var — see [Security: FIPS compliance](../security.md#fips-compliance)) |
-| Key derivation | KEK from platform keyring (macOS Keychain or age-env identity file) |
+| Key derivation | KEK derived from a vault identity held in the OS keyring (macOS Keychain or Secret Service); a plaintext identity file only with `--insecure-file-kek` |
 | On-disk format | `value.enc` (ciphertext) + `value.enc.nonce` + `value.enc.aad` per secret |
 | Directory mode | 0o700 |
 | File mode | 0o600 |
@@ -36,18 +36,42 @@ keylatch connect openrouter api_key YOUR_KEY
 - `~/.keylatch/vault/` (mode 0700)
 - `~/.keylatch/audit.log` (mode 0600)
 - `~/.keylatch/config.json` (mode 0600)
-- `~/.keylatch/keyring/keyring.json` (mode 0600) — wraps the DEK with a platform KEK
-- `~/.keylatch/keyring/identity` (mode 0600) — fallback age-env identity
+- `~/.keylatch/keyring/keyring.json` (mode 0600) — wraps the DEK with the KEK
+- the vault identity the KEK is derived from, in the OS keyring, plus
+  `~/.keylatch/keyring/identity.keyring` (mode 0600), a non-secret reference
+  naming the keyring item
 
-### KEK selection
+### Where the vault identity lives
 
-| Platform | KEK source |
-|----------|-----------|
-| macOS | macOS Keychain (`security add-generic-password`) |
-| Linux / Windows | age-env identity file (`~/.keylatch/keyring/identity`) |
+| Platform | Store |
+|----------|-------|
+| macOS | login keychain, generic password with service `keylatch-vault-kek` |
+| Linux / BSD | Secret Service (GNOME Keyring, KWallet) through `secret-tool`, attributes `application=keylatch`, `purpose=kek` |
+| Windows, containers, headless hosts | none: bootstrap fails unless you opt in with `--insecure-file-kek` |
 
-On macOS the Keychain is tried first; if unavailable (CI, container) the
-age-env identity file is used as a fallback.
+The secret reaches `security` and `secret-tool` on stdin, never on the command
+line. A keyring item is readable by other processes running as your user while
+the keyring is unlocked, so this keeps the key off disk and out of backups and
+file copies; it is not a boundary against a process running as you.
+
+`keylatch bootstrap --insecure-file-kek` (or `KEYLATCH_INSECURE_FILE_KEK=1`)
+writes the identity to `~/.keylatch/keyring/identity` instead. Anything running
+as your user can copy that file together with the vault and decrypt every
+secret offline. `keylatch doctor` reports it as "plaintext KEK on disk".
+
+### Upgrading an existing install
+
+Installs created before the keyring change have a plaintext
+`~/.keylatch/keyring/identity`. The next time the vault is opened (or when you
+re-run `keylatch bootstrap`) keylatch copies the identity into the OS keyring,
+reads it back to verify it, writes `identity.keyring` and deletes the file.
+Secrets do not need to be re-encrypted. If no keyring is reachable the file
+keeps working, a warning is printed once per command, and `keylatch doctor`
+fails until you either make a keyring available or acknowledge the risk with
+`keylatch bootstrap --insecure-file-kek`.
+
+Older keylatch binaries cannot read the keyring item, so after the move they
+can no longer open the vault.
 
 ## Configuration
 
@@ -82,7 +106,7 @@ The `file` backend works in headless CI environments:
 ```bash
 # GitHub Actions example
 - name: bootstrap keylatch
-  run: keylatch bootstrap
+  run: keylatch bootstrap --insecure-file-kek
   env:
     KEYLATCH_CONFIG_DIR: /tmp/.keylatch
 
@@ -92,8 +116,8 @@ The `file` backend works in headless CI environments:
     KEYLATCH_CONFIG_DIR: /tmp/.keylatch
 ```
 
-On Linux CI runners the age-env identity file is used as the KEK source.
-The identity file must persist between the bootstrap step and any subsequent
+CI runners usually have no OS keyring, so the plaintext identity file is the
+KEK source there and must be opted into. The identity file must persist between the bootstrap step and any subsequent
 `connect`/`run` steps (use a shared volume or artifact cache if needed).
 
 `KEYLATCH_PASSPHRASE` has **no effect** on the `file` backend. The passphrase
@@ -110,8 +134,9 @@ env var is not read during bootstrap or credential access (S-FIND-12).
 │           ├── value.enc.nonce    # random nonce (0600)
 │           └── value.enc.aad      # AAD binding JSON (0600)
 ├── keyring/
-│   ├── keyring.json              # DEK wrapped with platform KEK (0600)
-│   └── identity                  # age-env identity (fallback KEK) (0600)
+│   ├── keyring.json              # DEK wrapped with the KEK (0600)
+│   └── identity.keyring          # reference to the OS keyring item (0600)
+│                                 # (identity + identity.insecure instead with --insecure-file-kek)
 ├── config.json                   # backend config (0600)
 └── audit.log                     # HMAC-chained audit log (0600)
 ```

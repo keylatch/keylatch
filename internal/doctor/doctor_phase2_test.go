@@ -8,6 +8,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/doctor"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func TestDoctor_BWSession_NotInOutput(t *testing.T) {
 		}
 		return ""
 	}
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	probe := newMockProbe()
@@ -73,7 +74,7 @@ func TestDoctor_OPServiceAccountToken_NotInOutput(t *testing.T) {
 		}
 		return ""
 	}
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	probe := newMockProbe()

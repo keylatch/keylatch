@@ -40,6 +40,7 @@ These variables configure cryptographic operations. They are **security-sensitiv
 | `KEYLATCH_KEYRING_DIR` | Override the keyring directory (`~/.keylatch/keyring/`) | Yes | Never |
 | `KEYLATCH_KEYRING_PATH` | Override the keyring JSON path (`~/.keylatch/keyring.json`) | Yes | Never |
 | `KEYLATCH_KEYRING_IDENTITY_PATH` | Override the age identity file path (`~/.keylatch/keyring/identity`) | Yes | Never |
+| `KEYLATCH_INSECURE_FILE_KEK` | `1` opts into a plaintext vault identity file when no OS keyring is available (same as `bootstrap --insecure-file-kek`) and stops the move into the keyring on open | No | Never |
 | `KEYLATCH_GATEWAY_SIGNING_KEY` | Override path for the gateway signing key | Yes | Never |
 | `KEYLATCH_IPC_KEY_FD` | File descriptor for passing the daemon IPC HMAC key between processes (Unix — pipe-based, FIND2-002) | Yes | Never |
 | `KEYLATCH_IPC_KEY` | Windows equivalent of `KEYLATCH_IPC_KEY_FD` — the daemon IPC HMAC key passed as a hex string (Windows cannot inherit a pipe FD the same way). Set by the Tauri desktop shell (`src-tauri/src/sidecar.rs`) when spawning `keylatchd`. **Note**: the Windows desktop shell is not shipped in the current release, so this path is compile-only today — no Go-side reader currently consumes it. | Yes | Never |
