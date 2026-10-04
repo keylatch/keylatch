@@ -105,7 +105,7 @@ docker-build:
 
 ## govulncheck: scan all packages for known Go vulnerabilities
 govulncheck:
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 ## test-integration-examples: smoke-test all integration example scripts (syntax + dry-run)
 test-integration-examples:

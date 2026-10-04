@@ -300,15 +300,6 @@ func parseJWK(rk rawJWK) (PublicKey, error) {
 	}
 }
 
-// base64URLDecodeBigInt decodes a base64url-encoded big integer.
-func base64URLDecodeBigInt(s string) (*big.Int, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return nil, err
-	}
-	return new(big.Int).SetBytes(b), nil
-}
-
 // parseRSAJWK parses an RSA JWK.
 func parseRSAJWK(rk rawJWK) (PublicKey, error) {
 	if rk.N == "" || rk.E == "" {
@@ -338,6 +329,21 @@ func parseRSAJWK(rk rawJWK) (PublicKey, error) {
 	return PublicKey{KeyID: rk.Kid, Algorithm: alg, Key: pub}, nil
 }
 
+// decodeECCoordinate decodes a base64url JWK coordinate and left-pads it to
+// size bytes; some issuers strip leading zero bytes despite RFC 7518 §6.2.1.2.
+func decodeECCoordinate(s string, size int) ([]byte, error) {
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > size {
+		return nil, fmt.Errorf("coordinate is %d bytes, curve allows %d", len(b), size)
+	}
+	out := make([]byte, size)
+	copy(out[size-len(b):], b)
+	return out, nil
+}
+
 // parseECJWK parses an EC JWK.
 func parseECJWK(rk rawJWK) (PublicKey, error) {
 	if rk.X == "" || rk.Y == "" {
@@ -354,18 +360,22 @@ func parseECJWK(rk rawJWK) (PublicKey, error) {
 	default:
 		return PublicKey{}, fmt.Errorf("ci: unsupported EC curve %q", rk.Crv)
 	}
-	xInt, err := base64URLDecodeBigInt(rk.X)
+	size := (curve.Params().BitSize + 7) / 8
+	x, err := decodeECCoordinate(rk.X, size)
 	if err != nil {
 		return PublicKey{}, fmt.Errorf("ci: decode EC x: %w", err)
 	}
-	yInt, err := base64URLDecodeBigInt(rk.Y)
+	y, err := decodeECCoordinate(rk.Y, size)
 	if err != nil {
 		return PublicKey{}, fmt.Errorf("ci: decode EC y: %w", err)
 	}
-	pub := &ecdsa.PublicKey{
-		Curve: curve,
-		X:     xInt,
-		Y:     yInt,
+	point := make([]byte, 0, 1+2*size)
+	point = append(point, 4)
+	point = append(point, x...)
+	point = append(point, y...)
+	pub, err := ecdsa.ParseUncompressedPublicKey(curve, point)
+	if err != nil {
+		return PublicKey{}, fmt.Errorf("ci: invalid EC public key: %w", err)
 	}
 	alg := rk.Alg
 	if alg == "" {
