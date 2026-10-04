@@ -15,12 +15,14 @@ set -euo pipefail
 # Known agent environment variable signals
 # ------------------------------------------------------------
 declare -a AGENT_VARS=(
-  "CLAUDE_CODE"
-  "CODEX_ENV"
-  "CURSOR_SESSION"
-  "AIDER_SESSION"
-  "GEMINI_SESSION"
-  "OPENCODE_SESSION"
+  "CLAUDECODE"
+  "CLAUDE_CODE_ENTRYPOINT"
+  "CODEX_SANDBOX"
+  "CODEX_SANDBOX_NETWORK_DISABLED"
+  "CURSOR_AGENT"
+  "CURSOR_TRACE_ID"
+  "GEMINI_CLI"
+  "OPENCODE"
 )
 
 # ------------------------------------------------------------

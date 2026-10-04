@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // writeTempBundleWithCert writes bundle data, signature, and an optional
@@ -41,9 +43,7 @@ func stubKeylessVerify(t *testing.T, returnErr error) {
 // files routes to the keyless verification path.
 func TestRegistryVerify_Keyless(t *testing.T) {
 	// Clear LLM session signals.
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	// Stub keyless verifier to succeed.
 	stubKeylessVerify(t, nil)
@@ -64,9 +64,7 @@ func TestRegistryVerify_Keyless(t *testing.T) {
 // TestRegistryVerify_Keyless_Failure verifies that a keyless verification
 // failure maps to ErrUnsignedRegistryBundle.
 func TestRegistryVerify_Keyless_Failure(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	// Stub keyless verifier to fail.
 	stubKeylessVerify(t, fmt.Errorf("certificate expired"))
@@ -85,9 +83,7 @@ func TestRegistryVerify_Keyless_Failure(t *testing.T) {
 // TestRegistryVerify_Keyed verifies that a bundle with only a .sig file (no .cert)
 // routes to the keyed ECDSA-P256 verification path.
 func TestRegistryVerify_Keyed(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	sign := setupTestKey(t)
 	data := testBundleJSON(t)
@@ -105,9 +101,7 @@ func TestRegistryVerify_Keyed(t *testing.T) {
 // routes to the keyed verification path, not keyless. An empty cert file is not
 // treated as a keyless bundle.
 func TestRegistryVerify_Keyed_EmptyCert(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	sign := setupTestKey(t)
 	data := testBundleJSON(t)
@@ -124,9 +118,7 @@ func TestRegistryVerify_Keyed_EmptyCert(t *testing.T) {
 // is rejected with ErrUnsignedRegistryBundle regardless of AllowUnsigned setting
 // (when AllowUnsigned=false).
 func TestRegistryVerify_NoSigFile_Fails(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	data := testBundleJSON(t)
 	// No .sig, no .cert.
@@ -141,9 +133,7 @@ func TestRegistryVerify_NoSigFile_Fails(t *testing.T) {
 // .sig file loads successfully when AllowUnsigned is true and we are not inside
 // an LLM session.
 func TestRegistryVerify_NoSigFile_AllowUnsigned(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	data := testBundleJSON(t)
 	// No .sig, no .cert.
@@ -158,9 +148,7 @@ func TestRegistryVerify_NoSigFile_AllowUnsigned(t *testing.T) {
 // TestRegistryVerify_KeylessAuditEvent verifies that keyless verification emits
 // a SignatureVerified audit event.
 func TestRegistryVerify_KeylessAuditEvent(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	var events []RegistryLoadAuditEvent
 	orig := RegistryLoadHook

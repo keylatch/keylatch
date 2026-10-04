@@ -50,8 +50,9 @@ The token is the approval ID returned by 'keylatch ui' or by the
 Approval Inbox SSE stream. Use 'keylatch approve <token> --reason "why"'
 to record a reason for the approval.
 
-This command is blocked inside LLM sessions (CREDENTIALS_LLM_SESSION or
-CLAUDE_CODE env vars set). Approvals must be performed by a human operator.`,
+Approvals must be performed by a human operator: the command requires an
+interactive terminal on stdin and is refused inside a detected LLM session
+(see 'keylatch env' for the recognized signals).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			env := llmcontext.DefaultLookup
@@ -66,6 +67,10 @@ CLAUDE_CODE env vars set). Approvals must be performed by a human operator.`,
 				)
 				cmderr.Format(c.ErrOrStderr(), cerr)
 				return NewSecurityBlock("approve: command is not permitted inside an LLM session")
+			}
+
+			if err := requireInteractiveTerminal(c, "approve", "KL-4105"); err != nil {
+				return err
 			}
 
 			token := args[0]

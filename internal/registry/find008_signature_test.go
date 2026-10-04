@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // testBundle returns a minimal bundle JSON for testing.
@@ -123,10 +125,7 @@ func TestTamperedBundleRejected(t *testing.T) {
 // TestAllowUnsignedOutsideLLMSession verifies that AllowUnsigned=true is
 // accepted when not inside an LLM session.
 func TestAllowUnsignedOutsideLLMSession(t *testing.T) {
-	// Ensure no LLM session signals are set.
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	data := testBundleJSON(t)
 	bundlePath := writeTempBundle(t, data, nil) // no sig file
@@ -161,10 +160,7 @@ func TestAuditLogContainsRegistryLoadAction(t *testing.T) {
 		events = append(events, e)
 	}
 
-	// Ensure no LLM session signals are set.
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	sign := setupTestKey(t)
 	data := testBundleJSON(t)
@@ -192,9 +188,7 @@ func TestAuditLogContainsRegistryLoadAction(t *testing.T) {
 // TestValidSignedBundleLoadsSuccessfully verifies that a properly signed
 // bundle loads without error when AllowUnsigned=false.
 func TestValidSignedBundleLoadsSuccessfully(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	sign := setupTestKey(t)
 	data := testBundleJSON(t)

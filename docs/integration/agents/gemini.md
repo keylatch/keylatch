@@ -7,7 +7,7 @@ description: Using Keylatch with the Gemini CLI agent — detection, BeforeTool 
 
 Keylatch integrates with the Gemini CLI at two levels:
 
-1. **Auto-detection** — Keylatch detects active Gemini CLI sessions via the `GEMINI_SESSION` environment variable.
+1. **Auto-detection** — Keylatch detects active Gemini CLI sessions via the `GEMINI_CLI` environment variable.
 2. **BeforeTool hook** — `keylatch install-guard gemini` writes a `BeforeTool` hook to `~/.gemini/settings.json`.
 
 ## Quick start
@@ -20,15 +20,15 @@ keylatch install-guard gemini
 keylatch doctor
 ```
 
-## Detection: `GEMINI_SESSION`
+## Detection: `GEMINI_CLI`
 
-When Gemini CLI is active, it sets the `GEMINI_SESSION` environment variable. Keylatch reads this and activates LLM-session mode automatically. In this mode:
+Gemini CLI sets `GEMINI_CLI=1` in the commands its shell tool runs. Keylatch reads this and activates LLM-session mode automatically. The agent can unset these variables, so detection is a convenience, not a security boundary. In this mode:
 
 - `keylatch get` — blocked, exit code 2 (SecurityBlock)
 - `keylatch run` — allowed for all runtime modes
 - Raw credentials are never returned to the Gemini CLI process
 
-If your Gemini environment does not set `GEMINI_SESSION` automatically, you can set the generic fallback:
+If your Gemini environment does not set `GEMINI_CLI` automatically, you can set the generic fallback:
 
 ```bash
 export CREDENTIALS_LLM_SESSION=gemini
@@ -75,8 +75,8 @@ The hook runs a guard script before every Gemini tool call. It blocks patterns l
 
 ```bash
 # Check that Keylatch can detect your Gemini session:
-GEMINI_SESSION=test keylatch doctor --category environment
-# Should show: [warn] llm.session: llm_session=true reasons=[GEMINI_SESSION]
+GEMINI_CLI=1 keylatch doctor --category environment
+# Should show: [warn] llm.session: llm_session=true reasons=[GEMINI_CLI]
 ```
 
 ## Related

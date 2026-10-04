@@ -52,8 +52,9 @@ Use --all to deny every pending approval in one operation. You will be
 prompted to confirm unless --yes is also set. --json emits
 {"deniedCount": N, "requestIds": [...]} on success.
 
-This command is blocked inside LLM sessions (CREDENTIALS_LLM_SESSION or
-CLAUDE_CODE env vars set). Denials must be performed by a human operator.`,
+Denials must be performed by a human operator: the command requires an
+interactive terminal on stdin and is refused inside a detected LLM session
+(see 'keylatch env' for the recognized signals).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			env := llmcontext.DefaultLookup
@@ -68,6 +69,10 @@ CLAUDE_CODE env vars set). Denials must be performed by a human operator.`,
 				)
 				cmderr.Format(c.ErrOrStderr(), cerr)
 				return NewSecurityBlock("deny: command is not permitted inside an LLM session")
+			}
+
+			if err := requireInteractiveTerminal(c, "deny", "KL-4115"); err != nil {
+				return err
 			}
 
 			approvalsDir := paths.ApprovalsDir(env)

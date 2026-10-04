@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/gateway/approval"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // setupApprovalDir creates a temp dir for approval requests.
@@ -51,8 +52,8 @@ func TestApproveCmd_NoArgs(t *testing.T) {
 func TestApproveCmd_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -74,8 +75,8 @@ func TestApproveCmd_Success(t *testing.T) {
 func TestApproveCmd_JSON_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -105,8 +106,8 @@ func TestApproveCmd_JSON_Success(t *testing.T) {
 func TestApproveCmd_WithReason(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -145,8 +146,8 @@ func TestApproveCmd_Flags(t *testing.T) {
 func TestApprove_Success(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -168,8 +169,8 @@ func TestApprove_Success(t *testing.T) {
 func TestApprove_NotFound(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	cmd := newApproveCmd()
 	var errOut bytes.Buffer
@@ -191,8 +192,8 @@ func TestApprove_NotFound(t *testing.T) {
 // TestApprove_AlreadyDecided verifies approve exits UserError for already-acted token.
 func TestApprove_AlreadyDecided(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
+	withInteractiveStdin(t, true)
 
 	token := createPendingApproval(t, approvalsDir)
 	// Approve first.

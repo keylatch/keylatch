@@ -57,12 +57,9 @@ keylatch doctor  # check which backend row fails
 `keylatch get`. The `run` command never exposes raw credential values to the
 calling process.
 
-If you need to debug outside an agent session, unset the environment variable
-that triggers detection:
-
-```bash
-unset CLAUDE_CODE  # or CODEX_ENV / CREDENTIALS_LLM_SESSION / CURSOR_SESSION / AIDER_SESSION / GEMINI_SESSION / OPENCODE_SESSION
-```
+If you need to debug, run the command yourself from a terminal that is not
+inside an agent session. `keylatch doctor --category environment` lists the
+signals that fired; `keylatch env` lists every recognized signal.
 
 ---
 

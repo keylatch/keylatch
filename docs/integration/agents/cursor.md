@@ -7,7 +7,7 @@ description: Using Keylatch with Cursor — auto-detection, PreToolUse hook, .cu
 
 Keylatch integrates with Cursor at two levels:
 
-1. **Auto-detection** — Keylatch detects active Cursor sessions via the `CURSOR_SESSION` environment variable.
+1. **Auto-detection** — Keylatch detects active Cursor sessions via the `CURSOR_AGENT` and `CURSOR_TRACE_ID` environment variables.
 2. **PreToolUse hook** — `keylatch install-guard cursor` writes a hook to `~/.cursor/settings.json`.
 
 ## Quick start
@@ -20,15 +20,15 @@ keylatch install-guard cursor
 keylatch doctor
 ```
 
-## Detection: `CURSOR_SESSION`
+## Detection: `CURSOR_AGENT`
 
-When Cursor is active, it sets the `CURSOR_SESSION` environment variable. Keylatch reads this and activates LLM-session mode automatically. In this mode:
+The Cursor agent terminal sets `CURSOR_AGENT=1`. Keylatch reads this (and `CURSOR_TRACE_ID`) and activates LLM-session mode automatically. The agent can unset these variables, so detection is a convenience, not a security boundary. In this mode:
 
 - `keylatch get` — blocked, exit code 2 (SecurityBlock)
 - `keylatch run` — allowed for all runtime modes
 - Raw credentials are never returned to the Cursor process
 
-If your Cursor environment does not set `CURSOR_SESSION` automatically, use the generic fallback:
+If your Cursor environment does not set `CURSOR_AGENT` automatically, use the generic fallback:
 
 ```bash
 export CREDENTIALS_LLM_SESSION=cursor
@@ -70,7 +70,7 @@ The hook blocks credential exfiltration patterns before they execute in Cursor's
 ```bash
 keylatch doctor
 # Look for: [ok  ] hook.preToolUse: keylatch preToolUse hook detected
-# or the llm.session check showing CURSOR_SESSION
+# or the llm.session check showing CURSOR_AGENT
 ```
 
 ## Example: using credentials in Cursor sessions

@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // --- share_cmd.go ---
@@ -71,6 +73,7 @@ func TestRollbackCmd_RequiresTwoArgs(t *testing.T) {
 }
 
 func TestRollbackCmd_RequiresIntVersion(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 	t.Setenv("KEYLATCH_DATA_DIR", dir)

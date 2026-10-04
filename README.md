@@ -138,18 +138,22 @@ In any detected LLM session (Claude Code, Codex, Cursor, Aider, Gemini CLI, Open
 
 | Agent | Auto-Detected | Hook Available | Notes |
 |-------|--------------|---------------|-------|
-| [Claude Code](docs/integrations/claude-code.md) | Yes | Yes | Detected via `CLAUDE_CODE` env var |
-| [Codex](docs/integrations/codex.md) | Yes | Yes | Detected via `CODEX_ENV` env var |
-| [Cursor](docs/integrations/cursor.md) | Yes | Yes | Detected via `CURSOR_SESSION` env var |
-| [Aider](docs/integrations/aider.md) | Yes | Yes | Detected via `AIDER_SESSION` env var |
-| [Gemini](docs/integrations/gemini.md) | Yes | Yes | Detected via `GEMINI_SESSION` env var |
-| [OpenCode](docs/integrations/opencode.md) | Yes | Yes | Detected via `OPENCODE_SESSION` env var |
+| [Claude Code](docs/integrations/claude-code.md) | Yes | Yes | Detected via `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` |
+| [Codex](docs/integrations/codex.md) | Yes | Yes | Detected via `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED` |
+| [Cursor](docs/integrations/cursor.md) | Yes | Yes | Detected via `CURSOR_AGENT` / `CURSOR_TRACE_ID` |
+| [Aider](docs/integrations/aider.md) | No | Yes | Aider sets no variable; set `CREDENTIALS_LLM_SESSION=aider` in shell rc |
+| [Gemini](docs/integrations/gemini.md) | Yes | Yes | Detected via `GEMINI_CLI` |
+| [OpenCode](docs/integrations/opencode.md) | Yes | Yes | Detected via `OPENCODE` |
 | [Windsurf](docs/integrations/windsurf.md) | No | No | Set `CREDENTIALS_LLM_SESSION=windsurf` in shell rc |
 | [Antigravity](docs/integrations/antigravity.md) | No | No | Set `CREDENTIALS_LLM_SESSION=antigravity` in shell rc |
 | [GitHub Copilot](docs/integrations/copilot.md) | No | No | Set `CREDENTIALS_LLM_SESSION=copilot` in shell rc |
 | Generic | Yes | N/A | Any tool that sets `CREDENTIALS_LLM_SESSION` to a non-empty value |
 
-Keylatch detects active LLM sessions via environment signals (`CLAUDE_CODE`, `CODEX_ENV`, `CREDENTIALS_LLM_SESSION`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`, `OPENCODE_SESSION`). When a session is detected:
+Keylatch detects active LLM sessions via the environment variables the harnesses set in the shells they spawn (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`, `CURSOR_AGENT`, `CURSOR_TRACE_ID`, `GEMINI_CLI`, `OPENCODE`), plus the manual `CREDENTIALS_LLM_SESSION` flag and the legacy aliases `CLAUDE_CODE`, `CODEX_ENV`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION` and `OPENCODE_SESSION`. Run `keylatch env` for the full list.
+
+> **Detection is a convenience, not a security boundary.** These variables live in the agent's own environment: an agent can unset them to look like a human, and editor terminals can carry these variables for a human too (the Claude Code IDE extensions set `CLAUDECODE`, and Cursor terminals may carry `CURSOR_TRACE_ID`), in which case Keylatch errs toward restricting. Never rely on detection alone to keep an agent away from secrets. Human-only commands (`approve`, `deny`) additionally require an interactive terminal on stdin, which agent tool calls do not have. A boundary that holds against a same-user agent needs a broker running outside the agent's user account plus proof of human presence; that work is tracked separately.
+
+When a session is detected:
 
 - `keylatch get` — blocked, exit code 2 (SecurityBlock)
 - `keylatch run` — allowed for all v1.0.0 runtime modes
@@ -523,7 +527,7 @@ make test-canary-meta
 | [Node.js / TypeScript](docs/integration/node.md) | `execSync`, async exec, TypeScript types, `dotenv` interop |
 | [Claude Code](docs/integration/agents/claude-code.md) | Hook installation, `CREDENTIALS_LLM_SESSION`, project setup |
 | [Cursor](docs/integration/agents/cursor.md) | Auto-detection, PreToolUse hook, `.cursor/rules` patterns |
-| [Gemini CLI](docs/integration/agents/gemini.md) | BeforeTool hook, `GEMINI_SESSION`, Google AI Studio |
+| [Gemini CLI](docs/integration/agents/gemini.md) | BeforeTool hook, `GEMINI_CLI`, Google AI Studio |
 | [Windsurf](docs/integration/agents/windsurf.md) | `CREDENTIALS_LLM_SESSION` shell rc pattern |
 | [Generic agent](docs/integration/agents/generic.md) | Universal recipe, detection heuristics |
 | [CI (GitHub Actions / GitLab)](docs/integration/ci.md) | File backend, vault secrets, log masking |

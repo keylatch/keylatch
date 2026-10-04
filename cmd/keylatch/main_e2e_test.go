@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
 )
@@ -58,13 +59,13 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = os.Environ()
 	// Strip signals and XDG vars that leak runner state into the isolated subprocess env.
+	stripped := map[string]bool{"XDG_CONFIG_HOME": true, "KEYLATCH_CONFIG_DIR": true}
+	for _, sig := range llmcontext.Signals {
+		stripped[sig.EnvKey] = true
+	}
 	filtered := []string{}
 	for _, e := range cmd.Env {
-		if !strings.HasPrefix(e, "CLAUDE_CODE=") &&
-			!strings.HasPrefix(e, "CODEX_ENV=") &&
-			!strings.HasPrefix(e, "CREDENTIALS_LLM_SESSION=") &&
-			!strings.HasPrefix(e, "XDG_CONFIG_HOME=") &&
-			!strings.HasPrefix(e, "KEYLATCH_CONFIG_DIR=") {
+		if name, _, _ := strings.Cut(e, "="); !stripped[name] {
 			filtered = append(filtered, e)
 		}
 	}
@@ -225,7 +226,7 @@ func TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut(t *testing.T) {
 		"get", "svc", "key")
 
 	assert.Equal(t, 2, code, "expected exit 2 (the raw-credential session gate fail-closed on SignalNone raw get)")
-	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
 	assert.NotContains(t, string(stderr), "Blocked in LLM session",
 		"SignalNone must never see GuardLLMSession's hard-block message")
 }
@@ -252,7 +253,7 @@ func TestE2E_no_signals_GatedWithoutOptOut(t *testing.T) {
 		"get", "svc", "key")
 
 	assert.Equal(t, 2, code, "expected exit 2 (the raw-credential session gate fail-closed on SignalNone raw get)")
-	assert.Contains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
 	assert.NotContains(t, string(stderr), "Blocked in LLM session",
 		"SignalNone must never see GuardLLMSession's hard-block message")
 }

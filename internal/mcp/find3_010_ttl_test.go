@@ -4,15 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestBearerTTLExceedsCapRejected verifies that a TokenTTL > 1h is rejected.
 func TestBearerTTLExceedsCapRejected(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
@@ -32,7 +31,7 @@ func TestBearerTTLExceedsCapRejected(t *testing.T) {
 
 // TestBearerTTLOneHourAccepted verifies that TokenTTL=1h is accepted.
 func TestBearerTTLOneHourAccepted(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,

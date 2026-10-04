@@ -119,7 +119,7 @@ All four modes are permitted in LLM sessions. Raw credential values are never re
 
 ## 3. LLM session restrictions
 
-When Keylatch detects an active LLM session (via `CLAUDE_CODE`, `CODEX_ENV`, `CREDENTIALS_LLM_SESSION`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`, or `OPENCODE_SESSION` environment signals), it enforces the following policy:
+When Keylatch detects an active LLM session (via `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`, `CURSOR_AGENT`, `CURSOR_TRACE_ID`, `GEMINI_CLI`, `OPENCODE`, or the manual `CREDENTIALS_LLM_SESSION` flag), it enforces the following policy:
 
 | Mode | No LLM session | LLM session |
 |------|:--------------:|:-----------:|
@@ -138,15 +138,15 @@ When Keylatch detects an active LLM session (via `CLAUDE_CODE`, `CODEX_ENV`, `CR
 **How the guard detects LLM sessions:**
 
 The guard calls `llmcontext.IsLLMSession(env)`, which checks for any of:
-- `CLAUDE_CODE` set (any non-empty value)
-- `CODEX_ENV` set
-- `CREDENTIALS_LLM_SESSION=1`
-- `CURSOR_SESSION` set
-- `AIDER_SESSION` set
-- `GEMINI_SESSION` set
-- `OPENCODE_SESSION` set
+- `CLAUDECODE` or `CLAUDE_CODE_ENTRYPOINT` (Claude Code)
+- `CODEX_SANDBOX` or `CODEX_SANDBOX_NETWORK_DISABLED` (Codex CLI)
+- `GEMINI_CLI` (Gemini CLI)
+- `OPENCODE` (OpenCode)
+- `CURSOR_AGENT` or `CURSOR_TRACE_ID` (Cursor)
+- `CREDENTIALS_LLM_SESSION` set to anything but `0` (manual flag)
+- legacy aliases `CLAUDE_CODE`, `CODEX_ENV`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`, `OPENCODE_SESSION`
 
-Detection is conservative: any of these signals triggers full session restrictions.
+Any non-empty value triggers full session restrictions. The agent controls these variables, so detection is a convenience, not a security boundary.
 
 ---
 

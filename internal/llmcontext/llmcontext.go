@@ -17,7 +17,7 @@ var DefaultLookup Lookup = func(k string) string { return os.Getenv(k) }
 //
 // By default, `keylatch get`/`keylatch run` fail closed when a session is
 // classified as SignalHeuristic (see ClassifySession) — i.e. the ONLY reason
-// IsLLMSession returned true is the legacy env-var heuristic (S0-S6), which
+// IsLLMSession returned true is the env-var heuristic (Signals), which
 // is entirely within the classified process's own control (an agent can
 // unset it to look human; a script can set it to look like an agent) and is
 // not corroborated by a signed ticket or a live keylatchd.
@@ -53,9 +53,9 @@ const (
 	// doing stronger verification (the raw-credential session gate) can tell the two apart.
 	SignalDaemonError
 	// SignalHeuristic: none of the above fired conclusively — IsLLMSession's
-	// "true" verdict (if any) came entirely from the legacy env-var signals
-	// (S0-S6). This is the only tier that is fully spoofable by the very
-	// process being classified.
+	// "true" verdict (if any) came entirely from the env-var signals. This
+	// is the only tier that is fully spoofable by the very process being
+	// classified.
 	SignalHeuristic
 )
 
@@ -81,7 +81,7 @@ func ClassifySession(env Lookup) SessionSignal {
 		// signals, mirroring IsLLMSession.
 	}
 
-	// Priority 3: environment-variable signals (original behaviour, S0-S6).
+	// Priority 3: environment-variable signals.
 	for _, sig := range Signals {
 		if matches(sig, env(sig.EnvKey)) {
 			return SignalHeuristic
@@ -105,8 +105,9 @@ func ClassifySession(env Lookup) SessionSignal {
 //     (returns true — assume LLM session).  A clean "active: false" from
 //     the daemon is the only path to returning false from this tier.
 //
-//  3. Environment-variable signals (S0–S6) — the original seven signals
-//     (CLAUDE_CODE, CODEX_ENV, etc.) checked in declaration order.
+//  3. Environment-variable signals (see Signals: CLAUDECODE, CODEX_SANDBOX,
+//     GEMINI_CLI, ...) checked in declaration order. These are spoofable by
+//     the classified process and are a convenience label, not a boundary.
 //
 // Fail-closed contract: ambiguous or error states always return true.
 // The only way IsLLMSession returns false is when ALL of the following hold:

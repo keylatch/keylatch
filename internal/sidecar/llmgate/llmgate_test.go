@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	llmgate "github.com/keylatch/keylatch/internal/sidecar/llmgate"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 func TestMiddlewarePassThroughWhenNotDesktopShell(t *testing.T) {
@@ -26,8 +27,8 @@ func TestMiddlewarePassThroughWhenNotDesktopShell(t *testing.T) {
 }
 
 func TestMiddlewarePassThroughWhenNotLLMSession(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
 	// When fromDesktopShell=true but no LLM signals, pass through.
-	// LLM signals (CLAUDE_CODE, CODEX_ENV, etc.) are not set in tests.
 	mw := llmgate.Middleware(true)
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

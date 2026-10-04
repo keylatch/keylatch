@@ -9,19 +9,14 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSetupInteractive_ExistingConfigContinuesWizard(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
-	t.Setenv("CURSOR_SESSION", "")
-	t.Setenv("AIDER_SESSION", "")
-	t.Setenv("GEMINI_SESSION", "")
-	t.Setenv("OPENCODE_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	require.NoError(t, config.Save(filepath.Join(configDir, "config.json"), config.Config{
 		Version:          1,

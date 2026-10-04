@@ -44,7 +44,8 @@ func TestRequireVerifiedSession_SignalNone_DirectRun_BlockedWithoutCorroboration
 	// closed.
 	err := cli.RequireVerifiedSession(lookupWith(map[string]string{}), true, false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, err.Error(), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
+	assert.NotContains(t, err.Error(), "allow_unverified_session")
 }
 
 func TestRequireVerifiedSession_HeuristicOnly_DirectRun_FailsClosed(t *testing.T) {
@@ -52,7 +53,8 @@ func TestRequireVerifiedSession_HeuristicOnly_DirectRun_FailsClosed(t *testing.T
 	env := lookupWith(map[string]string{"CLAUDE_CODE": "1"})
 	err := cli.RequireVerifiedSession(env, true, false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, err.Error(), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
+	assert.NotContains(t, err.Error(), "allow_unverified_session")
 }
 
 func TestRequireVerifiedSession_ReachableUnauthenticatedDaemon_IsNotABypass(t *testing.T) {
@@ -72,7 +74,8 @@ func TestRequireVerifiedSession_ReachableUnauthenticatedDaemon_IsNotABypass(t *t
 	// process elsewhere has bound the daemon's health port.
 	err := cli.RequireVerifiedSession(lookupWith(map[string]string{}), true, false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "KEYLATCH_ALLOW_UNVERIFIED_SESSION")
+	assert.NotContains(t, err.Error(), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
+	assert.NotContains(t, err.Error(), "allow_unverified_session")
 }
 
 func TestRequireVerifiedSession_EscapeHatch_Env_RestoresAccess(t *testing.T) {

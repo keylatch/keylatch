@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/runner"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,6 +57,7 @@ func TestCheckPolicy_EmptyPolicy_DefaultDeny(t *testing.T) {
 // TestCheckPolicy_PermissiveMode_Allows verifies that a permissive policy
 // allows connections even without explicit rules.
 func TestCheckPolicy_PermissiveMode_Allows(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "policy.json")
 	grantPath := filepath.Join(dir, "grants.json")
@@ -150,6 +152,7 @@ func TestCheckPolicyWithAudit_DefaultDeny(t *testing.T) {
 // TestCheckPolicyWithAudit_Permissive_Allows verifies that CheckPolicyWithAudit
 // allows when the underlying policy is permissive.
 func TestCheckPolicyWithAudit_Permissive_Allows(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "policy.json")
 	grantPath := filepath.Join(dir, "grants.json")

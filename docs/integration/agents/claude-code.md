@@ -7,7 +7,7 @@ description: Using Keylatch with Claude Code — hook installation, CREDENTIALS_
 
 Keylatch integrates with Claude Code at two levels:
 
-1. **Auto-detection** — Keylatch detects active Claude Code sessions via the `CLAUDE_CODE` environment variable and blocks raw credential access automatically.
+1. **Auto-detection** — Keylatch detects active Claude Code sessions via the `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT` environment variables and blocks raw credential access automatically.
 2. **Exfiltration guard** — A `PreToolUse` hook in `.claude/settings.json` blocks credential exfiltration at the agent framework level (Layer 2).
 
 ## Quick start
@@ -25,7 +25,7 @@ keylatch doctor
 
 ## How detection works
 
-When Claude Code is active, the `CLAUDE_CODE` environment variable is set. Keylatch reads this signal and activates LLM-session mode automatically. In this mode:
+Claude Code sets `CLAUDECODE=1` (and `CLAUDE_CODE_ENTRYPOINT`) in the shells it spawns. Keylatch reads these signals and activates LLM-session mode automatically. The agent can unset these variables, so detection is a convenience, not a security boundary. In this mode:
 
 - `keylatch get` — blocked, exit code 2 (SecurityBlock)
 - `keylatch run` — allowed for all runtime modes
@@ -38,7 +38,7 @@ You can also manually declare an LLM session for any tool that does not set its 
 export CREDENTIALS_LLM_SESSION=claude-code
 ```
 
-This activates the same guards without requiring the `CLAUDE_CODE` var.
+This activates the same guards without requiring the `CLAUDECODE` var.
 
 ## `.claude/settings.json` hook pattern
 
@@ -69,7 +69,7 @@ The hook script exits non-zero when it detects credential exfiltration patterns 
 
 `CREDENTIALS_LLM_SESSION` is the generic LLM session signal. Setting it to any non-empty value activates all Keylatch LLM-session guards, regardless of which agent is running.
 
-For Claude Code running in a context where `CLAUDE_CODE` is not automatically set (e.g. custom launchers or CI):
+For Claude Code running in a context where `CLAUDECODE` is not automatically set (e.g. custom launchers or CI):
 
 ```bash
 # ~/.zshrc or ~/.bashrc

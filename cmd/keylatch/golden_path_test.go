@@ -15,6 +15,7 @@ import (
 	"github.com/keylatch/keylatch/internal/agentsnippet"
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/connections"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // canaryPhase3 is the sentinel value used to verify no credential leak
@@ -102,10 +103,7 @@ func TestGoldenPath_FullUserJourney(t *testing.T) {
 	xdgDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_RUNTIME_DIR", xdgDir)
-	// Unset any LLM session signals so we are in a normal user session.
-	t.Setenv("CLAUDE_CODE", "")
-	t.Setenv("CODEX_ENV", "")
-	t.Setenv("CREDENTIALS_LLM_SESSION", "")
+	testutil.ClearLLMSessionEnv(t)
 	// Unset KEYLATCH_MCP_TOKEN for safety.
 	t.Setenv("KEYLATCH_MCP_TOKEN", "")
 
@@ -301,7 +299,7 @@ func TestGoldenPath_DryRunNoWrites(t *testing.T) {
 	ctx := context.Background()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
-	t.Setenv("CLAUDE_CODE", "")
+	testutil.ClearLLMSessionEnv(t)
 
 	store := newGoldenMockStore()
 

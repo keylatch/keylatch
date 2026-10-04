@@ -68,9 +68,9 @@ keylatch call openrouter list-models
 
 | Guide | Agent | Detection signal |
 |-------|-------|-----------------|
-| [Claude Code](agents/claude-code.md) | Claude Code | `CLAUDE_CODE` env var |
-| [Cursor](agents/cursor.md) | Cursor | `CURSOR_SESSION` env var |
-| [Gemini CLI](agents/gemini.md) | Gemini CLI | `GEMINI_SESSION` env var |
+| [Claude Code](agents/claude-code.md) | Claude Code | `CLAUDECODE` env var |
+| [Cursor](agents/cursor.md) | Cursor | `CURSOR_AGENT` env var |
+| [Gemini CLI](agents/gemini.md) | Gemini CLI | `GEMINI_CLI` env var |
 | [Windsurf](agents/windsurf.md) | Windsurf | `CREDENTIALS_LLM_SESSION=windsurf` (manual) |
 | [Generic](agents/generic.md) | Any agent | `CREDENTIALS_LLM_SESSION` fallback |
 

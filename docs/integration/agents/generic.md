@@ -28,13 +28,15 @@ Keylatch checks the following environment variables to detect LLM sessions. The 
 
 | Variable | Agent |
 |----------|-------|
-| `CLAUDE_CODE` | Claude Code |
-| `CODEX_ENV` | OpenAI Codex |
-| `CURSOR_SESSION` | Cursor |
-| `AIDER_SESSION` | Aider |
-| `GEMINI_SESSION` | Gemini CLI |
-| `OPENCODE_SESSION` | OpenCode |
-| `CREDENTIALS_LLM_SESSION` | Any agent (generic fallback) |
+| `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` | Claude Code |
+| `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED` | OpenAI Codex CLI |
+| `CURSOR_AGENT`, `CURSOR_TRACE_ID` | Cursor |
+| `GEMINI_CLI` | Gemini CLI |
+| `OPENCODE` | OpenCode |
+| `CREDENTIALS_LLM_SESSION` | Any agent (generic fallback; Aider sets nothing, so use this) |
+| `CLAUDE_CODE`, `CODEX_ENV`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`, `OPENCODE_SESSION` | Legacy aliases, set manually |
+
+These variables are set by the agent harness in the agent's own environment. The agent can unset them, so detection is a convenience, not a security boundary.
 
 ## Fallback heuristics
 
@@ -48,7 +50,7 @@ If your agent does not set any of the above signals, you can detect and declare 
 # Known agent markers (files or env vars)
 detect_agent() {
   # Check env vars first
-  for var in CLAUDE_CODE CODEX_ENV CURSOR_SESSION AIDER_SESSION GEMINI_SESSION OPENCODE_SESSION; do
+  for var in CLAUDECODE CLAUDE_CODE_ENTRYPOINT CODEX_SANDBOX CODEX_SANDBOX_NETWORK_DISABLED CURSOR_AGENT CURSOR_TRACE_ID GEMINI_CLI OPENCODE; do
     if [[ -n "${!var:-}" ]]; then
       echo "${var}"
       return 0
