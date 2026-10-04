@@ -17,7 +17,7 @@ Older releases were not all built this way. Check the table before relying on a 
 
 | Release | Archive and checksums signatures | SBOM | SLSA provenance | Notes |
 |---|---|---|---|---|
-| v0.9.7 | **none** | **none** | **none** | Published unsigned. See the [v0.9.7 advisory](security/advisory-v0.9.7-unsigned-release.md) |
+| v0.9.7 | **none at publication** | **none at publication** | **none** | Signatures made in the release run were not attached. Check the release page and the [v0.9.7 advisory](security/advisory-v0.9.7-unsigned-release.md) |
 | v0.9.5 | yes | CycloneDX signed, SPDX unsigned | yes | Linux desktop bundles signed; manifest signature has no certificate |
 | v0.9.4 | yes (no `.pem` files) | CycloneDX signed, SPDX unsigned | yes | Verify with the certificate from the Rekor entry |
 | v0.9.3 | yes (no `.pem` files) | CycloneDX signed, SPDX unsigned | yes | |

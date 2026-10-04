@@ -21,8 +21,14 @@ job that attaches signatures was skipped. The release went out with five archive
 At the same time `README.md`, `SECURITY.md` and `docs/verifying-releases.md` said every
 release artifact is signed. That statement was false for v0.9.7.
 
-There is no evidence that any v0.9.7 artifact was modified. The problem is that you cannot
-prove where it came from: the checksums file only shows that a download was not corrupted.
+The signing job itself did run. In the same workflow run it signed every archive, the
+checksums file and the CycloneDX SBOM with the release workflow's keyless identity
+(`.github/workflows/release.yml@refs/tags/v0.9.7`), and those signatures verify against the
+published v0.9.7 assets. They were kept only as workflow artifacts and never attached to the
+release, so nobody downloading v0.9.7 could check them. The SLSA provenance from that run was
+not kept.
+
+There is no evidence that any v0.9.7 artifact was modified.
 
 ## What changed
 
@@ -44,7 +50,14 @@ prove where it came from: the checksums file only shows that a download was not 
   [Verifying releases](../verifying-releases.md).
 - **Until then:** v0.9.5 is the most recent release with signatures and provenance.
 
-If the v0.9.7 rebuild matches the published digests, its assets gain signatures, SBOMs and
-provenance from the attest workflow. The certificate identity is then
-`.github/workflows/attest-release.yml@refs/heads/main` rather than the tag-triggered release
-workflow.
+## Remediation of the v0.9.7 release
+
+- The signatures and SBOMs from the original release run are attached to the v0.9.7 release
+  once they are verified against the published files. Check the release page for `.sig` and
+  `.pem` files before relying on them.
+- The attest workflow then rebuilds v0.9.7 from its tag. If the digests match, it adds the
+  SPDX SBOM signature and SLSA provenance, signed with the identity
+  `.github/workflows/attest-release.yml@refs/heads/main`.
+- If no valid signature is attached and the rebuild does not match, v0.9.7 is marked
+  unverified and loses "Latest". Homebrew and Scoop are then pointed at v0.9.5 until v0.9.8 is
+  out.

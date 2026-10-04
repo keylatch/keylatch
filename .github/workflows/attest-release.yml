@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       matched: ${{ steps.compare.outputs.matched }}
+      signed: ${{ steps.signed.outputs.signed }}
       hashes: ${{ steps.hashes.outputs.hashes }}
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +67,22 @@ jobs:
           mkdir -p "$RUNNER_TEMP/published"
           gh release download "$TAG" --dir "$RUNNER_TEMP/published" \
             --pattern 'keylatch_*.tar.gz' --pattern 'keylatch_*.zip' --pattern "keylatch-${TAG#v}_checksums.txt"
+      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - name: check for a signature already on the release
+        id: signed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/release-checks/lib.sh"
+          sums="$RUNNER_TEMP/published/keylatch-${TAG#v}_checksums.txt"
+          signed=false
+          if gh release download "$TAG" --dir "$RUNNER_TEMP/published" --pattern "$(basename "$sums").sig" --pattern "$(basename "$sums").pem" 2>/dev/null \
+            && cosign_verify_blob "$sums"; then
+            signed=true
+          fi
+          rm -f "$sums.sig" "$sums.pem"
+          echo "signed=${signed}" >>"$GITHUB_OUTPUT"
       - name: rebuild and compare digests
         id: compare
         run: |
@@ -74,7 +91,10 @@ jobs:
           bash "$RUNNER_TEMP/release-checks/reproduce-and-compare.sh" "$RUNNER_TEMP/published" "$TAG" "$GITHUB_WORKSPACE" || status=$?
           case "$status" in
             0) echo "matched=true" >>"$GITHUB_OUTPUT" ;;
-            1) echo "matched=false" >>"$GITHUB_OUTPUT" ;;
+            1)
+              echo "matched=false" >>"$GITHUB_OUTPUT"
+              echo "::warning::$TAG does not reproduce from its tag; no provenance can be attached"
+              ;;
             *) exit "$status" ;;
           esac
       - name: hash the published files for provenance
@@ -88,9 +108,11 @@ jobs:
           name: published
           path: ${{ runner.temp }}/published/
 
+  # A release whose published checksums already carry a valid signature keeps
+  # Latest even if the rebuild differs; only provenance is then unavailable.
   mark-unverified:
     needs: reproduce
-    if: needs.reproduce.outputs.matched == 'false'
+    if: needs.reproduce.outputs.matched == 'false' && needs.reproduce.outputs.signed != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -137,11 +159,22 @@ jobs:
           echo "${SYFT_SHA256}  $RUNNER_TEMP/syft.tar.gz" | sha256sum --strict -c -
           tar -xzf "$RUNNER_TEMP/syft.tar.gz" -C "$RUNNER_TEMP" syft
           sudo install -m 0755 "$RUNNER_TEMP/syft" /usr/local/bin/syft
-      - name: generate SBOMs from the tag source
+      # An SBOM already attached to the release is signed as is, so its new
+      # signature matches the file users download.
+      - name: reuse attached SBOMs or generate them from the tag source
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          syft scan dir:tag-source \
-            --output "cyclonedx-json=attest/keylatch-${TAG}.cdx.json" \
-            --output "spdx-json=attest/keylatch-${TAG}.spdx.json"
+          set -euo pipefail
+          outputs=()
+          for format in cyclonedx-json:cdx spdx-json:spdx; do
+            name="keylatch-${TAG}.${format#*:}.json"
+            gh release download "$TAG" --dir attest --pattern "$name" 2>/dev/null \
+              || outputs+=(--output "${format%%:*}=attest/${name}")
+          done
+          if ((${#outputs[@]} > 0)); then
+            syft scan dir:tag-source "${outputs[@]}"
+          fi
       - name: sign the published files and SBOMs
         run: |
           set -euo pipefail
@@ -190,10 +223,32 @@ jobs:
         env:
           PROVENANCE_SOURCE: main
         run: bash release-checks/verify-release-assets.sh attest "$TAG"
-      - name: attach to the existing release
+      # Assets already on the release (for example signatures recovered from
+      # the original release run) are kept; only missing files are added.
+      - name: attach missing files to the existing release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          gh release upload "$TAG" attest/*.sig attest/*.pem attest/*.cdx.json attest/*.spdx.json attest/*.intoto.jsonl
+          existing=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          has() { grep -qxF "$1" <<<"$existing"; }
+          files=()
+          for subject in attest/keylatch_*.tar.gz attest/keylatch_*.zip attest/keylatch-*_checksums.txt attest/*.cdx.json attest/*.spdx.json; do
+            name=$(basename "$subject")
+            case "$name" in
+              *.cdx.json | *.spdx.json) has "$name" || files+=("$subject") ;;
+            esac
+            # Signature and certificate travel as a pair; an existing pair is kept.
+            if ! has "$name.sig" && ! has "$name.pem"; then
+              files+=("$subject.sig" "$subject.pem")
+            fi
+          done
+          for f in attest/*.intoto.jsonl; do
+            has "$(basename "$f")" || files+=("$f")
+          done
+          if ((${#files[@]} == 0)); then
+            echo "release $TAG already carries every attestation file"
+            exit 0
+          fi
+          gh release upload "$TAG" "${files[@]}"
