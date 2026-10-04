@@ -13,13 +13,13 @@ brew install keylatch/tap/keylatch
 Download the latest release from the [releases page](https://github.com/keylatch/keylatch/releases). Verify the checksum before running:
 
 ```bash
-sha256sum -c SHA256SUMS --ignore-missing
+sha256sum --check --ignore-missing keylatch-<version>_checksums.txt
 ```
 
 ### Scoop (Windows)
 
 ```powershell
-scoop bucket add keylatch https://github.com/keylatch/scoop-bucket
+scoop bucket add keylatch https://github.com/keylatch/scoop
 scoop install keylatch
 ```
 

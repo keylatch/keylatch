@@ -14,7 +14,7 @@ brew install keylatch/tap/keylatch
 ## Windows — Scoop
 
 ```powershell
-scoop bucket add keylatch https://github.com/keylatch/scoop-bucket
+scoop bucket add keylatch https://github.com/keylatch/scoop
 scoop install keylatch
 ```
 
