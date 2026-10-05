@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -295,18 +296,24 @@ func TestE2E_help_exits_0_in_llm_session(t *testing.T) {
 	assert.Equal(t, 0, code, "--help must exit 0 in LLM session")
 }
 
-// TestLeafPackageDeps verifies internal/llmcontext has no internal/* deps.
+// TestLeafPackageDeps verifies that internal/harness imports no internal
+// package and internal/llmcontext imports only internal/harness.
 func TestLeafPackageDeps(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "github.com/keylatch/keylatch/internal/llmcontext").Output()
-	if err != nil {
-		t.Fatalf("go list -deps failed: %v", err)
+	const prefix = "github.com/keylatch/keylatch/internal/"
+	allowed := map[string][]string{
+		"harness":    {"harness"},
+		"llmcontext": {"llmcontext", "harness"},
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "github.com/keylatch/keylatch/internal/") &&
-			line != "github.com/keylatch/keylatch/internal/llmcontext" {
-			t.Errorf("llmcontext imports disallowed internal package: %s", line)
+	for pkg, ok := range allowed {
+		out, err := exec.Command("go", "list", "-deps", prefix+pkg).Output()
+		if err != nil {
+			t.Fatalf("go list -deps %s failed: %v", pkg, err)
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			dep := strings.TrimPrefix(strings.TrimSpace(line), prefix)
+			if strings.HasPrefix(line, prefix) && !slices.Contains(ok, dep) {
+				t.Errorf("%s imports disallowed internal package %s", pkg, line)
+			}
 		}
 	}
 }
