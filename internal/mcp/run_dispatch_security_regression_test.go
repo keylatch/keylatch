@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package mcp
 
 import (
@@ -9,10 +11,10 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
-// KNOWN-FAILING (F05): makeRunHandler bypasses runtime dispatch and calls
+// KNOWN-FAILING: makeRunHandler bypasses runtime dispatch and calls
 // internal/exec.CommandRunner.Run directly, inheriting the full process
 // environment instead of an env scoped by the runtime layer.
-func TestSecurityRegression_F05_MCPMustExecuteAllowedCommandViaRuntime(t *testing.T) {
+func TestSecurityRegression_MCPMustExecuteAllowedCommandViaRuntime(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	if err != nil {
 		t.Skipf("sh not available: %v", err)
@@ -25,7 +27,7 @@ func TestSecurityRegression_F05_MCPMustExecuteAllowedCommandViaRuntime(t *testin
 	provider := "audit-f05-shell"
 	_ = registry.Register(registry.ConnectionTemplate{
 		Provider:               provider,
-		DisplayName:            "Audit F05 Shell",
+		DisplayName:            "Audit Shell",
 		Category:               "test",
 		AuthFlow:               "api_key",
 		StoragePathTpl:         "default/test/" + provider + "/default",

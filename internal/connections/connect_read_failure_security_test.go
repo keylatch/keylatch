@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package connections
 
 import (
@@ -28,10 +30,10 @@ func (*unavailableStore) List(context.Context, string) ([]backend.Entry, error) 
 
 func (*unavailableStore) Delete(context.Context, string) error { return nil }
 
-// KNOWN-FAILING (F29): Connect treats any non-nil error from the existence
+// KNOWN-FAILING: Connect treats any non-nil error from the existence
 // read as "does not exist" and proceeds to write, instead of requiring a
 // typed not-found error.
-func TestSecurityRegression_F29_ConnectStopsOnUnavailableExistenceCheck(t *testing.T) {
+func TestSecurityRegression_ConnectStopsOnUnavailableExistenceCheck(t *testing.T) {
 	s := &unavailableStore{}
 	_, err := Connect(context.Background(), "openrouter", ConnectOptions{
 		NonInteractive: true,

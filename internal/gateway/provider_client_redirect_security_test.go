@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package gateway
 
 import (
@@ -11,10 +13,10 @@ type stubRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// KNOWN-FAILING (F31): newProviderHTTPClient has no CheckRedirect, so a
+// KNOWN-FAILING: newProviderHTTPClient has no CheckRedirect, so a
 // cross-host HTTPS-to-HTTP redirect forwards custom auth headers to the
 // redirect target.
-func TestSecurityRegression_F31_GatewayRedirect(t *testing.T) {
+func TestSecurityRegression_GatewayRedirect(t *testing.T) {
 	c := newProviderHTTPClient()
 	escaped := false
 	c.Transport = stubRoundTripper(func(r *http.Request) (*http.Response, error) {

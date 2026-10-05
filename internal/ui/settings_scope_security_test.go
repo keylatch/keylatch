@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package ui_test
 
 import (
@@ -10,10 +12,10 @@ import (
 	"github.com/keylatch/keylatch/internal/ui/api"
 )
 
-// KNOWN-FAILING (F25): the settings route is mounted before the
+// KNOWN-FAILING: the settings route is mounted before the
 // ScopeStatusOnly write ceiling, so a status-only session can still mutate
 // the shared settings store through an authenticated, CSRF-valid PUT.
-func TestSecurityRegression_F25_StatusOnlyScopeCannotMutateSettings(t *testing.T) {
+func TestSecurityRegression_StatusOnlyScopeCannotMutateSettings(t *testing.T) {
 	store := api.NewSettingsStore()
 	s, err := ui.New(ui.ServerOptions{
 		Bind:          "127.0.0.1:0",

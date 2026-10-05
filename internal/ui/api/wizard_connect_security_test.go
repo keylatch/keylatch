@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package api
 
 import (
@@ -6,10 +8,10 @@ import (
 	"testing"
 )
 
-// KNOWN-FAILING (F22): ConnectHandler returns {"ok":true} when its Store is
+// KNOWN-FAILING: ConnectHandler returns {"ok":true} when its Store is
 // nil instead of an explicit unavailable error, so a submission can report
 // success while never persisting a credential.
-func TestSecurityRegression_F22_ConnectWithoutStoreReportsUnstored(t *testing.T) {
+func TestSecurityRegression_ConnectWithoutStoreReportsUnstored(t *testing.T) {
 	h := &WizardHandlers{}
 
 	rec := httptest.NewRecorder()

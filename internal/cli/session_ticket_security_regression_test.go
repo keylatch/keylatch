@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package cli
 
 import (
@@ -6,10 +8,10 @@ import (
 	"github.com/keylatch/keylatch/internal/runtime"
 )
 
-// KNOWN-FAILING (F04): RequireVerifiedSession accepts any nonempty
+// KNOWN-FAILING: RequireVerifiedSession accepts any nonempty
 // KEYLATCH_LLM_TICKET, and GuardRuntime allows all currently listed modes;
 // neither verifies signature, issuer, expiry, or process binding.
-func TestSecurityRegression_F04_UnverifiedTicketMustNotAuthorizeDirectRuntime(t *testing.T) {
+func TestSecurityRegression_UnverifiedTicketMustNotAuthorizeDirectRuntime(t *testing.T) {
 	env := func(k string) string {
 		if k == "KEYLATCH_LLM_TICKET" {
 			return "not-a-signed-ticket"

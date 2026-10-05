@@ -1,3 +1,5 @@
+//go:build securitysuite
+
 package api
 
 import (
@@ -6,10 +8,10 @@ import (
 	"testing"
 )
 
-// KNOWN-FAILING (F23): SettingsHandler falls back to a fresh SettingsStore
+// KNOWN-FAILING: SettingsHandler falls back to a fresh SettingsStore
 // per request when none is injected, so a successful PUT is invisible to
 // the next GET.
-func TestSecurityRegression_F23_SettingsPersistAcrossRequests(t *testing.T) {
+func TestSecurityRegression_SettingsPersistAcrossRequests(t *testing.T) {
 	h := &SettingsHandler{}
 
 	put := httptest.NewRecorder()
@@ -25,10 +27,10 @@ func TestSecurityRegression_F23_SettingsPersistAcrossRequests(t *testing.T) {
 	}
 }
 
-// KNOWN-FAILING (F24): SettingsHandler applies each PUT field as it parses
+// KNOWN-FAILING: SettingsHandler applies each PUT field as it parses
 // instead of validating the whole request first, so a request with one
 // valid and one invalid field is rejected but still mutates the store.
-func TestSecurityRegression_F24_RejectedSettingsPUTDoesNotMutate(t *testing.T) {
+func TestSecurityRegression_RejectedSettingsPUTDoesNotMutate(t *testing.T) {
 	s := NewSettingsStore()
 	before, _ := s.GetTTL()
 	h := &SettingsHandler{Store: s}

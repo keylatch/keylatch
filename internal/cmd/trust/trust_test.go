@@ -7,10 +7,12 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/keylatch/keylatch/internal/llmcontext"
 )
 
 // TestNewTrustCmd_MarkedExperimental verifies the group's Short/Long help
-// text carries the H8 experimental disclaimer.
+// text carries the experimental disclaimer.
 func TestNewTrustCmd_MarkedExperimental(t *testing.T) {
 	cmd := newTrustCmd()
 	if !strings.Contains(cmd.Short, "experimental") {
@@ -80,7 +82,7 @@ func TestTrustGroup_UpfrontNotice(t *testing.T) {
 }
 
 // TestTrustList_Works is a control case proving `trust list` (one of the
-// commands H8 says must remain functional) still runs cleanly.
+// commands says must remain functional) still runs cleanly.
 func TestTrustList_Works(t *testing.T) {
 	root := newTrustCmd()
 	var stdout, stderr bytes.Buffer
@@ -115,6 +117,9 @@ func TestTrustEnroll_ExitsNotImplemented(t *testing.T) {
 // TestTrustApprove_ExitsNotImplemented verifies `trust approve` exits with
 // exitcode.NotImplemented (10) once past the (real) challenge-lookup step.
 func TestTrustApprove_ExitsNotImplemented(t *testing.T) {
+	for _, sig := range llmcontext.Signals {
+		t.Setenv(sig.EnvKey, "")
+	}
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	if err := os.MkdirAll(dir+"/.keylatch/approvals", 0o700); err != nil {
@@ -187,14 +192,9 @@ func runReexecCase(t *testing.T, args ...string) {
 // LLM-session guard (which would otherwise pre-empt with exit code 2) does
 // not fire regardless of the environment this test suite itself runs under.
 func filteredEnvWithoutLLMSignals() []string {
-	blocked := map[string]bool{
-		"CLAUDE_CODE":             true,
-		"CODEX_ENV":               true,
-		"CREDENTIALS_LLM_SESSION": true,
-		"CURSOR_SESSION":          true,
-		"AIDER_SESSION":           true,
-		"GEMINI_SESSION":          true,
-		"OPENCODE_SESSION":        true,
+	blocked := make(map[string]bool, len(llmcontext.Signals))
+	for _, sig := range llmcontext.Signals {
+		blocked[sig.EnvKey] = true
 	}
 	env := os.Environ()
 	out := make([]string, 0, len(env))
