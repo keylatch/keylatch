@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -49,8 +48,7 @@ This command MUST be run as the keyring owner. It is blocked in LLM sessions.`,
 			// Resolve keyring path.
 			krPath, _ := c.Flags().GetString("keyring")
 			if krPath == "" {
-				vaultDir := paths.Vault(os.Getenv)
-				krPath = filepath.Join(vaultDir, "keyring", "keyring.json")
+				krPath = paths.ResolveKeyringPath(os.Getenv)
 			}
 
 			// Read the keyring file (raw JSON, no KEK required for schema check).
@@ -164,7 +162,7 @@ This command MUST be run as the keyring owner. It is blocked in LLM sessions.`,
 				krPath, int(schemaVer), kekType, rootType))
 		},
 	}
-	cmd.Flags().String("keyring", "", "path to keyring.json (default: ~/.keylatch/vault/keyring/keyring.json)")
+	cmd.Flags().String("keyring", "", "path to keyring.json (default: the keyring keylatch uses)")
 	cmd.Flags().Bool("dry-run", false, "print what would be changed without writing")
 	cmd.Flags().Bool("json", false, "output result in JSON format")
 	return cmd
