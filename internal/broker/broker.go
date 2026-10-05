@@ -8,6 +8,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -132,16 +133,13 @@ func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, c
 
 	// 3. Check cache.
 	if entry, ok := b.cache.get(key); ok {
-		// Copy token bytes to isolate the caller's lifetime from the cache entry.
-		tokenCopy := make([]byte, len(entry.tokenBytes))
-		copy(tokenCopy, entry.tokenBytes)
 		result := ExchangeResult{
 			Provider:     provider,
 			Capability:   capability,
 			CacheAge:     entry.cacheAge,
 			TTLRemaining: time.Until(entry.deadline),
 			ExchangeType: CacheHit,
-			tokenBytes:   tokenCopy,
+			tokenBytes:   entry.tokenBytes,
 		}
 		b.emitCacheHit(ctx, actor, sessionID, provider, capability, entry)
 		return result, nil
@@ -161,10 +159,11 @@ func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, c
 	result.Capability = capability
 	result.ExchangeType = FreshExchange
 
-	// Cache the result.
+	// The cache keeps its own copy: the caller zeroing the returned result
+	// must not wipe the cached credential.
 	deadline := time.Now().Add(result.TTLRemaining)
 	entry := &cacheEntry{
-		tokenBytes:   result.tokenBytes,
+		tokenBytes:   bytes.Clone(result.tokenBytes),
 		deadline:     deadline,
 		exchangeType: FreshExchange,
 		cacheAge:     0,
