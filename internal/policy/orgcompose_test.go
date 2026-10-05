@@ -2,6 +2,8 @@ package policy_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/team/bundlesig"
 	"github.com/keylatch/keylatch/internal/team/orgpolicy"
 )
 
@@ -26,13 +29,17 @@ func makeOrgDenyBundle(t *testing.T, capability string) string {
 		AllowedEnvelope: orgpolicy.AllowedEnvelope{},
 		BaselineDeny:    []string{capability},
 	}
-	orgpolicy.SignBundle(b)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgpolicy.SignBundle(b, priv)
 	data, _ := json.MarshalIndent(b, "", " ")
 	path := filepath.Join(dir, "bundle.json")
 	_ = os.WriteFile(path, data, 0o600)
 	t.Setenv("KEYLATCH_ORG_POLICY_DIR", dir)
 	orgpolicy.ResetForTest()
-	if err := orgpolicy.Install(context.Background(), path, ""); err != nil {
+	if err := orgpolicy.Install(context.Background(), path, bundlesig.EncodePublicKey(pub)); err != nil {
 		t.Fatalf("Install org bundle: %v", err)
 	}
 	return dir
@@ -46,8 +53,8 @@ func TestOrgCompose_BaselineDenyBeforeLocalMatch(t *testing.T) {
 	// Wire OrgComposeHook.
 	origHook := policy.OrgComposeHook
 	policy.OrgComposeHook = func(req policy.Request) (policy.Decision, bool) {
-		bundle := orgpolicy.Active(context.Background())
-		if bundle == nil {
+		bundle, err := orgpolicy.Active(context.Background())
+		if err != nil || bundle == nil {
 			return policy.Decision{}, false
 		}
 		local := orgpolicy.Decision{Allow: true, Reason: "local default"}
@@ -97,8 +104,8 @@ func TestOrgCompose_OrgAllowLocalDeny(t *testing.T) {
 	// Local policy: DefaultDeny=true, no rules.
 	origHook := policy.OrgComposeHook
 	policy.OrgComposeHook = func(req policy.Request) (policy.Decision, bool) {
-		bundle := orgpolicy.Active(context.Background())
-		if bundle == nil {
+		bundle, err := orgpolicy.Active(context.Background())
+		if err != nil || bundle == nil {
 			return policy.Decision{}, false
 		}
 		local := orgpolicy.Decision{Allow: true}
@@ -137,8 +144,8 @@ func TestOrgCompose_OrgAllowLocalNarrow(t *testing.T) {
 	// No org bundle = org allows all.
 	origHook := policy.OrgComposeHook
 	policy.OrgComposeHook = func(req policy.Request) (policy.Decision, bool) {
-		bundle := orgpolicy.Active(context.Background())
-		if bundle == nil {
+		bundle, err := orgpolicy.Active(context.Background())
+		if err != nil || bundle == nil {
 			return policy.Decision{}, false
 		}
 		local := orgpolicy.Decision{Allow: true}

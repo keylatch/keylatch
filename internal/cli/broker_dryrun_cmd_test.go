@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // newTestBrokerForDryRun creates an isolated BrokerImpl for dry-run CLI tests.
@@ -15,7 +16,7 @@ func newTestBrokerForDryRun(t *testing.T) *broker.BrokerImpl {
 	t.Helper()
 	return broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("dryrun-test-hmac-key-32-bytes-!!"))
+	}, &testutil.AuditRecorder{}, []byte("dryrun-test-hmac-key-32-bytes-!!"))
 }
 
 // TestBrokerDryRun_OutOfProcess verifies dry-run CLI returns no credential leakage

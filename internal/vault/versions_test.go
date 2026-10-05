@@ -89,7 +89,7 @@ func TestRotateValue_VersionsIncrement(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	// Use a pre-canonicalized path to avoid the registry resolver.
 	path := "default/ai/openrouter/api_key"
@@ -109,7 +109,7 @@ func TestRotateValue_MaxVersionsEnforced(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	root := cfg.DataDir
 
 	path := "default/ai/openrouter/api_key"
@@ -160,7 +160,7 @@ func TestRotateValue_RoundTripsTeamID(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	path := "default/ai/openrouter/api_key"
 	partial := vmeta.Meta{
@@ -194,7 +194,7 @@ func TestDestroyVersion_BlocksGetVersion(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	path := "default/ai/openrouter/api_key"
 
@@ -220,7 +220,7 @@ func TestDestroyVersion_BlocksCurrentVersion(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	path := "default/ai/openrouter/api_key"
 	if _, err := vault.RotateValue(ctx, path, []byte("v1"), vmeta.Meta{}, cfg, env); err != nil {
@@ -241,7 +241,7 @@ func TestRollback_CreatesNewVersion(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	path := "default/ai/openrouter/api_key"
 
@@ -302,7 +302,7 @@ func TestRollback_DestroyedVersionBlocked(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	path := "default/ai/openrouter/api_key"
 
@@ -353,7 +353,7 @@ func TestRotateValue_ConcurrentVersionsSequential(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			ctx := context.Background()
+			ctx, _ := testutil.WithAuditRecorder(context.Background())
 			// Get current meta under lock to prevent races.
 			mu.Lock()
 			existing, err := b.GetMeta(ctx, canonical)
@@ -412,7 +412,7 @@ func TestRotateValue_AADBoundToVersion(t *testing.T) {
 	resetDispatch(t)
 	cfg := testCfg(t)
 	env := testEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	path := "default/ai/openrouter/api_key"
 	ver, err := vault.RotateValue(ctx, path, []byte("secret"), vmeta.Meta{}, cfg, env)
@@ -449,7 +449,7 @@ func TestRotateValue_AADBoundToVersion(t *testing.T) {
 // -----------------------------------------------------------------------
 
 func TestGetMeta_NeverCallsBackendGet(t *testing.T) {
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	// Build a real file backend and wrap it with the spy.
 	dir := t.TempDir()
@@ -498,7 +498,7 @@ func TestGetMeta_NeverCallsBackendGet(t *testing.T) {
 }
 
 func TestListMeta_NeverCallsBackendGet(t *testing.T) {
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	// Build a real file backend and wrap it with the spy.
 	dir := t.TempDir()

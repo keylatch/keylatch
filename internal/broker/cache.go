@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"sync"
@@ -147,31 +148,30 @@ func (c *tokenCache) evictOldestLocked() {
 }
 
 // get returns a snapshot of the entry for key if it exists and has not expired.
-// Returns a copy of cacheEntry so callers do not share the pointer with the cache.
+// The snapshot owns a private copy of the token bytes, taken under the lock,
+// so delete/flush zeroing the cached bytes never races with or reaches it.
 func (c *tokenCache) get(key string) (*cacheEntry, bool) {
+	now := time.Now()
 	c.mu.RLock()
 	e, ok := c.entries[key]
-	c.mu.RUnlock()
 	if !ok {
+		c.mu.RUnlock()
 		return nil, false
 	}
-	now := time.Now()
 	if now.After(e.deadline) {
-		// Expired — remove it.
+		c.mu.RUnlock()
 		c.delete(key)
 		return nil, false
 	}
-	// Return a shallow copy so callers do not race on the shared pointer.
-	// Token bytes are shared read-only after insertion; they are only zeroed
-	// under the write lock in delete/flush.
 	snapshot := &cacheEntry{
-		tokenBytes:   e.tokenBytes,
+		tokenBytes:   bytes.Clone(e.tokenBytes),
 		deadline:     e.deadline,
 		exchangeType: e.exchangeType,
 		cacheAge:     now.Sub(e.insertedAt),
 		insertedAt:   e.insertedAt,
 		onEvict:      e.onEvict,
 	}
+	c.mu.RUnlock()
 	return snapshot, true
 }
 

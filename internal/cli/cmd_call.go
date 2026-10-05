@@ -474,10 +474,10 @@ func baseURLFromTemplate(tmpl registry.ConnectionTemplate) (string, error) {
 // Returns an error if any entry does not contain "=".
 func parseParamFlags(raw []string) (map[string]string, error) {
 	out := make(map[string]string, len(raw))
-	for _, kv := range raw {
+	for i, kv := range raw {
 		idx := strings.Index(kv, "=")
 		if idx < 0 {
-			return nil, fmt.Errorf("param %q must be in key=value format", kv)
+			return nil, fmt.Errorf("--param #%d must be in key=value format", i+1)
 		}
 		key := kv[:idx]
 		val := kv[idx+1:]

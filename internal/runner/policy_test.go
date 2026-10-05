@@ -12,22 +12,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCheckPolicy_AbsentFile_ReturnsError verifies that when the policy file does
-// not exist, CheckPolicy returns an error. The exact error type depends on the
-// policy.Load implementation (currently wraps the stat error).
-func TestCheckPolicy_AbsentFile_ReturnsError(t *testing.T) {
+// TestCheckPolicy_AbsentFile_DefaultDeny verifies that a missing policy file
+// is the default-deny policy, not a load failure.
+func TestCheckPolicy_AbsentFile_DefaultDeny(t *testing.T) {
 	dir := t.TempDir()
 	nonExistentPolicy := filepath.Join(dir, "policy.json")
 	nonExistentGrant := filepath.Join(dir, "grants.json")
 
-	_, err := runner.CheckPolicy("openrouter", []string{"node", "index.js"}, runner.PolicyOptions{
+	d, err := runner.CheckPolicy("openrouter", []string{"node", "index.js"}, runner.PolicyOptions{
 		PolicyPath: nonExistentPolicy,
 		GrantPath:  nonExistentGrant,
 	})
-	require.Error(t, err, "absent policy file must return an error")
-	// The error wraps os.Stat failure — not ErrPolicyDeny, but a load error.
-	assert.Contains(t, err.Error(), "policy",
-		"error must reference the policy subsystem")
+	require.ErrorIs(t, err, runner.ErrPolicyDeny)
+	assert.False(t, d.Allow)
 }
 
 // TestCheckPolicy_EmptyPolicy_DefaultDeny verifies that an empty policy file

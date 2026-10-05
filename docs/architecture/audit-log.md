@@ -77,6 +77,25 @@ NEW FILE (audit.log):
   event[2]  ...
 ```
 
+Each rotation shifts older generations up by one (`audit.log.1` becomes
+`audit.log.2`, and so on). Twenty rotated generations are kept; the oldest is
+removed. `rotated_to` and `rotated_from` name the generation at the time of
+rotation. The keylatchd retention sweep removes only `audit.log.<n>` files
+older than `audit.retention_days` and never touches other files in the
+configuration directory.
+
+If a rotation fails (for example the new file cannot be created), the logger
+puts the full file back, keeps appending to it and retries a minute later. If
+no file can be written at all, `Log` returns `audit.ErrUnavailable` and every
+audited secret access through the broker and the vault is refused until the
+log can be opened again. `keylatch doctor` reports this as `audit.writable`.
+
+Audit is required, not best-effort. The broker and the vault refuse any
+operation that carries no audit emitter. `keylatch gateway up`, `keylatch set`
+and `keylatch list --raw` open the audit log first and exit with a security
+error when it cannot be opened, for example before the keyring exists; run
+`keylatch bootstrap` (file backend) or `keylatch keyring init` (other backends).
+
 ### Cross-File Chain Invariant
 
 The `prev_file_hmac` value in the new file's first event equals:

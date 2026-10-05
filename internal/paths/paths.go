@@ -66,6 +66,15 @@ func ConfigDir(env Lookup) string {
 	return filepath.Join(home, configDirName)
 }
 
+// DefaultConfig returns the configuration file path under home with every
+// environment override ignored.
+func DefaultConfig(home string) string {
+	if runtime.GOOS == "linux" {
+		return filepath.Join(home, ".config", "keylatch", "config.json")
+	}
+	return filepath.Join(home, configDirName, "config.json")
+}
+
 // Config returns the path to the main configuration file.
 // Override: KEYLATCH_CONFIG
 func Config(env Lookup) string {
@@ -180,6 +189,37 @@ func KeyringPath(env Lookup) string {
 		return v
 	}
 	return filepath.Join(KeyringDir(env), "keyring.json")
+}
+
+// LegacyKeyringPath is <vault>/keyring/keyring.json, where `setup` and
+// `keyring init` in 0.9.8 and earlier created a second keyring that the
+// audit and keyring commands read.
+func LegacyKeyringPath(env Lookup) string {
+	return filepath.Join(Vault(env), "keyring", "keyring.json")
+}
+
+// ResolveKeyringPath returns the keyring every component reads: the vault
+// backend, audit, doctor and the keyring commands. An explicit
+// KEYLATCH_KEYRING_PATH or KEYLATCH_KEYRING_DIR wins. Otherwise the
+// bootstrap keyring (KeyringPath) is used when it exists, then the legacy
+// keyring, and KeyringPath when neither exists.
+func ResolveKeyringPath(env Lookup) string {
+	canonical := KeyringPath(env)
+	if env("KEYLATCH_KEYRING_PATH") != "" || env("KEYLATCH_KEYRING_DIR") != "" {
+		return canonical
+	}
+	if fileExists(canonical) {
+		return canonical
+	}
+	if legacy := LegacyKeyringPath(env); fileExists(legacy) {
+		return legacy
+	}
+	return canonical
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // KeyringIdentityPath returns the path to the default age-env identity file.

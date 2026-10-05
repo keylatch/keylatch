@@ -41,6 +41,7 @@ func TestKeyringInit_PassphraseEnvIgnored(t *testing.T) {
 	t.Setenv("KEYLATCH_PASSPHRASE", envPassphrase)
 
 	// stdin is /dev/null — not a TTY, not a named pipe.
+	t.Setenv("KEYLATCH_CONFIG_DIR", t.TempDir())
 	stdinToDevNull(t)
 
 	root := cli.NewRootCommand()
@@ -77,6 +78,7 @@ func TestKeyringInit_PassphraseEnvIgnored(t *testing.T) {
 // references TTY or stdin pipe as the expected input source.
 func TestKeyringInit_RequiresTTYOrStdin(t *testing.T) {
 	// stdin is /dev/null — neither a TTY nor a named pipe.
+	t.Setenv("KEYLATCH_CONFIG_DIR", t.TempDir())
 	stdinToDevNull(t)
 
 	root := cli.NewRootCommand()

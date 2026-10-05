@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/keylatch/keylatch/internal/crypto/envelope"
 )
 
 // TailOpts controls the behaviour of Tail.
@@ -85,7 +83,7 @@ func (l *Logger) readNewLines(pos int64, ch chan<- Event) int64 {
 				continue
 			}
 			newPos += int64(len(line)) + 1 // +1 for newline
-			if e, ok := decodeAuditLine(line, l.auditDEK); ok {
+			if e, ok := decodeAuditLine(line, l.keys()); ok {
 				pending = append(pending, e)
 			}
 		}
@@ -140,7 +138,7 @@ func (l *Logger) Scan(opts SinceOpts) ([]Event, error) {
 		if line == "" {
 			continue
 		}
-		e, ok := decodeAuditLine(line, l.auditDEK)
+		e, ok := decodeAuditLine(line, l.keys())
 		if !ok {
 			continue
 		}
@@ -188,7 +186,7 @@ func (l *Logger) Prune(cutoff time.Time) (int, error) {
 		if line == "" {
 			continue
 		}
-		e, ok := decodeAuditLine(line, l.auditDEK)
+		e, ok := decodeAuditLine(line, l.keys())
 		if !ok {
 			// Keep lines we cannot decode (may be from a different key term).
 			kept = append(kept, line)
@@ -271,7 +269,7 @@ func (l *Logger) Prune(cutoff time.Time) (int, error) {
 
 // decodeAuditLine decrypts a single audit log line and returns the Event.
 // Returns (Event{}, false) on any parse or decryption failure.
-func decodeAuditLine(line string, auditDEK []byte) (Event, bool) {
+func decodeAuditLine(line string, keys [][]byte) (Event, bool) {
 	parts := strings.SplitN(line, " ", 2)
 	if len(parts) != 2 {
 		return Event{}, false
@@ -286,7 +284,7 @@ func decodeAuditLine(line string, auditDEK []byte) (Event, bool) {
 	}
 	nonce := sealed[:24]
 	ct := sealed[24:]
-	plaintext, err := envelope.Open(envelope.XChaCha20Poly1305, auditDEK, ct, nonce, hdrBytes)
+	plaintext, err := openSealed(keys, ct, nonce, hdrBytes)
 	if err != nil {
 		return Event{}, false
 	}

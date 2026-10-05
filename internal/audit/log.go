@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,8 +27,58 @@ type chainHeader struct {
 	TS       int64  `json:"ts_unix"` // Unix nanoseconds for fast parsing
 }
 
-// appendEvent implements Logger.Log (must hold l.mu).
+// appendEvent implements Logger.Log (must hold l.mu): it writes the event and
+// rotates once the file passes the size cap.
+//
+// A failed rotation leaves events going to the current file and is retried
+// after rotateRetryInterval. It is an error only when no file is left to
+// write to.
 func (l *Logger) appendEvent(e Event) error {
+	if err := l.writeEvent(e); err != nil {
+		return err
+	}
+	info, err := l.file.Stat()
+	if err != nil || info.Size() <= l.maxSize || time.Now().Before(l.nextRotate) {
+		return nil
+	}
+	if err := l.rotate(); err != nil {
+		l.nextRotate = time.Now().Add(rotateRetryInterval)
+		slog.Warn("audit log rotation failed; writing to the current file", "path", l.path, "error", err)
+		if l.file == nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureFile reopens the log after a failed rotation (must hold l.mu).
+func (l *Logger) ensureFile() error {
+	if l.closed {
+		return ErrLogClosed
+	}
+	if l.file != nil {
+		return nil
+	}
+	f, err := l.openFile(l.path)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrUnavailable, l.path, err)
+	}
+	l.file = f
+	if err := l.seedChainState(); err != nil {
+		_ = f.Close()
+		l.file = nil
+		return fmt.Errorf("%w: %s: %v", ErrUnavailable, l.path, err)
+	}
+	return nil
+}
+
+// writeEvent seals and appends one event without checking the size cap, so
+// rotate can write its sentinels through it without re-entering rotation.
+func (l *Logger) writeEvent(e Event) error {
+	if err := l.ensureFile(); err != nil {
+		return err
+	}
+
 	// Step 1: set timestamp and sequence.
 	if e.Timestamp.IsZero() {
 		e.Timestamp = time.Now()
@@ -102,11 +156,6 @@ func (l *Logger) appendEvent(e Event) error {
 	activeExporterOnce.Unlock()
 	if exp != nil {
 		exp.Export([]byte(line))
-	}
-
-	// Step 11: auto-rotate if size cap exceeded.
-	if info, err := l.file.Stat(); err == nil && info.Size() > l.maxSize {
-		_ = l.rotate() // best-effort; size-cap failure is non-fatal
 	}
 
 	return nil
@@ -230,7 +279,7 @@ func (l *Logger) summarize(opts SummaryOpts) (Summary, error) {
 		nonce := sealed[:24]
 		ct := sealed[24:]
 
-		plaintext, err := envelope.Open(envelope.XChaCha20Poly1305, l.auditDEK, ct, nonce, hdrBytes)
+		plaintext, err := openSealed(l.keys(), ct, nonce, hdrBytes)
 		if err != nil {
 			continue
 		}
@@ -272,80 +321,96 @@ func (l *Logger) summarize(opts SummaryOpts) (Summary, error) {
 	return sum, nil
 }
 
-// rotate implements log rotation (must hold l.mu).
+// rotate moves the current file to generation .1 (must hold l.mu).
 //
-// cross-file chain continuity.
-// 1. Write a "rotation" sentinel event to the current (old) file with the
-// final HMAC recorded in the Extra field. This allows auditors to verify
-// that the chain ends cleanly and was not truncated.
-// 2. Write a "rotation-continued" sentinel event to the new file with the
-// previous HMAC from the old file in the Extra field. This links the new
-// file back to the old file, enabling cross-file chain verification.
+// The old file ends with a rotation sentinel and the new file starts with a
+// rotation-continued sentinel whose prev_file_hmac is the HMAC of that last
+// line, so the chain can be verified across files. Older generations shift up
+// by one and the oldest beyond retainFiles is removed.
 func (l *Logger) rotate() error {
-	rotated := l.path + ".1"
+	if l.file == nil {
+		return ErrLogClosed
+	}
+	rotated := rotatedName(l.path, 1)
 
-	// Step 1: Write "rotation" sentinel to the current file.
-	// This event records the rotated_to path so the old file is self-contained.
-	// The final_hmac (HMAC of the rotation line itself) is stored after appending,
-	// so both the old file's last event and the new file's first event agree on
-	// the same HMAC value — enabling cross-file chain verification.
-	rotationEvent := Event{
+	if err := l.writeEvent(Event{
 		Timestamp: time.Now(),
 		Action:    ActionAuditRotate,
 		Outcome:   OutcomeOK,
-		Extra: map[string]any{
-			"rotated_to": rotated,
-		},
+		Extra:     map[string]any{"rotated_to": rotated},
+	}); err != nil {
+		return fmt.Errorf("audit: write rotation marker: %w", err)
 	}
-	// appendEvent updates l.prevHMAC to cover the rotation sentinel line.
-	_ = l.appendEvent(rotationEvent) // best-effort; a failure here does not abort rotation
-
-	// prevHMACForNewFile is the HMAC of the rotation sentinel line in the old file.
-	// We store this in both:
-	// - the old file's rotation event Extra["final_hmac"] (written via an in-place update is not feasible;
-	// instead we store it in the rotation-continued Extra["prev_file_hmac"] only)
-	// - the new file's rotation-continued event Extra["prev_file_hmac"]
-	// The auditor verifies continuity by: compute HMAC of last line of old file,
-	// compare to prev_file_hmac in first line of new file.
 	prevHMACForNewFile := l.prevHMAC
 
-	// Sync and close current file before renaming.
 	_ = l.file.Sync()
 	_ = l.file.Close()
 	l.file = nil
 
+	if err := shiftGenerations(l.path, l.retainFiles); err != nil {
+		return l.keepCurrent(err)
+	}
 	if err := os.Rename(l.path, rotated); err != nil {
-		// Re-open existing file if rename fails.
-		f, _ := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
-		l.file = f
-		return fmt.Errorf("audit: rotate rename: %w", err)
+		return l.keepCurrent(fmt.Errorf("audit: rotate rename: %w", err))
 	}
 
-	// Open new file.
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	f, err := l.openFile(l.path)
 	if err != nil {
-		return fmt.Errorf("audit: open new log after rotate: %w", err)
+		// Put the full file back so events keep chaining onto it.
+		if rerr := os.Rename(rotated, l.path); rerr != nil {
+			return fmt.Errorf("%w: open new log after rotate: %v; restore %s: %v", ErrUnavailable, err, rotated, rerr)
+		}
+		return l.keepCurrent(fmt.Errorf("audit: open new log after rotate: %w", err))
 	}
 	l.file = f
-
-	// Reset chain state for new file, starting fresh at seq 0.
 	l.seq = 0
 	l.prevHMAC = ""
 
-	// Step 2: Write "rotation-continued" sentinel as the first event in the new file.
-	// This records the HMAC of the last line of the old file, linking the two files.
-	continuedExtra := map[string]any{
-		"rotated_from":   rotated,
-		"prev_file_hmac": prevHMACForNewFile,
-	}
-	continuedEvent := Event{
+	if err := l.writeEvent(Event{
 		Timestamp: time.Now(),
 		Action:    ActionAuditRotate,
 		Outcome:   OutcomeOK,
-		Extra:     continuedExtra,
+		Extra: map[string]any{
+			"rotated_from":   rotated,
+			"prev_file_hmac": prevHMACForNewFile,
+		},
+	}); err != nil {
+		return fmt.Errorf("audit: write rotation-continued marker: %w", err)
 	}
-	_ = l.appendEvent(continuedEvent) // best-effort; a failure here does not abort startup
+	return nil
+}
 
+// keepCurrent reopens the current file after a failed rotation, keeping the
+// chain state so later events still link to its last line. It returns
+// cause, wrapped in ErrUnavailable when the file cannot be reopened either.
+func (l *Logger) keepCurrent(cause error) error {
+	f, err := l.openFile(l.path)
+	if err != nil {
+		return fmt.Errorf("%w: %v; reopen %s: %v", ErrUnavailable, cause, l.path, err)
+	}
+	l.file = f
+	return cause
+}
+
+func rotatedName(path string, generation int) string {
+	return path + "." + strconv.Itoa(generation)
+}
+
+// shiftGenerations renames path.N to path.N+1 for every kept generation,
+// dropping the oldest so at most retain rotated files remain.
+func shiftGenerations(path string, retain int) error {
+	if retain < 1 {
+		retain = 1
+	}
+	if err := os.Remove(rotatedName(path, retain)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("audit: remove oldest generation: %w", err)
+	}
+	for g := retain - 1; g >= 1; g-- {
+		err := os.Rename(rotatedName(path, g), rotatedName(path, g+1))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("audit: shift generation %d: %w", g, err)
+		}
+	}
 	return nil
 }
 

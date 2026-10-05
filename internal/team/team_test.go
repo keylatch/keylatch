@@ -71,7 +71,7 @@ func TestJoin_VerifiesSignedBundle(t *testing.T) {
 
 	// Switch to second user's dir.
 	t.Setenv("KEYLATCH_TEAM_DIR", dir)
-	joined, err := team.Join(ctx, bundle)
+	joined, err := team.Join(ctx, bundle, orig.InvitePubKey)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestJoin_InvalidSignature(t *testing.T) {
 	bundle[len(bundle)/2] ^= 0xFF
 
 	t.Setenv("KEYLATCH_TEAM_DIR", dir)
-	_, err = team.Join(ctx, bundle)
+	_, err = team.Join(ctx, bundle, orig.InvitePubKey)
 	if err == nil {
 		t.Fatal("expected error for invalid bundle, got nil")
 	}

@@ -40,10 +40,22 @@ func newGrantCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <connection>",
 		Short: "Issue a new short-lived grant",
-		Args:  cobra.ExactArgs(1),
+		Long: `Issue a new short-lived grant that overrides a policy deny.
+
+Grants widen access, so they are issued only by a human: the command needs
+an interactive terminal and is refused inside a detected agent session.
+Grants written by an agent session are never honoured.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			connection := args[0]
 			env := llmcontext.DefaultLookup
+
+			if llmcontext.IsLLMSession(env) {
+				return NewSecurityBlock("grant create: grants are issued by a human operator, not inside an agent session. (KL-4140)")
+			}
+			if err := requireInteractiveTerminal("grant create", "KL-4141"); err != nil {
+				return err
+			}
 
 			if actorName == "" {
 				return fmt.Errorf("--actor is required")
@@ -56,6 +68,9 @@ func newGrantCreateCmd() *cobra.Command {
 					return fmt.Errorf("invalid --ttl: %w", err)
 				}
 				ttl = d
+			}
+			if ttl > grant.MaxTTL {
+				return NewUsageError("grant create: --ttl must be at most %s. (KL-4142)", grant.MaxTTL)
 			}
 
 			spec := grant.GrantSpec{
@@ -84,8 +99,8 @@ func newGrantCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&actorName, "actor", "", "actor name (required)")
 	cmd.Flags().StringVar(&capability, "capability", "inject", "capability to grant")
 	cmd.Flags().StringVar(&ttlStr, "ttl", "1h", "time-to-live (e.g. 30m, 2h)")
-	cmd.Flags().StringVar(&cmdGlob, "command", "", "command glob pattern")
-	cmd.Flags().StringVar(&cwdGlob, "cwd", "", "CWD glob pattern")
+	cmd.Flags().StringVar(&cmdGlob, "command", "", "restrict to this command (program name or absolute path, then arguments); end with a separate * to allow further arguments")
+	cmd.Flags().StringVar(&cwdGlob, "cwd", "", "restrict to this working directory, or <dir>/* for it and its subdirectories")
 	cmd.Flags().IntVar(&maxUses, "max-uses", 0, "maximum number of uses (0 = unlimited)")
 	return cmd
 }

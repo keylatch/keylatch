@@ -169,10 +169,10 @@ func TestPending_ReturnsOnlyPending(t *testing.T) {
 	approvedAR := makeRequest(t, dir)
 	deniedAR := makeRequest(t, dir)
 
-	if err := Approve(context.Background(), dir, approvedAR.Token); err != nil {
+	if err := Approve(context.Background(), dir, approvedAR.Token, shownOf(t, dir, approvedAR.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
-	if err := Deny(context.Background(), dir, deniedAR.Token); err != nil {
+	if err := Deny(context.Background(), dir, deniedAR.Token, shownOf(t, dir, deniedAR.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
 
@@ -192,7 +192,7 @@ func TestPending_SkipsExpired(t *testing.T) {
 	dir := withDir(t)
 
 	// Create one expired entry by writing it directly.
-	expiredToken := "apv_expired"
+	expiredToken := tok("expired")
 	expired := &ApprovalRequest{
 		Token:     expiredToken,
 		Actor:     "a",
@@ -200,7 +200,7 @@ func TestPending_SkipsExpired(t *testing.T) {
 		CreatedAt: time.Now().Add(-time.Hour),
 		ExpiresAt: time.Now().Add(-time.Minute),
 	}
-	if err := writeApproval(filepath.Join(dir, expiredToken+".json"), expired); err != nil {
+	if err := writeApprovalFile(filepath.Join(dir, expiredToken+".json"), expired); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
 
@@ -243,7 +243,7 @@ func TestPending_IgnoresCorruptJSON(t *testing.T) {
 
 	// Drop a corrupt JSON file. readApproval returns an error; Pending
 	// must skip the entry rather than abort.
-	if err := os.WriteFile(filepath.Join(dir, "apv_corrupt.json"), []byte("{not json"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, tok("corrupt")+".json"), []byte("{not json"), 0o600); err != nil {
 		t.Fatalf("write corrupt: %v", err)
 	}
 
@@ -273,10 +273,10 @@ func TestPending_FailsOnUnreadableDirectory(t *testing.T) {
 
 	_, err := Pending(context.Background(), dir)
 	if err == nil {
-		t.Fatal("expected readdir error on unreadable directory")
+		t.Fatal("expected an error on an unreadable directory")
 	}
-	if !strings.Contains(err.Error(), "approval: readdir") {
-		t.Errorf("expected readdir error wrapper; got %v", err)
+	if !strings.Contains(err.Error(), "approval: open") {
+		t.Errorf("expected open error wrapper; got %v", err)
 	}
 }
 
@@ -286,11 +286,11 @@ func TestApprove_TransitionsPendingToApproved(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
-	got, err := readApproval(filepath.Join(dir, ar.Token+".json"))
+	got, err := readApprovalFile(filepath.Join(dir, ar.Token+".json"))
 	if err != nil {
 		t.Fatalf("readApproval: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestApprove_TransitionsPendingToApproved(t *testing.T) {
 
 func TestApprove_NotFoundReturnsErrNotFound(t *testing.T) {
 	dir := withDir(t)
-	err := Approve(context.Background(), dir, "apv_does_not_exist")
+	err := Approve(context.Background(), dir, tok("does_not_exist"), shownOf(t, dir, tok("does_not_exist")), testKey)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -311,10 +311,10 @@ func TestApprove_AlreadyApprovedReturnsErrAlreadyActed(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("first Approve: %v", err)
 	}
-	if err := Approve(context.Background(), dir, ar.Token); err != ErrAlreadyActed {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != ErrAlreadyActed {
 		t.Errorf("second Approve must return ErrAlreadyActed; got %v", err)
 	}
 }
@@ -323,10 +323,10 @@ func TestApprove_DeniedThenApproveReturnsErrAlreadyActed(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Deny(context.Background(), dir, ar.Token); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
-	if err := Approve(context.Background(), dir, ar.Token); err != ErrAlreadyActed {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != ErrAlreadyActed {
 		t.Errorf("Approve after Deny must return ErrAlreadyActed; got %v", err)
 	}
 }
@@ -335,11 +335,11 @@ func TestDeny_TransitionsPendingToDenied(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Deny(context.Background(), dir, ar.Token); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
 
-	got, err := readApproval(filepath.Join(dir, ar.Token+".json"))
+	got, err := readApprovalFile(filepath.Join(dir, ar.Token+".json"))
 	if err != nil {
 		t.Fatalf("readApproval: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestDeny_TransitionsPendingToDenied(t *testing.T) {
 
 func TestDeny_NotFoundReturnsErrNotFound(t *testing.T) {
 	dir := withDir(t)
-	err := Deny(context.Background(), dir, "apv_nope")
+	err := Deny(context.Background(), dir, tok("nope"), shownOf(t, dir, tok("nope")), testKey)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -361,28 +361,28 @@ func TestDeny_NotFoundReturnsErrNotFound(t *testing.T) {
 func TestVerify_HappyPath(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
-	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash); err != nil {
+	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub); err != nil {
 		t.Errorf("Verify should succeed; got %v", err)
 	}
 }
 
-func TestVerify_EmptyRequestHashSkipsHashCheck(t *testing.T) {
+func TestVerify_EmptyRequestHashRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
-	if err := Verify(context.Background(), dir, ar.Token, ""); err != nil {
-		t.Errorf("Verify with empty hash should succeed; got %v", err)
+	if err := Verify(context.Background(), dir, ar.Token, "", testPub); !errors.Is(err, ErrHashRequired) {
+		t.Errorf("Verify with empty hash must return ErrHashRequired; got %v", err)
 	}
 }
 
 func TestVerify_NotFoundReturnsErrNotFound(t *testing.T) {
 	dir := withDir(t)
-	err := Verify(context.Background(), dir, "apv_does_not_exist", "h")
+	err := Verify(context.Background(), dir, tok("does_not_exist"), "h", testPub)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -391,19 +391,19 @@ func TestVerify_NotFoundReturnsErrNotFound(t *testing.T) {
 func TestVerify_PendingStatusRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	err := Verify(context.Background(), dir, ar.Token, ar.RequestHash)
-	if err == nil || !strings.Contains(err.Error(), "not approved") {
-		t.Errorf("Verify must reject pending status; got %v", err)
+	err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub)
+	if !errors.Is(err, ErrUnsigned) {
+		t.Errorf("Verify must reject an undecided request; got %v", err)
 	}
 }
 
 func TestVerify_DeniedStatusRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Deny(context.Background(), dir, ar.Token); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
-	err := Verify(context.Background(), dir, ar.Token, ar.RequestHash)
+	err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub)
 	if err == nil || !strings.Contains(err.Error(), "not approved") {
 		t.Errorf("Verify must reject denied status; got %v", err)
 	}
@@ -412,21 +412,11 @@ func TestVerify_DeniedStatusRejected(t *testing.T) {
 func TestVerify_ExpiredReturnsErrExpired(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
-	// Backdate the expiry directly.
-	path := filepath.Join(dir, ar.Token+".json")
-	got, err := readApproval(path)
-	if err != nil {
-		t.Fatalf("readApproval: %v", err)
-	}
-	got.ExpiresAt = time.Now().Add(-time.Minute)
-	if err := writeApproval(path, got); err != nil {
-		t.Fatalf("writeApproval: %v", err)
-	}
-
-	err = Verify(context.Background(), dir, ar.Token, ar.RequestHash)
+	clk := fakeClock{t: ar.ExpiresAt.Add(time.Minute)}
+	err := verifyWithClock(context.Background(), dir, ar.Token, ar.RequestHash, testPub, clk)
 	if err != ErrExpired {
 		t.Errorf("expected ErrExpired; got %v", err)
 	}
@@ -435,10 +425,10 @@ func TestVerify_ExpiredReturnsErrExpired(t *testing.T) {
 func TestVerify_RequestHashMismatchRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
-	err := Verify(context.Background(), dir, ar.Token, "different-hash")
+	err := Verify(context.Background(), dir, ar.Token, "different-hash", testPub)
 	if err == nil || !strings.Contains(err.Error(), "request hash mismatch") {
 		t.Errorf("Verify must reject hash mismatch; got %v", err)
 	}
@@ -463,7 +453,7 @@ func TestNewApprovalToken_FormatAndLength(t *testing.T) {
 }
 
 func TestReadApproval_NonExistentReturnsErrNotFound(t *testing.T) {
-	_, err := readApproval(filepath.Join(t.TempDir(), "missing.json"))
+	_, err := readApprovalFile(filepath.Join(t.TempDir(), "missing.json"))
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -471,11 +461,11 @@ func TestReadApproval_NonExistentReturnsErrNotFound(t *testing.T) {
 
 func TestReadApproval_CorruptJSONReturnsParseError(t *testing.T) {
 	dir := withDir(t)
-	path := filepath.Join(dir, "apv_bad.json")
+	path := filepath.Join(dir, tok("bad")+".json")
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	_, err := readApproval(path)
+	_, err := readApprovalFile(path)
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -492,13 +482,13 @@ func TestReadApproval_UnreadableFileReturnsReadError(t *testing.T) {
 		t.Skip("root can read unreadable files")
 	}
 	dir := withDir(t)
-	path := filepath.Join(dir, "apv_unreadable.json")
+	path := filepath.Join(dir, tok("unreadable")+".json")
 	if err := os.WriteFile(path, []byte("{}"), 0o000); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
 
-	_, err := readApproval(path)
+	_, err := readApprovalFile(path)
 	if err == nil {
 		t.Fatal("expected read error")
 	}
@@ -511,13 +501,13 @@ func TestWriteApproval_AtomicRename(t *testing.T) {
 	// After write, the .tmp file must not be visible.
 	dir := withDir(t)
 	ar := &ApprovalRequest{
-		Token:     "apv_test_atomic",
+		Token:     tok("test_atomic"),
 		Status:    StatusPending,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
 	path := filepath.Join(dir, ar.Token+".json")
-	if err := writeApproval(path, ar); err != nil {
+	if err := writeApprovalFile(path, ar); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
 	tmpPath := path + ".tmp"
@@ -536,7 +526,7 @@ func TestWriteApproval_AtomicRename(t *testing.T) {
 func TestWriteApproval_RoundTripPreservesAllFields(t *testing.T) {
 	dir := withDir(t)
 	original := &ApprovalRequest{
-		Token:       "apv_roundtrip",
+		Token:       tok("roundtrip"),
 		Actor:       "actor-rt",
 		Capability:  "cap-rt",
 		Connection:  "conn-rt",
@@ -547,10 +537,10 @@ func TestWriteApproval_RoundTripPreservesAllFields(t *testing.T) {
 		Note:        "lgtm",
 	}
 	path := filepath.Join(dir, original.Token+".json")
-	if err := writeApproval(path, original); err != nil {
+	if err := writeApprovalFile(path, original); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
-	got, err := readApproval(path)
+	got, err := readApprovalFile(path)
 	if err != nil {
 		t.Fatalf("readApproval: %v", err)
 	}
@@ -581,7 +571,7 @@ func TestFlow_RequestApproveVerifyHappyPath(t *testing.T) {
 	}
 
 	// Approve.
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -595,12 +585,12 @@ func TestFlow_RequestApproveVerifyHappyPath(t *testing.T) {
 	}
 
 	// Verify succeeds with the original hash.
-	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash); err != nil {
+	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub); err != nil {
 		t.Errorf("Verify should succeed; got %v", err)
 	}
 
 	// Verify fails on hash mismatch.
-	if err := Verify(context.Background(), dir, ar.Token, "wrong"); err == nil {
+	if err := Verify(context.Background(), dir, ar.Token, "wrong", testPub); err == nil {
 		t.Error("Verify must fail on hash mismatch")
 	}
 }
@@ -608,10 +598,10 @@ func TestFlow_RequestApproveVerifyHappyPath(t *testing.T) {
 func TestFlow_RequestDenyVerifyRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Deny(context.Background(), dir, ar.Token); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
-	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash); err == nil {
+	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub); err == nil {
 		t.Error("Verify must reject denied entry")
 	}
 }
@@ -665,7 +655,7 @@ func TestList_Populated(t *testing.T) {
 	ar2 := makeRequest(t, dir)
 
 	// Approve one — approved should NOT appear in List.
-	if err := Approve(context.Background(), dir, ar1.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar1.Token, shownOf(t, dir, ar1.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -685,7 +675,7 @@ func TestList_SortedByCreatedAtAscending(t *testing.T) {
 	dir := withDir(t)
 
 	// Write entries with explicit timestamps so order is deterministic.
-	tokens := []string{"apv_a1", "apv_b2", "apv_c3"}
+	tokens := []string{tok("a1"), tok("b2"), tok("c3")}
 	for i, tok := range tokens {
 		ar := &ApprovalRequest{
 			Token:     tok,
@@ -693,7 +683,7 @@ func TestList_SortedByCreatedAtAscending(t *testing.T) {
 			CreatedAt: time.Now().Add(time.Duration(i) * time.Second),
 			ExpiresAt: time.Now().Add(time.Hour),
 		}
-		if err := writeApproval(filepath.Join(dir, tok+".json"), ar); err != nil {
+		if err := writeApprovalFile(filepath.Join(dir, tok+".json"), ar); err != nil {
 			t.Fatalf("writeApproval: %v", err)
 		}
 	}
@@ -716,16 +706,14 @@ func TestList_SortedByCreatedAtAscending(t *testing.T) {
 func TestList_ShowsExpiredStatusForPastTTL(t *testing.T) {
 	dir := withDir(t)
 	// Write an expired-but-not-swept entry.
-	tok := "apv_past_ttl"
+	token := tok("past_ttl")
 	ar := &ApprovalRequest{
-		Token:     tok,
+		Token:     token,
 		Status:    StatusPending,
 		CreatedAt: time.Now().Add(-2 * time.Hour),
 		ExpiresAt: time.Now().Add(-time.Minute), // past TTL
 	}
-	if err := writeApproval(filepath.Join(dir, tok+".json"), ar); err != nil {
-		t.Fatalf("writeApproval: %v", err)
-	}
+	mustWrite(t, dir, ar)
 
 	got, err := List(context.Background(), dir)
 	if err != nil {
@@ -745,14 +733,14 @@ func TestStore_TTLSweep_AutoDeniesExpired(t *testing.T) {
 	dir := withDir(t)
 
 	// Create a request that is already past its TTL.
-	expiredToken := "apv_sweepme"
+	expiredToken := tok("sweepme")
 	ar := &ApprovalRequest{
 		Token:     expiredToken,
 		Status:    StatusPending,
 		CreatedAt: time.Now().Add(-2 * time.Hour),
 		ExpiresAt: time.Now().Add(-time.Minute),
 	}
-	if err := writeApproval(filepath.Join(dir, expiredToken+".json"), ar); err != nil {
+	if err := writeApprovalFile(filepath.Join(dir, expiredToken+".json"), ar); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
 
@@ -768,7 +756,7 @@ func TestStore_TTLSweep_AutoDeniesExpired(t *testing.T) {
 	}
 
 	// Verify the swept file now has StatusExpired.
-	swept, err := readApproval(filepath.Join(dir, expiredToken+".json"))
+	swept, err := readApprovalFile(filepath.Join(dir, expiredToken+".json"))
 	if err != nil {
 		t.Fatalf("readApproval after sweep: %v", err)
 	}
@@ -777,7 +765,7 @@ func TestStore_TTLSweep_AutoDeniesExpired(t *testing.T) {
 	}
 
 	// Fresh entry must remain pending.
-	still, err := readApproval(filepath.Join(dir, fresh.Token+".json"))
+	still, err := readApprovalFile(filepath.Join(dir, fresh.Token+".json"))
 	if err != nil {
 		t.Fatalf("readApproval fresh: %v", err)
 	}
@@ -791,7 +779,7 @@ func TestStore_TTLSweep_NoDoubleDecide(t *testing.T) {
 
 	// Create and approve a request.
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -804,7 +792,7 @@ func TestStore_TTLSweep_NoDoubleDecide(t *testing.T) {
 		t.Errorf("sweep must not expire already-approved entries; got n=%d", n)
 	}
 
-	got, err := readApproval(filepath.Join(dir, ar.Token+".json"))
+	got, err := readApprovalFile(filepath.Join(dir, ar.Token+".json"))
 	if err != nil {
 		t.Fatalf("readApproval: %v", err)
 	}
@@ -818,12 +806,12 @@ func TestStore_TTLSweep_WithFakeClock(t *testing.T) {
 
 	// Create a request with a TTL 30 seconds from now.
 	ar := &ApprovalRequest{
-		Token:     "apv_clocktest",
+		Token:     tok("clocktest"),
 		Status:    StatusPending,
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(30 * time.Second),
 	}
-	if err := writeApproval(filepath.Join(dir, ar.Token+".json"), ar); err != nil {
+	if err := writeApprovalFile(filepath.Join(dir, ar.Token+".json"), ar); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
 
@@ -842,18 +830,18 @@ func TestStore_TTLSweep_WithFakeClock(t *testing.T) {
 func TestApprove_OnExpired_ReturnsActionableError(t *testing.T) {
 	dir := withDir(t)
 
-	expiredToken := "apv_expired_approve"
+	expiredToken := tok("expired_approve")
 	ar := &ApprovalRequest{
 		Token:     expiredToken,
 		Status:    StatusPending,
 		CreatedAt: time.Now().Add(-2 * time.Hour),
 		ExpiresAt: time.Now().Add(-time.Minute),
 	}
-	if err := writeApproval(filepath.Join(dir, expiredToken+".json"), ar); err != nil {
+	if err := writeApprovalFile(filepath.Join(dir, expiredToken+".json"), ar); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
 
-	err := Approve(context.Background(), dir, expiredToken)
+	err := Approve(context.Background(), dir, expiredToken, shownOf(t, dir, expiredToken), testKey)
 	if err == nil {
 		t.Fatal("expected error when approving expired request")
 	}

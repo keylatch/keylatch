@@ -3,6 +3,7 @@ package op_test
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -13,27 +14,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func openWithRunner(t *testing.T, runner *kexec.MockRunner) backend.Backend {
+func openWithRunner(t *testing.T, runner kexec.CommandRunner) backend.Backend {
 	t.Helper()
 	b, err := op.Open(op.Options{Bin: fakeOpBin, Runner: runner, Vault: "Keylatch"})
 	require.NoError(t, err)
 	return b
 }
 
+// applyingRunner answers like op for writes: a successful create or edit
+// stores the template it was given, and later reads return that template.
+type applyingRunner struct {
+	*kexec.MockRunner
+	item []byte
+}
+
+func (r *applyingRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return r.RunEnv(ctx, name, args, stdin, nil)
+}
+
+func (r *applyingRunner) RunEnv(ctx context.Context, name string, args []string, stdin []byte, env []string) ([]byte, []byte, int, error) {
+	isItem := len(args) > 1 && args[0] == "item"
+	if isItem && args[1] == "get" && r.item != nil {
+		return r.item, nil, 0, nil
+	}
+	out, errOut, code, err := r.MockRunner.RunEnv(ctx, name, args, stdin, env)
+	if err == nil && code == 0 && isItem && (args[1] == "create" || args[1] == "edit") {
+		r.item = append([]byte(nil), stdin...)
+	}
+	return out, errOut, code, err
+}
+
+// editArgs is the argv Set uses to edit an item on this platform.
+func editArgs(item string) []string {
+	args := []string{"item", "edit", item}
+	if runtime.GOOS != "windows" {
+		args = append(args, "--template=/dev/stdin")
+	}
+	return append(args, "--vault=Keylatch", "--format=json")
+}
+
 // TestSet_CreatesWhenMissing: the existence probe gets an empty response
 // (item absent), so Set must issue `op item create` with the classified
 // category and concealed field type.
 func TestSet_CreatesWhenMissing(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=API Credential",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"api_key[concealed]=sk-new",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{Stdout: []byte(`{"id":"newitem"}`), ExitCode: 0})
-	b := openWithRunner(t, runner)
+	b := openWithRunner(t, &applyingRunner{MockRunner: runner})
 
 	err := b.Set(context.Background(), "default/openrouter/api_key", []byte("sk-new"), backend.Meta{})
 	require.NoError(t, err)
@@ -45,16 +77,12 @@ func TestSet_CreatesWhenMissing(t *testing.T) {
 func TestSet_EditsWhenExists(t *testing.T) {
 	fixture := testdataPath(t, "item_get_openrouter.json")
 	getKey := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
-	editKey := argKey(fakeOpBin, "item", "edit", "openrouter",
-		"--vault=Keylatch",
-		"api_key[concealed]=sk-upd",
-		"--format=json",
-	)
+	editKey := argKey(fakeOpBin, editArgs("openrouter")...)
 	runner := &kexec.MockRunner{Responses: map[string]kexec.MockResponse{
 		getKey:  {Stdout: fixture, ExitCode: 0},
 		editKey: {Stdout: []byte(`{"id":"abc123opitem"}`), ExitCode: 0},
 	}}
-	b := openWithRunner(t, runner)
+	b := openWithRunner(t, &applyingRunner{MockRunner: runner})
 
 	err := b.Set(context.Background(), "default/openrouter/api_key", []byte("sk-upd"), backend.Meta{})
 	require.NoError(t, err)
@@ -62,12 +90,11 @@ func TestSet_EditsWhenExists(t *testing.T) {
 }
 
 func TestSet_AuthFailure_ErrLocked(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=API Credential",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"api_key[concealed]=v",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{
@@ -90,12 +117,11 @@ func TestSet_InvalidPath(t *testing.T) {
 // matches neither the auth-failure nor not-found heuristics — Set must
 // surface a generic "op exited N" error rather than misclassifying it.
 func TestSet_GenericFailure_NonAuthStderr(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=Password",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"plain[string]=v",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{
@@ -112,12 +138,11 @@ func TestSet_GenericFailure_NonAuthStderr(t *testing.T) {
 // TestSet_RunnerError covers the RunEnv-level error branch (distinct from a
 // non-zero exit code) — e.g. the subprocess failed to start at all.
 func TestSet_RunnerError(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=Password",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"plain[string]=v",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{Err: errors.New("exec failed to start")})
@@ -132,16 +157,15 @@ func TestSet_RunnerError(t *testing.T) {
 // returns a response body that isn't valid JSON. Set must treat this as
 // non-fatal — the write already happened, we just can't parse the accessor.
 func TestSet_MalformedResponseJSON_NonFatal(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=API Credential",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"api_key[concealed]=sk-new",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{Stdout: []byte("not json"), ExitCode: 0})
-	b := openWithRunner(t, runner)
+	b := openWithRunner(t, &applyingRunner{MockRunner: runner})
 
 	err := b.Set(context.Background(), "default/openrouter/api_key", []byte("sk-new"), backend.Meta{})
 	require.NoError(t, err, "malformed accessor response must be non-fatal")

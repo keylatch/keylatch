@@ -155,13 +155,12 @@ field and the `KEYLATCH_*` var are empty.
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_ACTOR` | Actor identifier for audit events (HMAC'd before use) | No | Never |
 | `KEYLATCH_ACTORS_PATH` | Path to the actors definition file | No | Never |
-| `KEYLATCH_MEMBER_ID` | Team member identifier | No | Never |
 | `KEYLATCH_SESSIONS_PATH` | Path to the sessions store | No | Never |
 | `KEYLATCH_DAEMON_STATE_PATH` | Override the path to `keylatchd`'s daemon-state JSON file (default `daemon-state.json` in the config dir), which stores lifecycle flags such as `first_launch_done`. Read/written by `paths.DaemonState()` and loaded in `cmd/keylatchd/main.go` to gate the first-launch notification. | No | Never |
 | `KEYLATCH_SESSION_TICKET` | Session ticket `keylatch launch` passes to the harness it starts. Signed, valid for 12 hours, and bound to the launching process; a valid ticket marks every descendant as an agent session. An absent, forged or foreign ticket changes nothing. | Yes | Set by `keylatch launch` only |
 | `KEYLATCH_AGENT_SESSION` | Set to `1` to mark a shell as an agent session by hand. | No | Never |
 
-> **Raw-credential access.** `keylatch get` and `keylatch run` in a raw-credential mode (`direct_brokered`, `direct_classic_sandboxed`) fail closed (exit code 2) for every session unless `allow_unverified_session: true` is set in `config.json`. No environment variable and no session ticket opens this gate. Gateway and proxy modes are never gated: the child receives only a scoped session token.
+> **Raw-credential access.** `keylatch get` and `keylatch run` in a raw-credential mode (`direct_brokered`, `direct_classic_sandboxed`) fail closed (exit code 2) for every session unless `allow_unverified_session: true` is set in the operator's default `config.json`: `~/.config/keylatch/config.json` on Linux, `~/.keylatch/config.json` elsewhere, with the home directory taken from the user database rather than `$HOME`. The file must belong to you and not be writable by group or others. `KEYLATCH_CONFIG`, `KEYLATCH_CONFIG_DIR` and `XDG_CONFIG_HOME` do not apply to this setting, and no environment variable or session ticket opens the gate. Gateway and proxy modes are never gated: the child receives only a scoped session token.
 
 ---
 

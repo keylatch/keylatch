@@ -1,7 +1,8 @@
 // Package cli — team governance CLI commands.
 //
 // Security invariants:
-//   - Role enforcement at package layer (team.RequireRole), not here.
+//   - Role rules live in the team package (team.Authorize*); the CLI only
+//     resolves the acting member through teamActor.
 //   - All output is value-free (emails never printed raw — HMACd only).
 //   - Shared-secret reveal is blocked in LLM sessions.
 package cli
@@ -9,6 +10,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/team"
 )
@@ -122,6 +125,14 @@ func newTeamInviteCmd() *cobra.Command {
 				return fmt.Errorf("team invite: %w", err)
 			}
 
+			actor, err := teamActor(t)
+			if err != nil {
+				return fmt.Errorf("team invite: %w", err)
+			}
+			if err := team.AuthorizeInvite(actor, team.Role(role)); err != nil {
+				return fmt.Errorf("team invite: %w", err)
+			}
+
 			bundle, err := team.CreateInvite(context.Background(), t, emailHMAC, team.Role(role))
 			if err != nil {
 				return fmt.Errorf("team invite: %w", err)
@@ -136,38 +147,31 @@ func newTeamInviteCmd() *cobra.Command {
 					"email_hmac": emailHMAC,
 					"role":       role,
 					"bundle":     bundle,
+					"team_key":   t.InvitePubKey,
 				})
 			}
 			fmt.Fprintf(c.OutOrStdout(), "Invite bundle created for role=%s.\nBundle: %s\n", role, bundle)
+			fmt.Fprintf(c.OutOrStdout(), "Team key: %s\nSend the team key over a separate channel; the invitee needs it to verify the bundle.\n", t.InvitePubKey)
 			return nil
 		},
 	}
 	cmd.Flags().String("email-hmac", "", "HMAC of the invitee's email (required)")
-	cmd.Flags().String("role", "developer", "role to assign: owner|admin|developer|viewer")
+	cmd.Flags().String("role", "developer", "role to assign: admin|developer|viewer")
 	return cmd
 }
 
-// requireCallerAdmin loads the caller's member from the team and enforces admin role.
-// Used by mutating team commands to enforce role checks at the CLI layer.
-// Team mutation is gated unavailable — denied before the
-// environment-selected caller identity is even looked up. Active
-// authenticated subject plus session/rotation revocation is expansion work.
-func requireCallerAdmin(t *team.Team) error {
+// errNoTeamIdentity is returned for every membership change: no command
+// authenticates which member is at the keyboard, and a member ID taken from a
+// flag or an environment variable is chosen by whoever runs the command.
+var errNoTeamIdentity = errors.New("team: membership changes need an authenticated member identity, which this build does not provide; edit membership from the team owner's managed setup instead")
+
+// teamActor resolves the authenticated member performing a membership change.
+// Replaced in tests.
+var teamActor = func(_ *team.Team) (team.Member, error) {
 	if !manifest.Current().Enabled("team") {
-		return fmt.Errorf("team: team governance unavailable in this build")
+		return team.Member{}, fmt.Errorf("team: team governance unavailable in this build")
 	}
-	callerID := os.Getenv("KEYLATCH_MEMBER_ID")
-	if callerID == "" {
-		return fmt.Errorf("team: caller identity not available — authenticate first (set KEYLATCH_MEMBER_ID)")
-	}
-	caller, err := team.FindMember(t, callerID)
-	if err != nil {
-		return fmt.Errorf("team: caller member not found: %w", err)
-	}
-	if err := team.RequireRole(caller, team.RoleAdmin); err != nil {
-		return fmt.Errorf("team: %w", err)
-	}
-	return nil
+	return team.Member{}, errNoTeamIdentity
 }
 
 // newTeamRemoveCmd returns `keylatch team remove --id <member-id>`.
@@ -187,8 +191,15 @@ func newTeamRemoveCmd() *cobra.Command {
 				return fmt.Errorf("team remove: %w", err)
 			}
 
-			// Caller privilege check.
-			if err := requireCallerAdmin(t); err != nil {
+			actor, err := teamActor(t)
+			if err != nil {
+				return fmt.Errorf("team remove: %w", err)
+			}
+			target, err := team.FindMember(t, memberID)
+			if err != nil {
+				return fmt.Errorf("team remove: %w: %s", err, memberID)
+			}
+			if err := team.AuthorizeRemoval(actor, target); err != nil {
 				return fmt.Errorf("team remove: %w", err)
 			}
 
@@ -224,18 +235,23 @@ func newTeamTransferCmd() *cobra.Command {
 			if toID == "" {
 				return fmt.Errorf("team transfer: --to is required")
 			}
+			if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
+				return NewSecurityBlock("team transfer: ownership transfer is not permitted inside an agent session; run it yourself in a terminal. (KL-4121)")
+			}
+			if err := requireInteractiveTerminal("team transfer", "KL-4120"); err != nil {
+				return err
+			}
 
 			t, err := loadTeam()
 			if err != nil {
 				return fmt.Errorf("team transfer: %w", err)
 			}
 
-			// Caller privilege check (owner required for transfer).
-			if err := requireCallerAdmin(t); err != nil {
+			actor, err := teamActor(t)
+			if err != nil {
 				return fmt.Errorf("team transfer: %w", err)
 			}
-
-			if err := team.Transfer(context.Background(), t, toID); err != nil {
+			if err := team.Transfer(context.Background(), t, actor.ID, toID); err != nil {
 				return fmt.Errorf("team transfer: %w", err)
 			}
 
@@ -257,7 +273,7 @@ func newTeamTransferCmd() *cobra.Command {
 }
 
 // newTeamRoleCmd returns `keylatch team role --id <id> --role <role>`.
-// Updates a member's role (RequireRole enforced at package layer).
+// Updates a member's role under team.AuthorizeRoleChange.
 func newTeamRoleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "role",
@@ -274,25 +290,12 @@ func newTeamRoleCmd() *cobra.Command {
 				return fmt.Errorf("team role: %w", err)
 			}
 
-			// Caller privilege check.
-			if err := requireCallerAdmin(t); err != nil {
+			actor, err := teamActor(t)
+			if err != nil {
 				return fmt.Errorf("team role: %w", err)
 			}
-
-			updated := false
-			for i, m := range t.Members {
-				if m.ID == memberID {
-					t.Members[i].Role = team.Role(newRole)
-					updated = true
-					break
-				}
-			}
-			if !updated {
-				return fmt.Errorf("team role: %w: %s", team.ErrMemberNotFound, memberID)
-			}
-
-			if err := saveTeam(t); err != nil {
-				return fmt.Errorf("team role: save: %w", err)
+			if err := team.ChangeRole(context.Background(), t, actor.ID, memberID, team.Role(newRole)); err != nil {
+				return fmt.Errorf("team role: %w", err)
 			}
 
 			jsonOut, _ := c.Flags().GetBool("json")
@@ -309,7 +312,7 @@ func newTeamRoleCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("id", "", "member ID")
-	cmd.Flags().String("role", "", "new role: owner|admin|developer|viewer")
+	cmd.Flags().String("role", "", "new role: admin|developer|viewer (ownership moves only with team transfer)")
 	return cmd
 }
 
@@ -364,9 +367,4 @@ func newTeamHashEmailCmd() *cobra.Command {
 // loadTeam loads the team from KEYLATCH_TEAM_DIR or the default location.
 func loadTeam() (*team.Team, error) {
 	return team.Load(context.Background())
-}
-
-// saveTeam persists the team to KEYLATCH_TEAM_DIR or the default location.
-func saveTeam(t *team.Team) error {
-	return team.Save(context.Background(), t)
 }

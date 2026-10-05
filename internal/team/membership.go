@@ -48,31 +48,47 @@ func RemoveMember(ctx context.Context, t *Team, memberID string) error {
 	return nil
 }
 
-// Transfer changes the team owner to newOwnerID.
-// The previous owner is downgraded to admin.
-func Transfer(_ context.Context, t *Team, newOwnerID string) error {
-	found := false
-	for i := range t.Members {
-		if t.Members[i].ID == newOwnerID {
-			if t.Members[i].Status != MemberActive {
-				return fmt.Errorf("team: cannot transfer ownership to non-active member %q", newOwnerID)
-			}
-			found = true
-		}
+// Transfer hands ownership from actorID, who must be the active owner, to
+// newOwnerID. The previous owner becomes admin.
+func Transfer(_ context.Context, t *Team, actorID, newOwnerID string) error {
+	if err := checkUniqueMembers(t); err != nil {
+		return err
 	}
-	if !found {
-		return ErrMemberNotFound
+	actor, err := FindMember(t, actorID)
+	if err != nil {
+		return err
 	}
+	newOwner, err := FindMember(t, newOwnerID)
+	if err != nil {
+		return err
+	}
+	if err := AuthorizeTransfer(actor, newOwner); err != nil {
+		return err
+	}
+	ai, ni := memberIndex(t, actorID), memberIndex(t, newOwnerID)
+	t.Members[ai].Role = RoleAdmin
+	t.Members[ni].Role = RoleOwner
+	return writeTeam(t)
+}
 
-	// Demote current owners, promote new owner.
-	for i := range t.Members {
-		if t.Members[i].Role == RoleOwner {
-			t.Members[i].Role = RoleAdmin
-		}
-		if t.Members[i].ID == newOwnerID {
-			t.Members[i].Role = RoleOwner
-		}
+// ChangeRole sets targetID's role on behalf of actorID after
+// AuthorizeRoleChange allows it, and persists the team.
+func ChangeRole(_ context.Context, t *Team, actorID, targetID string, newRole Role) error {
+	if err := checkUniqueMembers(t); err != nil {
+		return err
 	}
+	actor, err := FindMember(t, actorID)
+	if err != nil {
+		return err
+	}
+	target, err := FindMember(t, targetID)
+	if err != nil {
+		return err
+	}
+	if err := AuthorizeRoleChange(actor, target, newRole); err != nil {
+		return err
+	}
+	t.Members[memberIndex(t, targetID)].Role = newRole
 	return writeTeam(t)
 }
 
@@ -85,6 +101,17 @@ func ActiveMembers(t *Team) []Member {
 		}
 	}
 	return out
+}
+
+// memberIndex returns the index of the entry FindMember returns for id. The
+// caller must have found the member already.
+func memberIndex(t *Team, id string) int {
+	for i := range t.Members {
+		if t.Members[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // FindMember returns the member with the given ID, or ErrMemberNotFound.

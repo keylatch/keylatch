@@ -8,6 +8,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/connections"
+	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -57,30 +58,28 @@ func newListCmdImpl() *cobra.Command {
 			cfg := loadCLIConfig(c)
 			env := llmcontext.DefaultLookup
 
-			// Inject audit emitter into context (best-effort: warn if audit
-			// logger cannot be opened, e.g. keyring not set up).
-			if al, cleanup, auditErr := openAuditLogger(); auditErr == nil {
-				defer cleanup()
-				ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
-			} else {
-				fmt.Fprintf(c.ErrOrStderr(), "warning: audit logger unavailable (%v) — vault operations will not be audited\n", auditErr)
-			}
-
 			raw, _ := c.Flags().GetBool("raw")
 			useJSON, _ := c.Flags().GetBool("json")
 
 			if raw {
+				al, cleanup, err := requireAuditLogger("list --raw")
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
+
 				// --raw: restore the old vault-path output for power users.
 				entries, err := vault.List(ctx, "", cfg, env)
 				if err != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-					return err
+					return reported(exitcode.UserError, err)
 				}
 
 				b, err := dispatch.Select(ctx, cfg, env)
 				if err != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-					return err
+					return reported(exitcode.UserError, err)
 				}
 
 				backendName := b.Name()
@@ -97,7 +96,7 @@ func newListCmdImpl() *cobra.Command {
 			}, store)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			b, bErr := dispatch.Select(ctx, cfg, env)

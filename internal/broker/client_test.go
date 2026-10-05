@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // newTestBrokerWithStrategies is a helper that creates a BrokerImpl with one
@@ -18,7 +19,7 @@ func newTestBrokerWithStrategies(t *testing.T) *broker.BrokerImpl {
 	strat := &mockCanaryStrategy{provider: "test-provider"}
 	return broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"test-provider": strat,
-	}, nil, []byte("test-hmac-key-32-bytes-pad!!!!!!"))
+	}, &testutil.AuditRecorder{}, []byte("test-hmac-key-32-bytes-pad!!!!!!"))
 }
 
 // TestBrokerHandle_InProcess_Smoke verifies that a handle backed by a live

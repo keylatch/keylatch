@@ -480,8 +480,7 @@ func newGetCmd() *cobra.Command {
 	// `get` (non-masked) always returns a raw value. See
 	// RequireRawCredentialOptIn.
 	notImpl := Handler(func(_ context.Context, hArgs HandlerArgs) (Result, error) {
-		env := llmcontext.DefaultLookup
-		if verErr := RequireRawCredentialOptIn(true, configAllowsUnverifiedSession(env)); verErr != nil {
+		if verErr := RequireRawCredentialOptIn(true, configAllowsUnverifiedSession()); verErr != nil {
 			fmt.Fprintf(hArgs.Stderr, "%v\n", verErr)
 			return Result{ExitCode: exitcode.SecurityBlock}, nil
 		}
@@ -593,7 +592,7 @@ func newRunCmd() *cobra.Command {
 			}
 
 			// Guard 2: keyring must exist — if not, keylatch has never been bootstrapped.
-			_, statErr := os.Stat(paths.KeyringPath(llmcontext.DefaultLookup))
+			_, statErr := os.Stat(paths.ResolveKeyringPath(llmcontext.DefaultLookup))
 			if statErr != nil {
 				if os.IsNotExist(statErr) {
 					cliErr := NewBootstrapMissing("keylatch not bootstrapped — run: keylatch bootstrap")
@@ -631,8 +630,7 @@ func newRunCmd() *cobra.Command {
 			// connection checks so a first-run user gets the actionable setup
 			// errors; gateway and proxy modes never expose a raw secret and pass
 			// through. Skipped for --dry-run (handled earlier, never decrypts).
-			runEnv := llmcontext.DefaultLookup
-			if verErr := RequireRawCredentialOptIn(runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
+			if verErr := RequireRawCredentialOptIn(runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession()); verErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 				os.Exit(exitcode.SecurityBlock)
 			}

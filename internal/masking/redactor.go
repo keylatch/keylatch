@@ -19,12 +19,13 @@ type Redactor struct{}
 
 // Redact applies the masking policy to body and returns the redacted bytes.
 //
-// - Basic: redacts basicClasses patterns.
-// - Strict: redacts basicClasses + strictClasses patterns.
-// - MetadataOnly: retains only AllowFields keys from a JSON object; strips content.
-// - BlockBody: returns "{}".
-// - MaxBodyChars > 0: truncates body before redaction.
-// - BlockAttachments: removes attachment_url pattern matches.
+//   - Basic: redacts credential-named fields and basicClasses patterns.
+//   - Strict: as Basic, plus strictClasses patterns and any long
+//     credential-shaped run, whatever the body format.
+//   - MetadataOnly: retains only AllowFields keys from a JSON object; strips content.
+//   - BlockBody: returns "{}".
+//   - MaxBodyChars > 0: truncates body before redaction.
+//   - BlockAttachments: removes attachment_url pattern matches.
 func (r *Redactor) Redact(body []byte, policy MaskingPolicy) ([]byte, error) {
 	// Truncate first.
 	if policy.MaxBodyChars > 0 && len(body) > policy.MaxBodyChars {
@@ -39,15 +40,18 @@ func (r *Redactor) Redact(body []byte, policy MaskingPolicy) ([]byte, error) {
 		return r.redactToAllowFields(body, policy.AllowFields), nil
 
 	case MaskingStrict:
-		out := r.applyClasses(body, basicClasses)
+		out := RedactSecretFields(body, redactedPlaceholder)
+		out = r.applyClasses(out, basicClasses)
 		out = r.applyClasses(out, strictClasses)
+		out = StrictTokenRe.ReplaceAll(out, []byte(redactedPlaceholder))
 		if policy.BlockAttachments {
 			out = r.applyClass(out, "attachment_url")
 		}
 		return out, nil
 
 	case MaskingBasic, "":
-		out := r.applyClasses(body, basicClasses)
+		out := RedactSecretFields(body, redactedPlaceholder)
+		out = r.applyClasses(out, basicClasses)
 		if policy.BlockAttachments {
 			out = r.applyClass(out, "attachment_url")
 		}

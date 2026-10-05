@@ -54,8 +54,9 @@ type Team struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`
 	Members      []Member  `json:"members"`
-	CosignPubKey string    `json:"cosign_pub_key"` // for org policy bundle verification
-	SyncRepoURL  string    `json:"sync_repo_url"`  // bare Git repo for team sync
+	CosignPubKey string    `json:"cosign_pub_key"`           // for org policy bundle verification
+	InvitePubKey string    `json:"invite_pub_key,omitempty"` // Ed25519 key that signs invite bundles
+	SyncRepoURL  string    `json:"sync_repo_url"`            // bare Git repo for team sync
 	CreatedAt    time.Time `json:"created_at"`
 }
 

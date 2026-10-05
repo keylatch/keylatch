@@ -16,11 +16,10 @@ var writeCapabilities = map[string]bool{
 // writeCapabilityNames are capability name patterns that represent write operations.
 var writeCapabilityPrefixes = []string{"send", "write", "delete", "post", "create", "update", "patch"}
 
-// approvalTokenHeader is the header name used to supply approval tokens.
-const approvalTokenHeader = "X-Keylatch-Approval-Token" //nolint:gosec // G101 false positive: this is a header name, not a credential value
-
 // UntrustedWriteGate is middleware that blocks combinations of untrusted content
-// sources with write/send/delete capabilities unless approval is present.
+// sources with write/send/delete capabilities. A request header cannot lift
+// the block: the caller sets its own headers, so a header-borne approval
+// would let an agent approve its own write.
 type UntrustedWriteGate struct {
 	policy     masking.UntrustedContentPolicy
 	providerID string
@@ -54,15 +53,8 @@ func (g *UntrustedWriteGate) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check for approval token.
-		if r.Header.Get(approvalTokenHeader) != "" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Block.
 		writeAuthBlockedError(w, "untrusted_write_requires_approval",
-			"combining untrusted content source with write capability requires approval token")
+			"combining untrusted content source with write capability requires human approval, which the gateway cannot accept from a request")
 	})
 }
 

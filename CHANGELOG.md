@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-10-05
+
 ### Added
 
 - `keylatch launch [--harness <name>] -- <command>` starts an agent harness with a signed session ticket bound to the launcher process; every process below it is treated as an agent session.
@@ -21,13 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The gateway's `/approve/` and `/approvals` routes are removed. Approvals and denials need a terminal, no detected agent session and the approver passphrase (`keylatch approve init`). They are signed with a key derived from that passphrase, and unsigned or tampered approvals are rejected. Approval tokens are validated strictly and confined to the approvals directory.
+- Approval decisions sign exactly the reviewed request, display strips control characters, requests are capped at one hour, approvals are single-use within 15 minutes (verification is hardened ahead of enablement), and every `/approve*` path returns 404.
+- The untrusted-write gate ignores caller-supplied approval headers.
+- Unverified session claims (`KEYLATCH_LLM_TICKET`, an unanswered daemon socket, `KEYLATCH_ALLOW_UNVERIFIED_SESSION`) no longer open raw-credential access, and `allow_unverified_session` is read only from the user's own default config file.
+- Audit rotation no longer recurses past the size cap, and it keeps 20 numbered generations. The `keylatchd` retention sweep deletes only rotated audit logs.
+- The audit logger finds the keyring bootstrap creates, so audit is on right after bootstrap.
+- `gateway up`, `set` and `list --raw` require a working audit log, and the broker and vault refuse secret operations that cannot be audited.
+- The gateway forwards an allowlist of request headers and redacts decoded responses; unsupported encodings are refused.
+- Bitwarden and 1Password backends pass secret values on stdin, never on the command line, and 1Password writes are verified.
+- Team invites, org policy and registry bundles are signed with Ed25519, and unsigned or legacy bundles are refused.
+- Admins can no longer take ownership. Role changes and invites cannot grant owner or a role at or above the caller's, duplicate member IDs are refused, and joining keeps an existing team. Team membership changes are disabled until authenticated member identity ships. Registry rollbacks and unpinned org policy are refused.
+- The admin handler takes the role from the authenticated session only (hardened ahead of enablement).
+- Masking redacts credential-named fields, name/value pairs, `KEY=value` lines, XML elements, PEM keys and URL passwords in every format; strict masking covers `password` and standard base64; untrusted content is never returned unprocessed.
+- `grant create` needs a human terminal and caps TTL at 30 days; agent-issued grants are ignored; grant scope matching is hardened ahead of enablement.
+- Sandbox mounts cannot expose Keylatch state, and deny paths are enforced or the sandbox refuses to start.
+- The broker's cached credentials stay independent of the results it returns.
 - v0.9.7 was published without cosign signatures, SBOMs or SLSA provenance while the docs said every artifact was signed. See the [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md); the docs now state what each release carries.
 - Releases are created as drafts and published only after every archive, the checksums file, both SBOMs and the release manifest are cosign-signed and SLSA provenance covers every archive. Homebrew and Scoop are updated afterwards, from the signed checksums, and never for pre-releases.
 - Release tags must point at a commit on `main` whose required checks passed.
 - New `attest-release.yml` workflow rebuilds a published release from its tag and either signs and attests it or marks it unverified.
 - syft and trivy are downloaded at pinned versions and verified against committed SHA-256 digests instead of piping install scripts to `sh`; goreleaser is pinned.
 - Agent detection also walks the process ancestry: a process started below a harness executable (`claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `aider`, `copilot`) is an agent session even with its environment cleared.
-- No environment variable relaxes a decision any more: `KEYLATCH_ALLOW_UNVERIFIED_SESSION` is removed, and the presence of a session ticket no longer opens raw-credential paths. Only `allow_unverified_session` in `config.json` does.
+- No environment variable relaxes a decision any more: `KEYLATCH_ALLOW_UNVERIFIED_SESSION` is removed, and the presence of a session ticket no longer opens raw-credential paths. Only `allow_unverified_session` in the user's own default `config.json` does.
 
 ### Changed
 
@@ -38,12 +56,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Harness signals come from one table (`internal/harness`); `keylatch env` lists every one, and actor inference names Cursor, Gemini CLI, OpenCode and Aider sessions. `KEYLATCH_AGENT_SESSION=1` is the documented manual label.
 - `keylatch setup` names the agent signals it detected and no longer suggests unsetting them.
 
+### Known limitations
+
+- The bwrap sandbox (not enabled in production) still shares the host PID namespace and `/proc`, passes credentials with `--setenv` and skips deny paths no mount covers; fix before enabling it.
+- The approver public key lives in the user-writable config directory; pin it elsewhere before approvals are consumed.
+- The audit log assumes a single writer, and a failed restore after rotation starts a new chain.
+- `migrate cipher` is not crash-safe per version; back up the vault first.
+
 ### Removed
 
 - `keylatchd --llm-session-socket`, `KEYLATCH_DAEMON_SOCKET` and `KEYLATCH_LLM_TICKET`: nothing registered sessions with the daemon, and the query used the CLI's own PID.
 
 ### Fixed
 
+- Every CLI error is printed once, never with flag values, and keeps its exit code.
+- `migrate cipher` re-encrypts every stored version.
+- Policy commands work without a policy file.
+- `setup` in reference mode works on a fresh install.
 - `keylatch gateway up` now reads credentials from the configured backend. It used to start without a vault and forward credentialed requests upstream with no credential; it now fails at startup when the backend is unusable, and the gateway answers 503 `vault_not_configured` for a credentialed route without a vault.
 - The sidecar IPC socket is created owner-only without changing the process umask, which could leave files created concurrently by other goroutines unreadable.
 

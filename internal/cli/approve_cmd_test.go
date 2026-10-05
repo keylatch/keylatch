@@ -54,6 +54,7 @@ func TestApproveCmd_Success(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -77,6 +78,7 @@ func TestApproveCmd_JSON_Success(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -108,6 +110,7 @@ func TestApproveCmd_WithReason(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -148,6 +151,7 @@ func TestApprove_Success(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -171,12 +175,13 @@ func TestApprove_NotFound(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	cmd := newApproveCmd()
 	var errOut bytes.Buffer
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&errOut)
-	cmd.SetArgs([]string{"apv_does_not_exist"})
+	cmd.SetArgs([]string{"apv_00000000000000000000000000000000"})
 
 	// approve returns a CLIError on not-found — the error is now testable.
 	err := cmd.ExecuteContext(context.Background())
@@ -194,14 +199,15 @@ func TestApprove_AlreadyDecided(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 	// Approve first.
-	if err := approval.Approve(context.Background(), approvalsDir, token); err != nil {
+	if err := approval.Approve(context.Background(), approvalsDir, token, shownOf(t, approvalsDir, token), testDecisionKey); err != nil {
 		t.Fatalf("first approve: %v", err)
 	}
 	// Second approve should return ErrAlreadyActed.
-	err := approval.Approve(context.Background(), approvalsDir, token)
+	err := approval.Approve(context.Background(), approvalsDir, token, shownOf(t, approvalsDir, token), testDecisionKey)
 	if !errors.Is(err, approval.ErrAlreadyActed) {
 		t.Errorf("expected ErrAlreadyActed; got %v", err)
 	}

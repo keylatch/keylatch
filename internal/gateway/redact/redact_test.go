@@ -115,3 +115,43 @@ func TestError_StripCredentials(t *testing.T) {
 type errorString string
 
 func (e errorString) Error() string { return string(e) }
+
+func TestBody_CredentialFieldsInAnyFormat(t *testing.T) {
+	const secret = "hunter2-Leak9"
+	bodies := map[string]string{
+		"nested json": `{"data":{"users":[{"name":"a","db_password":"` + secret + `"}]}}`,
+		"variants":    `{"Passwd":"` + secret + `","client-secret":"` + secret + `","privateKey":"` + secret + `"}`,
+		"form":        "user=a&passphrase=" + secret,
+		"malformed":   `{"pwd": "` + secret + `", `,
+		"headers":     "Cookie: sid=" + secret + "\nX-Api-Key: " + secret,
+	}
+	for _, profile := range []redact.MaskingProfile{"", redact.ProfileBasic, redact.ProfileStrict} {
+		for name, b := range bodies {
+			out := string(redact.Body("generic", []byte(b), profile, nil))
+			if strings.Contains(out, secret) {
+				t.Errorf("profile %q %s: secret survived: %s", profile, name, out)
+			}
+		}
+	}
+}
+
+func TestBody_UnknownProfileIsStrict(t *testing.T) {
+	const opaque = "abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+	b := []byte("result=" + opaque + "\n")
+	if out := string(redact.Body("generic", b, redact.ProfileBasic, nil)); !strings.Contains(out, opaque) {
+		t.Fatalf("basic should leave opaque value: %s", out)
+	}
+	for _, p := range []redact.MaskingProfile{"Strict", "none", "off"} {
+		if out := string(redact.Body("generic", b, p, nil)); strings.Contains(out, opaque) {
+			t.Errorf("profile %q passed content through: %s", p, out)
+		}
+	}
+}
+
+func TestBody_StrictUnquotedTokens(t *testing.T) {
+	const opaque = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijklmnop"
+	out := string(redact.Body("generic", []byte("<r>"+opaque+"</r>"), redact.ProfileStrict, nil))
+	if strings.Contains(out, opaque) {
+		t.Errorf("strict left token in non-JSON body: %s", out)
+	}
+}

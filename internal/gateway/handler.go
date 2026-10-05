@@ -388,17 +388,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Copy safe headers from incoming request.
-	for k, vv := range r.Header {
-		lower := strings.ToLower(k)
-		// Skip auth and keylatch-internal headers.
-		if lower == "authorization" || strings.HasPrefix(lower, "x-keylatch-") {
-			continue
-		}
-		for _, v := range vv {
-			upstreamReq.Header.Add(k, v)
-		}
-	}
+	copyForwardedHeaders(upstreamReq.Header, r.Header)
 
 	// Inject auth per AuthPlacement.
 	injectAuth(upstreamReq, rt.AuthPlacement, accessToken.Value)
@@ -419,8 +409,11 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Read response body.
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, rt.MaxBodyBytes))
+	respBody, err := readUpstreamBody(resp, rt.MaxBodyBytes)
+	if errors.Is(err, errUnsupportedEncoding) {
+		writeError(w, http.StatusBadGateway, "upstream_encoding_unsupported", "upstream response uses a content encoding the gateway cannot redact")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "upstream_read_error", "failed to read upstream response")
 		return
@@ -429,6 +422,9 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// Step 11: Redact response.
 	// Leakage reduction only, not a primary security control.
 	redactedHeaders := redact.Headers(resp.Header)
+	for _, h := range responseHeadersDroppedAfterDecode {
+		redactedHeaders.Del(h)
+	}
 
 	// Collect redaction patterns from route.
 	var patterns []string
@@ -466,20 +462,6 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(redactedBody) //nolint:gosec // G705: body is run through redact.Body which strips secrets; this is an API gateway, not an HTML context
-}
-
-// approveHandler is unreachable: approval mutation is not
-// implemented, so it returns an honest unavailable response for any token
-// rather than calling into the approval package.
-func (s *Server) approveHandler(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in this build")
-}
-
-// approvalsHandler is unreachable: the approval inbox is
-// not implemented, so it returns an honest unavailable response instead of
-// disclosing (or falsely accepting mutations against) pending approvals.
-func (s *Server) approvalsHandler(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in this build")
 }
 
 // injectAuth injects the access token into the upstream request per AuthPlacement.

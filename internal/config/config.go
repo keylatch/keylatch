@@ -241,7 +241,8 @@ func LoadBytes(path string, data []byte) (Config, error) {
 	return c, nil
 }
 
-// Save writes c to path atomically (temp-file + rename) with mode 0o600.
+// Save writes c to path atomically (temp-file + rename) with mode 0o600,
+// creating the config directory with mode 0o700 when it does not exist yet.
 // Security invariant: all config files must have mode 0o600.
 func Save(path string, c Config) error {
 	data, err := json.MarshalIndent(c, "", "  ")
@@ -251,6 +252,9 @@ func Save(path string, c Config) error {
 	data = append(data, '\n')
 
 	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create config directory %q: %w", dir, err)
+	}
 	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp file for config: %w", err)

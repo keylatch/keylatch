@@ -13,13 +13,14 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/llmcontext"
 )
 
 // RunSandboxed executes m.Executable inside an Apple sandbox-exec(1) sandbox.
 //
 // Security properties:
 // - Executable hash is verified before exec.
-// - ~/.keylatch is denied in the generated .sb profile.
+// - Keylatch state and every Deny path are denied in the generated .sb profile.
 // - Only explicit EnvInject vars are passed via env(1); inherit is false.
 // - No shell string construction — argv is a slice.
 // - KEYLATCH_* vars are never exposed in sandbox-exec's environment (cmd.Env is set explicitly).
@@ -42,9 +43,6 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 		return err
 	}
 
-	// Validate bind mounts (deny ~/.keylatch).
-	// S5: pre-compute homeDir once here and pass it to avoid a duplicate
-	// os.UserHomeDir() call inside validateBindMountsWithHome.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("sandbox: get home dir: %w", err)
@@ -53,7 +51,11 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 		return err
 	}
 
-	// Emit deny-applied audit event now that the deny-list validation passed.
+	sbProfile, err := generateSbProfile(m)
+	if err != nil {
+		return fmt.Errorf("sandbox: generate sb profile: %w", err)
+	}
+
 	if emitter != nil {
 		_ = emitter.Emit(ctx, audit.Event{
 			Action:  audit.ActionSandboxDenyApplied,
@@ -62,12 +64,6 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 				"denied_paths": m.Deny,
 			},
 		})
-	}
-
-	// Generate a temporary .sb profile.
-	sbProfile, err := generateSbProfile(m)
-	if err != nil {
-		return fmt.Errorf("sandbox: generate sb profile: %w", err)
 	}
 
 	// Write .sb profile to a temp file.
@@ -109,46 +105,41 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 	return nil
 }
 
-// generateSbProfile returns a TinyScheme sandbox profile that:
-// - Denies all operations by default (deny default).
-// - Denies file-read* and file-write* for ~/.keylatch.
-// - Allows file-read* for system paths (/usr, /bin, /lib, /etc) and the bind mounts.
-// - Allows process-exec for the executable.
+// generateSbProfile returns a TinyScheme sandbox profile that denies by
+// default, allows the system paths, bind mounts and the executable, and then
+// denies keylatch state and every Deny path. The denies come last because
+// the last matching rule wins in a sandbox profile, so an allowed parent
+// directory cannot re-open them.
 func generateSbProfile(m *SandboxManifest) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("get home dir: %w", err)
 	}
-	keylatchDir := filepath.Join(home, ".keylatch")
+	for _, d := range m.Deny {
+		if !filepath.IsAbs(d) {
+			return "", fmt.Errorf("%w: %q is not an absolute path", ErrDenyUnenforceable, d)
+		}
+	}
 
 	var sb strings.Builder
 	sb.WriteString("(version 1)\n")
 	sb.WriteString("(deny default)\n")
 	sb.WriteString("\n")
 
-	// Explicitly deny ~/.keylatch (belt-and-suspenders on top of deny default).
-	sb.WriteString("; Deny all access to ~/.keylatch\n")
-	fmt.Fprintf(&sb, "(deny file-read* file-write* (subpath %q))\n", keylatchDir)
-	sb.WriteString("\n")
-
-	// Allow system read paths.
 	sb.WriteString("; Allow read-only access to standard system paths\n")
 	for _, p := range []string{"/usr", "/bin", "/lib", "/etc", "/System", "/Library"} {
 		fmt.Fprintf(&sb, "(allow file-read* (subpath %q))\n", p)
 	}
 	sb.WriteString("\n")
 
-	// Allow /dev, /proc (macOS uses /dev).
 	sb.WriteString("; Allow /dev access\n")
 	sb.WriteString("(allow file-read* file-write* (subpath \"/dev\"))\n")
 	sb.WriteString("\n")
 
-	// Allow /tmp.
 	sb.WriteString("; Allow /tmp\n")
 	sb.WriteString("(allow file-read* file-write* (subpath \"/tmp\"))\n")
 	sb.WriteString("\n")
 
-	// Allow manifest bind mounts.
 	if len(m.BindMounts) > 0 {
 		sb.WriteString("; Allow manifest bind mounts\n")
 		for _, bm := range m.BindMounts {
@@ -162,14 +153,24 @@ func generateSbProfile(m *SandboxManifest) (string, error) {
 		sb.WriteString("\n")
 	}
 
-	// Allow executing the target executable.
 	sb.WriteString("; Allow process execution\n")
 	fmt.Fprintf(&sb, "(allow process-exec (literal %q))\n", filepath.Clean(m.Executable))
 	sb.WriteString("(allow process-fork)\n")
 	sb.WriteString("\n")
 
-	// Allow signal delivery.
 	sb.WriteString("(allow signal (target self))\n")
+	sb.WriteString("\n")
+
+	sb.WriteString("; Deny keylatch state and manifest deny paths\n")
+	seen := map[string]bool{}
+	for _, p := range append(protectedPaths(home, llmcontext.DefaultLookup), m.Deny...) {
+		for _, form := range pathForms(p) {
+			if !seen[form] {
+				seen[form] = true
+				fmt.Fprintf(&sb, "(deny file-read* file-write* (subpath %q))\n", form)
+			}
+		}
+	}
 
 	return sb.String(), nil
 }

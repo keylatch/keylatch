@@ -13,9 +13,11 @@ type ContentLabeler struct{}
 // LabelResponse processes a response body from providerID.
 // Non-content providers are returned unmodified.
 //
-// - Label: wraps content fields with UntrustedContentLabel in the response envelope.
-// - Strip: removes content fields, returns metadata only.
-// - Summarize: returns {"content": "__keylatch_content_stripped_pending_summarization__"}.
+//   - Label: wraps content fields with UntrustedContentLabel in the response envelope.
+//   - Strip: removes content fields, returns metadata only.
+//   - Summarize: returns {"content": "__keylatch_content_stripped_pending_summarization__"}.
+//   - Any other handling value is treated as Summarize: content from an
+//     untrusted provider is never returned unprocessed.
 func (cl *ContentLabeler) LabelResponse(providerID string, body []byte, policy UntrustedContentPolicy) ([]byte, error) {
 	if !UntrustedContentProviders[providerID] {
 		// Not an untrusted-content provider — return unmodified.
@@ -28,20 +30,12 @@ func (cl *ContentLabeler) LabelResponse(providerID string, body []byte, policy U
 	}
 
 	switch policy.Handling {
-	case ContentHandlingSummarize:
-		m := map[string]string{"content": summarizationPlaceholder}
-		return json.Marshal(m)
-
 	case ContentHandlingStrip:
-		// Remove content-like fields from the JSON response.
 		return stripContentFields(body), nil
-
 	case ContentHandlingLabel, "":
-		// Wrap content fields with the untrusted label.
 		return labelContentFields(body), nil
-
 	default:
-		return body, nil
+		return json.Marshal(map[string]string{"content": summarizationPlaceholder})
 	}
 }
 
@@ -57,19 +51,35 @@ func labelContentFields(body []byte) []byte {
 		return out
 	}
 
-	out := make(map[string]any, len(m)+1)
-	for k, v := range m {
-		if isContentField(k) {
-			out[UntrustedContentLabel+":"+k] = v
-		} else {
-			out[k] = v
-		}
-	}
-	result, err := json.Marshal(out)
+	result, err := json.Marshal(labelFields(m))
 	if err != nil {
-		return body
+		out, _ := json.Marshal(map[string]any{UntrustedContentLabel: string(body)})
+		return out
 	}
 	return result
+}
+
+// labelFields renames content fields at every depth: providers nest user
+// content (messages[].body, blocks[].text), not just at the top level.
+func labelFields(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, child := range t {
+			if isContentField(k) {
+				out[UntrustedContentLabel+":"+k] = child
+			} else {
+				out[k] = labelFields(child)
+			}
+		}
+		return out
+	case []any:
+		for i, child := range t {
+			t[i] = labelFields(child)
+		}
+		return t
+	}
+	return v
 }
 
 // stripContentFields removes content-like fields from the JSON body.
@@ -79,17 +89,30 @@ func stripContentFields(body []byte) []byte {
 		// Not JSON — return empty object.
 		return []byte("{}")
 	}
-	out := make(map[string]any, len(m))
-	for k, v := range m {
-		if !isContentField(k) {
-			out[k] = v
-		}
-	}
-	result, err := json.Marshal(out)
+	result, err := json.Marshal(stripFields(m))
 	if err != nil {
 		return []byte("{}")
 	}
 	return result
+}
+
+func stripFields(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, child := range t {
+			if !isContentField(k) {
+				out[k] = stripFields(child)
+			}
+		}
+		return out
+	case []any:
+		for i, child := range t {
+			t[i] = stripFields(child)
+		}
+		return t
+	}
+	return v
 }
 
 // contentFieldNames are JSON field names considered to contain user content.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/keylatch/keylatch/internal/audit"
 	"os"
 	"time"
 
@@ -58,7 +59,7 @@ Example:
 			if expiresAtStr != "" {
 				t, err := time.Parse(time.RFC3339, expiresAtStr)
 				if err != nil {
-					return fmt.Errorf("[keylatch] error: --expires-at must be RFC3339, e.g. 2026-08-01T00:00:00Z (exit %d)", exitcode.UserError)
+					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: --expires-at must be RFC3339, e.g. 2026-08-01T00:00:00Z"))
 				}
 				partialMeta.ExpiresAt = &t
 			}
@@ -66,10 +67,18 @@ Example:
 			if issuedAtStr != "" {
 				t, err := time.Parse(time.RFC3339, issuedAtStr)
 				if err != nil {
-					return fmt.Errorf("[keylatch] error: --issued-at must be RFC3339, e.g. 2026-01-01T00:00:00Z (exit %d)", exitcode.UserError)
+					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: --issued-at must be RFC3339, e.g. 2026-01-01T00:00:00Z"))
 				}
 				partialMeta.IssuedAt = &t
 			}
+
+			// Refuse before asking for the value: it would not be stored.
+			al, auditCleanup, err := requireAuditLogger("set")
+			if err != nil {
+				return err
+			}
+			defer auditCleanup()
+			ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
 
 			// Read value from stdin or interactive prompt.
 			var value []byte
@@ -82,24 +91,24 @@ Example:
 				var err error
 				value, err = readFieldFromStdin(stdin)
 				if err != nil {
-					return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.UserError)
+					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
 				}
 			} else {
 				// Interactive prompt — use shared helper.
 				var err error
 				value, err = promptHidden(fmt.Sprintf("Enter value for %s", path))
 				if err != nil {
-					return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.UserError)
+					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
 				}
 			}
 
 			if len(value) == 0 {
-				return fmt.Errorf("[keylatch] error: value must not be empty (exit %d)", exitcode.UserError)
+				return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: value must not be empty"))
 			}
 
 			newVersion, err := vault.RotateValue(ctx, path, value, partialMeta, cfg, env)
 			if err != nil {
-				return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.OperationFailed)
+				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
 			}
 
 			// Canonicalize path for display.

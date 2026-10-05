@@ -153,6 +153,33 @@ func (le *loggerEmitter) Emit(ctx context.Context, e Event) error {
 	return le.l.Log(ctx, e)
 }
 
+func (le *loggerEmitter) Ready() error {
+	return le.l.Ready()
+}
+
+// ReadyChecker is implemented by emitters that can tell, before an
+// operation runs, whether its audit event could be written.
+type ReadyChecker interface {
+	Ready() error
+}
+
+// ErrNotConfigured is returned by Ready for a nil emitter: an operation
+// with no audit log attached is not audited, so it is not ready.
+var ErrNotConfigured = fmt.Errorf("%w: no audit log is configured", ErrUnavailable)
+
+// Ready reports whether e can record events now. A nil emitter is never
+// ready. Emitters that cannot tell are assumed ready; their Emit error is
+// still checked afterwards.
+func Ready(e Emitter) error {
+	if e == nil {
+		return ErrNotConfigured
+	}
+	if rc, ok := e.(ReadyChecker); ok {
+		return rc.Ready()
+	}
+	return nil
+}
+
 // Event is an audit log entry. All fields are value-free: paths identify
 // secrets by location only, and Accessor/Actor are HMAC'd identifiers —
 // no raw secret value or plaintext identity is ever recorded.
@@ -222,10 +249,32 @@ var (
 	ErrSaltUnavailable  = errors.New("audit: salt unavailable")
 	ErrLogCorrupt       = errors.New("audit: log corrupt")
 	ErrAuditFsyncFailed = errors.New("audit: fsync failed")
+	ErrLogClosed        = errors.New("audit: log closed")
+	// ErrUnavailable means no audit file can be written. Operations that
+	// must be audited are refused while it is returned.
+	ErrUnavailable = errors.New("audit: log unavailable")
 )
+
+// rotateRetryInterval spaces out rotation attempts after one fails; until
+// then events keep going to the current file.
+const rotateRetryInterval = time.Minute
+
+// UnsafeDirError reports an audit log directory that other users can
+// access.
+type UnsafeDirError struct {
+	Dir  string
+	Mode os.FileMode
+}
+
+func (e *UnsafeDirError) Error() string {
+	return fmt.Sprintf("audit: parent directory %s has unsafe permissions %04o (want 0700)", e.Dir, e.Mode)
+}
 
 // maxLogSize is the default size cap for auto-rotation (5 MiB).
 const maxLogSize = 5 * 1024 * 1024
+
+// DefaultRetainFiles is how many rotated generations (audit.log.1 …) are kept.
+const DefaultRetainFiles = 20
 
 // Logger is an append-only audit log writer.
 type Logger struct {
@@ -235,16 +284,43 @@ type Logger struct {
 	file        *os.File
 	salt        []byte
 	auditDEK    []byte
+	readKeys    [][]byte
 	chainMACKey []byte
 
 	// Chain state (protected by mu).
 	seq      int64
 	prevHMAC string
 
-	maxSize int64
+	maxSize     int64
+	retainFiles int
+
+	// closed is set by Close; file is nil without closed only when the log
+	// could not be reopened, and every write retries opening it.
+	closed bool
+	// nextRotate holds back rotation retries after a failed rotation.
+	nextRotate time.Time
+
+	// openFile opens the log file for appending; replaced in tests.
+	openFile func(path string) (*os.File, error)
 
 	// fsyncFailHook is used for fault-injection tests.
 	fsyncFailHook func() error
+}
+
+func openLogFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600) //nolint:gosec // G304: path is the configured audit log
+}
+
+// AddReadKeys registers older DEKs that events already in the log may be
+// sealed with. New events are always sealed with the DEK given to Open.
+func (l *Logger) AddReadKeys(keys ...[]byte) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.readKeys = append(l.readKeys, keys...)
+}
+
+func (l *Logger) keys() [][]byte {
+	return append([][]byte{l.auditDEK}, l.readKeys...)
 }
 
 // Open opens or creates the audit log at path.
@@ -260,7 +336,7 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 		return nil, err
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	f, err := openLogFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +353,8 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 		auditDEK:    auditDEK,
 		chainMACKey: chainMACKey,
 		maxSize:     maxLogSize,
+		retainFiles: DefaultRetainFiles,
+		openFile:    openLogFile,
 	}
 
 	// Seed chain state from the last line of an existing log.
@@ -297,12 +375,22 @@ func (l *Logger) Path() string {
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.closed = true
 	if l.file != nil {
 		err := l.file.Close()
 		l.file = nil
 		return err
 	}
 	return nil
+}
+
+// Ready reports whether events can be written now. It returns ErrLogClosed
+// after Close and an ErrUnavailable error while the log file cannot be
+// opened.
+func (l *Logger) Ready() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ensureFile()
 }
 
 // Log appends an audit event to the log.
@@ -343,7 +431,8 @@ func (l *Logger) Summarize(opts SummaryOpts) (Summary, error) {
 	return l.summarize(opts)
 }
 
-// Rotate renames the current log file to .1 and opens a new empty log.
+// Rotate moves the current log file to generation .1, shifting older
+// generations, and opens a new log.
 func (l *Logger) Rotate() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -363,7 +452,7 @@ func validateParentDir(path string) error {
 		// Windows NTFS ignores Unix permission bits — os.MkdirAll(path, 0o700)
 		// reports 0777 on Windows so the check is meaningless there.
 		if mode := info.Mode().Perm(); mode&0o077 != 0 {
-			return fmt.Errorf("audit: parent directory %s has unsafe permissions %04o (want 0700)", dir, mode)
+			return &UnsafeDirError{Dir: dir, Mode: mode}
 		}
 	}
 	return nil

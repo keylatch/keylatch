@@ -628,10 +628,18 @@ Credential keys are rejected — use `keylatch set` for credentials.
 
 ### `keylatch approve`
 
-Approve a pending secret-access request by token. **Blocked in LLM sessions.**
+Approve a pending secret-access request by token. **Blocked in LLM sessions**, requires an interactive terminal and asks for the approver passphrase; the decision is signed with the approver key.
 
 ```
 keylatch approve <token> [--reason <text>] [--json]
+```
+
+#### `keylatch approve init`
+
+Set or change the approver passphrase. Terminal only; changing it asks for the current passphrase.
+
+```
+keylatch approve init
 ```
 
 | Flag | Description |
@@ -667,7 +675,7 @@ The harness and every process it starts carry `KEYLATCH_SESSION_TICKET`, a signe
 
 ### `keylatch deny`
 
-Deny a pending secret-access request by token. **Blocked in LLM sessions.**
+Deny a pending secret-access request by token. **Blocked in LLM sessions**, requires an interactive terminal and asks for the approver passphrase.
 
 ```
 keylatch deny <token> [--reason <text>] [--json]

@@ -65,15 +65,15 @@ func dryRunExchange(b *BrokerImpl, provider, command string) (*DryRunResult, err
 // deriveScopesFromCommand derives a list of scopes that a command would
 // request from a provider. The heuristic is intentionally simple:
 //
-//   - If the command is empty, return a single wildcard scope.
+//   - If the command is blank, return a single wildcard scope.
 //   - Otherwise, convert the command's first word to a provider-prefixed scope
 //     (e.g. "openrouter" + "chat" → "openrouter.chat").
 func deriveScopesFromCommand(provider, command string) []string {
-	if command == "" {
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
 		return []string{provider + ".*"}
 	}
 	// Take the first word (binary name or sub-command) as the scope action.
-	parts := strings.Fields(command)
 	action := parts[0]
 	// Strip any path prefix.
 	if idx := strings.LastIndexAny(action, "/\\"); idx >= 0 {

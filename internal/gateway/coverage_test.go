@@ -3,7 +3,6 @@ package gateway_test
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -81,9 +80,9 @@ func newGatewayServerWithAudit(t *testing.T) (port int, cancel context.CancelFun
 
 // --- approveHandler tests ---
 
-// TestApproveHandler_MissingToken verifies approval is unavailable
+// TestApproveRoute_MissingToken verifies the former approve route is gone
 // even when the token is empty.
-func TestApproveHandler_MissingToken(t *testing.T) {
+func TestApproveRoute_MissingToken(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	dir := t.TempDir()
@@ -111,15 +110,15 @@ func TestApproveHandler_MissingToken(t *testing.T) {
 		t.Fatalf("POST /approve/: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
+	if resp.StatusCode != http.StatusNotFound {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("expected 503 approval_unavailable; got %d (body: %s)", resp.StatusCode, body)
+		t.Errorf("expected 404; got %d (body: %s)", resp.StatusCode, body)
 	}
 }
 
-// TestApproveHandler_InvalidToken verifies approval is unavailable
-// even when the token does not exist.
-func TestApproveHandler_InvalidToken(t *testing.T) {
+// TestApproveRoute_InvalidToken verifies the former approve route is gone
+// for any token.
+func TestApproveRoute_InvalidToken(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	dir := t.TempDir()
@@ -147,15 +146,15 @@ func TestApproveHandler_InvalidToken(t *testing.T) {
 		t.Fatalf("POST /approve/nonexistent-token: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
+	if resp.StatusCode != http.StatusNotFound {
 		body, _ := io.ReadAll(resp.Body)
-		t.Errorf("expected 503 approval_unavailable; got %d (body: %s)", resp.StatusCode, body)
+		t.Errorf("expected 404; got %d (body: %s)", resp.StatusCode, body)
 	}
 }
 
-// TestApprovalsHandler_Empty verifies GET /approvals is unavailable
-// rather than disclosing a (real or fake) pending-approval list.
-func TestApprovalsHandler_Empty(t *testing.T) {
+// TestApprovalsRoute_NotFound verifies GET /approvals does not exist
+// rather than disclosing a pending-approval list.
+func TestApprovalsRoute_NotFound(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)
 	dir := t.TempDir()
@@ -182,14 +181,9 @@ func TestApprovalsHandler_Empty(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusServiceUnavailable {
+	if resp.StatusCode != http.StatusNotFound {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 503 approval_unavailable; got %d (body: %s)", resp.StatusCode, body)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	var result interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Errorf("response is not valid JSON: %s", body)
+		t.Fatalf("expected 404; got %d (body: %s)", resp.StatusCode, body)
 	}
 }
 
@@ -695,9 +689,10 @@ func TestUntrustedWriteGate_BlocksWriteWithoutApproval(t *testing.T) {
 	}
 }
 
-// TestUntrustedWriteGate_AllowsWriteWithApprovalToken verifies that write
-// requests to untrusted providers WITH an approval token pass through.
-func TestUntrustedWriteGate_AllowsWriteWithApprovalToken(t *testing.T) {
+// TestUntrustedWriteGate_ApprovalHeaderDoesNotBypass verifies that a
+// caller-supplied approval header does not let a write to an untrusted
+// provider through.
+func TestUntrustedWriteGate_ApprovalHeaderDoesNotBypass(t *testing.T) {
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
@@ -718,12 +713,12 @@ func TestUntrustedWriteGate_AllowsWriteWithApprovalToken(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/"+untrustedProvider+"/send", strings.NewReader(`{"message":"hello"}`))
-	req.Header.Set("X-Keylatch-Approval-Token", "apv_test-token")
+	req.Header.Set("X-Keylatch-Approval-Token", "apv_0123456789abcdef0123456789abcdef")
 	rr := httptest.NewRecorder()
 	gate.Middleware(next).ServeHTTP(rr, req)
 
-	if !called {
-		t.Error("next should be called when approval token is present")
+	if called {
+		t.Error("a request header must not approve a write to an untrusted provider")
 	}
 }
 

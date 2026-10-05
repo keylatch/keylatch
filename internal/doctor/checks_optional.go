@@ -613,7 +613,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 
 // checkBootstrapKeyring — bootstrap.keyring
 //
-// Verifies that ~/.keylatch/keyring/keyring.json (or the env-overridden path)
+// Verifies that the keyring paths.ResolveKeyringPath finds
 // exists and is non-empty. A missing or empty keyring means keylatch has never
 // been bootstrapped.
 func checkBootstrapKeyring(env llmcontext.Lookup) Check {
@@ -633,7 +633,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 			}
 		}
 
-		p := paths.KeyringPath(env)
+		p := paths.ResolveKeyringPath(env)
 		info, err := os.Stat(p)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -743,6 +743,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		{"environment", checkPathsConfig(env)},
 		{"environment", checkPathsVault(env)},
 		{"environment", checkPathsAudit(env)},
+		{"environment", checkAuditWritable(env)},
 		// Operating mode check.
 		{"environment", checkOperatingMode(env)},
 		{"backends", checkBackendSelected(env)},

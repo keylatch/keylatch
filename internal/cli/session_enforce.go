@@ -2,9 +2,9 @@ package cli
 
 import (
 	"errors"
+	"os/user"
 
 	"github.com/keylatch/keylatch/internal/config"
-	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 )
 
@@ -30,10 +30,36 @@ func RequireRawCredentialOptIn(rawCredentialExposure, configAllowsRawCredentials
 	return errRawCredentialExposure
 }
 
-// configAllowsUnverifiedSession reports whether config.json sets
-// allow_unverified_session. Any load error counts as not set.
-func configAllowsUnverifiedSession(env llmcontext.Lookup) bool {
-	cfg, err := config.Load(paths.Config(env))
+// operatorHome returns the home directory of the account running keylatch
+// from the user database rather than $HOME, which the caller controls.
+// Replaced in tests.
+var operatorHome = func() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	if u.HomeDir == "" {
+		return "", errors.New("no home directory for the current user")
+	}
+	return u.HomeDir, nil
+}
+
+// configAllowsUnverifiedSession reports whether the operator's config.json
+// sets allow_unverified_session. Only the default config path counts: the
+// KEYLATCH_CONFIG, KEYLATCH_CONFIG_DIR and XDG_CONFIG_HOME overrides are
+// ignored, and the file must belong to the current user and not be writable
+// by group or others. Anything else counts as not set.
+func configAllowsUnverifiedSession() bool {
+	home, err := operatorHome()
+	if err != nil {
+		return false
+	}
+	path := paths.DefaultConfig(home)
+	data, err := readOperatorFile(path)
+	if err != nil {
+		return false
+	}
+	cfg, err := config.LoadBytes(path, data)
 	if err != nil {
 		return false
 	}

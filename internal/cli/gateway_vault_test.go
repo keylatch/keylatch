@@ -109,6 +109,7 @@ func TestGatewayVault_ConnectedCredentialReachesUpstream(t *testing.T) {
 		TokenStorePath:     storePath,
 		Env:                env,
 		Vault:              reader,
+		AuditLogger:        testutil.OpenAuditLog(t),
 		OverrideHTTPClient: &http.Client{Transport: toUpstream, Timeout: 5 * time.Second},
 	})
 	if err != nil {

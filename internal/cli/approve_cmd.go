@@ -50,65 +50,35 @@ Approval Inbox SSE stream. Use 'keylatch approve <token> --reason "why"'
 to record a reason for the approval.
 
 Approvals must be performed by a human operator: the command requires an
-interactive terminal on stdin and is refused inside a detected LLM session
-(see 'keylatch env' for the recognized signals).`,
+interactive terminal on stdin, is refused inside a detected LLM session
+(see 'keylatch env' for the recognized signals) and asks for the approver
+passphrase set with 'keylatch approve init'. The decision is signed with a
+key derived from that passphrase; unsigned approvals are never accepted.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			env := llmcontext.DefaultLookup
-
-			// LLM session guard: approvals must not run inside LLM sessions.
-			// Returns a *CLIError rather than printing directly here — main.go
-			// is the single place that prints it. Printing here too
-			// would double-print; it would also break the
-			// existing in-process tests (e.g. TestApprove_NotFound) that
-			// call cmd.Execute() and assert on the returned error, which an
-			// os.Exit here would defeat by killing the test process.
-			if llmcontext.IsLLMSession(env) {
-				return &CLIError{
-					Class:   "SecurityBlock",
-					Code:    exitcode.SecurityBlock,
-					Message: "approve: command is not permitted inside an LLM session. Approvals must be performed by a human operator outside of an LLM session. (KL-4101)",
-				}
-			}
-
-			if err := requireInteractiveTerminal("approve", "KL-4105"); err != nil {
+			if err := requireHumanApprover("approve", "KL-4101", "KL-4105"); err != nil {
 				return err
 			}
 
 			token := args[0]
-			approvalsDir := paths.ApprovalsDir(env)
+			approvalsDir := paths.ApprovalsDir(llmcontext.DefaultLookup)
+			ar, err := approval.Get(c.Context(), approvalsDir, token)
+			if err == nil {
+				err = undecided(ar)
+			}
+			if err != nil {
+				return approveError(token, err)
+			}
+			printApprovalSummary(c.ErrOrStderr(), ar)
 
-			// All branches below return a *CLIError without printing —
-			// main.go prints it exactly once (see the guard above).
-			if err := approval.ApproveWithReason(c.Context(), approvalsDir, token, reason); err != nil {
-				if errors.Is(err, approval.ErrNotFound) {
-					return &CLIError{
-						Class:   "Missing",
-						Code:    exitcode.Missing,
-						Message: fmt.Sprintf("approval %q not found. Check the token with 'keylatch ui' or the Approval Inbox. (KL-4102)", token),
-					}
-				}
-				// ErrExpiredTTL satisfies errors.Is(ErrExpired) and ErrAlreadyActed.
-				var expErr *approval.ErrExpiredTTL
-				if errors.As(err, &expErr) {
-					return &CLIError{
-						Class:   "UserError",
-						Code:    exitcode.UserError,
-						Message: fmt.Sprintf("approval %q %s. The request TTL has elapsed. Ask the agent to re-submit. (KL-4104)", token, expErr.Error()),
-					}
-				}
-				if errors.Is(err, approval.ErrAlreadyActed) {
-					return &CLIError{
-						Class:   "UserError",
-						Code:    exitcode.UserError,
-						Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4103)", token),
-					}
-				}
-				return &CLIError{
-					Class:   "OperationFailed",
-					Code:    exitcode.OperationFailed,
-					Message: fmt.Sprintf("failed to approve %q: %v. (KL-4100)", token, err),
-				}
+			key, err := unlockApprover("approve", "KL-4106", "KL-4107")
+			if err != nil {
+				return err
+			}
+			defer clear(key)
+
+			if err := approval.ApproveWithReason(c.Context(), approvalsDir, token, approval.Digest(ar), reason, key); err != nil {
+				return approveError(token, err)
 			}
 
 			out := approveOutput{
@@ -135,8 +105,7 @@ interactive terminal on stdin and is refused inside a detected LLM session
 	cmd.Flags().StringVar(&reason, "reason", "", "reason for the approval (recorded in approval record)")
 	cmd.Flags().BoolVar(&useJSON, "json", false, "output result as JSON")
 
-	// Add `approve list` subcommand.
-	cmd.AddCommand(newApproveListCmd())
+	cmd.AddCommand(newApproveListCmd(), newApproveInitCmd())
 
 	return cmd
 }
@@ -201,8 +170,8 @@ Use --json to emit a JSON array for scripting.`,
 				ttlStr := formatTTL(remaining)
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					ar.Token,
-					ar.Connection,
-					ar.Actor,
+					displaySafe(ar.Connection),
+					displaySafe(ar.Actor),
 					ar.CreatedAt.UTC().Format(time.RFC3339),
 					ttlStr,
 					ar.Status,
@@ -227,4 +196,53 @@ func formatTTL(d time.Duration) string {
 		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
 	}
 	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+}
+
+// undecided reports why ar can no longer be decided, before the human is
+// asked for the approver passphrase.
+func undecided(ar *approval.ApprovalRequest) error {
+	switch approval.EffectiveStatus(ar, approval.RealClock{}) {
+	case approval.StatusPending:
+		return nil
+	case approval.StatusExpired:
+		return &approval.ErrExpiredTTL{ExpiresAt: ar.ExpiresAt}
+	default:
+		return approval.ErrAlreadyActed
+	}
+}
+
+// approveError maps approval package errors to CLI errors. Callers return
+// it without printing; main prints every *CLIError once.
+func approveError(token string, err error) error {
+	if errors.Is(err, approval.ErrNotFound) {
+		return &CLIError{
+			Class:   "Missing",
+			Code:    exitcode.Missing,
+			Message: fmt.Sprintf("approval %q not found. Check the token with 'keylatch approve list'. (KL-4102)", token),
+		}
+	}
+	// ErrExpiredTTL satisfies errors.Is(ErrAlreadyActed) — check it first.
+	var expErr *approval.ErrExpiredTTL
+	if errors.As(err, &expErr) {
+		return &CLIError{
+			Class:   "UserError",
+			Code:    exitcode.UserError,
+			Message: fmt.Sprintf("approval %q %s. The request TTL has elapsed. Ask the agent to re-submit. (KL-4104)", token, expErr.Error()),
+		}
+	}
+	if errors.Is(err, approval.ErrAlreadyActed) {
+		return &CLIError{
+			Class:   "UserError",
+			Code:    exitcode.UserError,
+			Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4103)", token),
+		}
+	}
+	if errors.Is(err, approval.ErrChanged) || errors.Is(err, approval.ErrTTLTooLong) {
+		return NewSecurityBlock("approval %q refused: %v. Nothing was signed. (KL-4109)", token, err)
+	}
+	return &CLIError{
+		Class:   "OperationFailed",
+		Code:    exitcode.OperationFailed,
+		Message: fmt.Sprintf("failed to approve %q: %v. (KL-4100)", token, err),
+	}
 }

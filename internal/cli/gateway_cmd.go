@@ -20,7 +20,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -341,16 +340,6 @@ func newGatewayUpCmd() *cobra.Command {
 			}
 			unsafeBindAll = unsafeBindAll || allowExternalBind
 
-			// Open audit logger on a best-effort basis. If the keyring is not set
-			// up (no passphrase / DEK), the gateway still starts without audit.
-			var auditLogger *audit.Logger
-			if al, cleanup, auditErr := openAuditLogger(); auditErr == nil {
-				defer cleanup()
-				auditLogger = al
-			} else {
-				fmt.Fprintf(c.ErrOrStderr(), "warning: audit logger unavailable (%v) — vault operations will not be audited\n", auditErr)
-			}
-
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 			defer cancel()
 
@@ -371,6 +360,14 @@ func newGatewayUpCmd() *cobra.Command {
 			if err != nil {
 				return NewBackendUnavailable("gateway up: %v", err)
 			}
+
+			// Every credential read is audited; without a log the gateway
+			// would hand credentials upstream with no trail.
+			auditLogger, auditCleanup, err := requireAuditLogger("gateway up")
+			if err != nil {
+				return err
+			}
+			defer auditCleanup()
 
 			opts := gateway.ServerOptions{
 				Bind:              bind,

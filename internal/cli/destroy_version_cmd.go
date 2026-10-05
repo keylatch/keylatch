@@ -36,14 +36,14 @@ Blocked in LLM sessions. Requires confirmation or --force.`,
 
 			// Block in LLM sessions.
 			if llmcontext.IsLLMSession(env) {
-				return fmt.Errorf("[keylatch] security block: destroy-version requires a human terminal. Run outside an LLM session. (exit %d)", exitcode.SecurityBlock)
+				return NewSecurityBlock("destroy-version requires a human terminal. Run outside an LLM session.")
 			}
 
 			path := args[0]
 			versionStr := args[1]
 			version, err := strconv.Atoi(versionStr)
 			if err != nil {
-				return fmt.Errorf("[keylatch] error: version must be an integer, got %q (exit %d)", versionStr, exitcode.UserError)
+				return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: version must be an integer, got %q", versionStr))
 			}
 
 			force, _ := c.Flags().GetBool("force")
@@ -52,18 +52,18 @@ Blocked in LLM sessions. Requires confirmation or --force.`,
 			if !force {
 				if !confirmPrompt(c,
 					fmt.Sprintf("Destroy version %d of %s? This is irreversible. [y/N]: ", version, path)) {
-					return fmt.Errorf("[keylatch] aborted (exit %d)", exitcode.UserError)
+					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] aborted"))
 				}
 			}
 
 			if err := vault.DestroyVersion(ctx, path, version, cfg, env); err != nil {
 				switch {
 				case errors.Is(err, vault.ErrVersionDestroyed):
-					return fmt.Errorf("[keylatch] error: version %d is already destroyed (exit %d)", version, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: version %d is already destroyed", version))
 				case errors.Is(err, vault.ErrDestroyCurrentVersion):
-					return fmt.Errorf("[keylatch] error: cannot destroy the current version — rotate first (exit %d)", exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: cannot destroy the current version — rotate first"))
 				default:
-					return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
 				}
 			}
 

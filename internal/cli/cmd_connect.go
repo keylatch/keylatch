@@ -130,10 +130,10 @@ func newConnectCmd() *cobra.Command {
 			}
 
 			// Parse -f name=value flags.
-			for _, kv := range fieldFlags {
+			for i, kv := range fieldFlags {
 				parts := strings.SplitN(kv, "=", 2)
 				if len(parts) != 2 {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: invalid --field format %q; expected name=value\n", kv)
+					fmt.Fprintf(c.ErrOrStderr(), "Error: invalid --field #%d; expected name=value\n", i+1)
 					os.Exit(exitcode.UserError)
 					return nil
 				}
@@ -548,15 +548,15 @@ func newListCmd() *cobra.Command {
 // Dry-run validation: the URI is parsed and scheme-checked before any write
 // occurs. An invalid URI returns a UsageError (exit UserError) before persistence.
 func resolveProviderRefs(_ context.Context, flags []string, fields map[string][]byte) error {
-	for _, kv := range flags {
+	for i, kv := range flags {
 		idx := strings.Index(kv, "=")
 		if idx < 0 {
-			return fmt.Errorf("invalid --provider-ref format %q; expected field=uri", kv)
+			return fmt.Errorf("invalid --provider-ref #%d; expected field=uri", i+1)
 		}
 		fieldName := kv[:idx]
 		uri := kv[idx+1:]
 		if fieldName == "" {
-			return fmt.Errorf("invalid --provider-ref: field name is empty in %q", kv)
+			return fmt.Errorf("invalid --provider-ref #%d: field name is empty", i+1)
 		}
 		if uri == "" {
 			return fmt.Errorf("invalid --provider-ref: URI is empty for field %q", fieldName)

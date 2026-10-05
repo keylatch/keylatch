@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -83,7 +83,7 @@ func CheckPolicy(conn string, command []string, opts PolicyOptions) (policy.Deci
 	p, err := policy.Load(policyPath)
 	if err != nil {
 		// Absent policy file → default-deny.
-		if os.IsNotExist(err) || isPathNotFoundErr(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			p = policy.Policy{
 				SchemaVersion: 1,
 				Mode:          policy.ModeEnforcing,
@@ -106,7 +106,7 @@ func CheckPolicy(conn string, command []string, opts PolicyOptions) (policy.Deci
 	}
 
 	// Build request.
-	cwd, _ := os.Getwd()
+	cwd, _ := workingDir()
 	req := policy.Request{
 		Actor:       actorName,
 		Connection:  conn,
@@ -154,11 +154,6 @@ func CheckPolicy(conn string, command []string, opts PolicyOptions) (policy.Deci
 func hashValue(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])[:16]
-}
-
-// isPathNotFoundErr checks if the error wraps a path-not-found condition.
-func isPathNotFoundErr(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "not found")
 }
 
 // CheckPolicyWithAudit is the audit-instrumented variant of CheckPolicy.

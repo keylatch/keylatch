@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/keylatch/keylatch/internal/masking"
 )
 
 // MaskingProfile controls response body filtering.
@@ -110,15 +112,24 @@ var commonPatterns = []*regexp.Regexp{
 }
 
 // Body applies provider-specific redaction patterns + masking profile
-// to a response body. Basic pattern redaction always applied;
-// strict/metadata_only honoured when declared.
+// to a response body. Credential-named fields and basic patterns are always
+// redacted; strict/metadata_only are honoured when declared, and any other
+// profile value is treated as strict.
 // Leakage reduction only, not a primary security control.
 func Body(provider string, body []byte, profile MaskingProfile, patterns []string) []byte {
 	if len(body) == 0 {
 		return body
 	}
 
-	result := string(body)
+	switch profile {
+	case ProfileMetadataOnly:
+		return []byte(`{}`)
+	case "", ProfileBasic, ProfileStrict:
+	default:
+		profile = ProfileStrict
+	}
+
+	result := string(masking.RedactSecretFields(body, "****"))
 
 	// Apply common patterns (basic, always).
 	for _, re := range commonPatterns {
@@ -146,15 +157,8 @@ func Body(provider string, body []byte, profile MaskingProfile, patterns []strin
 		}
 	}
 
-	// Strict profile: redact all string values that look like tokens.
 	if profile == ProfileStrict {
-		strictRe := regexp.MustCompile(`"[A-Za-z0-9\-_\.]{32,}"`)
-		result = strictRe.ReplaceAllString(result, `"****"`)
-	}
-
-	// Metadata-only profile: strip response body entirely, return empty object.
-	if profile == ProfileMetadataOnly {
-		return []byte(`{}`)
+		result = masking.StrictTokenRe.ReplaceAllString(result, "****")
 	}
 
 	return []byte(result)

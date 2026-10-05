@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/keylatch/keylatch/internal/audit"
 )
@@ -16,7 +17,7 @@ import (
 //
 // Security properties:
 // - Executable hash is verified before exec.
-// - ~/.keylatch is denied in bind-mount list.
+// - No bind mount may expose keylatch state; every Deny path is masked.
 // - Only explicit EnvInject vars are passed; inherit is false.
 // - No shell string construction — argv is a slice.
 // - KEYLATCH_* vars are never exposed in bwrap's environment (cmd.Env is set explicitly).
@@ -32,9 +33,6 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 		return err
 	}
 
-	// Validate bind mounts (deny ~/.keylatch).
-	// S5: pre-compute homeDir once here and pass it to avoid a duplicate
-	// os.UserHomeDir() call inside validateBindMountsWithHome.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("sandbox: get home dir: %w", err)
@@ -43,7 +41,11 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 		return err
 	}
 
-	// Emit deny-applied audit event now that the deny-list validation passed.
+	args, err := buildBwrapArgs(m, extraEnv)
+	if err != nil {
+		return err
+	}
+
 	if emitter != nil {
 		_ = emitter.Emit(ctx, audit.Event{
 			Action:  audit.ActionSandboxDenyApplied,
@@ -52,12 +54,6 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 				"denied_paths": m.Deny,
 			},
 		})
-	}
-
-	// Build bwrap argv.
-	args, err := buildBwrapArgs(m, extraEnv)
-	if err != nil {
-		return err
 	}
 
 	//nolint:gosec // G204: argv is constructed from validated manifest fields, not user input.
@@ -96,34 +92,42 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 //	  --proc /proc
 //	  --tmpfs /tmp
 //	  [manifest bind mounts]
+//	  [--tmpfs <dir> | --ro-bind /dev/null <file> for each Deny path]
 //	  --setenv KEY val (for each EnvInject)
 //	  --unsetenv HOME (prevent host home leaking)
 //	  -- <executable> [args]
 func buildBwrapArgs(m *SandboxManifest, extraEnv []string) ([]string, error) {
 	var args []string
+	var mounts []sandboxMount
 
-	// Standard read-only system bindings.
-	for _, path := range []string{"/usr", "/lib", "/bin", "/etc"} {
-		args = append(args, "--ro-bind", path, path)
-	}
-	// lib64 may not exist on all systems.
+	systemDirs := []string{"/usr", "/lib", "/bin", "/etc"}
 	if pathExists("/lib64") {
-		args = append(args, "--ro-bind", "/lib64", "/lib64")
+		systemDirs = append(systemDirs, "/lib64")
+	}
+	for _, path := range systemDirs {
+		args = append(args, "--ro-bind", path, path)
+		mounts = append(mounts, sandboxMount{dest: path, src: path})
 	}
 
-	// Pseudo-filesystems.
-	args = append(args, "--dev", "/dev")
-	args = append(args, "--proc", "/proc")
-	args = append(args, "--tmpfs", "/tmp")
+	args = append(args, "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp")
+	mounts = append(mounts, sandboxMount{dest: "/dev"}, sandboxMount{dest: "/proc"}, sandboxMount{dest: "/tmp"})
 
-	// Manifest bind mounts.
 	for _, bm := range m.BindMounts {
 		flag := "--bind"
 		if bm.RO {
 			flag = "--ro-bind"
 		}
 		args = append(args, flag, bm.Src, bm.Dest)
+		mounts = append(mounts, sandboxMount{dest: filepath.Clean(bm.Dest), src: filepath.Clean(bm.Src)})
 	}
+
+	// Masks go after every bind: bwrap applies mounts in argv order, so an
+	// earlier mask would be covered by a later bind of a parent directory.
+	masks, err := bwrapDenyArgs(m.Deny, mounts)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, masks...)
 
 	// Clear inherited environment: unset HOME, USER, and other sensitive vars.
 	args = append(args, "--unsetenv", "HOME")
@@ -150,6 +154,67 @@ func buildBwrapArgs(m *SandboxManifest, extraEnv []string) ([]string, error) {
 	// Executable.
 	args = append(args, "--", m.Executable)
 	return args, nil
+}
+
+// sandboxMount is one mount in the sandbox; src is empty for mounts with no
+// host backing (devtmpfs, procfs, tmpfs).
+type sandboxMount struct {
+	dest string
+	src  string
+}
+
+// bwrapDenyArgs masks each deny path: a directory is covered with an empty
+// tmpfs, anything else with /dev/null. A path no host-backed mount exposes,
+// or that does not exist on the host, has nothing to mask. A symlink cannot
+// be masked reliably, so it refuses to start.
+func bwrapDenyArgs(deny []string, mounts []sandboxMount) ([]string, error) {
+	var args []string
+	for _, raw := range deny {
+		if !filepath.IsAbs(raw) {
+			return nil, fmt.Errorf("%w: %q is not an absolute path", ErrDenyUnenforceable, raw)
+		}
+		p := filepath.Clean(raw)
+		host, ok := hostPathFor(p, mounts)
+		if !ok {
+			continue
+		}
+		info, err := os.Lstat(host)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: %q: %v", ErrDenyUnenforceable, raw, err)
+		}
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			return nil, fmt.Errorf("%w: %q is a symlink", ErrDenyUnenforceable, raw)
+		case info.IsDir():
+			args = append(args, "--tmpfs", p)
+		default:
+			args = append(args, "--ro-bind", "/dev/null", p)
+		}
+	}
+	return args, nil
+}
+
+// hostPathFor maps a sandbox path to the host path behind it, using the last
+// mount covering it since later mounts shadow earlier ones.
+func hostPathFor(p string, mounts []sandboxMount) (string, bool) {
+	for i := len(mounts) - 1; i >= 0; i-- {
+		mt := mounts[i]
+		if !isUnder(p, mt.dest) {
+			continue
+		}
+		if mt.src == "" {
+			return "", false
+		}
+		rel, err := filepath.Rel(mt.dest, p)
+		if err != nil {
+			return "", false
+		}
+		return filepath.Join(mt.src, rel), true
+	}
+	return "", false
 }
 
 // pathExists returns true if path exists.
