@@ -149,33 +149,39 @@ func (b *OnePasswordBackend) Set(ctx context.Context, path string, value []byte,
 	// Invalidate cache for this connection.
 	b.cache.Delete(connection)
 
-	// Check if item exists.
-	_, fetchErr := b.fetchItemDirect(ctx, connection)
+	// The value travels in a JSON item template on stdin: an assignment
+	// statement argument would expose it in the process list.
+	_, raw, fetchErr := b.fetchItemJSON(ctx, connection)
 	exists := fetchErr == nil
 
-	fieldType := classifyFieldType(field)
-	fieldArg := fmt.Sprintf("%s[%s]=%s", field, fieldType, string(value))
-
-	var args []string
+	var (
+		args     []string
+		template []byte
+	)
 	if exists {
+		template, err = editTemplate(raw, field, value)
+		if err != nil {
+			return fmt.Errorf("op Set: %w", err)
+		}
 		args = []string{"item", "edit", connection,
 			"--vault=" + b.opts.Vault,
-			fieldArg,
 			"--format=json",
 		}
 	} else {
-		category := classifyCategory(field)
-		args = []string{"item", "create",
-			"--category=" + category,
+		template, err = createTemplate(field, value)
+		if err != nil {
+			return fmt.Errorf("op Set: %w", err)
+		}
+		args = []string{"item", "create", "-",
+			"--category=" + classifyCategory(field),
 			"--title=" + connection,
 			"--vault=" + b.opts.Vault,
 			"--tags=keylatch,ns:default",
-			fieldArg,
 			"--format=json",
 		}
 	}
 
-	stdout, stderr, exitCode, err := b.runWithEnv(ctx, args, nil)
+	stdout, stderr, exitCode, err := b.runWithEnv(ctx, args, template)
 	if err != nil {
 		return fmt.Errorf("op Set: runner error: %w", err)
 	}
@@ -331,6 +337,12 @@ func (b *OnePasswordBackend) fetchItem(ctx context.Context, connection string) (
 // If connection contains a colon (e.g. "openrouter:accountslug"), the account
 // slug is passed via --account to disambiguate multi-account vaults.
 func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection string) (opItem, error) {
+	item, _, err := b.fetchItemJSON(ctx, connection)
+	return item, err
+}
+
+// fetchItemJSON is fetchItemDirect that also returns the item's raw JSON.
+func (b *OnePasswordBackend) fetchItemJSON(ctx context.Context, connection string) (opItem, []byte, error) {
 	conn, account := parseConnectionAccount(connection)
 
 	args := []string{"item", "get", conn,
@@ -343,24 +355,24 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 
 	stdout, stderr, exitCode, err := b.runWithEnv(ctx, args, nil)
 	if err != nil {
-		return opItem{}, fmt.Errorf("op: runner error: %w", err)
+		return opItem{}, nil, fmt.Errorf("op: runner error: %w", err)
 	}
 
 	if exitCode != 0 {
 		stderrStr := string(stderr)
 		// Do not echo raw stderr — map to typed errors with hints.
 		if isAuthFailure(stderrStr) {
-			return opItem{}, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
+			return opItem{}, nil, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
 		}
 		if isNotFound(stderrStr) {
-			return opItem{}, fmt.Errorf("%w: %s", backend.ErrNotFound, conn)
+			return opItem{}, nil, fmt.Errorf("%w: %s", backend.ErrNotFound, conn)
 		}
 		// Detect multi-result (ambiguous) response via "More than one item" marker.
 		if isAmbiguous(stderrStr) {
-			return opItem{}, ErrAmbiguous{Connection: conn, Count: 2}
+			return opItem{}, nil, ErrAmbiguous{Connection: conn, Count: 2}
 		}
 		// Generic failure — do not expose raw stderr.
-		return opItem{}, fmt.Errorf("op: item get exited %d", exitCode)
+		return opItem{}, nil, fmt.Errorf("op: item get exited %d", exitCode)
 	}
 
 	// exitCode == 0 with empty stdout indicates a stale/expired session
@@ -368,28 +380,28 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 	// decode attempts below fail with a confusing "invalid JSON" error
 	// instead of actionable signin guidance.
 	if len(stdout) == 0 {
-		return opItem{}, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
+		return opItem{}, nil, fmt.Errorf("%w: Run: eval $(op signin)", backend.ErrLocked)
 	}
 
 	// Try to decode as a single item first.
 	var item opItem
 	if err := json.Unmarshal(stdout, &item); err == nil {
-		return item, nil
+		return item, stdout, nil
 	}
 
 	// If it decoded as an array (multi-result), return ErrAmbiguous.
-	var items []opItem
-	if err := json.Unmarshal(stdout, &items); err == nil {
-		if len(items) > 1 {
-			return opItem{}, ErrAmbiguous{Connection: conn, Count: len(items)}
+	var rawItems []json.RawMessage
+	if err := json.Unmarshal(stdout, &rawItems); err == nil {
+		if len(rawItems) > 1 {
+			return opItem{}, nil, ErrAmbiguous{Connection: conn, Count: len(rawItems)}
 		}
-		if len(items) == 1 {
-			return items[0], nil
+		if len(rawItems) == 1 && json.Unmarshal(rawItems[0], &item) == nil {
+			return item, rawItems[0], nil
 		}
-		return opItem{}, fmt.Errorf("%w: %s", backend.ErrNotFound, conn)
+		return opItem{}, nil, fmt.Errorf("%w: %s", backend.ErrNotFound, conn)
 	}
 
-	return opItem{}, fmt.Errorf("op: decode item response: invalid JSON")
+	return opItem{}, nil, fmt.Errorf("op: decode item response: invalid JSON")
 }
 
 // runWithEnv invokes the op CLI via CommandRunner.RunEnv, explicitly
@@ -410,6 +422,57 @@ func (b *OnePasswordBackend) runWithEnv(ctx context.Context, args []string, stdi
 		extraEnv = append(extraEnv, "OP_SERVICE_ACCOUNT_TOKEN="+tok)
 	}
 	return b.opts.Runner.RunEnv(ctx, b.bin, args, stdin, extraEnv)
+}
+
+// createTemplate builds the item template that carries the field for
+// `op item create -`.
+func createTemplate(field string, value []byte) ([]byte, error) {
+	b, err := json.Marshal(map[string]any{"fields": []any{newTemplateField(field, value)}})
+	if err != nil {
+		return nil, fmt.Errorf("marshal item template: %w", err)
+	}
+	return b, nil
+}
+
+// editTemplate returns the existing item JSON with field set to value. Every
+// other property is kept verbatim because op replaces the item with the
+// template it is given.
+func editTemplate(itemJSON []byte, field string, value []byte) ([]byte, error) {
+	var item map[string]any
+	if err := json.Unmarshal(itemJSON, &item); err != nil {
+		return nil, fmt.Errorf("decode item for edit: %w", err)
+	}
+	fields, _ := item["fields"].([]any)
+	found := false
+	for _, f := range fields {
+		m, ok := f.(map[string]any)
+		if !ok {
+			continue
+		}
+		if label, _ := m["label"].(string); label == field {
+			m["value"] = string(value)
+			found = true
+			break
+		}
+	}
+	if !found {
+		fields = append(fields, newTemplateField(field, value))
+	}
+	item["fields"] = fields
+	b, err := json.Marshal(item)
+	if err != nil {
+		return nil, fmt.Errorf("marshal item template: %w", err)
+	}
+	return b, nil
+}
+
+func newTemplateField(field string, value []byte) map[string]any {
+	return map[string]any{
+		"id":    field,
+		"label": field,
+		"type":  strings.ToUpper(classifyFieldType(field)),
+		"value": string(value),
+	}
 }
 
 // isAmbiguous returns true when stderr indicates multiple items match.

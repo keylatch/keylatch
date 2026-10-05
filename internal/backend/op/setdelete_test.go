@@ -24,12 +24,11 @@ func openWithRunner(t *testing.T, runner *kexec.MockRunner) backend.Backend {
 // (item absent), so Set must issue `op item create` with the classified
 // category and concealed field type.
 func TestSet_CreatesWhenMissing(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=API Credential",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"api_key[concealed]=sk-new",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{Stdout: []byte(`{"id":"newitem"}`), ExitCode: 0})
@@ -47,7 +46,6 @@ func TestSet_EditsWhenExists(t *testing.T) {
 	getKey := argKey(fakeOpBin, "item", "get", "openrouter", "--vault=Keylatch", "--format=json")
 	editKey := argKey(fakeOpBin, "item", "edit", "openrouter",
 		"--vault=Keylatch",
-		"api_key[concealed]=sk-upd",
 		"--format=json",
 	)
 	runner := &kexec.MockRunner{Responses: map[string]kexec.MockResponse{
@@ -62,12 +60,11 @@ func TestSet_EditsWhenExists(t *testing.T) {
 }
 
 func TestSet_AuthFailure_ErrLocked(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=API Credential",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"api_key[concealed]=v",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{
@@ -90,12 +87,11 @@ func TestSet_InvalidPath(t *testing.T) {
 // matches neither the auth-failure nor not-found heuristics — Set must
 // surface a generic "op exited N" error rather than misclassifying it.
 func TestSet_GenericFailure_NonAuthStderr(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=Password",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"plain[string]=v",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{
@@ -112,12 +108,11 @@ func TestSet_GenericFailure_NonAuthStderr(t *testing.T) {
 // TestSet_RunnerError covers the RunEnv-level error branch (distinct from a
 // non-zero exit code) — e.g. the subprocess failed to start at all.
 func TestSet_RunnerError(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=Password",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"plain[string]=v",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{Err: errors.New("exec failed to start")})
@@ -132,12 +127,11 @@ func TestSet_RunnerError(t *testing.T) {
 // returns a response body that isn't valid JSON. Set must treat this as
 // non-fatal — the write already happened, we just can't parse the accessor.
 func TestSet_MalformedResponseJSON_NonFatal(t *testing.T) {
-	createKey := argKey(fakeOpBin, "item", "create",
+	createKey := argKey(fakeOpBin, "item", "create", "-",
 		"--category=API Credential",
 		"--title=openrouter",
 		"--vault=Keylatch",
 		"--tags=keylatch,ns:default",
-		"api_key[concealed]=sk-new",
 		"--format=json",
 	)
 	runner := makeRunner(createKey, kexec.MockResponse{Stdout: []byte("not json"), ExitCode: 0})
