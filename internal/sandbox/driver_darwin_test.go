@@ -148,3 +148,31 @@ func TestGenerateSbProfile_BindMountsAllowed(t *testing.T) {
 	assert.Contains(t, profile, dir,
 		"sb profile must include bind mount src path")
 }
+
+func TestGenerateSbProfile_DenyPathsFollowAllows(t *testing.T) {
+	dir := t.TempDir()
+	execPath, execHash := writeFakeExecDarwin(t, dir, "myexec")
+	denied := filepath.Join(dir, "secrets")
+
+	m := &sandbox.SandboxManifest{
+		Executable: execPath,
+		ExecHash:   execHash,
+		BindMounts: []sandbox.BindMount{{Src: dir, Dest: dir}},
+		Deny:       []string{denied},
+	}
+	profile, err := sandbox.GenerateSbProfileForTest(m)
+	require.NoError(t, err)
+
+	denyRule := `(deny file-read* file-write* (subpath "` + denied + `"))`
+	allowRule := `(allow file-read* file-write* (subpath "` + dir + `"))`
+	require.Contains(t, profile, denyRule)
+	require.Contains(t, profile, allowRule)
+	assert.Greater(t, strings.Index(profile, denyRule), strings.LastIndex(profile, "(allow "),
+		"deny rules must come after every allow rule so the last matching rule denies")
+}
+
+func TestGenerateSbProfile_RelativeDenyRefused(t *testing.T) {
+	m := &sandbox.SandboxManifest{Executable: "/usr/bin/true", Deny: []string{"relative"}}
+	_, err := sandbox.GenerateSbProfileForTest(m)
+	assert.ErrorIs(t, err, sandbox.ErrDenyUnenforceable)
+}
