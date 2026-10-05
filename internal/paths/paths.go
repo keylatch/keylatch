@@ -66,6 +66,15 @@ func ConfigDir(env Lookup) string {
 	return filepath.Join(home, configDirName)
 }
 
+// DefaultConfig returns the configuration file path under home with every
+// environment override ignored.
+func DefaultConfig(home string) string {
+	if runtime.GOOS == "linux" {
+		return filepath.Join(home, ".config", "keylatch", "config.json")
+	}
+	return filepath.Join(home, configDirName, "config.json")
+}
+
 // Config returns the path to the main configuration file.
 // Override: KEYLATCH_CONFIG
 func Config(env Lookup) string {
