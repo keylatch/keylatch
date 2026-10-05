@@ -4,6 +4,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -108,6 +109,10 @@ var openAuditLoggerFn = openAuditLogger
 // changes secrets. Such commands refuse to run without an audit trail.
 func requireAuditLogger(command string) (*audit.Logger, func(), error) {
 	l, cleanup, err := openAuditLoggerFn()
+	var unsafeDir *audit.UnsafeDirError
+	if errors.As(err, &unsafeDir) {
+		return nil, nil, NewSecurityBlock("%s: the audit log cannot be opened: %v. Keylatch does not serve or change secrets without an audit trail. Run `chmod 0700 %s`, then retry.", command, err, unsafeDir.Dir)
+	}
 	if err != nil {
 		return nil, nil, NewSecurityBlock("%s: the audit log cannot be opened (%v). Keylatch does not serve or change secrets without an audit trail. Run `keylatch bootstrap` (file backend) or `keylatch keyring init` (other backends), then retry.", command, err)
 	}

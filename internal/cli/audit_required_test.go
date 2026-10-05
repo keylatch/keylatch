@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -104,5 +105,22 @@ func TestListRawRefusesWithoutAuditLog(t *testing.T) {
 	requireAuditRefusal(t, root.ExecuteContext(context.Background()))
 	if out.Len() != 0 {
 		t.Fatalf("list --raw printed vault paths without audit: %q", out.String())
+	}
+}
+
+func TestAuditRefusalNamesUnsafeDirectoryFix(t *testing.T) {
+	prev := openAuditLoggerFn
+	openAuditLoggerFn = func() (*audit.Logger, func(), error) {
+		return nil, nil, fmt.Errorf("audit: open: %w", &audit.UnsafeDirError{Dir: "/tmp/kl", Mode: 0o755})
+	}
+	t.Cleanup(func() { openAuditLoggerFn = prev })
+
+	_, _, err := requireAuditLogger("set")
+	var cliErr *CLIError
+	if !errors.As(err, &cliErr) || cliErr.Code != exitcode.SecurityBlock {
+		t.Fatalf("error = %v, want a SecurityBlock CLIError", err)
+	}
+	if !strings.Contains(cliErr.Message, "chmod 0700 /tmp/kl") {
+		t.Fatalf("message %q does not name the permission fix", cliErr.Message)
 	}
 }
