@@ -345,18 +345,66 @@ func Find(_ context.Context, path string, req FindRequest) (*Grant, bool) {
 	return nil, false
 }
 
-// grantFieldsMatch checks whether a grant's fields match the FindRequest.
+// grantFieldsMatch reports whether every restriction on g is satisfied by req.
+// An empty grant field is unrestricted; a restricted field never matches a
+// request that leaves it empty.
 func grantFieldsMatch(g *Grant, req FindRequest) bool {
-	if req.Actor != "" && g.Actor != "" && g.Actor != req.Actor {
+	if g.Actor != "" && g.Actor != req.Actor {
 		return false
 	}
-	if req.Connection != "" && g.Connection != "" && g.Connection != req.Connection {
+	if g.Connection != "" && g.Connection != req.Connection {
 		return false
 	}
-	if req.Capability != "" && g.Capability != "" && g.Capability != req.Capability {
+	if g.Capability != "" && g.Capability != req.Capability {
+		return false
+	}
+	if g.Command != "" && !commandMatches(g.Command, req.Command) {
+		return false
+	}
+	if g.CWD != "" && !cwdMatches(g.CWD, req.CWD) {
 		return false
 	}
 	return true
+}
+
+// commandMatches matches the space-joined argv against pattern: exactly, or as
+// a prefix when pattern ends in "*". There is no implicit extension, so
+// "git push" does not match "git push --force".
+func commandMatches(pattern string, argv []string) bool {
+	if len(argv) == 0 {
+		return false
+	}
+	joined := strings.Join(argv, " ")
+	if prefix, ok := strings.CutSuffix(pattern, "*"); ok {
+		return strings.HasPrefix(joined, prefix)
+	}
+	return joined == pattern
+}
+
+// cwdMatches matches a working directory against pattern: "*" matches any
+// directory, "<dir>/*" matches dir and everything below it on path-component
+// boundaries, and anything else must equal the cleaned directory.
+func cwdMatches(pattern, cwd string) bool {
+	if cwd == "" {
+		return false
+	}
+	if pattern == "*" {
+		return true
+	}
+	cwd = filepath.Clean(cwd)
+	dir, ok := strings.CutSuffix(pattern, "/*")
+	if !ok {
+		dir, ok = strings.CutSuffix(pattern, string(filepath.Separator)+"*")
+	}
+	if ok {
+		dir = filepath.Clean(dir)
+		if cwd == dir {
+			return true
+		}
+		rel, err := filepath.Rel(dir, cwd)
+		return err == nil && filepath.IsLocal(rel)
+	}
+	return cwd == filepath.Clean(pattern)
 }
 
 // consumeUse tries to record a use in the consumption log.
