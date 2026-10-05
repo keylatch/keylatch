@@ -108,8 +108,8 @@ func TestInstallAcceptsBundleSignedByTrustedKey(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 	orgpolicy.ResetForTest()
-	active := orgpolicy.Active(ctx)
-	if active == nil || active.BundleID != b.BundleID {
+	active, err := orgpolicy.Active(ctx)
+	if err != nil || active == nil || active.BundleID != b.BundleID {
 		t.Fatalf("Active after reload = %+v, want bundle %q", active, b.BundleID)
 	}
 }
@@ -150,7 +150,7 @@ func TestInstallRejectsTamperedBundle(t *testing.T) {
 	if !errors.Is(err, bundlesig.ErrInvalidSignature) {
 		t.Fatalf("Install tampered: got %v, want ErrInvalidSignature", err)
 	}
-	if orgpolicy.Active(context.Background()) != nil {
+	if active, _ := orgpolicy.Active(context.Background()); active != nil {
 		t.Error("tampered bundle became active")
 	}
 }
@@ -213,15 +213,15 @@ func TestActiveIgnoresBundleNotSignedByPinnedKey(t *testing.T) {
 	orgpolicy.SignBundle(forged, other.priv)
 	writeBundleFile(t, dir, "active.json", forged)
 	orgpolicy.ResetForTest()
-	if got := orgpolicy.Active(ctx); got != nil {
-		t.Fatalf("Active returned a bundle signed by an unpinned key: %+v", got)
+	if got, err := orgpolicy.Active(ctx); got != nil || !errors.Is(err, orgpolicy.ErrActiveUntrusted) {
+		t.Fatalf("Active with a bundle signed by an unpinned key = %+v, %v; want ErrActiveUntrusted", got, err)
 	}
 
 	forged.Signature = legacyDigest(forged)
 	writeBundleFile(t, dir, "active.json", forged)
 	orgpolicy.ResetForTest()
-	if got := orgpolicy.Active(ctx); got != nil {
-		t.Fatalf("Active returned a bundle with a legacy digest: %+v", got)
+	if got, err := orgpolicy.Active(ctx); got != nil || !errors.Is(err, orgpolicy.ErrActiveUntrusted) {
+		t.Fatalf("Active with a legacy digest = %+v, %v; want ErrActiveUntrusted", got, err)
 	}
 }
 
@@ -245,8 +245,8 @@ func TestInstall_MonotonicVersion(t *testing.T) {
 
 func TestActive_NilWhenNoBundleInstalled(t *testing.T) {
 	setupDir(t)
-	if active := orgpolicy.Active(context.Background()); active != nil {
-		t.Errorf("Active = %+v, want nil when no bundle installed", active)
+	if active, err := orgpolicy.Active(context.Background()); active != nil || err != nil {
+		t.Errorf("Active = %+v, %v; want nil, nil when no bundle installed", active, err)
 	}
 }
 
@@ -265,8 +265,8 @@ func TestActive_NilWhenExpired(t *testing.T) {
 	orgpolicy.SignBundle(expired, key.priv)
 	writeBundleFile(t, dir, "active.json", expired)
 	orgpolicy.ResetForTest()
-	if active := orgpolicy.Active(ctx); active != nil {
-		t.Errorf("Active returned non-nil for expired bundle: %+v", active)
+	if active, err := orgpolicy.Active(ctx); active != nil || err != nil {
+		t.Errorf("Active for an expired bundle = %+v, %v; want nil, nil", active, err)
 	}
 }
 
@@ -308,5 +308,30 @@ func TestCompose_NilBundle_PassThrough(t *testing.T) {
 	local := orgpolicy.Decision{Allow: true, Reason: "local"}
 	if !orgpolicy.Compose(context.Background(), nil, local, "write", "production").Allow {
 		t.Error("nil bundle should pass through local decision")
+	}
+}
+
+func TestActiveFailsClosedWithoutPinnedKey(t *testing.T) {
+	dir := setupDir(t)
+	ctx := context.Background()
+	key := newKey(t)
+
+	b := newTestBundle(1, time.Hour)
+	orgpolicy.SignBundle(b, key.priv)
+	if err := orgpolicy.Install(ctx, writeBundleFile(t, dir, "bundle.json", b), key.pub); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	for name, corrupt := range map[string]func(){
+		"missing pin":       func() { _ = os.Remove(filepath.Join(dir, "trusted-key.pub")) },
+		"invalid pin":       func() { _ = os.WriteFile(filepath.Join(dir, "trusted-key.pub"), []byte("not a key\n"), 0o600) },
+		"unparsable bundle": func() { _ = os.WriteFile(filepath.Join(dir, "active.json"), []byte("{"), 0o600) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			corrupt()
+			orgpolicy.ResetForTest()
+			if got, err := orgpolicy.Active(ctx); got != nil || !errors.Is(err, orgpolicy.ErrActiveUntrusted) {
+				t.Fatalf("Active = %+v, %v; want ErrActiveUntrusted", got, err)
+			}
+		})
 	}
 }

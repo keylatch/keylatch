@@ -51,6 +51,11 @@ var (
 	ErrSignatureInvalid = errors.New("org policy bundle signature is invalid")
 	ErrKeyMismatch      = errors.New("org policy key differs from the key pinned by the first install")
 	ErrOrgDeny          = errors.New("request denied by org policy baseline")
+	// ErrActiveUntrusted means an installed bundle exists but cannot be
+	// trusted: it does not parse, no key is pinned, or its signature does
+	// not verify against the pinned key. Callers must deny rather than run
+	// without the org ceiling.
+	ErrActiveUntrusted = errors.New("installed org policy bundle cannot be trusted")
 )
 
 var (
@@ -178,7 +183,7 @@ func Install(ctx context.Context, bundlePath string, pubKey string) error {
 	if time.Now().After(b.ExpiresAt) {
 		return ErrBundleExpired
 	}
-	if existing := Active(ctx); existing != nil && b.Version <= existing.Version {
+	if existing, err := Active(ctx); err == nil && existing != nil && b.Version <= existing.Version {
 		return ErrBundleVersionLow
 	}
 
@@ -230,40 +235,46 @@ func writeAtomic(dest string, data []byte) error {
 	return nil
 }
 
-// Active returns the currently installed OrgBundle, or nil if none installed.
-// Returns nil if the bundle has expired (treats as if none installed).
+// Active returns the currently installed OrgBundle. It returns nil and no
+// error when no bundle is installed or the installed one has expired, and
+// ErrActiveUntrusted when a bundle is installed but cannot be verified.
 // Entire function runs under a single write lock to avoid lock-upgrade races.
-func Active(_ context.Context) *OrgBundle {
+func Active(_ context.Context) (*OrgBundle, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
 	if activeBundle != nil {
 		if time.Now().After(activeBundle.ExpiresAt) {
 			activeBundle = nil
-			return nil
+			return nil, nil
 		}
 		b := *activeBundle
-		return &b
+		return &b, nil
 	}
 
-	// Try loading from disk (also under the same mutex, preventing Install races).
 	data, err := os.ReadFile(activeBundlePath())
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("%w: %w", ErrActiveUntrusted, err)
 	}
 	var b OrgBundle
 	if err := json.Unmarshal(data, &b); err != nil {
-		return nil
-	}
-	if time.Now().After(b.ExpiresAt) {
-		return nil
+		return nil, fmt.Errorf("%w: %w", ErrActiveUntrusted, err)
 	}
 	pub, err := pinnedKey()
-	if err != nil || checkSignature(&b, pub) != nil {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("%w: no pinned key: %w", ErrActiveUntrusted, err)
+	}
+	if err := checkSignature(&b, pub); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrActiveUntrusted, err)
+	}
+	if time.Now().After(b.ExpiresAt) {
+		return nil, nil
 	}
 	activeBundle = &b
-	return &b
+	return &b, nil
 }
 
 // SignBundle sets b.Signature using the org's Ed25519 private key.

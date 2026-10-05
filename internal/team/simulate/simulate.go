@@ -34,7 +34,13 @@ func Simulate(ctx context.Context, capability, env string, member team.Member) (
 	}
 
 	// Check org policy first.
-	bundle := orgpolicy.Active(ctx)
+	bundle, err := orgpolicy.Active(ctx)
+	if err != nil {
+		result.Decision = "deny"
+		result.Reason = err.Error()
+		result.OrgOverride = true
+		return result, nil
+	}
 	if bundle != nil {
 		local := orgpolicy.Decision{Allow: true, Reason: "local default-allow"}
 		composed := orgpolicy.Compose(ctx, bundle, local, capability, env)

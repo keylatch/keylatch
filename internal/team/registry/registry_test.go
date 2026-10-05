@@ -249,3 +249,49 @@ func TestVerify(t *testing.T) {
 		t.Errorf("Verify tampered: got %v, want ErrBundleSignatureInvalid", err)
 	}
 }
+
+func TestListRejectsOlderBundleCopiedToNewerSlot(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("KEYLATCH_TEAM_DIR", dir)
+	ctx := context.Background()
+	key := newKey(t)
+
+	old := newTestBundle(1, []teamregistry.ProviderTemplate{newProvider("revoked-tool")})
+	teamregistry.SignBundle(old, key.priv)
+	if err := teamregistry.Install(ctx, writeBundleFile(t, dir, "b1.json", old), key.pub); err != nil {
+		t.Fatalf("Install v1: %v", err)
+	}
+	current := newTestBundle(2, nil)
+	teamregistry.SignBundle(current, key.priv)
+	if err := teamregistry.Install(ctx, writeBundleFile(t, dir, "b2.json", current), key.pub); err != nil {
+		t.Fatalf("Install v2: %v", err)
+	}
+
+	writeBundleFile(t, filepath.Join(dir, "registry"), "99.json", old)
+	if _, err := teamregistry.List(ctx); !errors.Is(err, teamregistry.ErrBundleVersionMismatch) {
+		t.Fatalf("List with a rolled-back bundle in a newer slot: got %v, want ErrBundleVersionMismatch", err)
+	}
+}
+
+func TestListIgnoresNonBundleFileNames(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("KEYLATCH_TEAM_DIR", dir)
+	ctx := context.Background()
+	key := newKey(t)
+
+	b := newTestBundle(1, []teamregistry.ProviderTemplate{newProvider("tool-a")})
+	teamregistry.SignBundle(b, key.priv)
+	if err := teamregistry.Install(ctx, writeBundleFile(t, dir, "b1.json", b), key.pub); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	stray := newTestBundle(5, nil)
+	teamregistry.SignBundle(stray, key.priv)
+	for _, name := range []string{"5.json.tmp", "5.json.bak", "-5.json", "05x.json"} {
+		writeBundleFile(t, filepath.Join(dir, "registry"), name, stray)
+	}
+
+	got, err := teamregistry.List(ctx)
+	if err != nil || len(got) != 1 || got[0].Provider != "tool-a" {
+		t.Fatalf("List = %+v, %v; want only the installed bundle", got, err)
+	}
+}

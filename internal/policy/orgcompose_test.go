@@ -53,8 +53,8 @@ func TestOrgCompose_BaselineDenyBeforeLocalMatch(t *testing.T) {
 	// Wire OrgComposeHook.
 	origHook := policy.OrgComposeHook
 	policy.OrgComposeHook = func(req policy.Request) (policy.Decision, bool) {
-		bundle := orgpolicy.Active(context.Background())
-		if bundle == nil {
+		bundle, err := orgpolicy.Active(context.Background())
+		if err != nil || bundle == nil {
 			return policy.Decision{}, false
 		}
 		local := orgpolicy.Decision{Allow: true, Reason: "local default"}
@@ -104,8 +104,8 @@ func TestOrgCompose_OrgAllowLocalDeny(t *testing.T) {
 	// Local policy: DefaultDeny=true, no rules.
 	origHook := policy.OrgComposeHook
 	policy.OrgComposeHook = func(req policy.Request) (policy.Decision, bool) {
-		bundle := orgpolicy.Active(context.Background())
-		if bundle == nil {
+		bundle, err := orgpolicy.Active(context.Background())
+		if err != nil || bundle == nil {
 			return policy.Decision{}, false
 		}
 		local := orgpolicy.Decision{Allow: true}
@@ -144,8 +144,8 @@ func TestOrgCompose_OrgAllowLocalNarrow(t *testing.T) {
 	// No org bundle = org allows all.
 	origHook := policy.OrgComposeHook
 	policy.OrgComposeHook = func(req policy.Request) (policy.Decision, bool) {
-		bundle := orgpolicy.Active(context.Background())
-		if bundle == nil {
+		bundle, err := orgpolicy.Active(context.Background())
+		if err != nil || bundle == nil {
 			return policy.Decision{}, false
 		}
 		local := orgpolicy.Decision{Allow: true}
