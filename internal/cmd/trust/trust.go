@@ -431,7 +431,7 @@ func newSharedSecretCmd() *cobra.Command {
 		Use:   "shared-secret",
 		Short: "Manage team shared secrets (AGE-encrypted)",
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-			if !manifest.M1().Enabled("team") {
+			if !manifest.Current().Enabled("team") {
 				return fmt.Errorf("shared-secret: team governance unavailable in this build")
 			}
 			return nil

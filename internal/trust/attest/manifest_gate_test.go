@@ -15,7 +15,7 @@ import (
 // signature verification itself; that repair requirement is expansion work
 // and intentionally stays failing until the crypto chain is implemented.
 func TestSecurityRegression_F40_HardwareAttestationUnavailableInM1(t *testing.T) {
-	if manifest.M1().Enabled("hardware_attestation") {
+	if manifest.Current().Enabled("hardware_attestation") {
 		t.Fatal("hardware_attestation is Supported in M1 — attest.Verify's unfixed forged-input handling (see forged_attestation_security_test.go) would become reachable")
 	}
 }

@@ -29,7 +29,7 @@ func opConnectFactory(_ context.Context, cfg backend.BackendConfig) (backend.Bac
 	// M1 excludes op-connect from the supported manager set (F44) — refuse
 	// selection here so no caller can instantiate it or reach the adapter's
 	// duplicate-creating write path.
-	if !manifest.M1().Enabled("opconnect") {
+	if !manifest.Current().Enabled("opconnect") {
 		return nil, fmt.Errorf("%w: op-connect is not supported in this release", backend.ErrUnavailable)
 	}
 

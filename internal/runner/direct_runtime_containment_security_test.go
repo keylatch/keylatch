@@ -26,7 +26,7 @@ func (d *spyDriver) Run(context.Context, runner.ExecRequest, registry.Connection
 // CLI/API/MCP caller is denied before a direct secret-injection mode can
 // run, with no fallback path.
 func TestSecurityRegression_F12_DirectRuntimesUnreachableInM1(t *testing.T) {
-	m := manifest.M1()
+	m := manifest.Current()
 	for _, id := range []string{"direct_brokered", "gateway_proxy", "direct_classic_sandboxed"} {
 		if m.Enabled(id) {
 			t.Errorf("manifest: %q must remain Unavailable in M1", id)
@@ -53,7 +53,7 @@ func TestSecurityRegression_F12_DirectRuntimesUnreachableInM1(t *testing.T) {
 // guard does not interfere with a Supported mode (gateway_typed).
 func TestSecurityRegression_F12_ManifestGuardAllowsSupportedMode(t *testing.T) {
 	spy := &spyDriver{}
-	guarded := runner.WithManifestGuard(spy, manifest.M1(), "gateway_typed")
+	guarded := runner.WithManifestGuard(spy, manifest.Current(), "gateway_typed")
 	if _, err := guarded.Run(context.Background(), runner.ExecRequest{}, registry.ConnectionTemplate{}); err != nil {
 		t.Fatalf("unexpected error for supported mode: %v", err)
 	}

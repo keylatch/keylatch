@@ -138,7 +138,7 @@ func newProxyUpCmd() *cobra.Command {
 			// gateway_proxy is excluded from M1 (F13, F27, F28) — refuse
 			// before any listener/PID-file side effect so no caller can
 			// observe a fake-healthy proxy.
-			if !manifest.M1().Enabled("gateway_proxy") {
+			if !manifest.Current().Enabled("gateway_proxy") {
 				return NewRuntimeNotAvailable("%v", ErrProxyUnsupported)
 			}
 
@@ -427,7 +427,7 @@ func startProxyWithGateway(ctx context.Context, port int, pidPath string) (<-cha
 	// gateway_proxy is excluded from M1 (F13, F27, F28) — refuse before any
 	// listener/PID-file side effect so no caller can observe a fake-healthy
 	// proxy.
-	if !manifest.M1().Enabled("gateway_proxy") {
+	if !manifest.Current().Enabled("gateway_proxy") {
 		return nil, ErrProxyUnsupported
 	}
 

@@ -34,7 +34,7 @@ func init() {
 func protonPassFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
 	// M1 excludes proton-pass from the supported manager set (F09, F10) —
 	// refuse selection here so no caller can instantiate it.
-	if !manifest.M1().Enabled("proton-pass") {
+	if !manifest.Current().Enabled("proton-pass") {
 		return nil, fmt.Errorf("%w: proton-pass is not supported in this release", backend.ErrUnavailable)
 	}
 

@@ -14,7 +14,7 @@ import (
 // without a real IdP exchange; that repair requirement is expansion work
 // and intentionally stays failing until real OIDC verification exists.
 func TestSecurityRegression_F41_SSOUnavailableInM1(t *testing.T) {
-	if manifest.M1().Enabled("sso") {
+	if manifest.Current().Enabled("sso") {
 		t.Fatal("sso is Supported in M1 — oidc.Login's synthetic session (see oidc_authentication_security_test.go) would become reachable")
 	}
 }

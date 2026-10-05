@@ -153,7 +153,7 @@ func newTeamInviteCmd() *cobra.Command {
 // environment-selected caller identity is even looked up. Active
 // authenticated subject plus session/rotation revocation is expansion work.
 func requireCallerAdmin(t *team.Team) error {
-	if !manifest.M1().Enabled("team") {
+	if !manifest.Current().Enabled("team") {
 		return fmt.Errorf("team: team governance unavailable in this build")
 	}
 	callerID := os.Getenv("KEYLATCH_MEMBER_ID")

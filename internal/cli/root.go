@@ -793,7 +793,7 @@ func newRunCmd() *cobra.Command {
 			// of runtime.Resolve's fallback hierarchy, so a denied or
 			// unavailable gateway can never fall back into a direct
 			// secret-injection mode.
-			m1 := manifest.M1()
+			supported := manifest.Current()
 			dr := runner.DispatchRunner{
 				Guard: guardFn,
 				Drivers: map[string]runner.Driver{
@@ -801,13 +801,13 @@ func newRunCmd() *cobra.Command {
 					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
 					string(runtime.RuntimeGatewaySDK):   runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
 					string(runtime.RuntimeDirectBrokered): runner.WithManifestGuard(
-						runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil), m1, "direct_brokered"),
+						runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil), supported, "direct_brokered"),
 					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
 						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
-						m1, "gateway_proxy"),
+						supported, "gateway_proxy"),
 					// direct_classic_sandboxed reinstated.
 					string(runtime.RuntimeDirectClassicSandboxed): runner.WithManifestGuard(
-						runner.NewClassicSandboxedDriver(nil), m1, "direct_classic_sandboxed"),
+						runner.NewClassicSandboxedDriver(nil), supported, "direct_classic_sandboxed"),
 				},
 			}
 

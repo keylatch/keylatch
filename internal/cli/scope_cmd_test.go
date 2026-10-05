@@ -12,7 +12,7 @@ import (
 )
 
 // TestScopeCmd_TableOutput proves `keylatch scope` is a real consumer of the
-// support manifest — it loads internal/manifest.M1() and prints entries.
+// support manifest — it loads internal/manifest.Current() and prints entries.
 func TestScopeCmd_TableOutput(t *testing.T) {
 	root := cli.NewRootCommand()
 	var out bytes.Buffer
@@ -21,7 +21,6 @@ func TestScopeCmd_TableOutput(t *testing.T) {
 	require.NoError(t, root.Execute())
 
 	got := out.String()
-	assert.Contains(t, got, "milestone: M1")
 	assert.Contains(t, got, "op")
 	assert.Contains(t, got, "supported")
 	assert.Contains(t, got, "gateway_proxy")
@@ -36,13 +35,11 @@ func TestScopeCmd_JSONOutput(t *testing.T) {
 	require.NoError(t, root.Execute())
 
 	var parsed struct {
-		Milestone string
-		Entries   []struct {
+		Entries []struct {
 			ID     string
 			Status string
 		}
 	}
 	require.NoError(t, json.NewDecoder(strings.NewReader(out.String())).Decode(&parsed))
-	assert.Equal(t, "M1", parsed.Milestone)
 	assert.NotEmpty(t, parsed.Entries)
 }

@@ -26,7 +26,7 @@ func InitFromConfig(ctx context.Context, env llmcontext.Lookup) error {
 	embed := &EmbedLoader{FS: providers.EmbeddedFS, Tier: TierCore}
 	loaders := []Loader{embed}
 
-	if manifest.M1().Enabled("community_loading") {
+	if manifest.Current().Enabled("community_loading") {
 		localDir := filepath.Join(paths.ConfigDir(env), "templates", "providers")
 		local := &FSLoader{Dir: localDir, Tier: TierLocal}
 

@@ -1,7 +1,6 @@
-// Package manifest is the single source of truth for what Keylatch supports
-// in the current release milestone. CLI help/doctor, the web UI, packaging,
-// and tests are all meant to consume this manifest rather than hardcoding
-// their own copy of the scope table (F20).
+// Package manifest is the single source of truth for what this Keylatch
+// build supports. CLI help/doctor, the web UI, packaging and tests consume
+// this manifest rather than hardcoding their own copy of the scope table.
 package manifest
 
 import "fmt"
@@ -10,13 +9,13 @@ import "fmt"
 type Status string
 
 const (
-	// Supported: the enabled M1 path. Fully wired and enforced.
+	// Supported: enabled in this build. Fully wired and enforced.
 	Supported Status = "supported"
-	// Unavailable: gated out of the M1 build. Unreachable via CLI/API/MCP/UI
+	// Unavailable: gated out of this build. Unreachable via CLI/API/MCP/UI
 	// entry points, regardless of feature flags or environment overrides.
 	Unavailable Status = "unavailable"
 	// Experimental: exists in source but is neither certified nor gated as a
-	// release boundary. Never enabled by the M1 build — see Enabled.
+	// release boundary. Never enabled — see Enabled.
 	Experimental Status = "experimental"
 )
 
@@ -44,53 +43,49 @@ type Entry struct {
 	Note string
 }
 
-// Manifest is an ordered, immutable set of entries for one release
-// milestone.
+// Manifest is an ordered, immutable set of entries for one build.
 type Manifest struct {
-	Milestone string
-	Entries   []Entry
+	Entries []Entry
 }
 
-// M1 returns the support manifest for the internal-beta milestone (M1).
-// See internal-production-readiness-plan.md section 1 for the source table.
-func M1() Manifest {
+// Current returns the support manifest of this build.
+func Current() Manifest {
 	return Manifest{
-		Milestone: "M1",
 		Entries: []Entry{
 			// Managers — backend registry IDs where one exists.
 			{ID: "op", Category: CategoryManager, Status: Supported, Note: "1Password CLI; concurrent with bw in one broker process"},
 			{ID: "bw", Category: CategoryManager, Status: Supported, Note: "Bitwarden CLI; concurrent with op in one broker process"},
-			{ID: "vaultwarden", Category: CategoryManager, Status: Unavailable, Note: "M2: separately certified Bitwarden server profile"},
-			{ID: "opconnect", Category: CategoryManager, Status: Unavailable, Note: "M2: 1Password Connect, by demand"},
-			{ID: "keeper", Category: CategoryManager, Status: Unavailable, Note: "M2, by demand"},
-			{ID: "proton-pass", Category: CategoryManager, Status: Unavailable, Note: "M2, by demand"},
-			{ID: "lastpass", Category: CategoryManager, Status: Unavailable, Note: "M2, by demand"},
-			{ID: "keychain", Category: CategoryManager, Status: Unavailable, Note: "macOS excluded from certified M1 platform (F16)"},
-			{ID: "file", Category: CategoryManager, Status: Unavailable, Note: "encrypted-file secret backend unavailable in M1 pending recovery/integrity/migration gates (F17)"},
+			{ID: "vaultwarden", Category: CategoryManager, Status: Unavailable, Note: "needs a separately certified Bitwarden server profile"},
+			{ID: "opconnect", Category: CategoryManager, Status: Unavailable, Note: "1Password Connect; enabled on demand"},
+			{ID: "keeper", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
+			{ID: "proton-pass", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
+			{ID: "lastpass", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
+			{ID: "keychain", Category: CategoryManager, Status: Unavailable, Note: "macOS is not a certified platform yet"},
+			{ID: "file", Category: CategoryManager, Status: Unavailable, Note: "encrypted-file secret backend unavailable pending recovery, integrity and migration checks"},
 
 			// Runtimes — internal/runtime, internal/runner driver mode names.
 			{ID: "gateway_typed", Category: CategoryRuntime, Status: Supported, Note: "typed gateway actions; certified provider contract"},
 			{ID: "gateway_sdk", Category: CategoryRuntime, Status: Supported, Note: "certified provider SDK routes only"},
-			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect/authority/credential-boundary fixes (F27, F28)"},
-			{ID: "direct_brokered", Category: CategoryRuntime, Status: Unavailable, Note: "excluded for M1"},
+			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect, authority and credential-boundary fixes"},
+			{ID: "direct_brokered", Category: CategoryRuntime, Status: Unavailable, Note: "excluded: no exchange strategies are wired"},
 			{ID: "direct_classic_sandboxed", Category: CategoryRuntime, Status: Unavailable, Note: "not equivalent to the isolated agent boundary; excluded"},
 
 			// Platforms.
 			{ID: "linux", Category: CategoryPlatform, Status: Supported, Note: "Linux broker plus isolated agent environment"},
-			{ID: "macos", Category: CategoryPlatform, Status: Unavailable, Note: "M2"},
-			{ID: "windows", Category: CategoryPlatform, Status: Unavailable, Note: "M2"},
-			{ID: "tauri_desktop", Category: CategoryPlatform, Status: Unavailable, Note: "packaged desktop excluded for M1 (F19, F45)"},
+			{ID: "macos", Category: CategoryPlatform, Status: Unavailable, Note: "not certified yet"},
+			{ID: "windows", Category: CategoryPlatform, Status: Unavailable, Note: "not certified yet"},
+			{ID: "tauri_desktop", Category: CategoryPlatform, Status: Unavailable, Note: "packaged desktop excluded"},
 
 			// Cross-cutting features — explicit exclusions list.
-			{ID: "admin", Category: CategoryFeature, Status: Unavailable, Note: "team/admin console excluded for M1 (F38, F39)"},
-			{ID: "team", Category: CategoryFeature, Status: Unavailable, Note: "team policy and delegated identities are M2"},
-			{ID: "sso", Category: CategoryFeature, Status: Unavailable, Note: "OIDC/SSO excluded for M1 (F41)"},
-			{ID: "hardware_attestation", Category: CategoryFeature, Status: Unavailable, Note: "hardware attestation/approval claims excluded for M1 (F40, F43)"},
-			{ID: "approval_inbox", Category: CategoryFeature, Status: Unavailable, Note: "approval inbox/actions/streams excluded; approval-required operations deny honestly (F26, F30, F33)"},
-			{ID: "hosted_telemetry", Category: CategoryFeature, Status: Unavailable, Note: "hosted telemetry excluded for M1 (F21)"},
-			{ID: "receipt_sharing", Category: CategoryFeature, Status: Unavailable, Note: "hosted receipt sharing excluded for M1 (F21)"},
-			{ID: "community_loading", Category: CategoryFeature, Status: Unavailable, Note: "community template installation/loading excluded for M1 (F42)"},
-			{ID: "manager_mutation", Category: CategoryFeature, Status: Unavailable, Note: "M1 reconnect changes a local reference only; create/update/delete/rotate on the manager itself is excluded"},
+			{ID: "admin", Category: CategoryFeature, Status: Unavailable, Note: "team/admin console excluded"},
+			{ID: "team", Category: CategoryFeature, Status: Unavailable, Note: "team policy and delegated identities are not shipped yet"},
+			{ID: "sso", Category: CategoryFeature, Status: Unavailable, Note: "OIDC/SSO excluded"},
+			{ID: "hardware_attestation", Category: CategoryFeature, Status: Unavailable, Note: "hardware attestation/approval claims excluded"},
+			{ID: "approval_inbox", Category: CategoryFeature, Status: Unavailable, Note: "approval inbox/actions/streams excluded; approval-required operations deny honestly"},
+			{ID: "hosted_telemetry", Category: CategoryFeature, Status: Unavailable, Note: "hosted telemetry excluded"},
+			{ID: "receipt_sharing", Category: CategoryFeature, Status: Unavailable, Note: "hosted receipt sharing excluded"},
+			{ID: "community_loading", Category: CategoryFeature, Status: Unavailable, Note: "community template installation/loading excluded"},
+			{ID: "manager_mutation", Category: CategoryFeature, Status: Unavailable, Note: "reconnect changes a local reference only; create/update/delete/rotate on the manager itself is excluded"},
 		},
 	}
 }
@@ -117,7 +112,7 @@ func (m Manifest) Status(id string) Status {
 // Enabled reports whether id may be used by this build. Only Supported
 // entries are enabled — Experimental entries are always excluded, so no
 // environment variable, feature flag, or config override can turn on an
-// experimental credential path in an M1 build. This is the sole enforcement
+// experimental credential path. This is the sole enforcement
 // point consumers should call before allowing an operation to proceed.
 func (m Manifest) Enabled(id string) bool {
 	return m.Status(id) == Supported

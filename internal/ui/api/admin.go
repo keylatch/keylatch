@@ -37,7 +37,7 @@ type AdminHandler struct {
 // server-authenticated role/JWT/membership verification is expansion work
 // for when the admin surface re-enters scope.
 func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !manifest.M1().Enabled("admin") {
+	if !manifest.Current().Enabled("admin") {
 		writeAdminError(w, http.StatusNotFound, "admin console unavailable in this build")
 		return
 	}
