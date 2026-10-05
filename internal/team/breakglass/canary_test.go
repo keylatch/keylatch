@@ -14,7 +14,7 @@ import (
 // Asserts canary DOES appear in the reason field (loud by design — spec §6.7).
 // Asserts canary is preserved in the request struct for audit visibility.
 func TestBreakGlassReasonCanary(t *testing.T) {
-	const sentinel = "KEYLATCH_CANARY_PHASE12_BG_breakglass_0xDEADBEEF"
+	const sentinel = "KEYLATCH_CANARY_TEAM_BG_breakglass_0xDEADBEEF"
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_TEAM_DIR", dir)
 	ctx := context.Background()

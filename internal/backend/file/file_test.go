@@ -189,7 +189,7 @@ func TestFileBackend_ListDoesNotReadValueFiles(t *testing.T) {
 func TestFileBackend_CanarySecret(t *testing.T) {
 	// Canary test: the canary value must NOT appear in plaintext on disk.
 	// v1.0.0: AEAD encryption, so this is always true.
-	canary := "KEYLATCH_CANARY_PHASE1_0xDEADBEEF"
+	canary := "KEYLATCH_CANARY_STORE_0xDEADBEEF"
 	dir := t.TempDir()
 	b := openKeyringBackendInDir(t, dir)
 	defer b.Close()

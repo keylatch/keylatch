@@ -112,7 +112,7 @@ func TestGet_ValidItem_ReturnsValue(t *testing.T) {
 
 	val, meta, err := b.Get(context.Background(), "default/openrouter/api_key")
 	require.NoError(t, err)
-	assert.Equal(t, "KEYLATCH_CANARY_PHASE2_0xDEADBEEF", string(val))
+	assert.Equal(t, "KEYLATCH_CANARY_MANAGER_0xDEADBEEF", string(val))
 	assert.Equal(t, "op", meta.Backend)
 	assert.Equal(t, "abc123opitem", string(meta.Accessor))
 }
@@ -174,7 +174,7 @@ func TestGet_VaultEnvOverride(t *testing.T) {
 
 	val, _, err := b.Get(context.Background(), "default/openrouter/api_key")
 	require.NoError(t, err)
-	assert.Equal(t, "KEYLATCH_CANARY_PHASE2_0xDEADBEEF", string(val))
+	assert.Equal(t, "KEYLATCH_CANARY_MANAGER_0xDEADBEEF", string(val))
 }
 
 // TestGet_InvalidPath_Error covers Get's parsePath error branch — a path
@@ -337,7 +337,7 @@ func TestGet_AccountSuffix_PassesAccountFlag(t *testing.T) {
 
 	val, _, err := b.Get(context.Background(), "default/openrouter:myaccount/api_key")
 	require.NoError(t, err)
-	assert.Equal(t, "KEYLATCH_CANARY_PHASE2_0xDEADBEEF", string(val))
+	assert.Equal(t, "KEYLATCH_CANARY_MANAGER_0xDEADBEEF", string(val))
 }
 
 // --- Canary assertion tests ---

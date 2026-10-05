@@ -8,13 +8,13 @@ import (
 
 // SC6-8 negative-control test: verifies canary suite catches a deliberately introduced leak.
 func TestNegativeControlLeakDetected(t *testing.T) {
-	// Seed a buffer that deliberately contains the Phase0 sentinel, simulating
+	// Seed a buffer that deliberately contains the core sentinel, simulating
 	// what a production code path would expose in stdout.
-	poisoned := []byte("stdout output: " + canary.Phase0Sentinel + " end")
+	poisoned := []byte("stdout output: " + canary.CoreSentinel + " end")
 
 	spy := &spyTB{}
 	canary.AssertNoLeak(spy,
-		[]string{canary.Phase0Sentinel},
+		[]string{canary.CoreSentinel},
 		canary.Stdout(poisoned),
 	)
 

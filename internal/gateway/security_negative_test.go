@@ -25,7 +25,7 @@ func TestSecurity_AuthorizationHeaderPassesThroughMiddleware(t *testing.T) {
 	handler := authBlockerMiddleware(okHandler, false)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	req.Header.Set("Authorization", "Bearer sk-canary-PHASE13-should-not-pass")
+	req.Header.Set("Authorization", "Bearer sk-canary-BROKER-should-not-pass")
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -55,7 +55,7 @@ func TestSecurity_ApiKeyQueryParamBlocked(t *testing.T) {
 func TestSecurity_BearerTokenInBodyBlocked(t *testing.T) {
 	handler := authBlockerMiddleware(okHandler, false)
 
-	body := `{"message":"Bearer sk-canary-PHASE13-0xDEADBEEF"}`
+	body := `{"message":"Bearer sk-canary-BROKER-0xDEADBEEF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/test", strings.NewReader(body))
 	req.ContentLength = int64(len(body))
 	rr := httptest.NewRecorder()

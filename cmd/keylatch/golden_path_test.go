@@ -18,9 +18,9 @@ import (
 	"github.com/keylatch/keylatch/internal/testutil"
 )
 
-// canaryPhase3 is the sentinel value used to verify no credential leak
+// canaryGolden is the sentinel value used to verify no credential leak
 // through the golden path.
-const canaryPhase3 = "KEYLATCH_CANARY_PHASE3_GOLDEN_0xCAFEBABE"
+const canaryGolden = "KEYLATCH_CANARY_CLI_GOLDEN_0xCAFEBABE"
 
 // goldenMockStore is an in-memory Store for golden path tests.
 type goldenMockStore struct {
@@ -110,7 +110,7 @@ func TestGoldenPath_FullUserJourney(t *testing.T) {
 	store := newGoldenMockStore()
 
 	// --- Step 2: Connect openrouter with canary api_key ---
-	canaryBytes := []byte(canaryPhase3)
+	canaryBytes := []byte(canaryGolden)
 	conn, err := connections.Connect(ctx, "openrouter", connections.ConnectOptions{
 		Namespace:      "default",
 		NonInteractive: true,
@@ -197,7 +197,7 @@ func TestGoldenPath_FullUserJourney(t *testing.T) {
 	mcpOutput := mcpBytes
 
 	// 5a: canary must not appear in any generated output.
-	canary := []byte(canaryPhase3)
+	canary := []byte(canaryGolden)
 	if bytes.Contains(snippetBytes, canary) {
 		t.Errorf("canary leaked into prose snippet")
 	}

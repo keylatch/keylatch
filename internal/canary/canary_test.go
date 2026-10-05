@@ -28,7 +28,7 @@ func (s *spyTB) Errorf(format string, args ...any) {
 func TestAssertNoLeak_NoLeak(t *testing.T) {
 	spy := &spyTB{}
 	canary.AssertNoLeak(spy,
-		[]string{canary.Phase0Sentinel},
+		[]string{canary.CoreSentinel},
 		canary.Stdout([]byte("safe stdout")),
 		canary.Stderr([]byte("safe stderr")),
 	)
@@ -40,7 +40,7 @@ func TestAssertNoLeak_NoLeak(t *testing.T) {
 // TestAssertNoLeak_StdoutLeak verifies that a sentinel present in stdout
 // triggers exactly one Errorf call.
 func TestAssertNoLeak_StdoutLeak(t *testing.T) {
-	sentinel := canary.Phase0Sentinel
+	sentinel := canary.CoreSentinel
 	spy := &spyTB{}
 	canary.AssertNoLeak(spy,
 		[]string{sentinel},
@@ -54,7 +54,7 @@ func TestAssertNoLeak_StdoutLeak(t *testing.T) {
 // TestAssertNoLeak_JSONResponseLeak verifies that a sentinel embedded in a
 // JSON-serialised struct is detected.
 func TestAssertNoLeak_JSONResponseLeak(t *testing.T) {
-	sentinel := canary.Phase1Sentinel
+	sentinel := canary.StoreSentinel
 	type payload struct {
 		Secret string `json:"secret"`
 	}
@@ -71,7 +71,7 @@ func TestAssertNoLeak_JSONResponseLeak(t *testing.T) {
 // TestAssertNoLeak_FileLeak verifies that a sentinel written to a temp file
 // is detected via the File channel.
 func TestAssertNoLeak_FileLeak(t *testing.T) {
-	sentinel := canary.Phase2Sentinel
+	sentinel := canary.ManagerSentinel
 	dir := t.TempDir()
 	path := filepath.Join(dir, "output.txt")
 	if err := os.WriteFile(path, []byte("leaking: "+sentinel), 0o600); err != nil {
@@ -91,8 +91,8 @@ func TestAssertNoLeak_FileLeak(t *testing.T) {
 // TestAssertNoLeak_MultipleSentinelsMultipleChannels verifies that all leaks
 // across multiple sentinels and channels are reported in a single pass.
 func TestAssertNoLeak_MultipleSentinelsMultipleChannels(t *testing.T) {
-	s0 := canary.Phase0Sentinel
-	s1 := canary.Phase1Sentinel
+	s0 := canary.CoreSentinel
+	s1 := canary.StoreSentinel
 
 	spy := &spyTB{}
 	canary.AssertNoLeak(spy,
@@ -111,7 +111,7 @@ func TestAssertNoLeak_MultipleSentinelsMultipleChannels(t *testing.T) {
 // "<<SENTINEL>>" instead. The error message preamble may still name the sentinel
 // for identification; only the context excerpt is checked here.
 func TestAssertNoLeak_ExcerptHidesRawSentinel(t *testing.T) {
-	sentinel := canary.Phase3Sentinel
+	sentinel := canary.CLISentinel
 	spy := &spyTB{}
 	canary.AssertNoLeak(spy,
 		[]string{sentinel},

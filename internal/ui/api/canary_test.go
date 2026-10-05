@@ -15,7 +15,7 @@ import (
 // checks. This is a meta-test: it walks a representative set of handlers
 // and asserts the canary sentinel is absent from every response.
 func TestCanary_MetaWalk(t *testing.T) {
-	sentinel := canary.Phase10Sentinel
+	sentinel := canary.UISentinel
 
 	handlers := []struct {
 		name    string
@@ -92,7 +92,7 @@ func TestCanary_SentinelAbsentInConnections(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	canary.AssertNoLeak(t,
-		[]string{canary.Phase10Sentinel, canary.Phase9Sentinel, canary.Phase8Sentinel},
+		[]string{canary.UISentinel, canary.GatewaySentinel, canary.PolicySentinel},
 		canary.JSONResponse(bytes.Clone(rec.Body.Bytes())),
 	)
 }

@@ -21,7 +21,7 @@ import (
 
 // canaryValue is the gateway canary secret. Must NEVER appear in responses,
 // headers, audit logs, or gateway log output.
-const canaryValue = "KEYLATCH_CANARY_PHASE9_GATEWAY_0xDEADBEEF"
+const canaryValue = "KEYLATCH_CANARY_GATEWAY_GATEWAY_0xDEADBEEF"
 
 // TestCanary verifies that the canary value never appears in any gateway output.
 //
@@ -59,7 +59,7 @@ func TestCanary_NeverLeaksInResponse(t *testing.T) {
 				{Name: "test_action"},
 			},
 			Redaction: []registry.RedactionRule{
-				{Pattern: `KEYLATCH_CANARY_PHASE9_GATEWAY_[A-Za-z0-9_]+`, Replacement: "****"},
+				{Pattern: `KEYLATCH_CANARY_GATEWAY_GATEWAY_[A-Za-z0-9_]+`, Replacement: "****"},
 			},
 			TestStrategy: registry.TestStrategy{
 				Endpoint: "http://" + upstreamHost + "/",

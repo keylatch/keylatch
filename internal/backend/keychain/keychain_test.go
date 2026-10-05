@@ -206,7 +206,7 @@ func TestGet_LastCallIsLock_MultipleOps(t *testing.T) {
 
 func TestCanarySecretNotInOutput(t *testing.T) {
 	// The canary must never appear in any test output captured by this test.
-	canary := "KEYLATCH_CANARY_PHASE1_0xDEADBEEF"
+	canary := "KEYLATCH_CANARY_STORE_0xDEADBEEF"
 
 	runner := setupMockRunner(testKeychainPath)
 	// Override the value response to return something that contains the canary

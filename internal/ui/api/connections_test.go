@@ -92,7 +92,7 @@ func TestConnectionsHandler_GET_ValueFree(t *testing.T) {
 
 	// Canary: response must not contain sentinel.
 	canary.AssertNoLeak(t,
-		[]string{canary.Phase10Sentinel},
+		[]string{canary.UISentinel},
 		canary.JSONResponse(rec.Body.String()),
 	)
 }
@@ -150,7 +150,7 @@ func TestConnectionDetailHandler_GET_ValueFree(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	canary.AssertNoLeak(t,
-		[]string{canary.Phase10Sentinel},
+		[]string{canary.UISentinel},
 		canary.JSONResponse(rec.Body.String()),
 	)
 }

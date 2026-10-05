@@ -218,7 +218,7 @@ func TestVersionsCmd_CanaryAbsent(t *testing.T) {
 	// Overwrite the value file with the canary string to simulate what an
 	// attacker's value blob might contain.
 	canaryPath := filepath.Join(dir, "values", "default", "ai", "openrouter", "api_key", "1")
-	if err := os.WriteFile(canaryPath, []byte("KEYLATCH_CANARY_PHASE4_VERSIONS_0xDEADBEEF"), 0o600); err != nil {
+	if err := os.WriteFile(canaryPath, []byte("KEYLATCH_CANARY_VERSIONS_VERSIONS_0xDEADBEEF"), 0o600); err != nil {
 		t.Fatalf("write canary: %v", err)
 	}
 
@@ -232,7 +232,7 @@ func TestVersionsCmd_CanaryAbsent(t *testing.T) {
 	root.SetArgs([]string{"versions", path})
 	root.Execute()
 
-	if strings.Contains(outBuf.String(), "KEYLATCH_CANARY_PHASE4_VERSIONS_0xDEADBEEF") {
+	if strings.Contains(outBuf.String(), "KEYLATCH_CANARY_VERSIONS_VERSIONS_0xDEADBEEF") {
 		t.Error("canary value appeared in versions output — S4-1 violated")
 	}
 }

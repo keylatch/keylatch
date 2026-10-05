@@ -10,42 +10,38 @@ import (
 	"testing"
 )
 
-// Sentinel constants. Each phase gets a distinct sentinel so leaks can be
-// attributed to the originating phase.
+// Sentinel constants. Each area gets a distinct sentinel so a leak can be
+// attributed to the code that produced it.
 const (
-	Phase0Sentinel = "KEYLATCH_CANARY_PHASE0_0xDEADBEEF"
-	Phase1Sentinel = "KEYLATCH_CANARY_PHASE1_0xDEADBEEF"
-	Phase2Sentinel = "KEYLATCH_CANARY_PHASE2_0xDEADBEEF"
-	Phase3Sentinel = "KEYLATCH_CANARY_PHASE3_0xDEADBEEF"
-	Phase4Sentinel = "KEYLATCH_CANARY_PHASE4_0xDEADBEEF"
-	Phase5Sentinel = "KEYLATCH_CANARY_PHASE5_0xDEADBEEF"
-	// Phase 6 and Phase 7 do not have value-bearing paths requiring canary
-	// protection (Phase 6 is test infrastructure; Phase 7 is release tooling).
-	Phase8Sentinel         = "KEYLATCH_CANARY_PHASE8_0xDEADBEEF"
-	Phase9Sentinel         = "KEYLATCH_CANARY_PHASE9_0xDEADBEEF"
-	Phase10Sentinel        = "KEYLATCH_CANARY_PHASE10_0xDEADBEEF"
-	Phase11Sentinel        = "KEYLATCH_CANARY_PHASE11_0xDEADBEEF"
-	Phase12Sentinel        = "KEYLATCH_CANARY_PHASE12_0xDEADBEEF"
-	Phase13Sentinel        = "KEYLATCH_CANARY_PHASE13_0xDEADBEEF"
-	Phase14DesktopSentinel = "KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF"
+	CoreSentinel     = "KEYLATCH_CANARY_CORE_0xDEADBEEF"
+	StoreSentinel    = "KEYLATCH_CANARY_STORE_0xDEADBEEF"
+	ManagerSentinel  = "KEYLATCH_CANARY_MANAGER_0xDEADBEEF"
+	CLISentinel      = "KEYLATCH_CANARY_CLI_0xDEADBEEF"
+	VersionsSentinel = "KEYLATCH_CANARY_VERSIONS_0xDEADBEEF"
+	AuditSentinel    = "KEYLATCH_CANARY_AUDIT_0xDEADBEEF"
+	PolicySentinel   = "KEYLATCH_CANARY_POLICY_0xDEADBEEF"
+	GatewaySentinel  = "KEYLATCH_CANARY_GATEWAY_0xDEADBEEF"
+	UISentinel       = "KEYLATCH_CANARY_UI_0xDEADBEEF"
+	TeamSentinel     = "KEYLATCH_CANARY_TEAM_0xDEADBEEF"
+	BrokerSentinel   = "KEYLATCH_CANARY_BROKER_0xDEADBEEF"
+	DesktopSentinel  = "KEYLATCH_CANARY_DESKTOP_0xDEADBEEF"
 )
 
 // RegisteredSentinels returns every canary sentinel managed by this package.
 func RegisteredSentinels() []string {
 	return []string{
-		Phase0Sentinel,
-		Phase1Sentinel,
-		Phase2Sentinel,
-		Phase3Sentinel,
-		Phase4Sentinel,
-		Phase5Sentinel,
-		Phase8Sentinel,
-		Phase9Sentinel,
-		Phase10Sentinel,
-		Phase11Sentinel,
-		Phase12Sentinel,
-		Phase13Sentinel,
-		Phase14DesktopSentinel,
+		CoreSentinel,
+		StoreSentinel,
+		ManagerSentinel,
+		CLISentinel,
+		VersionsSentinel,
+		AuditSentinel,
+		PolicySentinel,
+		GatewaySentinel,
+		UISentinel,
+		TeamSentinel,
+		BrokerSentinel,
+		DesktopSentinel,
 	}
 }
 

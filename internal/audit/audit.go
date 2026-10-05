@@ -266,8 +266,8 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 	}
 
 	// Derive the chain MAC key from salt only (no DEK).
-	// This allows VerifyChain to work in header-only mode without the AuditDEK
-	//: the chain MAC key depends only on the salt, not the DEK.
+	// This allows VerifyChain to work in header-only mode without the AuditDEK:
+	// the chain MAC key depends only on the salt, not the DEK.
 	chainMACKey := DeriveChainMACKey(salt)
 
 	l := &Logger{

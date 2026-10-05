@@ -15,11 +15,8 @@ import (
 // test file that calls AssertNoLeak.
 //
 // Packages that do not yet have AssertNoLeak coverage are skipped with a note
-// so that the meta build gate can run without blocking the CI pipeline while
-// coverage is added incrementally in later phases.
-//
-// Missing package directories (e.g. internal/gateway or internal/ui which are
-// future-phase) are also skipped gracefully.
+// so that the check can run without blocking CI while coverage is added
+// incrementally. Missing package directories are skipped too.
 func TestCanaryCoverage(t *testing.T) {
 	// Locate the module root by walking up from this file's directory.
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -45,7 +42,7 @@ func TestCanaryCoverage(t *testing.T) {
 			entries, err := os.ReadDir(pkgDir)
 			if err != nil {
 				if os.IsNotExist(err) {
-					t.Skipf("package %s does not exist yet (future phase) — skipping", pkg)
+					t.Skipf("package %s does not exist — skipping", pkg)
 					return
 				}
 				t.Fatalf("ReadDir %s: %v", pkgDir, err)
@@ -70,9 +67,9 @@ func TestCanaryCoverage(t *testing.T) {
 
 			if !found {
 				// Skip (rather than fail) packages that have not yet adopted canary
-				// testing. This allows the meta gate to run during phase 6 while
-				// canary calls are added to value-bearing packages in later phases.
-				t.Skipf("package %s has no test file calling AssertNoLeak yet (pending later phase)", pkg)
+				// testing, so canary calls can be added to value-bearing packages
+				// one at a time.
+				t.Skipf("package %s has no test file calling AssertNoLeak yet", pkg)
 			}
 		})
 	}

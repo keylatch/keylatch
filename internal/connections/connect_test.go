@@ -40,7 +40,7 @@ func (s *countingErrStore) List(ctx context.Context, prefix string) ([]backend.E
 }
 
 // canaryValue is injected as a secret field value for canary leak tests.
-const canaryValue = "KEYLATCH_CANARY_PHASE3_CONNECT_0xDEADBEEF_secret_value"
+const canaryValue = "KEYLATCH_CANARY_CLI_CONNECT_0xDEADBEEF_secret_value"
 
 // TestConnectWritesFieldsToStore verifies that Connect stores each field in the
 // mock backend and returns a Connection with Status="untested".

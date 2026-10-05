@@ -83,7 +83,7 @@ func SetMeta(ctx context.Context, path string, m vmeta.Meta, cfg config.Config, 
 // Empty prefix returns all metadata. Results are sorted by Meta.Path.
 //
 // Security invariant: MUST NOT call backend.Get.
-// Canary invariant: output must never contain KEYLATCH_CANARY_PHASE4_LIST_0xDEADBEEF.
+// Canary invariant: output must never contain KEYLATCH_CANARY_VERSIONS_LIST_0xDEADBEEF.
 func ListMeta(ctx context.Context, prefix string, cfg config.Config, env llmcontext.Lookup) ([]vmeta.Meta, error) {
 	b, err := dispatch.Select(ctx, cfg, env)
 	if err != nil {

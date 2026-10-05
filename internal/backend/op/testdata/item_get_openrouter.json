@@ -12,7 +12,7 @@
       "id": "field001",
       "label": "api_key",
       "type": "CONCEALED",
-      "value": "KEYLATCH_CANARY_PHASE2_0xDEADBEEF"
+      "value": "KEYLATCH_CANARY_MANAGER_0xDEADBEEF"
     },
     {
       "id": "field002",

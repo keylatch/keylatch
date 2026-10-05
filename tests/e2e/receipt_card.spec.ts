@@ -3,7 +3,7 @@
  *
  * Playwright E2E tests for:
  *   1. Receipt card value-free assertion:
- *      The canary KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF must not appear
+ *      The canary KEYLATCH_CANARY_DESKTOP_0xDEADBEEF must not appear
  *      in rendered HTML across any route that emits a receipt card.
  *
  *   2. CSP header assertion:
@@ -19,7 +19,7 @@
 import { test, expect, Page, Response } from '@playwright/test';
 
 // The canary value that must never appear in rendered HTML.
-const CANARY = 'KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF';
+const CANARY = 'KEYLATCH_CANARY_DESKTOP_0xDEADBEEF';
 
 // The exact CSP string required by the security policy. Must match the value emitted by
 // internal/ui/middleware.go cspValue. Strict: no unsafe-inline anywhere,
@@ -73,7 +73,7 @@ test.describe('Receipt card value-free assertion', () => {
       (window as any).__canaryFound = false;
       const observer = new MutationObserver(() => {
         const body = document.body?.innerText ?? '';
-        if (body.includes('KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF')) {
+        if (body.includes('KEYLATCH_CANARY_DESKTOP_0xDEADBEEF')) {
           (window as any).__canaryFound = true;
         }
       });

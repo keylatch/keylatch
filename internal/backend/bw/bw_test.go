@@ -97,7 +97,7 @@ func TestGet_ValidItem_ReturnsValue(t *testing.T) {
 
 	val, meta, err := b.Get(context.Background(), "default/openrouter/api_key")
 	require.NoError(t, err)
-	assert.Equal(t, "KEYLATCH_CANARY_PHASE2_0xDEADBEEF", string(val))
+	assert.Equal(t, "KEYLATCH_CANARY_MANAGER_0xDEADBEEF", string(val))
 	assert.Equal(t, "bw", meta.Backend)
 }
 

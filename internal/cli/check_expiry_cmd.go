@@ -28,7 +28,7 @@ type checkExpiryEntry struct {
 
 // newCheckExpiryCmd returns the `check-expiry` command.
 // Security invariant: MUST NOT call vault.Get or backend.Get.
-// Canary invariant: output must not contain KEYLATCH_CANARY_PHASE4_EXPIRY_0xDEADBEEF.
+// Canary invariant: output must not contain KEYLATCH_CANARY_VERSIONS_EXPIRY_0xDEADBEEF.
 func newCheckExpiryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "check-expiry [--days N] [--json]",

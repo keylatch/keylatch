@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const canaryPhase3MCP = "KEYLATCH_CANARY_PHASE3_MCP_0xDEADBEEF"
+const canaryMCP = "KEYLATCH_CANARY_CLI_MCP_0xDEADBEEF"
 
 // setupCanaryConnection seeds a fixture connection with a canary value in the vault.
 func setupCanaryConnection(t *testing.T, store *mockStore) {
@@ -22,7 +22,7 @@ func setupCanaryConnection(t *testing.T, store *mockStore) {
 	_, err := connections.Connect(ctx, "openrouter", connections.ConnectOptions{
 		Namespace:      "default",
 		NonInteractive: true,
-		Fields:         map[string][]byte{"api_key": []byte(canaryPhase3MCP)},
+		Fields:         map[string][]byte{"api_key": []byte(canaryMCP)},
 	}, store)
 	require.NoError(t, err)
 }
@@ -84,7 +84,7 @@ func TestCanaryDoesNotLeakThroughMCPTools(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			response := invokeHandler(t, tc.handler, tc.args)
-			assert.NotContains(t, response, canaryPhase3MCP,
+			assert.NotContains(t, response, canaryMCP,
 				"tool %q must not contain canary value in response", tc.name)
 		})
 	}
@@ -107,7 +107,7 @@ func TestStatusToolReturnsNoSecretFields(t *testing.T) {
 	for _, s := range statuses {
 		// Fields must contain field NAMES only.
 		for _, f := range s.Connection.Fields {
-			assert.NotEqual(t, canaryPhase3MCP, f,
+			assert.NotEqual(t, canaryMCP, f,
 				"connection field must be a name, not a value")
 		}
 	}

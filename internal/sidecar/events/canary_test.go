@@ -17,7 +17,7 @@ func TestCanary_SidecarOutputDoesNotContainSentinels(t *testing.T) {
 
 	upstreamCh := make(chan interface{}, 1)
 	upstreamCh <- map[string]interface{}{
-		"approval_id": canarypkg.Phase14DesktopSentinel,
+		"approval_id": canarypkg.DesktopSentinel,
 		"provider":    "github",
 		"action":      "read:repo",
 		"actor":       "claude-code",

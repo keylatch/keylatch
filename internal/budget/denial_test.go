@@ -48,7 +48,7 @@ func TestBudgetDenial_Receipt(t *testing.T) {
 
 // TestBudgetDenial_ReceiptNoTokens verifies no token values appear in receipt.
 func TestBudgetDenial_ReceiptNoTokens(t *testing.T) {
-	canary := "sk-canary-PHASE13-0xDEADBEEF"
+	canary := "sk-canary-BROKER-0xDEADBEEF"
 	receipt := BudgetDenialReceipt{
 		ActorHMAC:    hashActorID(canary),
 		Capability:   "api.call",
