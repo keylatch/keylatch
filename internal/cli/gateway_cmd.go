@@ -364,6 +364,14 @@ func newGatewayUpCmd() *cobra.Command {
 				})
 			}
 
+			// The gateway's job is to inject the provider credential into the
+			// upstream request; without a vault it would forward requests
+			// unauthenticated, so an unusable backend is fatal here.
+			vaultReader, err := newGatewayVaultReader(ctx, loadCLIConfig(c), env)
+			if err != nil {
+				return fmt.Errorf("gateway up: %w (run `keylatch doctor`)", err)
+			}
+
 			opts := gateway.ServerOptions{
 				Bind:              bind,
 				SigningKey:        signingKey,
@@ -374,6 +382,7 @@ func newGatewayUpCmd() *cobra.Command {
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
 				Budget:            budgetCounter,
+				Vault:             vaultReader,
 				// PolicyPath: default policy location. New() treats a
 				// missing file as "not configured" and stays pass-through —
 				// this does not change behavior for operators who have

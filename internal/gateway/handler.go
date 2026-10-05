@@ -321,6 +321,12 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		ctx = audit.WithEmitter(ctx, audit.AsEmitter(s.opts.AuditLogger))
 	}
 	var rootCredential []byte
+	if rt.SecretRef != "" && s.vault == nil {
+		// Fail closed: forwarding a credentialed route without its credential
+		// would send an unauthenticated request upstream.
+		writeError(w, http.StatusServiceUnavailable, "vault_not_configured", "gateway has no vault configured")
+		return
+	}
 	if s.vault != nil && rt.SecretRef != "" {
 		var vaultErr error
 		rootCredential, _, vaultErr = s.vault.Get(ctx, rt.SecretRef)
@@ -337,8 +343,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// When vault is nil (tests without vault), rootCredential stays nil and
-	// the broker's static_gateway_only strategy treats it as an empty credential.
+	// Routes without a SecretRef carry no credential; rootCredential stays nil.
 	// rootCredential is zeroed in the single defer below — do not add a second defer here.
 
 	// Step 8: Exchange credential via broker.
