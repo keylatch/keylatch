@@ -17,8 +17,7 @@ import (
 // All state changes are written atomically via a single atomicWrite.
 // Returns the new term number.
 func (kr *Keyring) RotateTerm(kk kek.KEK) (int, error) {
-	lockPath := flockPath(kr.path)
-	unlock, err := acquireFlock(lockPath)
+	unlock, err := acquireFlock(kr.lockPath)
 	if err != nil {
 		return 0, fmt.Errorf("keyring.RotateTerm: acquire lock: %w", err)
 	}
@@ -32,6 +31,8 @@ func (kr *Keyring) RotateTerm(kk kek.KEK) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Defense in depth: never let a reload roll back GCM nonce counters.
+	kf.GCMState = mergeGCMCounters(kr.file.GCMState, kf.GCMState)
 	kr.file = kf
 
 	// Generate a new random DEK.
@@ -87,8 +88,7 @@ func (kr *Keyring) RotateTerm(kk kek.KEK) (int, error) {
 // RotateKEK re-wraps every non-destroyed term's DEK under newKEK, then
 // writes the keyring atomically. This replaces the KEK without changing DEKs.
 func (kr *Keyring) RotateKEK(newKEK kek.KEK) error {
-	lockPath := flockPath(kr.path)
-	unlock, err := acquireFlock(lockPath)
+	unlock, err := acquireFlock(kr.lockPath)
 	if err != nil {
 		return fmt.Errorf("keyring.RotateKEK: acquire lock: %w", err)
 	}
@@ -102,7 +102,13 @@ func (kr *Keyring) RotateKEK(newKEK kek.KEK) error {
 	if err != nil {
 		return err
 	}
+	// Defense in depth: never let a reload roll back GCM nonce counters.
+	kf.GCMState = mergeGCMCounters(kr.file.GCMState, kf.GCMState)
 	kr.file = kf
+
+	if kr.postReloadHook != nil {
+		kr.postReloadHook()
+	}
 
 	// Re-wrap each non-destroyed term.
 	for i := range kr.file.Terms {
@@ -136,8 +142,7 @@ func (kr *Keyring) RotateKEK(newKEK kek.KEK) error {
 // Returns an error if term n is the current active term (rotate first) or
 // if the term does not exist.
 func (kr *Keyring) DestroyTerm(term int) error {
-	lockPath := flockPath(kr.path)
-	unlock, err := acquireFlock(lockPath)
+	unlock, err := acquireFlock(kr.lockPath)
 	if err != nil {
 		return fmt.Errorf("keyring.DestroyTerm: acquire lock: %w", err)
 	}
@@ -151,6 +156,8 @@ func (kr *Keyring) DestroyTerm(term int) error {
 	if err != nil {
 		return err
 	}
+	// Defense in depth: never let a reload roll back GCM nonce counters.
+	kf.GCMState = mergeGCMCounters(kr.file.GCMState, kf.GCMState)
 	kr.file = kf
 
 	if kr.file.ActiveTerm == term {
