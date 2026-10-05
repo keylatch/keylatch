@@ -30,6 +30,7 @@ func TestDenyCmd_Success(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -53,6 +54,7 @@ func TestDenyCmd_JSON_WithReason(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -115,6 +117,7 @@ func TestDeny_Success(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -137,9 +140,10 @@ func TestDeny_NotFound(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	// Verify the store itself returns ErrNotFound for unknown tokens.
-	err := approval.Deny(context.Background(), approvalsDir, "apv_does_not_exist")
+	err := approval.Deny(context.Background(), approvalsDir, "apv_00000000000000000000000000000000", testDecisionKey)
 	if !errors.Is(err, approval.ErrNotFound) {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -150,14 +154,15 @@ func TestDeny_AlreadyDecided(t *testing.T) {
 	approvalsDir, _ := setupApprovalDir(t)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 	// Deny first.
-	if err := approval.Deny(context.Background(), approvalsDir, token); err != nil {
+	if err := approval.Deny(context.Background(), approvalsDir, token, testDecisionKey); err != nil {
 		t.Fatalf("first deny: %v", err)
 	}
 	// Second deny should return ErrAlreadyActed.
-	err := approval.Deny(context.Background(), approvalsDir, token)
+	err := approval.Deny(context.Background(), approvalsDir, token, testDecisionKey)
 	if !errors.Is(err, approval.ErrAlreadyActed) {
 		t.Errorf("expected ErrAlreadyActed; got %v", err)
 	}
@@ -171,6 +176,7 @@ func TestDeny_All_Confirmed(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	_ = createPendingApproval(t, approvalsDir)
 	_ = createPendingApproval(t, approvalsDir)
@@ -195,6 +201,7 @@ func TestDeny_All_Aborted(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	_ = createPendingApproval(t, approvalsDir)
 
@@ -219,6 +226,7 @@ func TestDeny_All_YesSkipsPrompt(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 
@@ -252,12 +260,13 @@ func TestDeny_All_SkipsPreDecidedEntries(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token1 := createPendingApproval(t, approvalsDir)
 	token2 := createPendingApproval(t, approvalsDir)
 
 	// Pre-approve token1 to simulate a race (already decided).
-	if err := approval.Approve(context.Background(), approvalsDir, token1); err != nil {
+	if err := approval.Approve(context.Background(), approvalsDir, token1, testDecisionKey); err != nil {
 		t.Fatalf("pre-approve: %v", err)
 	}
 
@@ -290,6 +299,7 @@ func TestDeny_All_JSON(t *testing.T) {
 	t.Setenv("KEYLATCH_APPROVALS_DIR", approvalsDir)
 	testutil.ClearLLMSessionEnv(t)
 	withInteractiveStdin(t, true)
+	withApprover(t)
 
 	token := createPendingApproval(t, approvalsDir)
 

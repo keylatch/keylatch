@@ -6,11 +6,26 @@ Keylatch's approval system lets human operators review and act on secret-access 
 
 When an LLM session requests a credential through the gateway, keylatch can require a human to approve the request before it proceeds. Pending requests are persisted to `~/.keylatch/approvals/` and survive restarts.
 
-The `keylatch approve` and `keylatch deny` commands are **always blocked inside LLM sessions** (exit 2, SecurityBlock) — this is a safety invariant. Approvals must be performed by a human operator in a separate terminal.
+Approval decisions are made only by a human on a terminal:
+
+- `keylatch approve` and `keylatch deny` are **always blocked inside LLM sessions** (exit 2, SecurityBlock).
+- They require an interactive terminal on stdin; piped, scripted and agent tool-call invocations are refused.
+- They ask for the **approver passphrase**, set once with `keylatch approve init`. The passphrase is read only from the terminal, never from a flag, file or environment variable.
+- Every decision is signed with an Ed25519 key derived from that passphrase. An approval that is unsigned, signed with another key, or edited after signing is rejected.
+- The gateway has no approval endpoints. `/approve/` and `/approvals` return 404.
+- Approval tokens must be exactly `apv_` followed by 32 lowercase hex characters; anything else is refused before any file is touched.
 
 ---
 
 ## Commands
+
+### `keylatch approve init`
+
+Set or change the approver passphrase (at least 12 characters). Changing it asks for the current passphrase first; decisions signed with the old one stop verifying. The public half of the key is stored in `approver.json` in the keylatch config directory with mode 0600; the private key and the passphrase are never stored.
+
+```
+keylatch approve init
+```
 
 ### `keylatch approve <token>`
 
@@ -32,9 +47,9 @@ keylatch approve apv_<token> --json
 | Code | Meaning |
 |------|---------|
 | 0 | Approved successfully |
-| 1 | Token already approved or denied |
-| 2 | Blocked — LLM session detected |
-| 3 | Token not found |
+| 1 | Token already approved or denied, or no approver passphrase is set |
+| 2 | Blocked: LLM session detected, no interactive terminal, or wrong approver passphrase |
+| 3 | Token not found or malformed |
 | 5 | Unexpected error |
 
 **Error: expired token**
@@ -160,7 +175,7 @@ Default TTL is **15 minutes**. The TTL is set at request creation time by the ca
 ## Audit Trail
 
 Every approval or denial is recorded:
-- The approval file at `~/.keylatch/approvals/<token>.json` stores `status`, `note`, `actor`, and timestamps.
+- The approval file at `~/.keylatch/approvals/<token>.json` stores `status`, `note`, `actor`, timestamps, `decided_at` and the approver `signature`.
 - The keylatch audit log captures the decision event.
 
 Use `keylatch audit` to inspect the audit log.

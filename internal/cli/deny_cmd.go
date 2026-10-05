@@ -52,72 +52,43 @@ prompted to confirm unless --yes is also set. --json emits
 {"deniedCount": N, "requestIds": [...]} on success.
 
 Denials must be performed by a human operator: the command requires an
-interactive terminal on stdin and is refused inside a detected LLM session
-(see 'keylatch env' for the recognized signals).`,
+interactive terminal on stdin, is refused inside a detected LLM session
+(see 'keylatch env' for the recognized signals) and asks for the approver
+passphrase set with 'keylatch approve init'.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			env := llmcontext.DefaultLookup
-
-			// LLM session guard: denials must not run inside LLM sessions.
-			// Returns a *CLIError rather than printing directly here — main.go
-			// is the single place that prints it; printing here too
-			// would double-print.
-			if llmcontext.IsLLMSession(env) {
-				return &CLIError{
-					Class:   "SecurityBlock",
-					Code:    exitcode.SecurityBlock,
-					Message: "deny: command is not permitted inside an LLM session. Denials must be performed by a human operator outside of an LLM session. (KL-4111)",
-				}
-			}
-
-			if err := requireInteractiveTerminal("deny", "KL-4115"); err != nil {
+			if err := requireHumanApprover("deny", "KL-4111", "KL-4115"); err != nil {
 				return err
 			}
 
-			approvalsDir := paths.ApprovalsDir(env)
+			approvalsDir := paths.ApprovalsDir(llmcontext.DefaultLookup)
 
-			// --all mode: deny every pending approval.
 			if denyAll {
 				return runDenyAll(c, approvalsDir, reason, skipPrompt, useJSON)
 			}
 
-			// Single-token mode.
 			if len(args) == 0 {
 				return fmt.Errorf("deny: requires a <token> argument or --all flag")
 			}
 			token := args[0]
 
-			// All branches below return a *CLIError without printing —
-			// main.go prints it exactly once (see the guard above).
-			if err := approval.DenyWithReason(c.Context(), approvalsDir, token, reason); err != nil {
-				if errors.Is(err, approval.ErrNotFound) {
-					return &CLIError{
-						Class:   "Missing",
-						Code:    exitcode.Missing,
-						Message: fmt.Sprintf("approval %q not found. Check the token with 'keylatch ui' or the Approval Inbox. (KL-4112)", token),
-					}
-				}
-				// ErrExpiredTTL satisfies errors.Is(ErrAlreadyActed) — check it first.
-				var expErr *approval.ErrExpiredTTL
-				if errors.As(err, &expErr) {
-					return &CLIError{
-						Class:   "UserError",
-						Code:    exitcode.UserError,
-						Message: fmt.Sprintf("approval %q %s. The request TTL has elapsed. Ask the agent to re-submit. (KL-4114)", token, expErr.Error()),
-					}
-				}
-				if errors.Is(err, approval.ErrAlreadyActed) {
-					return &CLIError{
-						Class:   "UserError",
-						Code:    exitcode.UserError,
-						Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4113)", token),
-					}
-				}
-				return &CLIError{
-					Class:   "OperationFailed",
-					Code:    exitcode.OperationFailed,
-					Message: fmt.Sprintf("failed to deny %q: %v. (KL-4110)", token, err),
-				}
+			ar, err := approval.Get(c.Context(), approvalsDir, token)
+			if err == nil {
+				err = undecided(ar)
+			}
+			if err != nil {
+				return denyError(token, err)
+			}
+			printApprovalSummary(c.ErrOrStderr(), ar)
+
+			key, err := unlockApprover("deny", "KL-4116", "KL-4117")
+			if err != nil {
+				return err
+			}
+			defer clear(key)
+
+			if err := approval.DenyWithReason(c.Context(), approvalsDir, token, reason, key); err != nil {
+				return denyError(token, err)
 			}
 
 			out := denyOutput{
@@ -181,10 +152,16 @@ func runDenyAll(c *cobra.Command, approvalsDir, reason string, skipPrompt, useJS
 		}
 	}
 
+	key, err := unlockApprover("deny --all", "KL-4116", "KL-4117")
+	if err != nil {
+		return err
+	}
+	defer clear(key)
+
 	// Deny each — tolerate races (skip non-pending silently).
 	var deniedIDs []string
 	for _, ar := range pending {
-		err := approval.DenyWithReason(ctx, approvalsDir, ar.Token, reason)
+		err := approval.DenyWithReason(ctx, approvalsDir, ar.Token, reason, key)
 		if err == nil {
 			deniedIDs = append(deniedIDs, ar.Token)
 			continue
@@ -210,4 +187,36 @@ func runDenyAll(c *cobra.Command, approvalsDir, reason string, skipPrompt, useJS
 
 	fmt.Fprintf(c.OutOrStdout(), "denied %d approval(s).\n", len(deniedIDs))
 	return nil
+}
+
+// denyError maps approval package errors to CLI errors for deny.
+func denyError(token string, err error) error {
+	if errors.Is(err, approval.ErrNotFound) {
+		return &CLIError{
+			Class:   "Missing",
+			Code:    exitcode.Missing,
+			Message: fmt.Sprintf("approval %q not found. Check the token with 'keylatch approve list'. (KL-4112)", token),
+		}
+	}
+	// ErrExpiredTTL satisfies errors.Is(ErrAlreadyActed) — check it first.
+	var expErr *approval.ErrExpiredTTL
+	if errors.As(err, &expErr) {
+		return &CLIError{
+			Class:   "UserError",
+			Code:    exitcode.UserError,
+			Message: fmt.Sprintf("approval %q %s. The request TTL has elapsed. Ask the agent to re-submit. (KL-4114)", token, expErr.Error()),
+		}
+	}
+	if errors.Is(err, approval.ErrAlreadyActed) {
+		return &CLIError{
+			Class:   "UserError",
+			Code:    exitcode.UserError,
+			Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4113)", token),
+		}
+	}
+	return &CLIError{
+		Class:   "OperationFailed",
+		Code:    exitcode.OperationFailed,
+		Message: fmt.Sprintf("failed to deny %q: %v. (KL-4110)", token, err),
+	}
 }
