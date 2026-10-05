@@ -25,6 +25,9 @@
 #   CANARY_TIMEOUT   — seconds to wait for keylatchd startup (default: 10)
 
 set -euo pipefail
+# Keylatch refuses state directories other users can read, as a real
+# install creates them; create every throwaway one owner-only.
+umask 077
 
 KEYLATCH_BIN="${KEYLATCH_BIN:-keylatch}"
 KEYLATCHD_ADDR="${KEYLATCHD_ADDR:-127.0.0.1:17890}"

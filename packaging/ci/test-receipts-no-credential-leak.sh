@@ -18,6 +18,9 @@
 #   bash packaging/ci/test-receipts-no-credential-leak.sh [--keylatch <binary>]
 
 set -euo pipefail
+# Keylatch refuses state directories other users can read, as a real
+# install creates them; create every throwaway one owner-only.
+umask 077
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 
