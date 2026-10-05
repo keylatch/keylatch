@@ -298,8 +298,11 @@ func New(opts ServerOptions) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.healthHandler)
-	mux.HandleFunc("POST /approve/", s.approveHandler)
-	mux.HandleFunc("GET /approvals", s.approvalsHandler)
+	// Approval decisions are made only by `keylatch approve` and `deny` on a
+	// human's terminal. These former routes stay reserved so a request to
+	// them never reaches the proxy.
+	mux.Handle("/approve/", http.NotFoundHandler())
+	mux.Handle("/approvals", http.NotFoundHandler())
 
 	// Gateway proxy route (catch-all): wrap gatewayHandler with the security
 	// middleware chain. Order matches the request flow: auth-blocker first
