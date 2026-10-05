@@ -2,6 +2,8 @@ package simulate_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/team"
+	"github.com/keylatch/keylatch/internal/team/bundlesig"
 	"github.com/keylatch/keylatch/internal/team/orgpolicy"
 	"github.com/keylatch/keylatch/internal/team/simulate"
 )
@@ -44,12 +47,18 @@ func installDenyBundle(t *testing.T, capability string) {
 		AllowedEnvelope: orgpolicy.AllowedEnvelope{},
 		BaselineDeny:    []string{capability},
 	}
-	orgpolicy.SignBundle(b)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgpolicy.SignBundle(b, priv)
 
 	data, _ := json.MarshalIndent(b, "", " ")
 	p := filepath.Join(dir, "bundle.json")
 	_ = os.WriteFile(p, data, 0o600)
-	_ = orgpolicy.Install(context.Background(), p, "")
+	if err := orgpolicy.Install(context.Background(), p, bundlesig.EncodePublicKey(pub)); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
 }
 
 func TestSimulate_OrgPolicyBaselineDenies(t *testing.T) {

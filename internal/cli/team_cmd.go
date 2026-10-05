@@ -136,9 +136,11 @@ func newTeamInviteCmd() *cobra.Command {
 					"email_hmac": emailHMAC,
 					"role":       role,
 					"bundle":     bundle,
+					"team_key":   t.InvitePubKey,
 				})
 			}
 			fmt.Fprintf(c.OutOrStdout(), "Invite bundle created for role=%s.\nBundle: %s\n", role, bundle)
+			fmt.Fprintf(c.OutOrStdout(), "Team key: %s\nSend the team key over a separate channel; the invitee needs it to verify the bundle.\n", t.InvitePubKey)
 			return nil
 		},
 	}
