@@ -3,8 +3,8 @@
 // Security invariants:
 // - expired grants (ExpiresAt before now) MUST NOT match.
 // - revoked grants MUST NOT match.
-// - grants issued from an LLM session MUST NOT be returned by Find
-// for read-class capabilities (read, export, *.reveal, *.dump).
+// - grants issued from an agent session MUST NOT be returned by Find for
+// any capability: an agent cannot widen its own access.
 // - MaxUses enforcement uses flock + append-only consumption log.
 package grant
 
@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,12 +27,15 @@ import (
 
 // Grant records a capability grant issued by the CLI to a downstream process.
 type Grant struct {
-	ID                   string     `json:"id"`       // UUID v4
-	Accessor             string     `json:"accessor"` // opaque HMAC handle
-	Actor                string     `json:"actor"`
-	Connection           string     `json:"connection"`
-	Capability           string     `json:"capability"`
-	Command              string     `json:"command,omitempty"`
+	ID         string `json:"id"`       // UUID v4
+	Accessor   string `json:"accessor"` // opaque HMAC handle
+	Actor      string `json:"actor"`
+	Connection string `json:"connection"`
+	Capability string `json:"capability"`
+	Command    string `json:"command,omitempty"`
+	// CommandArgv is Command split into arguments with the program resolved
+	// to an absolute path when the grant was created.
+	CommandArgv          []string   `json:"command_argv,omitempty"`
 	CWD                  string     `json:"cwd,omitempty"`
 	IssuedAt             time.Time  `json:"issued_at"`
 	ExpiresAt            time.Time  `json:"expires_at"`
@@ -79,14 +81,11 @@ type FindRequest struct {
 	CWD        string
 }
 
-// isReadClassCap mirrors the policy-engine read-class check.
-func isReadClassCap(cap string) bool {
-	switch cap {
-	case "read", "export":
-		return true
-	}
-	return strings.HasSuffix(cap, ".reveal") || strings.HasSuffix(cap, ".dump")
-}
+// MaxTTL is the longest lifetime a grant can be issued with.
+const MaxTTL = 30 * 24 * time.Hour
+
+// ErrTTLTooLong is returned by Create for a TTL above MaxTTL.
+var ErrTTLTooLong = fmt.Errorf("grant: ttl exceeds the maximum of %s", MaxTTL)
 
 // --- UUID generation ---------------------------------------------------------
 
@@ -208,6 +207,20 @@ func Create(_ context.Context, spec GrantSpec, env func(string) string) (*Grant,
 	if ttl <= 0 {
 		ttl = 1 * time.Hour
 	}
+	if ttl > MaxTTL {
+		return nil, ErrTTLTooLong
+	}
+	var argv []string
+	if spec.Command != "" {
+		if argv, err = parseCommandPattern(spec.Command); err != nil {
+			return nil, err
+		}
+	}
+	if spec.CWD != "" {
+		if err := validateCWDPattern(spec.CWD); err != nil {
+			return nil, err
+		}
+	}
 
 	g := &Grant{
 		ID:                   id,
@@ -216,6 +229,7 @@ func Create(_ context.Context, spec GrantSpec, env func(string) string) (*Grant,
 		Connection:           spec.Connection,
 		Capability:           spec.Capability,
 		Command:              spec.Command,
+		CommandArgv:          argv,
 		CWD:                  spec.CWD,
 		IssuedAt:             now,
 		ExpiresAt:            now.Add(ttl),
@@ -300,8 +314,7 @@ func Revoke(_ context.Context, path string, id string) error {
 
 // Find searches for the first non-expired, non-revoked grant that matches req.
 //
-// grants issued from an LLM session are never returned for read-class
-// capabilities.
+// grants issued from an agent session are never returned.
 // expired grants are never returned.
 // revoked grants are never returned.
 // MaxUses enforcement via flock + append-only consumption log.
@@ -323,8 +336,7 @@ func Find(_ context.Context, path string, req FindRequest) (*Grant, bool) {
 		if g.ExpiresAt.Before(now) {
 			continue
 		}
-		// LLM-issued grant denied for read-class capability.
-		if g.IssuedFromLLMSession && isReadClassCap(req.Capability) {
+		if g.IssuedFromLLMSession {
 			continue
 		}
 
@@ -358,53 +370,13 @@ func grantFieldsMatch(g *Grant, req FindRequest) bool {
 	if g.Capability != "" && g.Capability != req.Capability {
 		return false
 	}
-	if g.Command != "" && !commandMatches(g.Command, req.Command) {
+	if g.Command != "" && !commandMatches(g.commandPattern(), req.Command) {
 		return false
 	}
 	if g.CWD != "" && !cwdMatches(g.CWD, req.CWD) {
 		return false
 	}
 	return true
-}
-
-// commandMatches matches the space-joined argv against pattern: exactly, or as
-// a prefix when pattern ends in "*". There is no implicit extension, so
-// "git push" does not match "git push --force".
-func commandMatches(pattern string, argv []string) bool {
-	if len(argv) == 0 {
-		return false
-	}
-	joined := strings.Join(argv, " ")
-	if prefix, ok := strings.CutSuffix(pattern, "*"); ok {
-		return strings.HasPrefix(joined, prefix)
-	}
-	return joined == pattern
-}
-
-// cwdMatches matches a working directory against pattern: "*" matches any
-// directory, "<dir>/*" matches dir and everything below it on path-component
-// boundaries, and anything else must equal the cleaned directory.
-func cwdMatches(pattern, cwd string) bool {
-	if cwd == "" {
-		return false
-	}
-	if pattern == "*" {
-		return true
-	}
-	cwd = filepath.Clean(cwd)
-	dir, ok := strings.CutSuffix(pattern, "/*")
-	if !ok {
-		dir, ok = strings.CutSuffix(pattern, string(filepath.Separator)+"*")
-	}
-	if ok {
-		dir = filepath.Clean(dir)
-		if cwd == dir {
-			return true
-		}
-		rel, err := filepath.Rel(dir, cwd)
-		return err == nil && filepath.IsLocal(rel)
-	}
-	return cwd == filepath.Clean(pattern)
 }
 
 // consumeUse tries to record a use in the consumption log.
