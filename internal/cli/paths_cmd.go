@@ -43,7 +43,6 @@ var knownEnvVars = append([]envEntry{
 	{"KEYLATCH_VAULT_PATH", "overrides vault directory"},
 	{"KEYLATCH_AUDIT_PATH", "overrides audit log path"},
 	{"KEYLATCH_AUDIT_SALT_PATH", "overrides audit salt path"},
-	{"KEYLATCH_MEMBER_ID", "your team member ID (for team commands)"},
 	{"KEYLATCH_TEAM_DIR", "override team data directory"},
 	{"KEYLATCH_OP_VAULT", "1Password vault name"},
 	{"KEYLATCH_OP_BIN", "path to 1Password CLI binary"},
