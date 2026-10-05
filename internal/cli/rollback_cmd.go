@@ -32,14 +32,14 @@ Blocked in LLM sessions. Requires confirmation or --force.`,
 
 			// Block in LLM sessions.
 			if llmcontext.IsLLMSession(env) {
-				return fmt.Errorf("[keylatch] security block: rollback requires a human terminal. Run outside an LLM session. (exit %d)", exitcode.SecurityBlock)
+				return NewSecurityBlock("rollback requires a human terminal. Run outside an LLM session.")
 			}
 
 			path := args[0]
 			versionStr := args[1]
 			version, err := strconv.Atoi(versionStr)
 			if err != nil {
-				return fmt.Errorf("[keylatch] error: version must be an integer, got %q (exit %d)", versionStr, exitcode.UserError)
+				return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: version must be an integer, got %q", versionStr))
 			}
 
 			force, _ := c.Flags().GetBool("force")
@@ -49,27 +49,27 @@ Blocked in LLM sessions. Requires confirmation or --force.`,
 
 			if !force {
 				if !confirmPrompt(c, "Proceed? [y/N]: ") {
-					return fmt.Errorf("[keylatch] aborted (exit %d)", exitcode.UserError)
+					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] aborted"))
 				}
 			}
 
 			if err := vault.Rollback(ctx, path, version, cfg, env); err != nil {
 				switch {
 				case errors.Is(err, vault.ErrVersionDestroyed):
-					return fmt.Errorf("[keylatch] error: version %d is destroyed and cannot be rolled back (exit %d)", version, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: version %d is destroyed and cannot be rolled back", version))
 				case errors.Is(err, vault.ErrVersionDeleted):
-					return fmt.Errorf("[keylatch] error: version %d is deleted and cannot be rolled back (exit %d)", version, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: version %d is deleted and cannot be rolled back", version))
 				case errors.Is(err, vault.ErrVersionNotFound):
-					return fmt.Errorf("[keylatch] error: version %d not found (exit %d)", version, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: version %d not found", version))
 				default:
-					return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
 				}
 			}
 
 			// Get new current version for the output message.
 			m, err := vault.GetMeta(ctx, path, cfg, env)
 			if err != nil {
-				return fmt.Errorf("[keylatch] error: GetMeta after rollback: %w (exit %d)", err, exitcode.OperationFailed)
+				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: GetMeta after rollback: %w", err))
 			}
 
 			fmt.Fprintf(c.OutOrStdout(),

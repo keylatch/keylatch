@@ -41,12 +41,8 @@ To restore from backup, use: keylatch restore <backup-file>`,
 
 			// value-bearing — blocked in LLM sessions (exit 2).
 			if llmcontext.IsLLMSession(env) {
-				reasons := llmcontext.Reasons(env)
-				fmt.Fprintf(c.ErrOrStderr(), "Error: backup is blocked in LLM sessions (value-bearing operation).\n")
-				if len(reasons) > 0 {
-					fmt.Fprintf(c.ErrOrStderr(), "  Detected via: %s\n", strings.Join(reasons, ", "))
-				}
-				return fmt.Errorf("[keylatch] security block: backup is blocked in LLM sessions (exit %d)", exitcode.SecurityBlock)
+				return NewSecurityBlock("backup is blocked in LLM sessions (value-bearing operation); detected via: %s",
+					strings.Join(llmcontext.Reasons(env), ", "))
 			}
 
 			outputPath, _ := c.Flags().GetString("output")

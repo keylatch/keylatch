@@ -308,10 +308,10 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 // Exported for testing.
 func ResolveStdinFields(stdinFields []string) (map[string]string, error) {
 	out := make(map[string]string, len(stdinFields))
-	for _, kv := range stdinFields {
+	for i, kv := range stdinFields {
 		idx := strings.IndexByte(kv, '=')
 		if idx < 1 {
-			return nil, fmt.Errorf("--stdin-field %q: must be in key=value form", kv)
+			return nil, fmt.Errorf("--stdin-field #%d must be in key=value form", i+1)
 		}
 		out[kv[:idx]] = kv[idx+1:]
 	}

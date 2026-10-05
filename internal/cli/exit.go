@@ -31,6 +31,22 @@ func reported(code int, cause error) error {
 	return &reportedError{code: code, err: cause}
 }
 
+// codedError is a plain error that exits with a specific code. It is
+// printed like any other error.
+type codedError struct {
+	code int
+	err  error
+}
+
+func (e *codedError) Error() string { return e.err.Error() }
+
+func (e *codedError) Unwrap() error { return e.err }
+
+// withExitCode makes err exit with code instead of exitcode.UserError.
+func withExitCode(code int, err error) error {
+	return &codedError{code: code, err: err}
+}
+
 // ReportError prints err to stderr exactly once and returns the process
 // exit code: 0 for nil, the CLIError or reported code when set, otherwise
 // exitcode.UserError. A quiet CLIError prints nothing and keeps its code. args are the command-line arguments without the
@@ -47,12 +63,16 @@ func ReportError(root *cobra.Command, args []string, err error, stderr io.Writer
 
 	code := exitcode.UserError
 	var rep *reportedError
+	var coded *codedError
 	switch {
 	case errors.As(err, &cliErr):
 		fmt.Fprint(stderr, cliErr.Stderr())
 		code = cliErr.Code
 	case errors.As(err, &rep):
 		code = rep.code
+	case errors.As(err, &coded):
+		fmt.Fprintf(stderr, "Error: %s\n", err.Error())
+		code = coded.code
 	default:
 		fmt.Fprintf(stderr, "Error: %s\n", err.Error())
 	}
