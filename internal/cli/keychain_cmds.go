@@ -57,16 +57,16 @@ Use --verify-acl to re-validate the ACL after a binary path change.`,
 		if err != nil {
 			if errors.Is(err, backend.ErrUnavailable) {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: keychain backend unavailable: %v\n", err)
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-			return err
+			return reported(exitcode.UserError, err)
 		}
 
 		kb, ok := b.(*keychain.KeychainBackend)
 		if !ok {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: backend is not a KeychainBackend\n")
-			return fmt.Errorf("exit %d", exitcode.UserError)
+			return reported(exitcode.UserError, nil)
 		}
 
 		if verifyACL {
@@ -75,10 +75,10 @@ Use --verify-acl to re-validate the ACL after a binary path change.`,
 					fmt.Fprintf(c.ErrOrStderr(),
 						"ACL mismatch: keylatch binary path differs from stored ACL entry. "+
 							"Run: keylatch keychain-repair-acl\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 			fmt.Fprintln(c.OutOrStdout(), "ACL OK")
 			return nil
@@ -97,7 +97,7 @@ Use --verify-acl to re-validate the ACL after a binary path change.`,
 		}
 		if initErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: keychain-init: %v\n", initErr)
-			return initErr
+			return reported(exitcode.UserError, initErr)
 		}
 
 		fmt.Fprintf(c.OutOrStdout(), "Keychain initialized for service: %s\n", service)
@@ -123,23 +123,23 @@ func newKeychainRepairACLCmd() *cobra.Command {
 			b, err := dispatch.Select(ctx, cfg, env)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			kb, ok := b.(*keychain.KeychainBackend)
 			if !ok {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: backend is not a KeychainBackend\n")
-				return fmt.Errorf("exit %d", exitcode.UserError)
+				return reported(exitcode.UserError, nil)
 			}
 
 			if err := kb.RepairACL(ctx); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			if err := kb.RepairItemACLs(ctx); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			fmt.Fprintln(c.OutOrStdout(), "ACL repaired")
@@ -163,13 +163,13 @@ func newKeychainListCmd() *cobra.Command {
 			b, err := dispatch.Select(ctx, cfg, env)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			entries, err := b.List(ctx, "")
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			for _, e := range entries {
@@ -198,7 +198,7 @@ func newKeychainClearCmd() *cobra.Command {
 			b, err := dispatch.Select(ctx, cfg, env)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			// List all entries for this service.
@@ -206,7 +206,7 @@ func newKeychainClearCmd() *cobra.Command {
 			entries, err := b.List(ctx, prefix)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			n := 0

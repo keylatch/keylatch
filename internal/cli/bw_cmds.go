@@ -58,11 +58,11 @@ or included in any error message.`,
 
 		if llmcontext.IsLLMSession(env) {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: 'bw unlock' is interactive-only — blocked in LLM session (exit 2)\n")
-			return fmt.Errorf("exit %d", exitcode.SecurityBlock)
+			return reported(exitcode.SecurityBlock, nil)
 		}
 		if !stdinIsTTY() {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: 'bw unlock' requires an interactive terminal (no TTY on stdin)\n")
-			return fmt.Errorf("exit %d", exitcode.UserError)
+			return reported(exitcode.UserError, nil)
 		}
 
 		ttl, _ := c.Flags().GetDuration("ttl")
@@ -75,22 +75,22 @@ or included in any error message.`,
 		if err != nil {
 			if errors.Is(err, backend.ErrUnavailable) {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: Bitwarden CLI not available. Run: brew install bitwarden-cli\n")
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-			return err
+			return reported(exitcode.UserError, err)
 		}
 
 		bwBackend, ok := b.(*bw.BitwardenBackend)
 		if !ok {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: backend is not a BitwardenBackend\n")
-			return fmt.Errorf("exit %d", exitcode.UserError)
+			return reported(exitcode.UserError, nil)
 		}
 
 		password, err := promptHidden("Master password")
 		if err != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: failed to read master password: %v\n", err)
-			return fmt.Errorf("exit %d", exitcode.UserError)
+			return reported(exitcode.UserError, nil)
 		}
 
 		token, unlockErr := bwBackend.Unlock(ctx, password)
@@ -98,15 +98,15 @@ or included in any error message.`,
 		if unlockErr != nil {
 			if errors.Is(unlockErr, backend.ErrLocked) {
 				fmt.Fprintln(c.ErrOrStderr(), "Error: unlock failed — invalid master password")
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: unlock failed: %v\n", unlockErr)
-			return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+			return reported(exitcode.BackendUnavailable, nil)
 		}
 
 		if err := bw.SaveSession(env, token, ttl); err != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: unlocked but failed to cache session: %v\n", err)
-			return fmt.Errorf("exit %d", exitcode.OperationFailed)
+			return reported(exitcode.OperationFailed, nil)
 		}
 
 		fmt.Fprintf(c.OutOrStdout(), "Bitwarden vault unlocked; session cached (expires in %s)\n", ttl)
@@ -131,7 +131,7 @@ fall back to requiring BW_SESSION (or a fresh "keylatch bw unlock").`,
 			env := llmcontext.DefaultLookup
 			if err := bw.ClearSession(env); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 			fmt.Fprintln(c.OutOrStdout(), "Cached Bitwarden session cleared")
 			return nil
@@ -149,7 +149,7 @@ func newBWStatusCmd() *cobra.Command {
 			st, err := bw.StatSession(env)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 			if !st.Present {
 				fmt.Fprintln(c.OutOrStdout(), "No cached Bitwarden session (run: keylatch bw unlock)")
@@ -199,16 +199,16 @@ BW_SESSION must be set in the environment before running bw-init.`,
 			if errors.Is(err, backend.ErrUnavailable) {
 				fmt.Fprintf(c.ErrOrStderr(),
 					"Error: Bitwarden CLI not available. Run: brew install bitwarden-cli\n")
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-			return err
+			return reported(exitcode.UserError, err)
 		}
 
 		bwBackend, ok := b.(*bw.BitwardenBackend)
 		if !ok {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: backend is not a BitwardenBackend\n")
-			return fmt.Errorf("exit %d", exitcode.UserError)
+			return reported(exitcode.UserError, nil)
 		}
 
 		// Read value from secure prompt or --from-stdin; never positional arg.
@@ -225,7 +225,7 @@ BW_SESSION must be set in the environment before running bw-init.`,
 			fmt.Fprintln(c.OutOrStdout())
 			if readErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: failed to read secret: %v\n", readErr)
-				return fmt.Errorf("exit %d", exitcode.UserError)
+				return reported(exitcode.UserError, nil)
 			}
 		}
 
@@ -234,10 +234,10 @@ BW_SESSION must be set in the environment before running bw-init.`,
 			if errors.Is(err, backend.ErrLocked) {
 				fmt.Fprintf(c.ErrOrStderr(),
 					"Error: Vault is locked — set BW_SESSION (see README §Non-interactive use)\n")
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-			return err
+			return reported(exitcode.UserError, err)
 		}
 
 		// No value in output.
@@ -265,26 +265,26 @@ func newBWListCmd() *cobra.Command {
 			b, err := dispatch.Select(ctx, cfg, env)
 			if err != nil {
 				if errors.Is(err, backend.ErrUnavailable) {
-					fmt.Fprintf(c.ErrOrStderr(), "Run: brew install bitwarden-cli\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+					fmt.Fprintf(c.ErrOrStderr(), "Error: Bitwarden CLI not available. Run: brew install bitwarden-cli\n")
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			entries, err := b.List(ctx, "")
 			if err != nil {
 				if errors.Is(err, backend.ErrUnavailable) {
-					fmt.Fprintf(c.ErrOrStderr(), "Run: brew install bitwarden-cli\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+					fmt.Fprintf(c.ErrOrStderr(), "Error: Bitwarden CLI not available. Run: brew install bitwarden-cli\n")
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				if errors.Is(err, backend.ErrLocked) {
 					fmt.Fprintf(c.ErrOrStderr(),
-						"Vault is locked — set BW_SESSION (see README §Non-interactive use)\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+						"Error: Vault is locked — set BW_SESSION (see README §Non-interactive use)\n")
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			if len(entries) == 0 {

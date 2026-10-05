@@ -8,6 +8,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/connections"
+	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -74,13 +75,13 @@ func newListCmdImpl() *cobra.Command {
 				entries, err := vault.List(ctx, "", cfg, env)
 				if err != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-					return err
+					return reported(exitcode.UserError, err)
 				}
 
 				b, err := dispatch.Select(ctx, cfg, env)
 				if err != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-					return err
+					return reported(exitcode.UserError, err)
 				}
 
 				backendName := b.Name()
@@ -97,7 +98,7 @@ func newListCmdImpl() *cobra.Command {
 			}, store)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			b, bErr := dispatch.Select(ctx, cfg, env)

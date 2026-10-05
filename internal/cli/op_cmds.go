@@ -98,7 +98,7 @@ func runOPSignin(ctx context.Context, c *cobra.Command, env llmcontext.Lookup, r
 
 	if opBin == "" {
 		fmt.Fprintf(c.ErrOrStderr(), "Error: 1Password CLI not available. Run: brew install 1password-cli\n")
-		return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+		return reported(exitcode.BackendUnavailable, nil)
 	}
 
 	_, _, exitCode, runErr := runner.Run(ctx, opBin, []string{"account", "list", "--format=json"}, nil)
@@ -111,13 +111,13 @@ func runOPSignin(ctx context.Context, c *cobra.Command, env llmcontext.Lookup, r
 		fmt.Fprintln(c.ErrOrStderr(), "Error: not signed in to 1Password, and no interactive terminal available.")
 		fmt.Fprintln(c.ErrOrStderr(), "  For automation: set OP_SERVICE_ACCOUNT_TOKEN.")
 		fmt.Fprintln(c.ErrOrStderr(), "  Interactively: re-run this command from a terminal, or run: eval $(op signin)")
-		return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+		return reported(exitcode.BackendUnavailable, nil)
 	}
 
 	if llmcontext.IsLLMSession(env) {
 		fmt.Fprintln(c.ErrOrStderr(), "Error: 'op signin' is interactive-only — blocked in LLM session (exit 2)")
 		fmt.Fprintln(c.ErrOrStderr(), "  For automation: set OP_SERVICE_ACCOUNT_TOKEN.")
-		return fmt.Errorf("exit %d", exitcode.SecurityBlock)
+		return reported(exitcode.SecurityBlock, nil)
 	}
 
 	fmt.Fprintln(c.OutOrStdout(), "Not signed in — handing off to `op signin`. Complete the prompt, then run:")
@@ -136,7 +136,7 @@ func runOPSignin(ctx context.Context, c *cobra.Command, env llmcontext.Lookup, r
 	signinCmd.Stderr = c.ErrOrStderr()
 	if err := signinCmd.Run(); err != nil {
 		fmt.Fprintf(c.ErrOrStderr(), "Error: op signin failed: %v\n", err)
-		return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+		return reported(exitcode.BackendUnavailable, nil)
 	}
 	return nil
 }
@@ -173,16 +173,16 @@ The value is NEVER read from a positional argument.`,
 			if errors.Is(err, backend.ErrUnavailable) {
 				fmt.Fprintf(c.ErrOrStderr(),
 					"Error: 1Password CLI not available. Run: brew install 1password-cli\n")
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-			return err
+			return reported(exitcode.UserError, err)
 		}
 
 		opBackend, ok := b.(*op.OnePasswordBackend)
 		if !ok {
 			fmt.Fprintf(c.ErrOrStderr(), "Error: backend is not a OnePasswordBackend\n")
-			return fmt.Errorf("exit %d", exitcode.UserError)
+			return reported(exitcode.UserError, nil)
 		}
 
 		// Read value from secure prompt or --from-stdin; never positional arg.
@@ -199,7 +199,7 @@ The value is NEVER read from a positional argument.`,
 			fmt.Fprintln(c.OutOrStdout()) // newline after masked input
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: failed to read secret: %v\n", err)
-				return fmt.Errorf("exit %d", exitcode.UserError)
+				return reported(exitcode.UserError, nil)
 			}
 		}
 
@@ -207,10 +207,10 @@ The value is NEVER read from a positional argument.`,
 		if err := opBackend.Set(ctx, canonical, value, backend.Meta{}); err != nil {
 			if errors.Is(err, backend.ErrLocked) {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: 1Password vault locked. Run: eval $(op signin)\n")
-				return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+				return reported(exitcode.BackendUnavailable, nil)
 			}
 			fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-			return err
+			return reported(exitcode.UserError, err)
 		}
 
 		// No value in output.
@@ -244,24 +244,24 @@ func newOPListCmd() *cobra.Command {
 				if errors.Is(err, backend.ErrUnavailable) {
 					fmt.Fprintf(c.ErrOrStderr(),
 						"Error: 1Password CLI not available. Run: brew install 1password-cli\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			entries, err := b.List(ctx, "")
 			if err != nil {
 				if errors.Is(err, backend.ErrUnavailable) {
-					fmt.Fprintf(c.ErrOrStderr(), "Run: brew install 1password-cli\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+					fmt.Fprintf(c.ErrOrStderr(), "Error: 1Password CLI not available. Run: brew install 1password-cli\n")
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				if errors.Is(err, backend.ErrLocked) {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: Run: eval $(op signin)\n")
-					return fmt.Errorf("exit %d", exitcode.BackendUnavailable)
+					fmt.Fprintf(c.ErrOrStderr(), "Error: 1Password vault locked. Run: eval $(op signin)\n")
+					return reported(exitcode.BackendUnavailable, nil)
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				return err
+				return reported(exitcode.UserError, err)
 			}
 
 			vaultName := "Keylatch"
