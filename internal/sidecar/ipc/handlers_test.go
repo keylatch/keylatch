@@ -254,7 +254,7 @@ func TestBrowserCommand_PerPlatform(t *testing.T) {
 			t.Errorf("%s: args = %q, want %q", goos, got, want)
 		}
 	}
-	if _, err := browserCommand("plan9", u); err == nil {
+	if _, err := browserCommand("aix", u); err == nil {
 		t.Error("expected an unsupported-platform error")
 	}
 }
