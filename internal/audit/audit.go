@@ -259,6 +259,17 @@ var (
 // then events keep going to the current file.
 const rotateRetryInterval = time.Minute
 
+// UnsafeDirError reports an audit log directory that other users can
+// access.
+type UnsafeDirError struct {
+	Dir  string
+	Mode os.FileMode
+}
+
+func (e *UnsafeDirError) Error() string {
+	return fmt.Sprintf("audit: parent directory %s has unsafe permissions %04o (want 0700)", e.Dir, e.Mode)
+}
+
 // maxLogSize is the default size cap for auto-rotation (5 MiB).
 const maxLogSize = 5 * 1024 * 1024
 
@@ -441,7 +452,7 @@ func validateParentDir(path string) error {
 		// Windows NTFS ignores Unix permission bits — os.MkdirAll(path, 0o700)
 		// reports 0777 on Windows so the check is meaningless there.
 		if mode := info.Mode().Perm(); mode&0o077 != 0 {
-			return fmt.Errorf("audit: parent directory %s has unsafe permissions %04o (want 0700)", dir, mode)
+			return &UnsafeDirError{Dir: dir, Mode: mode}
 		}
 	}
 	return nil
