@@ -28,6 +28,9 @@ func main() {
 		//     count, bad/missing flags) — these never reach any RunE
 		//     handler at all, so nothing has printed them yet.
 		var cliErr *cli.CLIError
+		if errors.As(err, &cliErr) && cliErr.Quiet {
+			os.Exit(cliErr.Code)
+		}
 		switch {
 		case errors.As(err, &cliErr):
 			fmt.Fprint(os.Stderr, cliErr.Stderr())

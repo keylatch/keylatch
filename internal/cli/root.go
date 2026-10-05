@@ -275,6 +275,7 @@ func Register(root *cobra.Command) {
 	// LLM session guard is enforced at runtime by the commands themselves.
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newDenyCmd())
+	root.AddCommand(newLaunchCmd())
 	if isExperimentalEnabled() {
 		registerExperimentalAliases(experimentalGroup, root)
 	}

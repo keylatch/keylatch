@@ -41,16 +41,26 @@ type SectionSummary struct {
 
 // Report is the full doctor output.
 type Report struct {
-	Version     string           `json:"version"`
-	Platform    string           `json:"platform"`
-	LLMSession  bool             `json:"llm_session"`
-	LLMReasons  []string         `json:"llm_reasons,omitempty"`
-	Checks      []Status         `json:"checks"`
-	Sections    []SectionSummary `json:"sections,omitempty"`
-	OverallOK   bool             `json:"overall_ok"`
-	HasWarnings bool             `json:"has_warnings"`
-	CipherSuite string           `json:"cipher_suite"`
-	FIPSBuild   bool             `json:"fips_build"`
+	Version      string           `json:"version"`
+	Platform     string           `json:"platform"`
+	LLMSession   bool             `json:"llm_session"`
+	LLMReasons   []string         `json:"llm_reasons,omitempty"`
+	AgentSession AgentSession     `json:"agent_session"`
+	Checks       []Status         `json:"checks"`
+	Sections     []SectionSummary `json:"sections,omitempty"`
+	OverallOK    bool             `json:"overall_ok"`
+	HasWarnings  bool             `json:"has_warnings"`
+	CipherSuite  string           `json:"cipher_suite"`
+	FIPSBuild    bool             `json:"fips_build"`
+}
+
+// AgentSession reports agent-session detection: the signals that fired
+// (environment variable names, "ancestry:<harness>", "ticket") and the
+// harness they point to.
+type AgentSession struct {
+	Detected bool     `json:"detected"`
+	Signals  []string `json:"signals"`
+	Harness  string   `json:"harness,omitempty"`
 }
 
 // Options controls doctor behavior.
@@ -171,17 +181,22 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	// Compute section summaries from allStatuses (always the full set).
 	sections := computeSections(allStatuses)
 
-	llmSession := llmcontext.IsLLMSession(env)
+	session := llmcontext.Classify(env)
 	var llmReasons []string
-	if llmSession {
-		llmReasons = llmcontext.Reasons(env)
+	if session.Detected() {
+		llmReasons = session.Signals
 	}
 
 	return Report{
-		Version:     version(),
-		Platform:    fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		LLMSession:  llmSession,
-		LLMReasons:  llmReasons,
+		Version:    version(),
+		Platform:   fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		LLMSession: session.Detected(),
+		LLMReasons: llmReasons,
+		AgentSession: AgentSession{
+			Detected: session.Detected(),
+			Signals:  session.Signals,
+			Harness:  session.Harness,
+		},
 		Checks:      returnedChecks,
 		Sections:    sections,
 		OverallOK:   overallOK,

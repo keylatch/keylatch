@@ -4,19 +4,15 @@
 
 Keylatch is built on the principle that credential values should never appear in model context, agent logs, or MCP tool outputs. The enforcement stack has three layers:
 
-1. **LLM session detection** — three priority tiers are checked before every value-bearing operation (EPIC-05):
+1. **Agent session detection** — signals checked before every value-bearing operation. Each signal can only make a decision stricter; a missing or invalid signal changes nothing:
 
-   | Priority | Signal | Description |
-   |----------|--------|-------------|
-   | 1 | `KEYLATCH_LLM_TICKET` env var | Signed HS256 JWT issued by keylatchd. Presence alone is sufficient to return true (fail-closed fast path). Full verification via `VerifyTicket` is available for callers that need cryptographic proof. |
-   | 2 | keylatchd IPC query | If `KEYLATCH_DAEMON_SOCKET` is set, the CLI queries `GET /v1/llm-session?pid=<n>` over a Unix domain socket. Any network error, timeout, or schema mismatch fails closed (returns true). Only a clean `active:false` response from the daemon passes. **Callers must set `KEYLATCH_DAEMON_SOCKET=<socket-path>` in each child process environment for IPC to work — the variable is not automatically propagated.** |
-   | 3 | Environment-variable signals | Variables the harnesses set in the shells they spawn: `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` (Claude Code); `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED` (Codex CLI); `CURSOR_AGENT`, `CURSOR_TRACE_ID` (Cursor); `GEMINI_CLI` (Gemini CLI); `OPENCODE` (OpenCode). Also the manual `CREDENTIALS_LLM_SESSION` flag and the legacy aliases `CLAUDE_CODE`, `CODEX_ENV`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`, `OPENCODE_SESSION`. |
+   | Signal | Description |
+   |--------|-------------|
+   | Environment variables | Variables the harnesses set in the shells they spawn: `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` (Claude Code); `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED` (Codex CLI); `CURSOR_AGENT`, `CURSOR_TRACE_ID` (Cursor); `GEMINI_CLI` (Gemini CLI); `OPENCODE` (OpenCode). Also the manual labels `KEYLATCH_AGENT_SESSION` and `CREDENTIALS_LLM_SESSION` and the legacy aliases `CLAUDE_CODE`, `CODEX_ENV`, `CURSOR_SESSION`, `AIDER_SESSION`, `GEMINI_SESSION`, `OPENCODE_SESSION`. |
+   | Process ancestry | A process whose ancestors include a harness executable (`claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `aider`, `copilot`) is an agent session, even with every variable removed. |
+   | Session ticket | `keylatch launch -- <harness>` starts the harness with a signed `KEYLATCH_SESSION_TICKET` bound to the launching process. Every process below it is an agent session. A forged, expired or copied ticket is rejected and logged. |
 
-   **Fail-closed contract**: any ambiguous or error state returns true (assume LLM session). The only way `IsLLMSession` returns false is when all three tiers produce no signal. Detected sessions block `keylatch get` (exit 2) and restrict the UI to `status-only` scope.
-
-   **Detection is spoofable.** Every tier-3 signal lives in the environment of the process being classified, and nothing issues tier-1 tickets or registers sessions with keylatchd yet, so in practice detection is env-based only. An agent can unset the variables to present as a human (or set them to look like an agent). Treat detection as a convenience that keeps well-behaved agents on the brokered path, not as a security boundary. As a minimal hardening independent of detection, `keylatch approve` and `keylatch deny` refuse to run unless stdin is an interactive terminal; agent tool calls run without one. An agent that can allocate a pseudo-terminal (for example with `script`) can still defeat that check. The durable fix is a broker that runs outside the agent's user account and requires proof of human presence for privileged operations.
-
-   **Known limitation (v1.0.0)**: IDE extension ticket issuance is out of scope. The `KEYLATCH_LLM_TICKET` env var and `POST /v1/llm-session` endpoint are available for future IDE integrations. Until then, Priority 3 (env-var signals) remains the primary detection mechanism for all supported agents.
+   **Detection is a label, not a boundary.** A same-user agent can hide every signal: it can run outside a harness's process tree or clear its environment. Treat detection as a convenience that keeps well-behaved agents on the brokered path. `keylatch approve` and `keylatch deny` also refuse to run unless stdin is an interactive terminal; an agent that can allocate a pseudo-terminal can still defeat that check. The durable fix is a broker that runs outside the agent's user account and requires proof of human presence for privileged operations.
 
 2. **Runtime mode guard** — `keylatch run` allows all four v1.0.0 runtime modes (`gateway_typed`, `gateway_sdk`, `direct_brokered`, `gateway_proxy`) in LLM sessions. Raw credential values are never returned to the agent process in any mode.
 

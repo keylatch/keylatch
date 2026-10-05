@@ -155,9 +155,12 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
   "checks": [
     {"name": "bootstrap.keyring", "section": "environment", "ok": true, "detail": "...", "fix": ""}
   ],
-  "summary": {"ok": 5, "warn": 1, "fail": 0}
+  "summary": {"ok": 5, "warn": 1, "fail": 0},
+  "agent_session": {"detected": true, "signals": ["CLAUDECODE", "ticket"], "harness": "claude-code"}
 }
 ```
+
+`agent_session.signals` names every agent signal that fired: harness environment variables, `ancestry:<harness>` when a harness executable is an ancestor process, and `ticket` for a valid `keylatch launch` session ticket. It never contains values.
 
 **Bootstrap checks:**
 - `bootstrap.keyring` — verifies `~/.keylatch/keyring/keyring.json` is present and non-empty
@@ -647,6 +650,18 @@ keylatch approve list [--json]
 Columns: `ID | PROVIDER | AGENT | REQUESTED-AT | TTL-REMAINING | STATUS`
 
 Entries past their TTL show `STATUS=expired` and can no longer be acted upon.
+
+---
+
+### `keylatch launch`
+
+Start an agent harness from your own terminal with a session ticket.
+
+```
+keylatch launch [--harness <name>] -- <command> [args...]
+```
+
+The harness and every process it starts carry `KEYLATCH_SESSION_TICKET`, a signed ticket bound to the launcher process and valid for 12 hours, so Keylatch treats them as an agent session even when their environment is cleared. `--harness` is one of `claude-code`, `codex`, `cursor`, `gemini-cli`, `opencode`, `aider`, `copilot-cli`; without it the harness is inferred from the command name. The launcher refuses to run inside an agent session or without an interactive terminal, and exits with the harness's exit code.
 
 ---
 

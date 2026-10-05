@@ -1,8 +1,10 @@
 package llmcontext
 
 import (
+	"bytes"
 	"errors"
 	"io"
+	"log/slog"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -10,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -191,5 +194,19 @@ func TestAncestryDetectsHarness(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "ancestry:claude-code") {
 		t.Fatalf("child of a process named claude was not classified as an agent:\n%s", out)
+	}
+}
+
+func TestClassify_LogsRejectedTicket(t *testing.T) {
+	stubDetection(t, []Process{{PID: 100, Start: 7}}, verifierAccepting("good"), false)
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	rejectedTicketOnce = sync.Once{}
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	Classify(mapLookup(map[string]string{TicketEnv: "forged"}))
+	if !strings.Contains(buf.String(), "session ticket rejected") {
+		t.Fatalf("forged ticket was not logged: %q", buf.String())
 	}
 }
