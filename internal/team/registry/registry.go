@@ -16,7 +16,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"time"
 
 	externalregistry "github.com/keylatch/keylatch/internal/registry"
@@ -43,7 +45,11 @@ var (
 	ErrBundleSignatureInvalid = errors.New("internal registry: bundle signature invalid")
 	ErrBundleVersionLow       = errors.New("internal registry: bundle version is not monotonically increasing")
 	ErrBundleNotFound         = errors.New("internal registry: no bundle installed")
-	ErrKeyMismatch            = errors.New("internal registry: key differs from the key pinned by the first install")
+	// ErrBundleVersionMismatch means an installed bundle's signed version
+	// differs from the version in its file name, as when an older signed
+	// bundle is copied over a newer slot.
+	ErrBundleVersionMismatch = errors.New("internal registry: bundle version does not match its file name")
+	ErrKeyMismatch           = errors.New("internal registry: key differs from the key pinned by the first install")
 )
 
 // registryDir returns the directory for installed internal registry bundles.
@@ -228,8 +234,7 @@ func latestVersion() (int64, error) {
 		if e.IsDir() {
 			continue
 		}
-		var v int64
-		if _, err := fmt.Sscanf(e.Name(), "%d.json", &v); err == nil {
+		if v, ok := bundleFileVersion(e.Name()); ok {
 			versions = append(versions, v)
 		}
 	}
@@ -258,5 +263,20 @@ func latestBundle(_ context.Context) (*InternalBundle, error) {
 	if err := checkSignature(b, pub); err != nil {
 		return nil, err
 	}
+	if b.Version != latest {
+		return nil, fmt.Errorf("%w: %d.json holds version %d", ErrBundleVersionMismatch, latest, b.Version)
+	}
 	return b, nil
+}
+
+var bundleFileName = regexp.MustCompile(`^([0-9]{1,18})\.json$`)
+
+// bundleFileVersion parses an installed bundle file name such as "12.json".
+func bundleFileVersion(name string) (int64, bool) {
+	m := bundleFileName.FindStringSubmatch(name)
+	if m == nil {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(m[1], 10, 64)
+	return v, err == nil
 }
