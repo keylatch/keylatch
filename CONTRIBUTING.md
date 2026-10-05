@@ -43,16 +43,16 @@ make test-canary
 go test -coverprofile=coverage.out ./...
 
 # Check the 85% threshold gate (same script CI runs)
-bash release-gates/coverage-threshold.sh coverage.out
+bash release-checks/coverage-threshold.sh coverage.out
 
 # Print per-package report even when the gate passes
-bash release-gates/coverage-threshold.sh coverage.out --report
+bash release-checks/coverage-threshold.sh coverage.out --report
 
 # Open an interactive HTML coverage view in the browser
 go tool cover -html=coverage.out
 ```
 
-The gate reads `release-gates/coverage-allowlist.txt` to skip packages that are
+The gate reads `release-checks/coverage-allowlist.txt` to skip packages that are
 intentionally below threshold (hardware drivers, CLI entry points, test helpers).
 If you add a new package, make sure it either reaches 85% or is added to the
 allowlist with a one-line rationale.
@@ -71,7 +71,7 @@ validated against `templates/providers/schema.json` (JSON Schema draft-07).
    ```
 4. Run the full provider template validation gate:
    ```bash
-   bash release-gates/provider-template-validate.sh
+   bash release-checks/provider-template-validate.sh
    ```
 5. Open a pull request. The CI pipeline runs validation automatically.
 
@@ -109,7 +109,7 @@ Or use goreleaser to build and stage automatically: `goreleaser release --snapsh
 
 ## Org-Scoped Registry
 
-An organisation-scoped provider registry (Phase 12) will allow teams to host
+An organisation-scoped provider registry will allow teams to host
 private provider templates. Contributing private templates back to the public
 registry is encouraged via a separate template review process — details TBD.
 

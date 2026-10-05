@@ -90,7 +90,7 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 // assertLoopback returns an error if addr is not a loopback address.
-// C-8: "localhost" is NOT accepted — only numeric loopback IPs (127.x or ::1).
+// "localhost" is NOT accepted — only numeric loopback IPs (127.x or ::1).
 func assertLoopback(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -243,7 +243,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, userID strin
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, userID string) {
-	// N-6: use team.RemoveMember to trigger shared-secret rotation callback.
+	// Use team.RemoveMember to trigger shared-secret rotation callback.
 	if err := team.RemoveMember(r.Context(), s.t, userID); err != nil {
 		if err == team.ErrMemberNotFound {
 			writeError(w, http.StatusNotFound, "user not found")

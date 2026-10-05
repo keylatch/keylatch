@@ -5,7 +5,7 @@ package doctor_test
 // Tests:
 // - TestDoctor_CleanInstall_WarnsAndExits1
 // - TestDoctor_FullyWiredInstall_OK
-// - TestDoctor_BootstrapMissing_FailsF1
+// - TestDoctor_BootstrapMissing_FailsKeyringCheck
 // - TestDoctor_JSONSchemaV1Stable
 // - TestDoctor_CategoryFilter_Environment
 
@@ -23,7 +23,7 @@ import (
 // otherwise unconfigured install (no gateway, no connections) produces warnings
 // and a HasWarnings=true report while OverallOK=true.
 //
-// A clean bootstrapped home has: environment checks OK (F1/F2 pass), but
+// A clean bootstrapped home has: environment checks OK (bootstrap checks pass), but
 // gateway/connections soft-warn checks fire — so HasWarnings=true.
 func TestDoctor_CleanInstall_WarnsAndExits1(t *testing.T) {
 	_, env := bootstrappedHome(t)
@@ -43,20 +43,20 @@ func TestDoctor_CleanInstall_WarnsAndExits1(t *testing.T) {
 	assert.True(t, report.HasWarnings,
 		"clean install should have HasWarnings=true (gateway/connections/hook not configured)")
 
-	// F1 and F2 checks must pass after bootstrap.
-	var f1Found, f2Found bool
+	// Bootstrap checks must pass after bootstrap.
+	var keyringFound, configFound bool
 	for _, s := range report.Checks {
-		if s.Name == "F1 bootstrap.keyring" {
-			f1Found = true
-			assert.True(t, s.OK, "F1 bootstrap.keyring should pass after bootstrap")
+		if s.Name == "bootstrap.keyring" {
+			keyringFound = true
+			assert.True(t, s.OK, "bootstrap.keyring should pass after bootstrap")
 		}
-		if s.Name == "F2 bootstrap.config" {
-			f2Found = true
-			assert.True(t, s.OK, "F2 bootstrap.config should pass after bootstrap")
+		if s.Name == "bootstrap.config" {
+			configFound = true
+			assert.True(t, s.OK, "bootstrap.config should pass after bootstrap")
 		}
 	}
-	assert.True(t, f1Found, "F1 bootstrap.keyring check must be present in report")
-	assert.True(t, f2Found, "F2 bootstrap.config check must be present in report")
+	assert.True(t, keyringFound, "bootstrap.keyring check must be present in report")
+	assert.True(t, configFound, "bootstrap.config check must be present in report")
 }
 
 // TestDoctor_FullyWiredInstall_OK verifies that when all checks are stubbed
@@ -80,13 +80,13 @@ func TestDoctor_FullyWiredInstall_OK(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// F1 and F2 must pass (bootstrap was run).
+	// Bootstrap checks must pass (bootstrap was run).
 	for _, s := range report.Checks {
-		if s.Name == "F1 bootstrap.keyring" {
-			assert.True(t, s.OK, "F1 bootstrap.keyring must pass in a wired install")
+		if s.Name == "bootstrap.keyring" {
+			assert.True(t, s.OK, "bootstrap.keyring must pass in a wired install")
 		}
-		if s.Name == "F2 bootstrap.config" {
-			assert.True(t, s.OK, "F2 bootstrap.config must pass in a wired install")
+		if s.Name == "bootstrap.config" {
+			assert.True(t, s.OK, "bootstrap.config must pass in a wired install")
 		}
 	}
 	// The binary checks themselves may still warn (e.g. keychain, bw sign-in),
@@ -94,9 +94,9 @@ func TestDoctor_FullyWiredInstall_OK(t *testing.T) {
 	assert.True(t, report.OverallOK, "fully wired install should have OverallOK=true")
 }
 
-// TestDoctor_BootstrapMissing_FailsF1 verifies that F1 (bootstrap.keyring)
+// TestDoctor_BootstrapMissing_FailsKeyringCheck verifies that bootstrap.keyring
 // reports OK=false when keyring.json is absent.
-func TestDoctor_BootstrapMissing_FailsF1(t *testing.T) {
+func TestDoctor_BootstrapMissing_FailsKeyringCheck(t *testing.T) {
 	// Use an unbootstrapped temp HOME — no keyring.json created.
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
@@ -115,19 +115,19 @@ func TestDoctor_BootstrapMissing_FailsF1(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// OverallOK must be false — F1 fails when bootstrap hasn't been run.
+	// OverallOK must be false — bootstrap.keyring fails when bootstrap hasn't been run.
 	assert.False(t, report.OverallOK, "unbootstrapped install should have OverallOK=false")
 
-	// F1 must be present and failing.
-	var f1Found bool
+	// bootstrap.keyring must be present and failing.
+	var keyringFound bool
 	for _, s := range report.Checks {
-		if s.Name == "F1 bootstrap.keyring" {
-			f1Found = true
-			assert.False(t, s.OK, "F1 bootstrap.keyring must fail when keyring.json is absent")
-			assert.NotEmpty(t, s.Fix, "F1 bootstrap.keyring must have a Fix hint")
+		if s.Name == "bootstrap.keyring" {
+			keyringFound = true
+			assert.False(t, s.OK, "bootstrap.keyring must fail when keyring.json is absent")
+			assert.NotEmpty(t, s.Fix, "bootstrap.keyring must have a Fix hint")
 		}
 	}
-	assert.True(t, f1Found, "F1 bootstrap.keyring check must be present in report")
+	assert.True(t, keyringFound, "bootstrap.keyring check must be present in report")
 }
 
 // TestDoctor_JSONSchemaV1Stable verifies that the v1 JSON output shape has

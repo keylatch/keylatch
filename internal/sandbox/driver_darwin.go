@@ -96,7 +96,7 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 	//nolint:gosec // G204: argv is constructed from validated manifest fields, not user input.
 	cmd := exec.CommandContext(ctx, "sandbox-exec", args...)
 	// Strip the calling process environment so KEYLATCH_* vars never leak
-	// into sandbox-exec's startup environment or /proc/<pid>/environ (C1).
+	// into sandbox-exec's startup environment or /proc/<pid>/environ.
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
 	runErr := cmd.Run()
 	if runErr != nil {

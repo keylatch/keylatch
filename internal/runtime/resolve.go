@@ -123,7 +123,7 @@ func supportedSet(tmpl registry.ConnectionTemplate) map[RuntimeMode]bool {
 
 // shapeFor returns the credential delivery shape for a given runtime mode.
 // If a new RuntimeMode is added to AllModes but not to this switch, the panic
-// surfaces the omission at test time (S-2 matrix tests exercise all modes).
+// surfaces the omission at test time (the matrix tests exercise all modes).
 func shapeFor(m RuntimeMode) CredentialDelivery {
 	switch m {
 	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeGatewayProxy:

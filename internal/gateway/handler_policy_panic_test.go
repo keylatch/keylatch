@@ -18,7 +18,7 @@ import (
 )
 
 // TestGatewayNew_RejectsPermissivePolicy is the layer-(a) regression test
-// for the 2026-08-06 blocking review finding: a gateway-loaded policy file
+// for a requirement from the 2026-08-06 review: a gateway-loaded policy file
 // with mode=permissive must fail server startup, not load successfully and
 // panic on the first LLM-session request (policy.Check panics whenever
 // req.LLMSession && Mode==ModePermissive — the gateway can always receive

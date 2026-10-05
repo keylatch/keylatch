@@ -117,7 +117,7 @@ func TestPassphraseZeroedAfterDerive(t *testing.T) {
 // TestOPKEKNoCLIAvailable exercises OPKEK's not-found error path. PATH is
 // pointed at an empty directory so "op" is deterministically absent
 // regardless of what is installed on the machine running this test —
-// ordinary `go test ./...` must never shell out to a real op CLI (F47).
+// ordinary `go test ./...` must never shell out to a real op CLI.
 // Runner-level mocked round trips live in kek_internal_test.go
 // (opKEKWithRunner); real-CLI coverage is opt-in via live_manager_test.go.
 func TestOPKEKNoCLIAvailable(t *testing.T) {

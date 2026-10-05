@@ -1,6 +1,6 @@
 package op
 
-// parser_fixtures_internal_test.go — M4: table-driven tests for
+// parser_fixtures_internal_test.go — table-driven tests for
 // isAuthFailure, isNotFound, and isAmbiguous against realistic 1Password CLI
 // stderr transcripts, so a CLI-output wording change fails a unit test
 // instead of silently breaking error classification for users.

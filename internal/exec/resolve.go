@@ -20,7 +20,7 @@ func Resolve(bin string) string {
 // Panics with a clear message if the binary is not found.
 // Used for required binaries that must be present at startup.
 //
-// M9b call-site audit (2026-08): MustResolve panics the calling goroutine —
+// Call-site audit (2026-08): MustResolve panics the calling goroutine —
 // safe only when that panic terminates process startup, not when it can
 // fire mid-request inside a long-running process (gateway/daemon/sidecar).
 // As of this audit there is exactly one production call site:

@@ -17,5 +17,5 @@ content_source_defaults:
 # Default State Recommendations
 
 This file defines the expected default configuration produced by a clean `keylatch bootstrap`.
-The `release-gates/default-state-regression.sh` script validates a fresh bootstrap matches
+The `release-checks/default-state-regression.sh` script validates a fresh bootstrap matches
 these values before allowing a release to publish.

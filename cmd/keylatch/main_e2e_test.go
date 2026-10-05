@@ -283,7 +283,7 @@ func TestE2E_masked_exits_0_in_llm_session(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_VersionSubcommand_MatchesVersionFlag verifies the C6 fix:
+// TestE2E_VersionSubcommand_MatchesVersionFlag verifies the fix:
 // `keylatch version` (documented in docs/installation.md as the post-install
 // verification step) exists and produces the exact same output as
 // `keylatch --version`.
@@ -460,7 +460,7 @@ func TestE2E_Run_SandboxedBootstrapPrecedesSessionGate(t *testing.T) {
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
 
-// TestE2E_InjectBlockedInLLMSession verifies C-2: keylatch inject returns a non-zero
+// TestE2E_InjectBlockedInLLMSession verifies that keylatch inject returns a non-zero
 // exit code in v1.0.0 because the inject command was removed.
 // Prior to removal this exited 2 (SecurityBlock) in LLM sessions; now the command
 // does not exist at all and cobra returns exit 1 (unknown command).
@@ -472,18 +472,18 @@ func TestE2E_InjectBlockedInLLMSession(t *testing.T) {
 
 	// exit 1 = UserError: cobra unknown command (inject removed).
 	// root.SilenceErrors=true so cobra itself never prints anything, but
-	// main.go (C5) prints cobra's "unknown command" error text to stderr
+	// main.go prints cobra's "unknown command" error text to stderr
 	// before the doctor hint. The invariant checked here is a non-zero exit
-	// code and no stdout leak; stderr content is covered by TestE2E_C5_*.
+	// code and no stdout leak; stderr content is covered by TestE2E_*.
 	assert.NotEqual(t, 0, code, "inject must exit non-zero in v1.0.0 — command is removed")
 	assert.Empty(t, stdout, "stdout must be empty for unknown command")
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_C5_UnknownCommandPrintsError verifies that an unknown command
+// TestE2E_UnknownCommandPrintsError verifies that an unknown command
 // prints cobra's "unknown command" error to stderr (not just the doctor
-// hint) — the specific symptom C5 fixes.
-func TestE2E_C5_UnknownCommandPrintsError(t *testing.T) {
+// hint) — the specific symptom this fixes.
+func TestE2E_UnknownCommandPrintsError(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
@@ -494,9 +494,9 @@ func TestE2E_C5_UnknownCommandPrintsError(t *testing.T) {
 	assert.Contains(t, string(stderr), cli.DoctorHint, "stderr must still contain the doctor hint")
 }
 
-// TestE2E_C5_MissingArgsPrintsError verifies that a cobra arg-count error
+// TestE2E_MissingArgsPrintsError verifies that a cobra arg-count error
 // (e.g. a required positional argument omitted) is printed to stderr.
-func TestE2E_C5_MissingArgsPrintsError(t *testing.T) {
+func TestE2E_MissingArgsPrintsError(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
@@ -507,9 +507,9 @@ func TestE2E_C5_MissingArgsPrintsError(t *testing.T) {
 }
 
 // TestE2E_Approve_LLMSession_PrintsErrorExactlyOnce is a regression test for
-// the code-review Finding-001 double-print bug: approve_cmd.go's LLM-session
-// guard used to print a formatted error via cmderr.Format AND return a
-// *cli.CLIError, so main.go's C5 error-printing printed the same message a
+// a double-print bug: approve_cmd.go's LLM-session guard used to print a
+// formatted error via cmderr.Format AND return a *cli.CLIError, so main.go's
+// error printing printed the same message a
 // second time (in a different format). The guard now returns the *CLIError
 // without printing directly — main.go is the single place that prints it.
 func TestE2E_Approve_LLMSession_PrintsErrorExactlyOnce(t *testing.T) {
@@ -585,8 +585,8 @@ func TestE2E_BrokerRevoke_OutOfProcess_PrintsErrorExactlyOnce(t *testing.T) {
 		"exactly one formatted error[...] line must appear, got: %s", stderr)
 }
 
-// TestE2E_Doctor_RepairQuietWithoutYes_RejectedFastNoHang is the review
-// Finding-005 regression test: `doctor --repair --quiet` without --yes used
+// TestE2E_Doctor_RepairQuietWithoutYes_RejectedFastNoHang is a regression
+// test: `doctor --repair --quiet` without --yes used
 // to write its confirmation prompt to a discarded writer while still
 // blocking on stdin — invisible and indistinguishable from a hang. It must
 // now be rejected immediately with a usage error mentioning --yes.

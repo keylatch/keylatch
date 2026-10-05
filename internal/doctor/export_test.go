@@ -9,17 +9,17 @@ func ExportCheckIntegrationMarkers() Check {
 	return checkIntegrationMarkers()
 }
 
-// ExportCheckGatewayRunning exposes checkGatewayRunning for unit tests (H11).
+// ExportCheckGatewayRunning exposes checkGatewayRunning for unit tests.
 func ExportCheckGatewayRunning(env llmcontext.Lookup) Check {
 	return checkGatewayRunning(env)
 }
 
-// ExportCheckPlaintextRetention exposes checkPlaintextRetention for unit tests (H11).
+// ExportCheckPlaintextRetention exposes checkPlaintextRetention for unit tests.
 func ExportCheckPlaintextRetention(env llmcontext.Lookup) Check {
 	return checkPlaintextRetention(env)
 }
 
-// ExportCheckNoConnections exposes checkNoConnections for unit tests (H11).
+// ExportCheckNoConnections exposes checkNoConnections for unit tests.
 func ExportCheckNoConnections(env llmcontext.Lookup) Check {
 	return checkNoConnections(env)
 }

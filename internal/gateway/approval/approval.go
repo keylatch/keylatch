@@ -300,7 +300,7 @@ func newApprovalToken() (string, error) {
 // caller that joins a token into a path (verifyWithClock,
 // updateStatusWithClock) must reject a non-matching token first — both this
 // package and the `keylatch approve`/`deny` CLI commands pass a
-// caller-controlled token straight through to here (F32).
+// caller-controlled token straight through to here.
 var tokenPattern = regexp.MustCompile(`^apv_[A-Za-z0-9_-]+$`)
 
 func validToken(token string) bool {

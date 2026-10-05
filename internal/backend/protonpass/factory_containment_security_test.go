@@ -9,13 +9,13 @@ import (
 	_ "github.com/keylatch/keylatch/internal/backend/protonpass" // trigger init()
 )
 
-// TestSecurityRegression_F09_ProtonPassUnselectableInM1 verifies the
+// TestSecurityRegression_ProtonPassUnselectable verifies the
 // proton-pass backend cannot be instantiated through the registered factory
 // (the path every CLI/API/MCP entry point uses), regardless of config.
-// Closes the "managers unavailable in M1" containment claim; the
+// Closes the "unsupported managers unavailable" containment claim; the
 // cache-ownership defect itself is tracked separately in
-// internal/backend/securitysuite (F09).
-func TestSecurityRegression_F09_ProtonPassUnselectableInM1(t *testing.T) {
+// internal/backend/securitysuite.
+func TestSecurityRegression_ProtonPassUnselectable(t *testing.T) {
 	factory, ok := backend.Default.Get("proton-pass")
 	if !ok {
 		t.Fatal("proton-pass backend not registered; import side-effect missing")
@@ -23,7 +23,7 @@ func TestSecurityRegression_F09_ProtonPassUnselectableInM1(t *testing.T) {
 
 	_, err := factory(context.Background(), backend.BackendConfig{Name: "proton-pass"})
 	if err == nil {
-		t.Fatal("expected proton-pass factory to refuse instantiation in M1, got nil error")
+		t.Fatal("expected proton-pass factory to refuse instantiation, got nil error")
 	}
 	if !errors.Is(err, backend.ErrUnavailable) {
 		t.Errorf("expected ErrUnavailable, got: %v", err)

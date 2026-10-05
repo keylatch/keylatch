@@ -37,10 +37,10 @@ func withMockSetupGatewayPS(t *testing.T, runner kexec.CommandRunner, psBin stri
 }
 
 // TestSetupStep3SpawnDaemon_AlreadyRunning_IdentityConfirmed verifies that
-// setup's step 3 checks IsRunning AND process identity (warn-2), and
+// setup's step 3 checks IsRunning AND process identity, and
 // presents a confirmed-running gateway as a success (skip), instead of
 // shelling out to `gateway up --detach` and reporting the child's expected
-// refusal as a setup failure (M1).
+// refusal as a setup failure.
 func TestSetupStep3SpawnDaemon_AlreadyRunning_IdentityConfirmed(t *testing.T) {
 	requirePSIdentityVerification(t)
 
@@ -78,7 +78,7 @@ func TestSetupStep3SpawnDaemon_AlreadyRunning_IdentityConfirmed(t *testing.T) {
 }
 
 // TestSetupStep3SpawnDaemon_StaleIdentityInconclusive_SkipsWithNote verifies
-// the warn-2/warn-4 fail-safe combination: when process-identity
+// the fail-safe combination: when process-identity
 // verification is inconclusive (ps itself failed), setup must keep the
 // current skip behavior — never guess and remove a possibly-live gateway's
 // PID file — but must say the check was inconclusive rather than silently

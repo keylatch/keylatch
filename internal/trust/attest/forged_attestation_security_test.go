@@ -10,11 +10,11 @@ import (
 	"github.com/keylatch/keylatch/internal/trust"
 )
 
-// KNOWN-FAILING (F40): Verify has no format-specific signature or
+// KNOWN-FAILING: Verify has no format-specific signature or
 // certificate-chain checking, so an unsigned statement with garbage
 // certificate bytes can still be reported as Trusted for every attestation
 // format.
-func TestSecurityRegression_F40_ForgedAttestation(t *testing.T) {
+func TestSecurityRegression_ForgedAttestation(t *testing.T) {
 	for _, format := range []string{"apple", "pkcs11", "tpm", "fido-u2f"} {
 		t.Run(format, func(t *testing.T) {
 			v, e := New().Verify(trust.Attestation{Format: format, Statement: []byte("not signed"), Certificates: [][]byte{[]byte("not a certificate")}})

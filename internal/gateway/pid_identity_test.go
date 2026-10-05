@@ -10,7 +10,7 @@ import (
 )
 
 // TestVerifyProcessIdentity_Match verifies that a `ps` output naming the
-// keylatch daemon is reported as a matched, checked identity (L2).
+// keylatch daemon is reported as a matched, checked identity.
 func TestVerifyProcessIdentity_Match(t *testing.T) {
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
@@ -31,7 +31,7 @@ func TestVerifyProcessIdentity_Match(t *testing.T) {
 }
 
 // TestVerifyProcessIdentity_Mismatch verifies that a `ps` output naming an
-// unrelated process is reported as checked but not matched (L2) — this is
+// unrelated process is reported as checked but not matched — this is
 // the stale-PID case gateway up --force must recover from.
 func TestVerifyProcessIdentity_Mismatch(t *testing.T) {
 	runner := &kexec.MockRunner{
@@ -53,7 +53,7 @@ func TestVerifyProcessIdentity_Mismatch(t *testing.T) {
 }
 
 // TestVerifyProcessIdentity_FalsePositive_ArgvSubstring verifies the review
-// fix (warn-3): a command whose *argument* contains "keylatch" as a
+// A command whose *argument* contains "keylatch" as a
 // substring — but whose executable is unrelated — must NOT match. This is
 // the exact false-positive shape the old strings.Contains-on-full-line
 // matching was vulnerable to (e.g. an editor opened on a path inside a

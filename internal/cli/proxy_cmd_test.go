@@ -263,11 +263,11 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// TestSecurityRegression_F13_ProxyUpRejectsUnsupported verifies that
-// `proxy up` refuses immediately (gateway_proxy is excluded from M1) —
+// TestSecurityRegression_ProxyUpRejectsUnsupported verifies that
+// `proxy up` refuses immediately (gateway_proxy is unavailable) —
 // no listener bound, no PID/state file written, no fake-healthy state
 // published.
-func TestSecurityRegression_F13_ProxyUpRejectsUnsupported(t *testing.T) {
+func TestSecurityRegression_ProxyUpRejectsUnsupported(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 
@@ -336,7 +336,7 @@ func TestProxyUp_AlreadyRunning(t *testing.T) {
 }
 
 // TestProxyUp_StalePIDFile verifies that `proxy up` refuses before touching
-// an existing stale PID file — gateway_proxy is unsupported in M1, so the
+// an existing stale PID file — gateway_proxy is unsupported, so the
 // stale-cleanup path is never reached.
 func TestProxyUp_StalePIDFile(t *testing.T) {
 	dir := t.TempDir()
@@ -578,11 +578,11 @@ func TestGatewayUp_WithProxy_ProxyAlreadyRunning(t *testing.T) {
 	// This is the no-op path.
 }
 
-// TestSecurityRegression_F13_GatewayWithProxyRejectsUnsupported verifies
+// TestSecurityRegression_GatewayWithProxyRejectsUnsupported verifies
 // that startProxyWithGateway (the `gateway up --with-proxy` startup form)
-// refuses immediately — gateway_proxy is excluded from M1 — without binding
+// refuses immediately — gateway_proxy is unavailable — without binding
 // a listener or writing a PID file.
-func TestSecurityRegression_F13_GatewayWithProxyRejectsUnsupported(t *testing.T) {
+func TestSecurityRegression_GatewayWithProxyRejectsUnsupported(t *testing.T) {
 	dir := t.TempDir()
 	port := freePort(t)
 	pidPath := proxyPIDPathFromDir(dir)

@@ -17,12 +17,12 @@ use tauri::{Manager, RunEvent};
 use redaction::redact;
 
 pub fn run() {
-    // Step 1: Register panic hook with redaction (FIND2-019 / S14-14).
+    // Step 1: Register panic hook with redaction.
     // This MUST be the very first statement.
     register_panic_hook();
 
     let app = tauri::Builder::default()
-        // Step 3: single-instance plugin (S14-13).
+        // Step 3: single-instance plugin.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if is_llm_session() {
                 return;
@@ -37,7 +37,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
-        // M1: wrap every log message through redact() (S14-14).
+        // Wrap every log message through redact().
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -51,7 +51,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // M2: IsLLMSession() MUST be the absolute first statement in setup (S14-7).
+            // IsLLMSession() MUST be the absolute first statement in setup.
             if is_llm_session() {
                 eprintln!("keylatch-app: LLM session detected — use the keylatch CLI instead");
                 std::process::exit(0);
@@ -97,7 +97,7 @@ pub fn run() {
                 .ok();
             let notifier = Arc::new(notify::NotifierImpl::new(app.handle().clone()));
 
-            // Step 6b: Wire WebView host and NavigationGuard (C3 — FIND2-014).
+            // Step 6b: Wire WebView host and NavigationGuard.
             let port: u16 = localhost_url
                 .split(':')
                 .last()
@@ -110,7 +110,7 @@ pub fn run() {
             // Step 6c: Wire DesktopSession.
             let session = session::DesktopSession::new(ipc);
 
-            // C3: Build the main window with the navigation hook wired (FIND2-014).
+            // Build the main window with the navigation hook wired.
             let guard_for_nav = nav_guard.clone();
             let window = tauri::WebviewWindowBuilder::new(
                 app,

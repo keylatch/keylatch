@@ -2,7 +2,7 @@
 //
 // Manages the lifecycle of the keylatchd Go sidecar process:
 //   - Generates a 32-byte HMAC key using OsRng
-//   - Passes the key via an inherited pipe FD (FIND2-002)
+//   - Passes the key via an inherited pipe FD
 //   - Spawns keylatchd with --from-desktop-shell --ipc-socket <path>
 //   - Parses the JSON `ready` line from keylatchd stdout (10 s timeout)
 //   - Crash-restart with exponential backoff (1→2→4→8→max 30 s)
@@ -131,7 +131,7 @@ impl SidecarSupervisorImpl {
     }
 
     /// Spawn the sidecar once. Returns the localhost URL on success.
-    /// FIND2-002: on Unix, HMAC key is passed via inherited pipe FD.
+    /// On Unix, the HMAC key is passed via an inherited pipe FD.
     ///            on Windows, key is passed via KEYLATCH_IPC_KEY env var (hex).
     fn spawn_once(&mut self) -> Result<String, String> {
         let mut key = vec![0u8; 32];

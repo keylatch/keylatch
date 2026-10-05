@@ -13,7 +13,7 @@ var getMethodSignature = regexp.MustCompile(
 	`func \(\w+ \*\w+\) Get\(ctx context\.Context, \w+ string\) \(\[\]byte, backend\.Meta, error\) \{`)
 
 // TestAllBackendsGuardGetWithRunnerOK is a static-source regression test for
-// C2: every registered backend's Get() must check runner.OK(ctx) before
+// Every registered backend's Get() must check runner.OK(ctx) before
 // returning plaintext (the LLM-session exfiltration guard).
 //
 // This is a source check rather than a runtime behavioural test because
@@ -73,7 +73,7 @@ func TestAllBackendsGuardGetWithRunnerOK(t *testing.T) {
 			body := src[loc[1]:end]
 			if !regexp.MustCompile(`runner\.OK\(ctx\)`).MatchString(body) {
 				t.Errorf("%s: Get() does not check runner.OK(ctx) near the top of the method body — "+
-					"plaintext could be returned without the LLM-session guard (C2)", rel)
+					"plaintext could be returned without the LLM-session guard", rel)
 			}
 		})
 	}

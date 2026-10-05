@@ -11,12 +11,12 @@ import (
 
 // subprocessTimeout bounds how long the op/bw manager CLI may run for a
 // single KEK operation. Prevents a hung/interactive CLI (e.g. waiting on a
-// biometric prompt or a dead session) from blocking indefinitely (F47).
+// biometric prompt or a dead session) from blocking indefinitely.
 // Var (not const) so tests can shrink it instead of waiting out the real value.
 var subprocessTimeout = 15 * time.Second
 
 // maxSubprocessOutput bounds captured stdout so a misbehaving CLI cannot
-// exhaust memory (F47). Manager item/field payloads are always small.
+// exhaust memory. Manager item/field payloads are always small.
 // Var (not const) so tests can shrink it to exercise the bound cheaply.
 var maxSubprocessOutput = 1 << 20 // 1 MiB
 

@@ -73,7 +73,7 @@ func ParseProxyProfile(data []byte) (ProxyProfile, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return ProxyProfile{}, fmt.Errorf("proxy_profile: parse: %w", err)
 	}
-	// N-12: validate Mode field using the canonical runtime mode validator.
+	// Validate Mode field using the canonical runtime mode validator.
 	// gateway_proxy is a valid runtime mode, so this validates correctly without
 	// breaking valid profiles.
 	if p.Mode != "" {

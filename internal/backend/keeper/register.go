@@ -29,7 +29,7 @@ func init() {
 }
 
 func keeperFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
-	// M1 excludes keeper from the supported manager set (F09, F10) — refuse
+	// The support manifest excludes keeper — refuse
 	// selection here so no caller can instantiate it, regardless of config.
 	if !manifest.Current().Enabled("keeper") {
 		return nil, fmt.Errorf("%w: keeper is not supported in this release", backend.ErrUnavailable)

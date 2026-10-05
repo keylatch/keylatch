@@ -13,7 +13,7 @@ import (
 
 const envCanaryBW = "KEYLATCH_ENV_SEAM_CANARY_0xC0FFEE"
 
-// TestRunWithSession_InjectsBWSessionViaEnv verifies the M3 seam: BW_SESSION
+// TestRunWithSession_InjectsBWSessionViaEnv verifies the env-injection seam: BW_SESSION
 // reaches the subprocess through CommandRunner.RunEnv's extraEnv, not via
 // ambient os.Environ() inheritance and not via argv.
 func TestRunWithSession_InjectsBWSessionViaEnv(t *testing.T) {

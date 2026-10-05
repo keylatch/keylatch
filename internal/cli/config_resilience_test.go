@@ -12,7 +12,7 @@ import (
 )
 
 // TestLoadConfigOrWarn_MissingConfig verifies a fresh install (no config
-// file yet) is silent — nothing to warn about, nothing to back up (M2).
+// file yet) is silent — nothing to warn about, nothing to back up.
 func TestLoadConfigOrWarn_MissingConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -36,8 +36,8 @@ func TestLoadConfigOrWarn_MissingConfig(t *testing.T) {
 // warning naming the path and the error, (b) is backed up to
 // config.json.bak.<timestamp> using the already-read bytes before being
 // reset to defaults, and (c) still returns Default() with a nil error so
-// setup can proceed (M2; review finding — blocking: this must NOT fire for
-// read/permission errors, see TestLoadConfigOrWarn_PermissionDenied).
+// setup can proceed. This must NOT fire for read/permission errors, see
+// TestLoadConfigOrWarn_PermissionDenied.
 func TestLoadConfigOrWarn_CorruptConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -65,7 +65,7 @@ func TestLoadConfigOrWarn_CorruptConfig(t *testing.T) {
 
 // TestLoadConfigOrWarn_VersionMismatch verifies a version-mismatched config
 // (a readable but unsupported-schema file) triggers the same warn+backup
-// path as outright corruption, rather than silently resetting fields (M2).
+// path as outright corruption, rather than silently resetting fields.
 func TestLoadConfigOrWarn_VersionMismatch(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -87,7 +87,7 @@ func TestLoadConfigOrWarn_VersionMismatch(t *testing.T) {
 	require.Len(t, matches, 1)
 }
 
-// TestLoadConfigOrWarn_PermissionDenied verifies the blocking review finding
+// TestLoadConfigOrWarn_PermissionDenied verifies the requirement
 // is fixed: a config file that exists but cannot be READ (permission denied)
 // must NOT be treated like a corrupt file. loadConfigOrWarn must return an
 // error, print no "resetting to defaults" warning, write no backup, and

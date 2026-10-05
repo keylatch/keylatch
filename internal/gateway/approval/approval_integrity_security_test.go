@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-// F32: Approve/Verify reject any token that doesn't match the format
+// Approve/Verify reject any token that doesn't match the format
 // newApprovalToken generates before joining it into the approvals directory
 // path — a "../"-prefixed token can no longer write outside the approvals
 // directory. This is a real fix, not just HTTP-entry-point gating: the
 // `keylatch approve`/`deny` CLI commands pass a caller-supplied token
 // straight into this package too.
-func TestSecurityRegression_F32_ApprovalTraversal(t *testing.T) {
+func TestSecurityRegression_ApprovalTraversal(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "approvals")
 	os.Mkdir(dir, 0700)
@@ -32,14 +32,14 @@ func TestSecurityRegression_F32_ApprovalTraversal(t *testing.T) {
 	}
 }
 
-// KNOWN-FAILING (F33): Verify treats an empty expected hash as "no binding
+// KNOWN-FAILING: Verify treats an empty expected hash as "no binding
 // required" instead of rejecting it, letting an approval be confirmed
 // without checking the request-hash binding. The gateway request path never
-// supplies an externally-sourced approval claim to reach this call (M1 has
+// supplies an externally-sourced approval claim to reach this call (has
 // no wiring from policy ApprovalRequired decisions into approval.Verify;
 // see handler.go step 6); this test tracks the unwired library defect for
 // nonempty binding enforcement required before expansion.
-func TestSecurityRegression_F33_ApprovalHashRequired(t *testing.T) {
+func TestSecurityRegression_ApprovalHashRequired(t *testing.T) {
 	d := t.TempDir()
 	ar, e := RequestNew(context.Background(), d, "a", "c", "p", "bound-request", time.Hour)
 	if e != nil {

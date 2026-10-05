@@ -18,7 +18,7 @@ import (
 // It registers all loaded templates with the global registry.
 // The first slug encountered wins on collision (embed > local > community).
 //
-// F42: local and community loaders are excluded entirely in M1 — provider
+// Local and community loaders are excluded entirely — provider
 // loading is restricted to the embedded certified cohort. Exact-byte
 // trusted-signer verification for RequireSig is expansion work for when
 // community loading re-enters scope.

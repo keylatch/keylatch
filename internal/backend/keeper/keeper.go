@@ -94,7 +94,7 @@ func (b *KeeperBackend) Capabilities() []backend.Capability {
 // Get returns the plaintext bytes for a canonical path via `keeper get --format=json`.
 // Uses a 60-second TTL cache and single-flight collapse for concurrent calls.
 //
-// Checks runner.OK before returning plaintext (C2).
+// Checks runner.OK before returning plaintext.
 func (b *KeeperBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	if !runner.OK(ctx) {
 		return nil, backend.Meta{}, backend.ErrLocked

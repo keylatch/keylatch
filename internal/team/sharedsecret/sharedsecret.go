@@ -214,7 +214,7 @@ func decryptForRecipient(payload []byte, recipientPrivKeyHex string) ([]byte, er
 
 // Create encrypts plaintext for each member's AgePublicKey.
 // AGE encryption, strict-fail — no fallback ciphers.
-// C-6: teamID is used to scope the name HMAC — prevents cross-team name collisions.
+// TeamID is used to scope the name HMAC — prevents cross-team name collisions.
 func Create(_ context.Context, teamID, name string, plaintext []byte, members []team.Member) (*SharedSecret, error) {
 	id, err := generateID()
 	if err != nil {

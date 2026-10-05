@@ -184,7 +184,7 @@ func Install(ctx context.Context, bundlePath string, cosignPubKey string) error 
 
 // Active returns the currently installed OrgBundle, or nil if none installed.
 // Returns nil if the bundle has expired (treats as if none installed).
-// C-5: entire function runs under a single write lock to avoid lock-upgrade races.
+// Entire function runs under a single write lock to avoid lock-upgrade races.
 func Active(_ context.Context) *OrgBundle {
 	mu.Lock()
 	defer mu.Unlock()

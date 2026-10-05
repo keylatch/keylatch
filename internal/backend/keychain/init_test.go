@@ -16,7 +16,7 @@ import (
 // countUnlockItemWrites returns the number of add-generic-password calls
 // that targeted the login-keychain unlock item (service "keylatch-keychain",
 // account "unlock") — the item that must never be silently regenerated with
-// a new password on a re-run (C1).
+// a new password on a re-run.
 func countUnlockItemWrites(calls []kexec.MockCall) int {
 	n := 0
 	for _, call := range calls {
@@ -38,7 +38,7 @@ func countUnlockItemWrites(calls []kexec.MockCall) int {
 }
 
 // TestInit_Idempotent_SecondRunReusesPasswordAndKeepsSecretsReadable is the
-// C1 regression test: Init() must not corrupt keychain access when run a
+// Regression test: Init() must not corrupt keychain access when run a
 // second time (e.g. on `keylatch setup` re-run). Before the fix, every Init()
 // call generated a brand-new random password and unconditionally upserted
 // the login-keychain unlock item, orphaning any secrets stored under the
@@ -139,7 +139,7 @@ func TestInit_Idempotent_SecondRunReusesPasswordAndKeepsSecretsReadable(t *testi
 	}
 
 	// The secret stored before the second Init() must still be readable —
-	// this is the core C1 data-loss assertion: a re-run must never orphan
+	// this is the core data-loss assertion: a re-run must never orphan
 	// existing secrets.
 	value, _, err := b.Get(ctx, secretPath)
 	if err != nil {
@@ -151,7 +151,7 @@ func TestInit_Idempotent_SecondRunReusesPasswordAndKeepsSecretsReadable(t *testi
 }
 
 // TestInit_RefusesToRegeneratePassword_WhenExistingItemDoesNotUnlockDB
-// verifies the fail-closed refusal path (C1): when a keychain-db exists but
+// verifies the fail-closed refusal path: when a keychain-db exists but
 // the login-keychain unlock item does not successfully unlock it, Init must
 // refuse to generate a replacement password rather than silently
 // orphaning the existing secrets. ForceReinit should proceed anyway.
@@ -202,7 +202,7 @@ func TestInit_RefusesToRegeneratePassword_WhenExistingItemDoesNotUnlockDB(t *tes
 	}
 }
 
-// TestInit_ChmodsKeychainDBTo0600 is the M10 regression test: `security
+// TestInit_ChmodsKeychainDBTo0600 is a regression test: `security
 // create-keychain` creates the keychain-db file with the process's
 // umask-derived default permissions, which can be as loose as 0644
 // (world-readable). Init must force the file to 0600 every time it runs —

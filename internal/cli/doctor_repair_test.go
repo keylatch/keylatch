@@ -78,7 +78,7 @@ func TestIsDoctorHintSuppressed_CompletionCmd(t *testing.T) {
 }
 
 // TestDoctor_RepairQuietWithoutYes_RejectedFastNoHang is the review
-// Finding-005 regression test: `doctor --repair --quiet` without --yes used
+// Regression test: `doctor --repair --quiet` without --yes used
 // to write its confirmation prompt to a discarded writer while still
 // blocking on real stdin — invisible and indistinguishable from a hang. It
 // must now fail fast with a usage error instead of reading stdin at all.

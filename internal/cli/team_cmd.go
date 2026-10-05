@@ -149,7 +149,7 @@ func newTeamInviteCmd() *cobra.Command {
 
 // requireCallerAdmin loads the caller's member from the team and enforces admin role.
 // Used by mutating team commands to enforce role checks at the CLI layer.
-// F39: team mutation is gated unavailable for M1 — denied before the
+// Team mutation is gated unavailable — denied before the
 // environment-selected caller identity is even looked up. Active
 // authenticated subject plus session/rotation revocation is expansion work.
 func requireCallerAdmin(t *team.Team) error {
@@ -187,7 +187,7 @@ func newTeamRemoveCmd() *cobra.Command {
 				return fmt.Errorf("team remove: %w", err)
 			}
 
-			// M-7: caller privilege check.
+			// Caller privilege check.
 			if err := requireCallerAdmin(t); err != nil {
 				return fmt.Errorf("team remove: %w", err)
 			}
@@ -230,7 +230,7 @@ func newTeamTransferCmd() *cobra.Command {
 				return fmt.Errorf("team transfer: %w", err)
 			}
 
-			// M-7: caller privilege check (owner required for transfer).
+			// Caller privilege check (owner required for transfer).
 			if err := requireCallerAdmin(t); err != nil {
 				return fmt.Errorf("team transfer: %w", err)
 			}
@@ -274,7 +274,7 @@ func newTeamRoleCmd() *cobra.Command {
 				return fmt.Errorf("team role: %w", err)
 			}
 
-			// M-7: caller privilege check.
+			// Caller privilege check.
 			if err := requireCallerAdmin(t); err != nil {
 				return fmt.Errorf("team role: %w", err)
 			}

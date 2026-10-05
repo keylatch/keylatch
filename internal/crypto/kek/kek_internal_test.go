@@ -530,7 +530,7 @@ func TestPassphraseKEK_ZeroedOnError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// runManagerCLI — timeout and output-bound enforcement (F47)
+// runManagerCLI — timeout and output-bound enforcement
 // ---------------------------------------------------------------------------
 
 // writeFakeManagerCLI drops a shell script at <dir>/<name> and returns its

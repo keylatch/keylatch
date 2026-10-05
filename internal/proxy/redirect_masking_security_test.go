@@ -54,10 +54,10 @@ func doProxyRequest(s *Server) *httptest.ResponseRecorder {
 	return w
 }
 
-// KNOWN-FAILING (F27): httpClient() has no redirect policy, so a redirect
+// KNOWN-FAILING: httpClient() has no redirect policy, so a redirect
 // destination never re-enters the host allowlist and the injected
 // credential is forwarded to it.
-func TestSecurityRegression_F27_ProxyRedirectDoesNotReenterHostAllowlist(t *testing.T) {
+func TestSecurityRegression_ProxyRedirectDoesNotReenterHostAllowlist(t *testing.T) {
 	s := blockBodyProxyServer()
 	escaped := false
 	s.httpClient().Transport = stubTransport(func(r *http.Request) (*http.Response, error) {
@@ -78,10 +78,10 @@ func TestSecurityRegression_F27_ProxyRedirectDoesNotReenterHostAllowlist(t *test
 	}
 }
 
-// KNOWN-FAILING (F28): routeHandler streams the entire upstream body
+// KNOWN-FAILING: routeHandler streams the entire upstream body
 // regardless of ProxyRoute.Masking, so a block_body route still returns the
 // full response.
-func TestSecurityRegression_F28_ProxyBlockBodyMaskingNotEnforced(t *testing.T) {
+func TestSecurityRegression_ProxyBlockBodyMaskingNotEnforced(t *testing.T) {
 	s := blockBodyProxyServer()
 	s.httpClient().Transport = stubTransport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("private-response")), Request: r}, nil

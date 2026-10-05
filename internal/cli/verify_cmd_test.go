@@ -119,7 +119,7 @@ func TestFetchSigFromGitHubReleases_NotFound(t *testing.T) {
 }
 
 // TestRunVerifySelf_DevBinary verifies that runVerifySelf returns a CLIError (not os.Exit)
-// when version.Version is "dev" or empty, exercising the early-exit guard added in C2.
+// when version.Version is "dev" or empty, exercising the early-exit guard.
 func TestRunVerifySelf_DevBinary(t *testing.T) {
 	devVersions := []string{"dev", ""}
 	for _, v := range devVersions {

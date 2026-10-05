@@ -8,7 +8,7 @@ import (
 )
 
 // ErrSSRFTargetForbidden is the sentinel for SSRF policy violations.
-// Imported from registry to avoid duplication (N-2).
+// Imported from registry to avoid duplication.
 var ErrSSRFTargetForbidden = registry.ErrSSRFTargetForbidden
 
 // SSRFGate validates upstream hosts against the provider allowlist and deny ranges.

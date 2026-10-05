@@ -56,8 +56,8 @@ Requires the broker to be running in-process.`,
 			handle := brokerHandleFactory()
 
 			// All branches below return a *CLIError without printing directly
-			// — main.go prints it exactly once (C5). Printing here too would
-			// double-print (Finding-001); it would also break the existing
+			// — main.go prints it exactly once. Printing here too would
+			// double-print; it would also break the existing
 			// in-process tests (e.g. TestBrokerDryRun_OutOfProcess) that call
 			// cmd.Execute() and assert on the returned error/output, which an
 			// os.Exit here would defeat by killing the test process.

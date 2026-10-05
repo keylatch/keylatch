@@ -17,7 +17,7 @@ import (
 )
 
 // repairableChecks lists the doctor check Names with a safe, idempotent
-// automated repair (H1). Deliberately narrow: many failure classes (missing
+// automated repair. Deliberately narrow: many failure classes (missing
 // bootstrap, wrong backend selected, an external CLI not installed) have no
 // safe automated fix — "repairing" them would mean guessing user intent
 // (which backend? which credentials?). Only checks whose repair action is
@@ -27,7 +27,7 @@ var repairableChecks = map[string]bool{
 	"acl.keychain_unlock": true,
 }
 
-// runDoctorRepair implements `keylatch doctor --repair` (H1).
+// runDoctorRepair implements `keylatch doctor --repair`.
 //
 // docs/cli-reference.md documented --repair/--yes as generally repairing
 // "failed/warned checks", and the flags were registered on the command, but
@@ -58,10 +58,10 @@ func runDoctorRepair(ctx context.Context, stdout, stderr io.Writer, report docto
 			continue
 		}
 
-		// review Finding-004: the ACL check itself only gates on whether a
-		// keychain-db file happens to exist on disk, not on whether keychain
-		// is the actively selected backend (a leftover file from before an
-		// H2 backend switch would otherwise still trigger a repair). Skip
+		// The ACL check itself only gates on whether a keychain-db file
+		// happens to exist on disk, not on whether keychain is the actively
+		// selected backend (a leftover file from before a backend switch
+		// would otherwise still trigger a repair). Skip
 		// the repair — not just the check — when keychain isn't in active use.
 		if s.Name == "acl.keychain_unlock" && !keychainACLRepairApplies(env) {
 			fmt.Fprintf(stdout, "  [no automated repair] %s: stale keychain file detected, unrelated to your active backend\n", s.Name)
@@ -100,7 +100,7 @@ func runDoctorRepair(ctx context.Context, stdout, stderr io.Writer, report docto
 // keychainACLRepairApplies reports whether the keychain-ACL repair is
 // applicable: keychain must be the actively selected backend (normalized
 // through backend.CanonicalName so aliases match), and the keychain backend
-// only exists on darwin (review Finding-004).
+// only exists on darwin.
 func keychainACLRepairApplies(env llmcontext.Lookup) bool {
 	if runtime.GOOS != "darwin" {
 		return false

@@ -14,10 +14,10 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
-// KNOWN-FAILING (F42): RequireSig only checks that a .sig file exists next
+// KNOWN-FAILING: RequireSig only checks that a .sig file exists next
 // to the template, not that its contents are a valid signature, so an
 // arbitrary .sig file is accepted.
-func TestSecurityRegression_F42_CommunitySignature(t *testing.T) {
+func TestSecurityRegression_CommunitySignature(t *testing.T) {
 	d := t.TempDir()
 	os.WriteFile(filepath.Join(d, "test.yaml"), []byte(validMinimalTemplate), 0600)
 	os.WriteFile(filepath.Join(d, "test.yaml.sig"), []byte("not-a-signature"), 0600)

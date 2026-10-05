@@ -2,7 +2,7 @@
 # coverage-threshold.sh — assert per-package Go coverage meets the threshold.
 #
 # Usage:
-#   bash release-gates/coverage-threshold.sh [coverage.out] [--report]
+#   bash release-checks/coverage-threshold.sh [coverage.out] [--report]
 #
 # Arguments:
 #   coverage.out   Path to the coverage profile (default: coverage.out)
@@ -151,7 +151,7 @@ if failed_packages:
     print('', file=sys.stderr)
     print('Fix options:', file=sys.stderr)
     print('  1. Write additional tests for the failing packages.', file=sys.stderr)
-    print('  2. Add the package to release-gates/coverage-allowlist.txt with a rationale.', file=sys.stderr)
+    print('  2. Add the package to release-checks/coverage-allowlist.txt with a rationale.', file=sys.stderr)
     sys.exit(1)
 
 print(f'Coverage gate PASSED — all non-allowlisted packages meet {threshold:.0f}% threshold.')

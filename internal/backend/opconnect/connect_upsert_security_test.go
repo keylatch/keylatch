@@ -19,10 +19,10 @@ type stubRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// KNOWN-FAILING (F44): Set always issues a create request for a given
+// KNOWN-FAILING: Set always issues a create request for a given
 // canonical path instead of looking up an existing item first, so setting
 // the same path twice creates a duplicate item rather than upserting.
-func TestSecurityRegression_F44_ConnectUpsert(t *testing.T) {
+func TestSecurityRegression_ConnectUpsert(t *testing.T) {
 	creates := 0
 	c := &http.Client{Transport: stubRoundTripper(func(r *http.Request) (*http.Response, error) {
 		if r.Method == "POST" {

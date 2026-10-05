@@ -159,8 +159,8 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		// direct_classic_sandboxed in LLM sessions requires two-person approval.
 		// If the token was minted with ApprovalRootHMAC set (sandboxed approval path)
 		// but TwoPerson is false, block the request. token.Mint now rejects any
-		// hardware approval claim outright (F34), so ApprovalRootHMAC is never
-		// set on an M1 token; this check is retained as defense in depth.
+		// hardware approval claim outright, so ApprovalRootHMAC is never
+		// set on a minted token; this check is retained as defense in depth.
 		if t.ApprovalRootHMAC != "" && !t.TwoPerson {
 			writeError(w, http.StatusForbidden, "llm_session_requires_two_person_approval",
 				"direct_classic_sandboxed in an LLM session requires two-person approval")
@@ -176,7 +176,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	//
 	// s.policy is nil when no ServerOptions.PolicyPath was configured (or
 	// the configured file does not exist yet) — this is pass-through allow,
-	// preserving the gateway's pre-wiring behavior (H7 is wiring, not a new
+	// preserving the gateway's pre-wiring behavior (is wiring, not a new
 	// default-deny for operators who have never touched policy). When a
 	// policy is configured, evaluate the same Actor/Connection/Capability/
 	// Runtime/LLMSession model the CLI-side engine uses
@@ -234,7 +234,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 6-budget: per-actor budget enforcement. CheckAndRecord is atomic
-	// (no TOCTOU between check and record, C-4); the actor identity comes from
+	// (no TOCTOU between check and record); the actor identity comes from
 	// the verified JWT claim, never from a client-controlled header. Denials
 	// return a value-free receipt with an HMAC'd actor ID.
 	if s.budget != nil {
@@ -463,18 +463,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(redactedBody) //nolint:gosec // G705: body is run through redact.Body which strips secrets; this is an API gateway, not an HTML context
 }
 
-// approveHandler is unreachable in M1 (F30, F32): approval mutation is not
+// approveHandler is unreachable: approval mutation is not
 // implemented, so it returns an honest unavailable response for any token
 // rather than calling into the approval package.
 func (s *Server) approveHandler(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in M1")
+	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in this build")
 }
 
-// approvalsHandler is unreachable in M1 (F26, F30): the approval inbox is
+// approvalsHandler is unreachable: the approval inbox is
 // not implemented, so it returns an honest unavailable response instead of
 // disclosing (or falsely accepting mutations against) pending approvals.
 func (s *Server) approvalsHandler(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in M1")
+	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in this build")
 }
 
 // injectAuth injects the access token into the upstream request per AuthPlacement.

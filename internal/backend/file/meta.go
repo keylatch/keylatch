@@ -100,7 +100,7 @@ func (fb *FileBackend) ListMeta(_ context.Context, prefix string) ([]vmeta.Meta,
 	return metas, nil
 }
 
-// ZeroKeyring zeroes the DEK bytes held by the attached keyring, if any (L2:
+// ZeroKeyring zeroes the DEK bytes held by the attached keyring, if any (
 // docker-server-security hardening). Safe to call on a backend with no
 // keyring attached (Open, not OpenWithKeyring) — no-op in that case. Safe to
 // call multiple times (Keyring.Zero is idempotent).

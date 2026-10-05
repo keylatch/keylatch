@@ -1,6 +1,6 @@
 package doctor_test
 
-// checks_backend_h5_test.go — H5: checkBackendBWSession must recognize a
+// checkBackendBWSession must recognize a
 // valid cached session (from `keylatch bw unlock`) as equivalent to an
 // ambient BW_SESSION env var, without ever exposing the cached token.
 

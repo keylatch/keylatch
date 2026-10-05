@@ -204,7 +204,7 @@ func TestIdentityAndClose(t *testing.T) {
 	assert.NoError(t, b.Close())
 }
 
-// TestID_ReturnsVaultQualifiedIdentifier covers phase4_stubs.go's ID(), a
+// TestID_ReturnsVaultQualifiedIdentifier covers unsupported_methods.go's ID(), a
 // stub method for the versioned-storage stubs file: 1Password has no
 // versioned metadata support, but a stable per-vault backend identifier is
 // still required (used as the BackendID in AADBinding).

@@ -1,7 +1,7 @@
 package cli
 
 // doctor_repair_internal_test.go tests runDoctorRepair's branching logic
-// directly (H1). Internal test package (cli, not cli_test) so it can call
+// directly. Internal test package (cli, not cli_test) so it can call
 // the unexported runDoctorRepair/repairableChecks.
 //
 // IMPORTANT: none of these tests exercise the actual keychain-repair
@@ -33,7 +33,7 @@ import (
 // KEYLATCH_CONFIG_DIR and returns an env Lookup pointing at it — used to
 // control keychainACLRepairApplies's gate deterministically instead of
 // depending on whatever config happens to exist on the machine running the
-// test (review Finding-004 fix must not accidentally read the real config).
+// test (fix must not accidentally read the real config).
 func envWithBackend(t *testing.T, backendName string) func(string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -72,7 +72,7 @@ func withMockedStdin(t *testing.T, input string) {
 func TestRunDoctorRepair_HealthyCheck_Skipped(t *testing.T) {
 	report := doctor.Report{
 		Checks: []doctor.Status{
-			{Name: "F1 bootstrap.keyring", OK: true},
+			{Name: "bootstrap.keyring", OK: true},
 		},
 	}
 
@@ -113,11 +113,11 @@ func TestRunDoctorRepair_NonRepairableCheck_PrintsNoAutomatedRepair(t *testing.T
 // TestRunDoctorRepair_RepairableCheck_DeclinedPrompt verifies that without
 // --yes, declining the confirmation prompt skips the repair entirely (the
 // unsafe repairKeychainACL call is never reached). Uses a config with
-// backend=keychain so the review Finding-004 gate lets the prompt appear at
+// backend=keychain so the active-backend gate lets the prompt appear at
 // all (this test's whole point is the decline path, not the gate).
 func TestRunDoctorRepair_RepairableCheck_DeclinedPrompt(t *testing.T) {
 	if runtime.GOOS != "darwin" {
-		t.Skip("keychain backend is darwin-only; the Finding-004 gate always skips it elsewhere")
+		t.Skip("keychain backend is darwin-only; the active-backend gate always skips it elsewhere")
 	}
 	withMockedStdin(t, "n\n")
 
@@ -143,10 +143,10 @@ func TestRunDoctorRepair_RepairableCheck_DeclinedPrompt(t *testing.T) {
 }
 
 // TestRunDoctorRepair_KeychainACLCheck_SkippedWhenBackendNotKeychain is the
-// review Finding-004 regression test: the ACL check itself only gates on
+// Regression test: the ACL check itself only gates on
 // whether a keychain-db file happens to exist on disk (checks_optional.go),
 // not on whether keychain is the actively selected backend. A user who
-// switched backends (H2) but has a leftover keychain-db file must not have
+// switched backends but has a leftover keychain-db file must not have
 // --repair silently open and repair that orphaned keychain's ACL. No prompt
 // should appear at all — the gate must short-circuit before the confirmation
 // step.
@@ -185,7 +185,7 @@ func TestKeychainACLRepairApplies_NonDarwin(t *testing.T) {
 }
 
 // TestRepairableChecks_OnlyKeychainACL documents and locks in the
-// intentionally narrow H1 repair scope.
+// intentionally narrow repair scope.
 func TestRepairableChecks_OnlyKeychainACL(t *testing.T) {
 	assert.Equal(t, map[string]bool{"acl.keychain_unlock": true}, repairableChecks)
 }

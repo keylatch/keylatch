@@ -23,7 +23,7 @@ import (
 
 // ErrProxyUnsupported is returned by both proxy startup forms (`proxy up`
 // and `gateway up --with-proxy`) when gateway_proxy is excluded from the
-// current build's manifest (F13, F27, F28). Neither path binds a listener
+// current build's manifest. Neither path binds a listener
 // or writes a PID file in that case — no fake-healthy state is published.
 var ErrProxyUnsupported = errors.New("proxy: gateway_proxy is not supported in this release")
 
@@ -135,7 +135,7 @@ func newProxyUpCmd() *cobra.Command {
 		Use:   "up",
 		Short: "Start the CONNECT proxy listener",
 		RunE: func(c *cobra.Command, _ []string) error {
-			// gateway_proxy is excluded from M1 (F13, F27, F28) — refuse
+			// gateway_proxy is unavailable — refuse
 			// before any listener/PID-file side effect so no caller can
 			// observe a fake-healthy proxy.
 			if !manifest.Current().Enabled("gateway_proxy") {
@@ -196,7 +196,7 @@ func newProxyUpCmd() *cobra.Command {
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 			defer cancel()
 
-			// Write PID file and state file (C3: store port alongside PID).
+			// Write PID file and state file (store port alongside PID).
 			if err := gateway.WritePID(pidPath, os.Getpid()); err != nil {
 				return fmt.Errorf("proxy up: write PID: %w", err)
 			}
@@ -274,7 +274,7 @@ func newProxyDownCmd() *cobra.Command {
 			// Check liveness.
 			_, running := gateway.IsRunning(pidPath)
 			if !running {
-				// C1: emit audit event for already-dead stale PID path.
+				// Emit audit event for already-dead stale PID path.
 				if em := audit.EmitterFromCtx(c.Context()); em != nil {
 					_ = em.Emit(c.Context(), audit.Event{
 						Action:  "proxy.stopped",
@@ -375,7 +375,7 @@ func newProxyStatusCmd() *cobra.Command {
 				pidPtr = &pid
 			}
 
-			// C3: read port from state file; fall back to default 8888.
+			// Read port from state file; fall back to default 8888.
 			port := 8888
 			if st, err := readProxyState(statePath); err == nil && st.Port != 0 {
 				port = st.Port
@@ -424,7 +424,7 @@ func newProxyStatusCmd() *cobra.Command {
 // to wait for a clean shutdown (e.g. tests) should receive on the done channel
 // after cancelling ctx.
 func startProxyWithGateway(ctx context.Context, port int, pidPath string) (<-chan struct{}, error) {
-	// gateway_proxy is excluded from M1 (F13, F27, F28) — refuse before any
+	// gateway_proxy is unavailable — refuse before any
 	// listener/PID-file side effect so no caller can observe a fake-healthy
 	// proxy.
 	if !manifest.Current().Enabled("gateway_proxy") {

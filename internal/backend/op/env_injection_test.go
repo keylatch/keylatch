@@ -12,7 +12,7 @@ import (
 
 const envCanaryOP = "KEYLATCH_ENV_SEAM_CANARY_OP_0xC0FFEE"
 
-// TestFetchItem_InjectsServiceAccountTokenViaEnv verifies the M3 seam: when
+// TestFetchItem_InjectsServiceAccountTokenViaEnv verifies the env-injection seam: when
 // Options.Env reports OP_SERVICE_ACCOUNT_TOKEN, it is forwarded through
 // CommandRunner.RunEnv's extraEnv rather than relying solely on ambient
 // os.Environ() inheritance, and it never appears in argv.

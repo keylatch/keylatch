@@ -67,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: scan docs for accidentally committed tokens
-        run: bash release-gates/docs-scan.sh
+        run: bash release-checks/docs-scan.sh
 
   govulncheck:
     runs-on: ubuntu-latest

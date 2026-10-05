@@ -55,8 +55,8 @@ separate gateway process, use 'keylatch gateway status' instead.`,
 				if errors.Is(err, broker.ErrBrokerOutOfProcess) {
 					// Out-of-process — actionable error, exit 2. Returns a
 					// *CLIError without printing directly — main.go prints
-					// it exactly once (C5); printing here too would
-					// double-print (Finding-001).
+					// it exactly once; printing here too would
+					// double-print.
 					return NewSecurityBlock("broker not running in-process: %s", err.Error())
 				}
 				return NewInternalError("list grants: %v", err)

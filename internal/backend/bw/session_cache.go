@@ -1,8 +1,8 @@
 package bw
 
-// session_cache.go implements the H5 session-cache seam: `keylatch bw
+// session_cache.go implements the session cache: `keylatch bw
 // unlock` stores a BW_SESSION token here so subsequent keylatch invocations
-// (including ones with no controlling terminal) can inject it via the M3
+// (including ones with no controlling terminal) can inject it via the
 // RunEnv seam instead of requiring BW_SESSION to be exported by hand every
 // time.
 //

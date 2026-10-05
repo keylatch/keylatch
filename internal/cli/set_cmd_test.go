@@ -13,11 +13,11 @@ import (
 	"github.com/keylatch/keylatch/internal/vault"
 )
 
-// TestSetCmd_S4_6_RejectsPositionalValue verifies that passing the secret
+// TestSetCmd_RejectsPositionalValue verifies that passing the secret
 // value as a positional argument is rejected with a non-zero exit.
 // The `set` command uses cobra.ExactArgs(1), so a second positional arg causes
 // an argument-count error before RunE is ever called.
-func TestSetCmd_S4_6_RejectsPositionalValue(t *testing.T) {
+func TestSetCmd_RejectsPositionalValue(t *testing.T) {
 	dir := t.TempDir()
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)

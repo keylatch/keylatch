@@ -1,7 +1,7 @@
 // src/ipc.rs — Rust IPC client for the keylatchd sidecar.
 //
 // Connects to the Unix socket served by keylatchd, signs frames with
-// HMAC-SHA256, and dispatches calls to exactly 5 permitted methods (S14-8).
+// HMAC-SHA256, and dispatches calls to exactly 5 permitted methods.
 //
 // Security invariants:
 //   - IpcMethod enum is the compile-time allow-list (no runtime string dispatch).
@@ -29,7 +29,7 @@ const HMAC_TAG_SIZE: usize = 32;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_FRAME_SIZE: u32 = 1 << 20; // 1 MiB
 
-/// IpcMethod is the compile-time allow-list of permitted IPC methods (S14-8).
+/// IpcMethod is the compile-time allow-list of permitted IPC methods.
 /// Adding a variant here is the ONLY way to call a new method — there is no
 /// runtime string dispatch escape hatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,7 +56,7 @@ impl IpcMethod {
 /// IpcError is returned for IPC failures.
 #[derive(Debug, thiserror::Error)]
 pub enum IpcError {
-    #[error("HMAC mismatch — frame rejected (S14-8)")]
+    #[error("HMAC mismatch — frame rejected")]
     HmacMismatch,
     #[error("frame too large ({0} bytes)")]
     FrameTooLarge(u32),
@@ -143,7 +143,7 @@ impl IpcClient {
     }
 
     /// Call OpenSystemBrowser with the given URL.
-    /// Only https:// and keylatch:// URLs are accepted by the server (S14-2).
+    /// Only https:// and keylatch:// URLs are accepted by the server.
     pub fn open_system_browser(&self, url: &str) -> Result<(), IpcError> {
         let params = serde_json::json!({ "url": url });
         self.call(IpcMethod::OpenSystemBrowser, Some(params))?;
@@ -218,7 +218,7 @@ impl IpcClient {
         mac.update(&len_buf);
         mac.update(&body);
         mac.verify_slice(&tag).map_err(|_| {
-            // Log but do not surface detail (S14-8).
+            // Log but do not surface detail.
             log::warn!("ipc: HMAC mismatch on received frame — dropping connection");
             IpcError::HmacMismatch
         })?;

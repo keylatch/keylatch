@@ -39,9 +39,9 @@ var (
 	ErrTokenPersistFailed = errors.New("token: persist failed")
 	ErrMaxUsesRequired    = errors.New("token: MaxUses required for runner-minted tokens")
 	// ErrHardwareApprovalUnsupported is returned when a TokenSpec carries
-	// hardware approval claim fields (F34): M1 has no hardware attestation
+	// hardware approval claim fields: this build has no hardware attestation
 	// or approval workflow, so no gateway token may be minted from one.
-	ErrHardwareApprovalUnsupported = errors.New("token: hardware approval claims are not supported in M1")
+	ErrHardwareApprovalUnsupported = errors.New("token: hardware approval claims are not supported")
 )
 
 var (

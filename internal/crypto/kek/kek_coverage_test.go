@@ -142,7 +142,7 @@ func TestEnvAgeIdentityKEK_Unwrap_TooShort(t *testing.T) {
 // PATH is pointed at an empty directory so "op" is deterministically not
 // found regardless of whether the machine running this test has a real op
 // CLI installed. Ordinary `go test ./...` must never discover or invoke an
-// installed manager binary (F47); live-CLI coverage lives in
+// installed manager binary; live-CLI coverage lives in
 // live_manager_test.go, gated behind KEYLATCH_LIVE_MANAGER_TESTS=1.
 // ---------------------------------------------------------------------------
 

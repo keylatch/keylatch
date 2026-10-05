@@ -1,7 +1,7 @@
 // src/launch.rs — Per-OS launch-at-login registration.
 //
 // Implements DD-7: off by default; opt-in via first-run wizard.
-// S14-10/S14-11: per-user only, no admin elevation required.
+// Per-user only, no admin elevation required.
 //
 // Platform implementations:
 //   macOS 13+: SMAppService.mainApp.register() / .unregister()

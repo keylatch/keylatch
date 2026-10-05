@@ -61,7 +61,7 @@ func newBackendVaultInitCmd() *cobra.Command {
 			authMethod, _ := c.Flags().GetString("auth-method")
 			roleID, _ := c.Flags().GetString("role-id")
 			secretID, _ := c.Flags().GetString("secret-id")
-			// M-7: fall back to VAULT_SECRET_ID env var if flag not set.
+			// Fall back to VAULT_SECRET_ID env var if flag not set.
 			if secretID == "" {
 				secretID = os.Getenv("VAULT_SECRET_ID")
 			} else if os.Getenv("VAULT_SECRET_ID") != "" {

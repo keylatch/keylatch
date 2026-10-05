@@ -93,11 +93,11 @@ func ValidateProviderRefURI(uri string) error {
 // CommandRunner abstracts exec.Command so implementations are testable.
 // It mirrors the interface used elsewhere in keylatch (internal/exec) —
 // kept in lockstep with internal/exec.CommandRunner (see resolver_test.go's
-// compile-time assertion, S-03).
+// compile-time assertion).
 type CommandRunner interface {
 	Run(ctx context.Context, bin string, args []string, stdin []byte) (stdout []byte, stderr []byte, exitCode int, err error)
 
-	// RunEnv mirrors internal/exec.CommandRunner.RunEnv (M3 env-injection
+	// RunEnv mirrors internal/exec.CommandRunner.RunEnv (env-injection
 	// seam). Resolver does not currently use it — kept here only so real
 	// runners (internal/exec.DefaultRunner) continue to satisfy this
 	// interface and so the two interfaces stay structurally identical.

@@ -91,8 +91,8 @@ Requires the broker to be running in-process.`,
 // runBrokerRevokeSingle revokes a single token by ID.
 //
 // The ErrBrokerOutOfProcess/ErrTokenNotFound branches below return a
-// *CLIError without printing directly — main.go prints it exactly once
-// (C5). Printing here too would double-print (Finding-001); it would also
+// *CLIError without printing directly — main.go prints it exactly once.
+// Printing here too would double-print; it would also
 // break existing in-process tests (e.g. TestBrokerRevokeCmd_OutOfProcess)
 // that call cmd.Execute() and assert on the returned error, which an
 // os.Exit here would defeat by killing the test process.
@@ -132,8 +132,8 @@ func runBrokerRevokeAll(c *cobra.Command, handle broker.BrokerHandle, actorID st
 	if err != nil {
 		if errors.Is(err, broker.ErrBrokerOutOfProcess) {
 			// Returns a *CLIError without printing directly — main.go
-			// prints it exactly once (C5); printing here too would
-			// double-print (Finding-001).
+			// prints it exactly once; printing here too would
+			// double-print.
 			return NewSecurityBlock("broker not running in-process: %s", err.Error())
 		}
 		return NewInternalError("list grants: %v", err)

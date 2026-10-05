@@ -15,11 +15,11 @@ import (
 	"github.com/keylatch/keylatch/internal/runner"
 )
 
-// KNOWN-FAILING (F12): direct_brokered's --clean-env filtering runs after
+// KNOWN-FAILING: direct_brokered's --clean-env filtering runs after
 // credential injection, so CleanBaseEnv strips the freshly issued ephemeral
 // token because the injection rule's env var name is never added to
 // CleanBaseEnv's extras.
-func TestSecurityRegression_F12_BrokerCleanEnvRetainsIssuedCredential(t *testing.T) {
+func TestSecurityRegression_BrokerCleanEnvRetainsIssuedCredential(t *testing.T) {
 	vault := newClassicMockBackend()
 	path := classicSecretPath("default", "ai", "myapi", "api_key")
 	if err := vault.Set(context.Background(), path, []byte("synthetic-root"), backend.Meta{}); err != nil {

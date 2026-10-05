@@ -22,7 +22,7 @@ import (
 )
 
 // Compile-time assertion: mockRunner must satisfy the same CommandRunner interface
-// as internal/exec.CommandRunner, confirming the two interfaces are in sync (S-03).
+// as internal/exec.CommandRunner, confirming the two interfaces are in sync.
 var _ internalexec.CommandRunner = (*mockRunner)(nil)
 
 // --- Mock CommandRunner ---
@@ -365,7 +365,7 @@ func TestResolver_NoScheme_ReturnsError(t *testing.T) {
 	}
 }
 
-// --- Binary-not-found tests (C-01) ---
+// --- Binary-not-found tests ---
 
 // TestResolver_BinaryNotFound_SentinelWrapped verifies that when a binary cannot be
 // found on PATH, Resolve returns an error wrapping ErrBinaryNotFound.

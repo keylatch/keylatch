@@ -16,7 +16,7 @@ import (
 // assertUnlockACLTArgEquals finds the add-generic-password call that updated
 // the login-keychain unlock item's ACL and asserts its -T value equals want.
 // `-T` only ever accepts a filesystem path (see RepairACL's doc comment) —
-// this guards against C4 regressing (passing codesign dump text instead).
+// this guards against regressing (passing codesign dump text instead).
 func assertUnlockACLTArgEquals(t *testing.T, runner *kexec.MockRunner, want string) {
 	t.Helper()
 	for _, call := range runner.CallsCopy() {
@@ -226,7 +226,7 @@ func TestRepairACL_PathOnly(t *testing.T) {
 }
 
 func TestRepairACL_AdHocSignature_TreatedAsUnsigned_UsesPath(t *testing.T) {
-	// C4 regression: Go arm64 builds are ad-hoc linker-signed by default —
+	// Regression: Go arm64 builds are ad-hoc linker-signed by default —
 	// codesign -dv exits 0 for them, but Signature=adhoc/TeamIdentifier=not
 	// set means there is no real, stable identity. RepairACL must still pass
 	// the binary's filesystem PATH to -T, never the codesign dump text.

@@ -116,7 +116,7 @@ type Server struct {
 	// policy is the loaded request policy. nil means no policy is
 	// configured (ServerOptions.PolicyPath == "" or the file does not yet
 	// exist) — the handler's Step 6 treats nil as pass-through allow to
-	// preserve pre-wiring behavior (H7). Non-nil means Step 6 evaluates
+	// preserve pre-wiring behavior. Non-nil means Step 6 evaluates
 	// every request against it.
 	policy *policy.Policy
 }
@@ -188,7 +188,7 @@ func New(opts ServerOptions) (*Server, error) {
 		return nil, fmt.Errorf("gateway: compile routes: %w", err)
 	}
 
-	// Load the request policy, if configured (H7 wiring).
+	// Load the request policy, if configured (wiring).
 	//
 	// opts.PolicyPath == "" means the operator has not opted into gateway
 	// policy enforcement — leave loadedPolicy nil so the handler's Step 6
@@ -218,7 +218,7 @@ func New(opts ServerOptions) (*Server, error) {
 						"(the gateway can always receive LLM-session requests, which permissive mode forbids; use %q instead)",
 					opts.PolicyPath, p.Mode, policy.ModeEnforcing)
 			}
-			// Review finding (2026-08-06, non-blocking-1): the gateway's
+			// Review finding (2026-08-06): the gateway's
 			// policy.Request never sets Command/CWD (handler.go's Step 6 —
 			// there is no shell command or working directory for an HTTP
 			// request), so a rule with a non-empty Commands or CWDs
@@ -333,7 +333,7 @@ func New(opts ServerOptions) (*Server, error) {
 // empty) of every rule with a non-empty Commands or CWDs constraint —
 // fields the gateway's policy.Request never populates, so such rules can
 // never match gateway traffic. See the New() call site for the full
-// rationale (review finding, 2026-08-06, non-blocking-1).
+// rationale (review finding, 2026-08-06).
 func rulesWithGatewayUnsupportedFields(rules []policy.Rule) []string {
 	var bad []string
 	for i, rule := range rules {

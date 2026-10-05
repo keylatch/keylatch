@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- M1: gateway init preserves existing custom values ---
+// --- gateway init preserves existing custom values ---
 
 func TestGatewayInit_PreservesCustomBindAndMode(t *testing.T) {
 	configDir := t.TempDir()

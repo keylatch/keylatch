@@ -70,9 +70,9 @@ func readBody(t *testing.T, resp *http.Response) (int, string) {
 	return resp.StatusCode, code
 }
 
-// TestMint_RejectsHardwareApprovalClaims verifies token.Mint (F34) refuses
+// TestMint_RejectsHardwareApprovalClaims verifies token.Mint refuses
 // to produce a gateway token from a TokenSpec carrying hardware approval
-// claims, with or without TwoPerson set — M1 has no hardware attestation
+// claims, with or without TwoPerson set — this build has no hardware attestation
 // workflow, so no caller (CLI, API, or library) can mint a token the
 // downstream two-person LLM session gate would ever need to evaluate.
 func TestMint_RejectsHardwareApprovalClaims(t *testing.T) {

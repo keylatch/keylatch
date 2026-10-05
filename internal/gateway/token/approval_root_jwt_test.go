@@ -9,8 +9,8 @@ import (
 )
 
 // TestMint_RejectsSingleApprovalRootClaim verifies that Mint rejects any
-// TokenSpec carrying single-root hardware approval claim fields (F34) — M1
-// has no hardware attestation workflow, so no combination of these fields
+// TokenSpec carrying single-root hardware approval claim fields — there is
+// no hardware attestation workflow, so no combination of these fields
 // may ever produce a token.
 func TestMint_RejectsSingleApprovalRootClaim(t *testing.T) {
 	key := testSigningKey(t)
@@ -36,7 +36,7 @@ func TestMint_RejectsSingleApprovalRootClaim(t *testing.T) {
 }
 
 // TestMint_RejectsTwoPersonApprovalClaim verifies that Mint rejects a
-// two-person approval spec the same way as a single-root claim (F34).
+// two-person approval spec the same way as a single-root claim.
 func TestMint_RejectsTwoPersonApprovalClaim(t *testing.T) {
 	key := testSigningKey(t)
 	storePath := testStorePath(t)

@@ -14,10 +14,10 @@ import (
 	"github.com/keylatch/keylatch/internal/trust"
 )
 
-// KNOWN-FAILING (F43): Read accepts any nonzero PresenceProof.ConfirmedAt
+// KNOWN-FAILING: Read accepts any nonzero PresenceProof.ConfirmedAt
 // timestamp as proof of hardware presence, with no signature, freshness, or
 // replay check, so a year-old unsigned timestamp is accepted.
-func TestSecurityRegression_F43_SharedSecretPresence(t *testing.T) {
+func TestSecurityRegression_SharedSecretPresence(t *testing.T) {
 	priv, pub, e := sharedsecret.GenerateAGEKeyPair()
 	if e != nil {
 		t.Fatal(e)

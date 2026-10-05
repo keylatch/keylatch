@@ -4,7 +4,7 @@
 //   - Updates the TrayController badge count on count changes.
 //   - Fires a native notification via NotifierImpl on each new approval.
 //
-// S14-6: notification body contains only the actorHmac prefix (8 chars) and
+// Notification body contains only the actorHmac prefix (8 chars) and
 //        connection name — never a credential value.
 //
 // The watcher runs in a background OS thread (not tokio, to avoid the tokio
@@ -24,14 +24,14 @@ use crate::tray::TrayController;
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Approval mirrors the JSON shape of GET /api/approvals.
-/// S14-6: no credential value fields — only metadata identifiers.
+// No credential value fields — only metadata identifiers.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApprovalEntry {
     /// Opaque approval token (used as a stable ID for de-dup). // security-reviewed: 2026-05-16
     pub token: String,
     /// Connection name (value-free label). // security-reviewed: 2026-05-16
     pub connection: String,
-    /// Actor HMAC — first 8 chars used for notification body (S14-6). // security-reviewed: 2026-05-16
+    /// Actor HMAC — first 8 chars used for notification body. // security-reviewed: 2026-05-16
     pub actor_hmac: String,
 }
 
@@ -138,7 +138,7 @@ fn run_watcher<R: Runtime>(
     }
 }
 
-/// Fire a native notification for a new approval (S14-6: value-free body).
+/// Fire a native notification for a new approval (value-free body).
 fn fire_notification<R: Runtime>(notifier: &NotifierImpl<R>, approval: &ApprovalEntry) {
     // Body: first 8 chars of actorHmac + connection name, truncated to 60 chars total.
     let actor_prefix = &approval.actor_hmac[..approval.actor_hmac.len().min(8)];

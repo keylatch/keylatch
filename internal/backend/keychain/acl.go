@@ -50,7 +50,7 @@ func (k *KeychainBackend) VerifyACL(ctx context.Context) error {
 // about the binary lacking a stable signing identity (unsigned or
 // ad-hoc-signed, e.g. the default for `go build` on Apple Silicon).
 //
-// KNOWN GAP (review Finding-003, not fixed here): unlike Get/Set/Delete
+// KNOWN GAP (not fixed here): unlike Get/Set/Delete
 // (keychain.go), RepairACL does not call acquireFlock, so it is not
 // serialized against concurrent Init/ForceReinit/RepairACL calls across
 // processes. See init.go's matching note for the concrete race scenario.
@@ -184,7 +184,7 @@ func (k *KeychainBackend) repairItemACL(ctx context.Context, conn, field, truste
 // default codesign applied by the linker on Apple Silicon `go build`. An
 // ad-hoc signature has no Team ID and changes on every rebuild, so it is not
 // a real identity worth trusting for ACL purposes even though `codesign -dv`
-// exits 0 for it (C4: treating "codesign didn't fail" as "signed" caused
+// exits 0 for it (treating "codesign didn't fail" as "signed" caused
 // RepairACL to pass the raw multi-line dump to `-T`, which only accepts a
 // filesystem path — see RepairACL's doc comment).
 func (k *KeychainBackend) detectCodeSigningIdentity(ctx context.Context, binPath string) (string, bool) {

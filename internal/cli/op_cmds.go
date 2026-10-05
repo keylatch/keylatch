@@ -28,7 +28,7 @@ func RegisterOPCommands(root *cobra.Command) {
 	root.AddCommand(newOPParentCmd())
 }
 
-// newOPParentCmd returns the `op` command group (session orchestration: H5).
+// newOPParentCmd returns the `op` command group (session orchestration).
 func newOPParentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "op",

@@ -62,7 +62,7 @@ var ErrFeatureFlagRequired = fmt.Errorf("sandbox: direct_classic_sandboxed featu
 // ~/.keylatch/sandbox-profiles/<profileID>.yaml.
 //
 // profileID must not contain path separators or be a relative path reference
-// (e.g. ".." or ".") to prevent path traversal attacks (C3).
+// (e.g. ".." or ".") to prevent path traversal attacks.
 func LoadManifest(profileID string) (*SandboxManifest, error) {
 	if profileID == "" || profileID == ".." || profileID == "." || strings.ContainsAny(profileID, "/\\") {
 		return nil, fmt.Errorf("sandbox: invalid profile ID %q: must not contain path separators", profileID)
@@ -100,7 +100,7 @@ func LoadManifestFromPath(path string) (*SandboxManifest, error) {
 // VerifyExecHash streams the executable at m.Executable and verifies its
 // SHA-256 matches m.ExecHash. Returns ErrHashMismatch on mismatch.
 //
-// Uses HashExecutable for streaming IO to avoid loading large binaries into RAM (C2).
+// Uses HashExecutable for streaming IO to avoid loading large binaries into RAM.
 func VerifyExecHash(m *SandboxManifest) error {
 	got, err := HashExecutable(m.Executable)
 	if err != nil {

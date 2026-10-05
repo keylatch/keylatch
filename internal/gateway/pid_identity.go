@@ -29,8 +29,8 @@ var processIdentityExeNames = []string{"keylatchd", "keylatch"}
 // completely unrelated.
 //
 // This is NOT a security boundary — it exists purely to disambiguate
-// ordinary PID-reuse races for `gateway up --force` stale-PID recovery
-// (L2): IsRunning only signal-0-probes the pid, so a recycled pid can
+// ordinary PID-reuse races for `gateway up --force` stale-PID recovery:
+// IsRunning only signal-0-probes the pid, so a recycled pid can
 // false-positive as "gateway running" when it actually belongs to an
 // unrelated process.
 //

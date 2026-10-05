@@ -57,7 +57,7 @@ func TestSetupInteractive_ExistingConfigContinuesWizard(t *testing.T) {
 
 // setupResumeStdin builds a stdinScannerFn replacement feeding the given
 // lines (in order) as terminal-style responses, and installs it for the
-// duration of the test (H2 resume scenarios below).
+// duration of the test (resume scenarios below).
 func setupResumeStdin(t *testing.T, lines ...string) {
 	t.Helper()
 	oldScannerFn := stdinScannerFn
@@ -83,7 +83,7 @@ func setupResumeClearLLMEnv(t *testing.T) {
 // TestSetupResume_EnterThrough_KeepsConfiguredBackend verifies that
 // Enter-through resume (blank answer to "Keep current backend? (Y/n)")
 // keeps the configured backend rather than silently switching to the OS
-// recommendation (H2a).
+// recommendation.
 func TestSetupResume_EnterThrough_KeepsConfiguredBackend(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
@@ -116,7 +116,7 @@ func TestSetupResume_EnterThrough_KeepsConfiguredBackend(t *testing.T) {
 
 // TestSetupResume_Switch_RequiresConfirmation verifies that actively
 // choosing a different backend on resume requires a typed "switch"
-// confirmation before it is persisted (H2b).
+// confirmation before it is persisted.
 func TestSetupResume_Switch_RequiresConfirmation(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
@@ -149,7 +149,7 @@ func TestSetupResume_Switch_RequiresConfirmation(t *testing.T) {
 }
 
 // TestSetupResume_DeclineSwitch_KeepsOldBackend verifies that declining the
-// typed "switch" confirmation keeps the previously configured backend (H2c).
+// typed "switch" confirmation keeps the previously configured backend.
 func TestSetupResume_DeclineSwitch_KeepsOldBackend(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
@@ -182,10 +182,10 @@ func TestSetupResume_DeclineSwitch_KeepsOldBackend(t *testing.T) {
 }
 
 // TestSetupResume_UnreadableConfig_AbortsSetup verifies the review-flagged
-// warn-1 gap is fixed: a config file that exists but cannot be read
+// Gap is fixed: a config file that exists but cannot be read
 // (permission denied) must abort setup with a clear error instead of
 // silently treating it as "no configured backend" and skipping straight to
-// the fresh-install flow (which would bypass H2's switch-confirmation gate
+// the fresh-install flow (which would bypass the switch-confirmation gate
 // entirely).
 func TestSetupResume_UnreadableConfig_AbortsSetup(t *testing.T) {
 	configDir := t.TempDir()
@@ -233,9 +233,9 @@ func TestSetupResume_UnreadableConfig_AbortsSetup(t *testing.T) {
 
 // TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning verifies that a
 // readable-but-content-unusable config (version mismatch) surfaces the
-// same M2 warning before the backend prompt, and is treated as a fresh
-// install rather than silently skipping straight past it with no
-// indication anything was wrong (warn-1).
+// same unusable-config warning before the backend prompt, and is treated as
+// a fresh install rather than silently skipping straight past it with no
+// indication anything was wrong.
 func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
@@ -275,7 +275,7 @@ func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
 
 // TestSetupSecurityBlockMessage_NamesTriggeringSignal verifies the LLM
 // session guard explains itself with the concrete env var that fired,
-// instead of a generic refusal (M8).
+// instead of a generic refusal.
 func TestSetupSecurityBlockMessage_NamesTriggeringSignal(t *testing.T) {
 	env := func(k string) string {
 		if k == "CLAUDE_CODE" {

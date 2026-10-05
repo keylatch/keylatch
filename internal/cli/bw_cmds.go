@@ -22,7 +22,7 @@ func RegisterBWCommands(root *cobra.Command) {
 	root.AddCommand(newBWParentCmd())
 }
 
-// newBWParentCmd returns the `bw` command group (session orchestration: H5).
+// newBWParentCmd returns the `bw` command group (session orchestration).
 func newBWParentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bw",

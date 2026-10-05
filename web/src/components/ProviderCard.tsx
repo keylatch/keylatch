@@ -27,7 +27,7 @@ const STATUS_DOT_LABEL: Record<HealthStatus, string> = {
 }
 
 // DoctorCheck mirrors the Go doctor.Status struct.
-// warn is optional (omitempty on the Go side) to avoid a Go/TS type mismatch (S-04).
+// warn is optional (omitempty on the Go side) to avoid a Go/TS type mismatch.
 interface DoctorCheck {
   name: string
   section: string

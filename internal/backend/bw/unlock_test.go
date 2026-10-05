@@ -1,6 +1,6 @@
 package bw_test
 
-// unlock_test.go — H5: BitwardenBackend.Unlock (mocked-runner, stdin
+// unlock_test.go — BitwardenBackend.Unlock (mocked-runner, stdin
 // password passthrough, never argv) and the Open() session-cache pickup /
 // lockedGuidance() cache-invalidation seam.
 

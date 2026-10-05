@@ -45,7 +45,7 @@ func Review(_ context.Context, _ *team.Team, items []inventory.Item) ([]ReviewRe
 // RevokeUnused reports grants and shared secrets that have been stale >
 // threshold and could not actually be revoked.
 //
-// M9a: this used to silently no-op ("In production: revoke the grant or
+// This used to silently no-op ("In production: revoke the grant or
 // shared secret" + `_ = item`) and always return nil, which is worse than
 // doing nothing — a caller checking the error would believe stale access
 // had been cleaned up when nothing happened. Neither item type is

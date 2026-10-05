@@ -54,7 +54,7 @@ thiserror = "1"
 # Temporary files (for tests)
 tempfile = "3"
 
-# Semver comparison for update manager (M4)
+# Semver comparison for update manager
 semver = "1"
 
 # Logging

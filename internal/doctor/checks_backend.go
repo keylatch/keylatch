@@ -19,7 +19,7 @@ import (
 
 // checkBackendSelected checks that the configured backend is valid and
 // supported on the current platform. The allowed set is derived from
-// backend.KnownCanonicalNames() (H4) rather than a hardcoded literal, so
+// backend.KnownCanonicalNames() rather than a hardcoded literal, so
 // registering a new backend (vault, aws-sm, gcp-sm, azure-kv, doppler,
 // infisical, op-connect, ...) doesn't also require a doctor update to avoid
 // a spurious hard FAIL for anyone using it.
@@ -122,7 +122,7 @@ func checkBackendKeychain(probe kexec.Probe) Check {
 }
 
 // checkBackendOP checks whether the `op` CLI is available. It only warns
-// about authentication when op is the SELECTED backend (H3) — a merely-
+// about authentication when op is the SELECTED backend — a merely-
 // installed op CLI on a machine configured to use a different backend is
 // informational, not something requiring action. session=unknown/signed_in=
 // unknown literals were removed rather than fabricated: real auth-state
@@ -181,7 +181,7 @@ func checkBackendOP(env llmcontext.Lookup, probe kexec.Probe) Check {
 }
 
 // checkBackendBW checks whether the `bw` CLI is available. See checkBackendOP
-// for the H3 rationale: only warns when bw is the SELECTED backend, and
+// for the rationale: only warns when bw is the SELECTED backend, and
 // drops the fabricated session=unknown literal.
 func checkBackendBW(env llmcontext.Lookup, probe kexec.Probe) Check {
 	return func(ctx context.Context) Status {
@@ -335,7 +335,7 @@ func checkBackendBWSession(env llmcontext.Lookup, probe kexec.Probe) Check {
 		// check presence only — never expose BW_SESSION value.
 		sessionSet := env("BW_SESSION") != ""
 
-		// H5: a cached session (from `keylatch bw unlock`) is an equally
+		// A cached session (from `keylatch bw unlock`) is an equally
 		// valid source of BW_SESSION — checkBackendBWSession must not warn
 		// just because the ambient env var itself is unset. StatSession
 		// reads only the sidecar metadata file, never the token.

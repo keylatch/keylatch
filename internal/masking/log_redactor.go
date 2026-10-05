@@ -33,7 +33,7 @@ func RedactForLog(message string) string {
 			if len(loc) >= 4 && loc[2] >= 0 {
 				// Group 1 exists — preserve it, redact the rest.
 				// loc[2] is the start index of group 1, loc[3] is the end index.
-				prefix := match[loc[2]:loc[3]] // actual group 1 content (M-6)
+				prefix := match[loc[2]:loc[3]] // actual group 1 content
 				return match[:loc[2]] + prefix + "[REDACTED]"
 			}
 			// No capturing group — redact entire match.

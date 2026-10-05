@@ -18,7 +18,7 @@ import (
 
 // confine joins base with the given elements and verifies the result stays
 // under base — rejecting a canonical path containing ".." (or an absolute
-// path) instead of silently escaping the values/metadata directory (F37).
+// path) instead of silently escaping the values/metadata directory.
 // Callers must not use filepath.Join directly on a caller-influenced
 // canonical path for this reason.
 func confine(base string, elem ...string) (string, error) {

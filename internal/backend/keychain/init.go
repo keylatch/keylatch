@@ -37,7 +37,7 @@ import (
 //     sync. Init refuses to generate a replacement password in that case —
 //     doing so would silently overwrite the login-keychain unlock item and
 //     permanently orphan any secrets already stored under the old one (the
-//     original C1 data-loss bug). Call ForceReinit to proceed anyway after
+//     original data-loss bug). Call ForceReinit to proceed anyway after
 //     the caller has confirmed the user accepts losing access to existing
 //     secrets.
 func (k *KeychainBackend) Init(ctx context.Context, service string) error {
@@ -57,13 +57,13 @@ func (k *KeychainBackend) ForceReinit(ctx context.Context, service string) error
 // init is the shared Init/ForceReinit implementation. See Init's doc comment
 // for the decision table; force short-circuits the two refusal branches.
 //
-// KNOWN GAP (review Finding-003, not fixed here): unlike Get/Set/Delete
+// KNOWN GAP (not fixed here): unlike Get/Set/Delete
 // (keychain.go), this read-decide-write sequence does NOT call acquireFlock.
 // Two concurrent Init/ForceReinit invocations (e.g. overlapping `keylatch
 // setup` runs, or `setup` racing `doctor --repair --yes`, which also calls
 // RepairACL) can both observe "no unlock item, no db yet", each generate a
 // different random password, and race on the final login-keychain upsert —
-// a race-triggered variant of the C1 data-loss bug this function otherwise
+// a race-triggered variant of the data-loss bug this function otherwise
 // fixes for the deterministic-rerun case. Left as a follow-up: wrap this
 // sequence (and RepairACL, acl.go) in acquireFlock(k.opts.LockPath).
 func (k *KeychainBackend) init(ctx context.Context, service string, force bool) error {

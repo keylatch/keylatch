@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFileBackend_ZeroKeyring_ZeroesDEKs verifies L2: ZeroKeyring() zeroes the
+// TestFileBackend_ZeroKeyring_ZeroesDEKs verifies ZeroKeyring() zeroes the
 // attached keyring's DEK bytes, so a subsequent Get() against the SAME
 // backend instance fails (AEAD auth failure) rather than returning
 // plaintext, even though the manifest entry still exists.

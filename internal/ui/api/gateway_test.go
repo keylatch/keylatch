@@ -10,7 +10,7 @@ import (
 )
 
 // TestGatewayHandler_Status verifies that GET /api/gateway/status returns 501
-// Not Implemented (Q-1: gateway status not yet wired to real gateway).
+// Not Implemented (gateway status not yet wired to real gateway).
 func TestGatewayHandler_Status(t *testing.T) {
 	t.Parallel()
 	h := &api.GatewayHandler{AllowTokenMinting: false}
@@ -30,7 +30,7 @@ func TestGatewayHandler_TokenMinting_AdminScopeForbidden(t *testing.T) {
 }
 
 // TestGatewayHandler_TokenMinting_TokenScopeOK verifies that POST /api/gateway/tokens
-// returns 501 Not Implemented (Q-1: token minting not yet wired to real gateway).
+// returns 501 Not Implemented (token minting not yet wired to real gateway).
 func TestGatewayHandler_TokenMinting_TokenScopeOK(t *testing.T) {
 	t.Parallel()
 	h := &api.GatewayHandler{AllowTokenMinting: true}

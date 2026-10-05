@@ -76,7 +76,7 @@ type BitwardenBackend struct {
 	bin     string
 	session string // BW_SESSION — never exposed, passed via subprocess env only
 
-	// sessionFromCache is true when session was sourced from the H5 session
+	// sessionFromCache is true when session was sourced from the session
 	// cache (LoadSession) rather than the ambient BW_SESSION env var. Only
 	// cache-sourced sessions are invalidated on an auth failure — an
 	// explicit, user-set ambient BW_SESSION is left alone so we never mask
@@ -88,7 +88,7 @@ type BitwardenBackend struct {
 }
 
 // Open validates options, resolves the `bw` binary, resolves a BW_SESSION
-// (ambient env first, then the H5 session cache — see session_cache.go), and
+// (ambient env first, then the session cache — see session_cache.go), and
 // returns an initialized BitwardenBackend.
 func Open(opts Options) (*BitwardenBackend, error) {
 	// Reject non-https server URLs.
@@ -179,7 +179,7 @@ func (b *BitwardenBackend) Capabilities() []backend.Capability {
 // BW_SESSION is injected as a subprocess env var. Uses single-flight
 // collapse and 60-second metadata cache.
 //
-// Checks runner.OK before returning plaintext (C2).
+// Checks runner.OK before returning plaintext.
 func (b *BitwardenBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	if !runner.OK(ctx) {
 		return nil, backend.Meta{}, backend.ErrLocked
@@ -541,7 +541,7 @@ func (b *BitwardenBackend) sync(ctx context.Context) error {
 //
 // b.session is populated once, in Open(), from either an ambient BW_SESSION
 // (opts.Env lookup) or — when ambient is absent — a cached session token
-// (see session_cache.go / H5). Real subprocess exec no longer depends on
+// (see session_cache.go). Real subprocess exec no longer depends on
 // ambient os.Environ() inheritance alone, so this works under daemon/
 // sandboxed exec paths where the parent's env is not implicitly passed
 // through.
@@ -554,7 +554,7 @@ func (b *BitwardenBackend) runWithSession(ctx context.Context, args []string, st
 }
 
 // lockedGuidance returns the standard ErrLocked guidance error and, when
-// this backend instance's session came from the H5 cache rather than an
+// this backend instance's session came from the cache rather than an
 // explicit ambient BW_SESSION, best-effort invalidates that cache entry so
 // a rejected session isn't retried indefinitely. An explicit ambient
 // BW_SESSION set by the user is left untouched — we never silently clear a

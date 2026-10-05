@@ -56,7 +56,7 @@ func (d *classicSandboxedDriver) Run(ctx context.Context, req ExecRequest, tmpl 
 	}
 
 	// Step 1: verify feature flag first — before any filesystem access or audit
-	// events. When the flag is absent, nothing else should run (C3).
+	// events. When the flag is absent, nothing else should run.
 	if !req.FeatureFlags["direct_classic_sandboxed"] {
 		return receipt, sandbox.ErrFeatureFlagRequired
 	}

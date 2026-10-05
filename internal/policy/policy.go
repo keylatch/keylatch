@@ -183,7 +183,7 @@ func Load(path string) (Policy, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return Policy{}, fmt.Errorf("policy: parse %q: %w", path, err)
 	}
-	// C-2/validate runtime mode on every rule that specifies one.
+	// Validate runtime mode on every rule that specifies one.
 	// Also reject rate_limit fields: the RateSpec is parsed but never enforced.
 	// Accepting silently would create false security expectations.
 	for i, rule := range p.Rules {
@@ -222,7 +222,7 @@ func Save(path string, p Policy) error {
 // Check evaluates req against p and returns a Decision.
 // See spec for the full algorithm.
 func (p Policy) Check(req Request) Decision {
-	// M-4: Preflight — reject removed runtime strings immediately.
+	// Preflight — reject removed runtime strings immediately.
 	if req.Runtime != "" {
 		if err := ValidateRuntimeMode(req.Runtime); err != nil {
 			return Decision{Allow: false, Reason: err.Error()}
@@ -319,8 +319,8 @@ func (p Policy) Check(req Request) Decision {
 
 // ruleMatches returns true when all fields of req satisfy the rule.
 func ruleMatches(rule Rule, req Request) bool {
-	// M-4: if rule.Runtime is a removed runtime string, it must never match.
-	// Parse-time validation (C-2) should prevent reaching here, but guard defensively.
+	// If rule.Runtime is a removed runtime string, it must never match.
+	// Parse-time validation should prevent reaching here, but guard defensively.
 	if rule.Runtime != "" {
 		if err := ValidateRuntimeMode(string(rule.Runtime)); err != nil {
 			return false

@@ -18,18 +18,18 @@ func (d *spyDriver) Run(context.Context, runner.ExecRequest, registry.Connection
 	return runner.RuntimeReceipt{}, nil
 }
 
-// TestSecurityRegression_F12_DirectRuntimesUnreachableInM1 verifies that
+// TestSecurityRegression_DirectRuntimesUnreachable verifies that
 // direct_brokered, gateway_proxy, and direct_classic_sandboxed are all
-// gated Unavailable in the M1 manifest, and that WithManifestGuard actually
+// gated Unavailable in the support manifest, and that WithManifestGuard actually
 // refuses to invoke the wrapped driver for a gated mode — the real
 // production wiring (internal/cli/root.go) uses this exact guard, so any
 // CLI/API/MCP caller is denied before a direct secret-injection mode can
 // run, with no fallback path.
-func TestSecurityRegression_F12_DirectRuntimesUnreachableInM1(t *testing.T) {
+func TestSecurityRegression_DirectRuntimesUnreachable(t *testing.T) {
 	m := manifest.Current()
 	for _, id := range []string{"direct_brokered", "gateway_proxy", "direct_classic_sandboxed"} {
 		if m.Enabled(id) {
-			t.Errorf("manifest: %q must remain Unavailable in M1", id)
+			t.Errorf("manifest: %q must remain Unavailable", id)
 		}
 	}
 
@@ -49,9 +49,9 @@ func TestSecurityRegression_F12_DirectRuntimesUnreachableInM1(t *testing.T) {
 	}
 }
 
-// TestSecurityRegression_F12_ManifestGuardAllowsSupportedMode verifies the
+// TestSecurityRegression_ManifestGuardAllowsSupportedMode verifies the
 // guard does not interfere with a Supported mode (gateway_typed).
-func TestSecurityRegression_F12_ManifestGuardAllowsSupportedMode(t *testing.T) {
+func TestSecurityRegression_ManifestGuardAllowsSupportedMode(t *testing.T) {
 	spy := &spyDriver{}
 	guarded := runner.WithManifestGuard(spy, manifest.Current(), "gateway_typed")
 	if _, err := guarded.Run(context.Background(), runner.ExecRequest{}, registry.ConnectionTemplate{}); err != nil {

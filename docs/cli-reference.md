@@ -153,20 +153,20 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
   "_schema": "v1",
   "exit": 0,
   "checks": [
-    {"name": "F1 bootstrap.keyring", "section": "environment", "ok": true, "detail": "...", "fix": ""}
+    {"name": "bootstrap.keyring", "section": "environment", "ok": true, "detail": "...", "fix": ""}
   ],
   "summary": {"ok": 5, "warn": 1, "fail": 0}
 }
 ```
 
-**Bootstrap checks (F1/F2):**
-- `F1 bootstrap.keyring` — verifies `~/.keylatch/keyring/keyring.json` is present and non-empty
-- `F2 bootstrap.config` — verifies `~/.keylatch/config.json` is present and parseable
+**Bootstrap checks:**
+- `bootstrap.keyring` — verifies `~/.keylatch/keyring/keyring.json` is present and non-empty
+- `bootstrap.config` — verifies `~/.keylatch/config.json` is present and parseable
 
 **Integration check (I3):**
 - `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.windsurf/hooks`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.
 
-**Optional-feature checks (informational, not warnings):** `gateway.running` (gateway not started), `F3 plaintext_retention` (runtime monitor / `keylatch ui` not started), and `connections.configured` (no connections added yet) report `[ok]` with an informational detail rather than `[warn]` when the corresponding optional feature simply hasn't been enabled — none of these force doctor's exit code away from `0`.
+**Optional-feature checks (informational, not warnings):** `gateway.running` (gateway not started), `plaintext_retention` (runtime monitor / `keylatch ui` not started), and `connections.configured` (no connections added yet) report `[ok]` with an informational detail rather than `[warn]` when the corresponding optional feature simply hasn't been enabled — none of these force doctor's exit code away from `0`.
 
 **`--repair` scope:** currently repairs `acl.keychain_unlock` only, by re-running `RepairACL`/`RepairItemACLs` (the same operations `keylatch keychain-repair-acl` performs). Every other failing/warning check is reported as `[no automated repair] <name>: run: <fix hint>` rather than repaired.
 

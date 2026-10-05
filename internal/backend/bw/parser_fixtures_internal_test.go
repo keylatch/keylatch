@@ -1,6 +1,6 @@
 package bw
 
-// parser_fixtures_internal_test.go — M4: table-driven tests for isLocked and
+// parser_fixtures_internal_test.go — table-driven tests for isLocked and
 // isNotFound against realistic bw CLI stderr transcripts, so a CLI-output
 // wording change fails a unit test instead of silently breaking error
 // classification for users.

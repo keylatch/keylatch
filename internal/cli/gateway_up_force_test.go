@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- L2: resolveGatewayUpRunning (mocked-runner match/mismatch coverage) ---
+// --- resolveGatewayUpRunning (mocked-runner match/mismatch coverage) ---
 
 // psKey builds the MockRunner response key for `ps -p <pid> -o command=`,
 // matching the arg-signature construction used by kexec.MockRunner.
@@ -109,7 +109,7 @@ func TestResolveGatewayUpRunning_ForceMismatch_RecoversStalePID(t *testing.T) {
 }
 
 // TestResolveGatewayUpRunning_ForceUnchecked_RefusesFailSafe verifies the
-// review fix (warn-4): when process-identity verification is inconclusive
+// When process-identity verification is inconclusive
 // (ps itself failed — could mean the original process legitimately died, or
 // could mean ps failed while the process is still alive and healthy),
 // resolveGatewayUpRunning must fail safe and refuse rather than guess by

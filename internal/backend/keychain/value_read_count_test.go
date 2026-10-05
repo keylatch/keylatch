@@ -16,7 +16,7 @@ import (
 // value-read call (the getOneValue call with -w for the specific service+account).
 func TestGet_ExactlyOneValueRead(t *testing.T) {
 	secBin := "/usr/bin/security"
-	const kPath = "/tmp/find3-test.keychain-db"
+	const kPath = "/tmp/value-read-test.keychain-db"
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
@@ -38,7 +38,7 @@ func TestGet_ExactlyOneValueRead(t *testing.T) {
 
 	b, err := keychain.Open(keychain.Options{
 		KeychainPath: kPath,
-		LockPath:     "/tmp/find3-test.lock",
+		LockPath:     "/tmp/value-read-test.lock",
 		SecurityBin:  secBin,
 		Runner:       runner,
 	})
@@ -78,7 +78,7 @@ func TestGet_ExactlyOneValueRead(t *testing.T) {
 // TestList_ZeroValueReads verifies that List produces zero value-read calls.
 func TestList_ZeroValueReads(t *testing.T) {
 	secBin := "/usr/bin/security"
-	const kPath = "/tmp/find3-list-test.keychain-db"
+	const kPath = "/tmp/value-read-list-test.keychain-db"
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
@@ -91,7 +91,7 @@ func TestList_ZeroValueReads(t *testing.T) {
 
 	b, err := keychain.Open(keychain.Options{
 		KeychainPath: kPath,
-		LockPath:     "/tmp/find3-list-test.lock",
+		LockPath:     "/tmp/value-read-list-test.lock",
 		SecurityBin:  secBin,
 		Runner:       runner,
 	})
@@ -146,7 +146,7 @@ func TestList_ZeroValueReads(t *testing.T) {
 // TestGetMeta_ZeroValueReads verifies that GetMeta produces zero value-read calls.
 func TestGetMeta_ZeroValueReads(t *testing.T) {
 	secBin := "/usr/bin/security"
-	const kPath = "/tmp/find3-getmeta-test.keychain-db"
+	const kPath = "/tmp/value-read-getmeta-test.keychain-db"
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
@@ -158,7 +158,7 @@ func TestGetMeta_ZeroValueReads(t *testing.T) {
 
 	b, err := keychain.Open(keychain.Options{
 		KeychainPath: kPath,
-		LockPath:     "/tmp/find3-getmeta-test.lock",
+		LockPath:     "/tmp/value-read-getmeta-test.lock",
 		SecurityBin:  secBin,
 		Runner:       runner,
 	})

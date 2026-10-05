@@ -32,7 +32,7 @@ type Session struct {
 	Provider      Provider      `json:"-"` // not persisted
 	Subject       string        `json:"-"` // in-memory ONLY — never persisted
 	Email         string        `json:"-"` // in-memory ONLY
-	IssuedAt      time.Time     `json:"-"` // M-11: populated during Login for MaxSessionAge enforcement
+	IssuedAt      time.Time     `json:"-"` // Populated during Login for MaxSessionAge enforcement
 	ExpiresAt     time.Time     `json:"-"`
 	MaxSessionAge time.Duration //
 }
@@ -91,7 +91,7 @@ func Login(ctx context.Context, provider Provider, opts LoginOpts) (*Session, er
 		Provider:      provider,
 		Subject:       subject, // in-memory ONLY — never persisted
 		Email:         "",      // in-memory ONLY
-		IssuedAt:      now,     // M-11: required for MaxSessionAge enforcement
+		IssuedAt:      now,     // Required for MaxSessionAge enforcement
 		ExpiresAt:     now.Add(expiresIn),
 		MaxSessionAge: opts.MaxSessionAge,
 	}
@@ -101,7 +101,7 @@ func Login(ctx context.Context, provider Provider, opts LoginOpts) (*Session, er
 }
 
 // ValidateSession checks session is within MaxSessionAge.
-// M-11: uses IssuedAt (populated during Login) so MaxSessionAge check is not dead code.
+// Uses IssuedAt (populated during Login) so MaxSessionAge check is not dead code.
 func ValidateSession(s *Session) error {
 	if s == nil {
 		return ErrSessionExpired

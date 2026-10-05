@@ -144,7 +144,7 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
-// newVersionCmd returns the `version` subcommand (C6). It produces the same
+// newVersionCmd returns the `version` subcommand. It produces the same
 // output as the `--version` flag handled in PersistentPreRunE above —
 // docs/installation.md documents `keylatch version` as the post-install
 // verification step, but only the flag existed until this command was added.
@@ -787,9 +787,9 @@ func newRunCmd() *cobra.Command {
 			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
 			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
 
-			// M1 excludes direct_brokered, gateway_proxy, and
+			// The support manifest excludes direct_brokered, gateway_proxy and
 			// direct_classic_sandboxed from the supported runtime set
-			// (F12) — WithManifestGuard makes each unreachable regardless
+			// — WithManifestGuard makes each unreachable regardless
 			// of runtime.Resolve's fallback hierarchy, so a denied or
 			// unavailable gateway can never fall back into a direct
 			// secret-injection mode.
@@ -1199,7 +1199,7 @@ func parseRunArgs(args []string) (string, []string, error) {
 
 // closeAndZeroBackend closes b and, if it holds decrypted key material in
 // memory (currently: only the file backend's attached keyring), zeroes it
-// (L2: docker-server-security hardening).
+// (docker-server-security hardening).
 //
 // Only call this at a command's TERMINAL exit point (immediately before
 // os.Exit / process end) — internal/backend/dispatch.Select caches backend

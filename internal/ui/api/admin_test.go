@@ -46,7 +46,7 @@ func newTestTeam() *team.Team {
 
 const testCSRFSecret = "test-secret"
 
-// F38: AdminHandler.ServeHTTP is gated unavailable for M1 (see admin.go) —
+// AdminHandler.ServeHTTP is gated unavailable (see admin.go) —
 // every request is denied before role/CSRF logic runs. The tests below now
 // assert that gate holds regardless of role/token shape; the role/CSRF/
 // value-free assertions they previously made stay meaningful for when the
@@ -118,7 +118,7 @@ func TestAdminHandler_NoAuth_Returns403(t *testing.T) {
 }
 
 // TestAdminHandler_AdminRole_Passes previously asserted that a valid admin
-// role header was accepted; F38 gates the whole surface unavailable for M1,
+// role header was accepted; the admin gate covers the whole surface unavailable,
 // so an admin role header can no longer reach a 200 either.
 func TestAdminHandler_AdminRole_Passes(t *testing.T) {
 	h := newAdminHandler()
@@ -201,7 +201,7 @@ func TestAdminHandler_UnsignedJWT_Returns403(t *testing.T) {
 	}
 }
 
-// --- Bearer token role extraction (M-5) ---
+// --- Bearer token role extraction ---
 
 func TestAdminHandler_BearerToken_DeveloperRole_Returns403(t *testing.T) {
 	h := newAdminHandler()
@@ -286,8 +286,8 @@ func TestAdminHandler_MutationWithoutCSRF_Returns403(t *testing.T) {
 }
 
 // TestAdminHandler_MutationWithCSRF_Passes previously asserted a mutation
-// with a valid CSRF token was accepted; F38 gates the whole surface
-// unavailable for M1, so even a correctly CSRF-guarded mutation is denied.
+// with a valid CSRF token was accepted; the admin gate covers the whole surface
+// unavailable, so even a correctly CSRF-guarded mutation is denied.
 func TestAdminHandler_MutationWithCSRF_Passes(t *testing.T) {
 	h := newAdminHandler()
 	body := `{"email_hmac":"hmac-x","role":"developer"}`
@@ -310,8 +310,8 @@ func TestAdminHandler_MutationWithCSRF_Passes(t *testing.T) {
 // --- Team list value-free ---
 
 // TestAdminHandler_TeamList_ValueFree previously verified member emails
-// never leak raw in the team-list response; F38 gates the whole surface
-// unavailable for M1, so the response now carries no team data at all
+// never leak raw in the team-list response; the admin gate covers the whole surface
+// unavailable, so the response now carries no team data at all
 // (trivially value-free) — this asserts the gate holds on this route.
 func TestAdminHandler_TeamList_ValueFree(t *testing.T) {
 	h := newAdminHandler()
@@ -333,8 +333,8 @@ func TestAdminHandler_TeamList_ValueFree(t *testing.T) {
 // --- Policy handler ---
 
 // TestAdminHandler_PolicyGet previously verified the policy GET route
-// returns an active-status payload; F38 gates the whole surface unavailable
-// for M1, so this route is now denied like every other admin route.
+// returns an active-status payload; the admin gate makes the whole surface unavailable,
+// so this route is now denied like every other admin route.
 func TestAdminHandler_PolicyGet(t *testing.T) {
 	h := newAdminHandler()
 	r := httptest.NewRequest(http.MethodGet, "/admin/policy", nil)
@@ -351,8 +351,8 @@ func TestAdminHandler_PolicyGet(t *testing.T) {
 // --- Approvals handler ---
 
 // TestAdminHandler_ApprovalsGet previously verified the approvals GET route
-// returns an empty-inbox payload; F38 gates the whole surface unavailable
-// for M1, so this route is now denied like every other admin route.
+// returns an empty-inbox payload; the admin gate makes the whole surface unavailable,
+// so this route is now denied like every other admin route.
 func TestAdminHandler_ApprovalsGet(t *testing.T) {
 	h := newAdminHandler()
 	r := httptest.NewRequest(http.MethodGet, "/admin/approvals", nil)

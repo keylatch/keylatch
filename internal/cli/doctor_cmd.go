@@ -114,7 +114,7 @@ Exit codes:
 			repair, _ := c.Flags().GetBool("repair")
 			yes, _ := c.Flags().GetBool("yes")
 
-			// review Finding-005: --repair's per-check confirmation prompt
+			// --repair's per-check confirmation prompt
 			// is written to stdout, which --quiet discards — without --yes
 			// the prompt would be invisible while the process still blocks
 			// on real stdin, looking like a hang. Fail fast with a usage
@@ -146,7 +146,7 @@ Exit codes:
 				os.Exit(doctorExitFailure)
 			}
 
-			// H1: --repair attempts the (currently narrow) set of safe,
+			// --repair attempts the (currently narrow) set of safe,
 			// idempotent automated repairs, then re-runs doctor so the
 			// report/exit code reflect the post-repair state. The
 			// --quiet-without---yes combination was already rejected above,
@@ -160,7 +160,7 @@ Exit codes:
 				report = runDoctorRepair(c.Context(), io.Discard, io.Discard, report, env, yes)
 			}
 
-			// Determine exit code (three-tier: C2).
+			// Determine exit code (three-tier).
 			// Exit 0: all checks OK with no warnings.
 			// Exit 1: all checks OK but at least one warning.
 			// Exit 2: at least one check has OK==false (blocking failure).

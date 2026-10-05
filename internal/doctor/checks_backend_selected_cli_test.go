@@ -33,7 +33,7 @@ func findCheck(t *testing.T, report doctor.Report, name string) doctor.Status {
 	return doctor.Status{}
 }
 
-// TestDoctor_BackendBW_NotSelected_NoWarn is the H3 regression test: a
+// TestDoctor_BackendBW_NotSelected_NoWarn is the regression test: a
 // merely-installed bw CLI must not warn when bw is not the selected backend.
 func TestDoctor_BackendBW_NotSelected_NoWarn(t *testing.T) {
 	_, env := bootstrappedHome(t) // default backend is "file"
@@ -67,7 +67,7 @@ func TestDoctor_BackendBW_Selected_Warns(t *testing.T) {
 	assert.NotContains(t, s.Detail, "session=unknown", "fabricated session literal must be gone")
 }
 
-// TestDoctor_BackendOP_NotSelected_NoWarn mirrors the bw case for op (H3).
+// TestDoctor_BackendOP_NotSelected_NoWarn mirrors the bw case for op.
 func TestDoctor_BackendOP_NotSelected_NoWarn(t *testing.T) {
 	_, env := bootstrappedHome(t) // default backend is "file"
 

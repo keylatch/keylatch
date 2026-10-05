@@ -32,7 +32,7 @@ type AdminHandler struct {
 }
 
 // ServeHTTP routes admin requests.
-// F38: gated unavailable for M1 — denied before any role/CSRF check runs, so
+// Gated unavailable — denied before any role/CSRF check runs, so
 // no caller-supplied header or token can reach the role logic below. Real
 // server-authenticated role/JWT/membership verification is expansion work
 // for when the admin surface re-enters scope.

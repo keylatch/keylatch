@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SLSA provenance verification (placeholder — Phase 7 wires the pipeline; Phase 11 adds FIPS provenance).
+# SLSA provenance verification.
 # Usage: slsa-verify.sh <version> [provenance-file]
 # Requires: slsa-verifier (https://github.com/slsa-framework/slsa-verifier)
 set -euo pipefail

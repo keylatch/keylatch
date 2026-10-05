@@ -113,7 +113,7 @@ func Approve(_ context.Context, req *ApprovalRequest, approver team.Member, proo
 		return ErrSelfApproval
 	}
 
-	// C-9: hardware presence proof is required — zero-value proof is rejected.
+	// Hardware presence proof is required — zero-value proof is rejected.
 	if proof.ConfirmedAt.IsZero() {
 		return ErrHardwarePresenceRequired
 	}

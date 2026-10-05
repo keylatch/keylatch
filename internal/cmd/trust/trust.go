@@ -48,7 +48,7 @@ const trustExperimentalNotice = "[keylatch] trust: experimental command group �
 
 // newTrustCmd returns the `trust` subcommand group.
 //
-// H8: this group is marked experimental rather than fully hidden because
+// This group is marked experimental rather than fully hidden because
 // part of it genuinely works today — `list`, `doctor`, `challenge`,
 // `revoke`, and `allowlist` are backed by real internal/trust code paths.
 // Only the hardware-root ceremonies (`enroll`, `approve`) are stubs; those
@@ -159,7 +159,7 @@ func newTrustDoctorCmd() *cobra.Command {
 
 // newTrustEnrollCmd returns `keylatch trust enroll <type> [flags]`.
 //
-// H8: every root type below is a stub — none has an implemented enrolment
+// Every root type below is a stub — none has an implemented enrolment
 // ceremony. The whole "enroll" group is hidden from `trust --help` since
 // 100% of it is non-functional; it remains directly runnable by name.
 func newTrustEnrollCmd() *cobra.Command {
@@ -316,7 +316,7 @@ func newTrustChallengeCmd() *cobra.Command {
 
 // newTrustApproveCmd returns `keylatch trust approve <challenge-id>`.
 //
-// H8: challenge lookup/parse/expiry validation below are real (backed by
+// Challenge lookup/parse/expiry validation below are real (backed by
 // on-disk state written by `trust challenge`), but the actual signing step
 // is a stub — no root type has an implemented signing ceremony to satisfy
 // the challenge with. Hidden from `trust --help`; still directly runnable.
@@ -423,7 +423,7 @@ func approvalDir() string {
 // ---- shared-secret commands ----
 
 // newSharedSecretCmd returns the `shared-secret` subcommand group.
-// F43: team/shared-secret hardware paths are unavailable in M1 — every
+// Team/shared-secret hardware paths are unavailable — every
 // subcommand is denied before it runs. Signed, fresh, replay-resistant
 // hardware presence proof is expansion work for when this re-enters scope.
 func newSharedSecretCmd() *cobra.Command {

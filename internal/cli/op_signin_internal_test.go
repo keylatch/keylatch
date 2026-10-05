@@ -1,6 +1,6 @@
 package cli
 
-// op_signin_internal_test.go — H5: `op signin`'s guidance-first branches,
+// op_signin_internal_test.go — `op signin`'s guidance-first branches,
 // exercised via runOPSignin directly (mocked runner, no real op CLI, no
 // real terminal). The final interactive-passthrough branch (real
 // os/exec.CommandContext hand-off to `op signin`) is deliberately NOT

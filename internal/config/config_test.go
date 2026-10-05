@@ -99,7 +99,7 @@ func TestLoad_VersionMismatch(t *testing.T) {
 
 // TestMigrate_NoPathForUnknownVersion verifies the migration scaffold fails
 // loudly (rather than silently defaulting) when no migration is registered
-// for a config's version — currently every version except 1 (M2 scaffold).
+// for a config's version — currently every version except 1 (scaffold).
 func TestMigrate_NoPathForUnknownVersion(t *testing.T) {
 	_, err := config.Migrate(config.Config{Version: 99})
 	require.Error(t, err)

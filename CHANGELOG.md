@@ -14,8 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.7] - 2026-08-11
-
 ### Security
 
 - v0.9.7 was published without cosign signatures, SBOMs or SLSA provenance while the docs said every artifact was signed. See the [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md); the docs now state what each release carries.
@@ -23,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release tags must point at a commit on `main` whose required checks passed.
 - New `attest-release.yml` workflow rebuilds a published release from its tag and either signs and attests it or marks it unverified.
 - syft and trivy are downloaded at pinned versions and verified against committed SHA-256 digests instead of piping install scripts to `sh`; goreleaser is pinned.
+
+### Changed
+
+- `keylatch doctor` check names drop their internal prefixes: `bootstrap.keyring`, `bootstrap.config` and `plaintext_retention`.
+- `keylatch scope` no longer prints a milestone line, and its JSON output no longer has a `Milestone` field.
+- The release check scripts moved from `release-gates/` to `release-checks/`.
+- CI runs `release-checks/naming-scan.sh`, which rejects internal work-item labels and finding ids in file names, code, docs and commit subjects.
+
+## [0.9.7] - 2026-08-11
+
+### Security
+
 - Gateway request handling now evaluates a real request policy (`internal/policy`) at Step 6 instead of an unconditional pass-through. When `keylatch gateway up` is started with a configured policy file, matching rules are enforced and violations are denied (403 `policy_denied`) with an audit event; requests requiring approval (`rule.Approval`/`ApprovalRootReq`) are denied (403 `policy_approval_required`) since the gateway has no synchronous approval mechanism. Operators who have never configured a policy see no behavior change (pass-through allow is preserved).
 - `keylatch doctor`'s 1Password auth checks (`backend.op.auth`, `external.op`) previously reported OK based only on `OP_SERVICE_ACCOUNT_TOKEN` being non-empty (`backend.op.auth`) or `op --version` succeeding (`external.op`) — neither actually confirmed the token/session authenticates. A revoked or expired token reported a false OK. Both checks now run `op whoami --format=json` and report failure/warn on a non-zero exit.
 - `keylatch gateway down` sent SIGTERM to whatever process currently held the gateway's PID with no identity verification — unlike `gateway up --force`, which refuses to act on an unverified/mismatched PID. A stale PID file (confirmed to occur in practice) could cause `gateway down` to signal an unrelated process. `down` now runs the same process-identity verification as `up`: a confirmed mismatch is treated as a stale PID (cleaned up, nothing signaled); inconclusive evidence refuses by default (new `--force` to override), rather than guessing.

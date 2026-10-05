@@ -3,7 +3,7 @@
 // Manages the tray icon, tooltip, and menu. Subscribes to SidecarStatus
 // and ApprovalEvent streams to drive icon state transitions.
 //
-// S14-6: tooltip is value-free — shows only counts, never credential data.
+// Tooltip is value-free — shows only counts, never credential data.
 // DD-5: macOS LSUIElement (no Dock icon by default).
 
 use std::sync::{Arc, Mutex};
@@ -72,11 +72,11 @@ impl<R: Runtime> TrayController<R> {
     }
 
     /// Set the tray icon to the given state.
-    /// S14-6: tooltip is value-free.
+    // The tooltip is value-free.
     pub fn set_state(&self, new_state: TrayIconState) {
         let tooltip = self.build_tooltip(&new_state);
 
-        // Validate tooltip is value-free in dev/test builds (S14-6).
+        // Validate tooltip is value-free in dev/test builds.
         #[cfg(debug_assertions)]
         self.assert_tooltip_value_free(&tooltip);
 
@@ -88,7 +88,7 @@ impl<R: Runtime> TrayController<R> {
         }
     }
 
-    /// Build a value-free tooltip string for the given state (S14-6).
+    /// Build a value-free tooltip string for the given state.
     fn build_tooltip(&self, state: &TrayIconState) -> String {
         match state {
             TrayIconState::Idle => "Keylatch — running".to_string(),
@@ -101,7 +101,7 @@ impl<R: Runtime> TrayController<R> {
         }
     }
 
-    /// S14-6 runtime check: reject tooltips containing credential patterns.
+    /// runtime check: reject tooltips containing credential patterns.
     #[cfg(debug_assertions)]
     fn assert_tooltip_value_free(&self, tooltip: &str) {
         for pattern in crate::redaction::REDACTION_PATTERNS {

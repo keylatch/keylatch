@@ -85,7 +85,7 @@ func (b *LastPassBackend) WarningMessage() string {
 // Get returns the plaintext bytes for a canonical path via `lpass show --json`.
 // Uses single-flight collapse for concurrent identical calls.
 //
-// Checks runner.OK before returning plaintext (C2).
+// Checks runner.OK before returning plaintext.
 func (b *LastPassBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	if !runner.OK(ctx) {
 		return nil, backend.Meta{}, backend.ErrLocked

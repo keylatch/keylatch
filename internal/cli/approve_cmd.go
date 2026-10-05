@@ -58,8 +58,8 @@ interactive terminal on stdin and is refused inside a detected LLM session
 
 			// LLM session guard: approvals must not run inside LLM sessions.
 			// Returns a *CLIError rather than printing directly here — main.go
-			// is the single place that prints it (C5). Printing here too
-			// would double-print (Finding-001); it would also break the
+			// is the single place that prints it. Printing here too
+			// would double-print; it would also break the
 			// existing in-process tests (e.g. TestApprove_NotFound) that
 			// call cmd.Execute() and assert on the returned error, which an
 			// os.Exit here would defeat by killing the test process.

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestGatewayRunning_NotRunning_IsInformationalNotWarn is the H11 regression
+// TestGatewayRunning_NotRunning_IsInformationalNotWarn is the regression
 // test: the gateway is an optional runtime feature — most installs never
 // start it — so "gateway.pid not found" must no longer set Warn (which
 // forced doctor's exit code to 1 on every normal install).
@@ -28,13 +28,13 @@ func TestGatewayRunning_NotRunning_IsInformationalNotWarn(t *testing.T) {
 
 	assert.Equal(t, "gateway.running", status.Name)
 	assert.True(t, status.OK)
-	assert.False(t, status.Warn, "H11: gateway-not-running is informational, not a warning")
+	assert.False(t, status.Warn, "gateway-not-running is informational, not a warning")
 	assert.Contains(t, status.Detail, "not running")
 }
 
 // TestGatewayRunning_StalePID_StillWarns verifies the stale-PID branch (a
 // genuine leftover-state problem, not just "the optional feature is off")
-// still warns, and that its Name/Tags bug is fixed (H11: was Name="gateway",
+// still warns, and that its Name/Tags bug is fixed (was Name="gateway",
 // no Tags).
 func TestGatewayRunning_StalePID_StillWarns(t *testing.T) {
 	tmp := t.TempDir()
@@ -58,13 +58,13 @@ func TestGatewayRunning_StalePID_StillWarns(t *testing.T) {
 	check := doctor.ExportCheckGatewayRunning(env)
 	status := check(context.Background())
 
-	assert.Equal(t, "gateway.running", status.Name, "H11: Name bug fixed (was 'gateway')")
-	assert.NotEmpty(t, status.Tags, "H11: Tags bug fixed (was missing)")
+	assert.Equal(t, "gateway.running", status.Name, "Name bug fixed (was 'gateway')")
+	assert.NotEmpty(t, status.Tags, "Tags bug fixed (was missing)")
 	assert.True(t, status.Warn, "a stale PID file is a genuine problem and must still warn")
 }
 
-// TestPlaintextRetention_MonitorNotRunning_IsInformationalNotWarn is the H11
-// regression test for F3: the runtime monitor (`keylatch ui`) is optional —
+// TestPlaintextRetention_MonitorNotRunning_IsInformationalNotWarn is a
+// regression test for the plaintext-retention check: the runtime monitor (`keylatch ui`) is optional —
 // most installs never start it.
 func TestPlaintextRetention_MonitorNotRunning_IsInformationalNotWarn(t *testing.T) {
 	env := func(k string) string {
@@ -77,12 +77,12 @@ func TestPlaintextRetention_MonitorNotRunning_IsInformationalNotWarn(t *testing.
 	check := doctor.ExportCheckPlaintextRetention(env)
 	status := check(context.Background())
 
-	assert.Equal(t, "F3 plaintext_retention", status.Name)
+	assert.Equal(t, "plaintext_retention", status.Name)
 	assert.True(t, status.OK)
-	assert.False(t, status.Warn, "H11: monitor-not-running is informational, not a warning")
+	assert.False(t, status.Warn, "monitor-not-running is informational, not a warning")
 }
 
-// TestNoConnections_NotConfigured_IsInformationalNotWarn is the H11
+// TestNoConnections_NotConfigured_IsInformationalNotWarn is a
 // regression test: no connections configured yet is not a health problem.
 func TestNoConnections_NotConfigured_IsInformationalNotWarn(t *testing.T) {
 	tmp := t.TempDir()
@@ -98,5 +98,5 @@ func TestNoConnections_NotConfigured_IsInformationalNotWarn(t *testing.T) {
 
 	assert.Equal(t, "connections.configured", status.Name)
 	assert.True(t, status.OK)
-	assert.False(t, status.Warn, "H11: no-connections-yet is informational, not a warning")
+	assert.False(t, status.Warn, "no-connections-yet is informational, not a warning")
 }

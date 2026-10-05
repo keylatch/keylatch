@@ -105,7 +105,7 @@ func (b *OnePasswordBackend) Capabilities() []backend.Capability {
 // Get returns the plaintext bytes for a canonical path via `op item get`.
 // Uses single-flight collapse and a 60-second metadata cache.
 //
-// Checks runner.OK before returning plaintext (C2).
+// Checks runner.OK before returning plaintext.
 func (b *OnePasswordBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
 	if !runner.OK(ctx) {
 		return nil, backend.Meta{}, backend.ErrLocked
@@ -395,14 +395,14 @@ func (b *OnePasswordBackend) fetchItemDirect(ctx context.Context, connection str
 // runWithEnv invokes the op CLI via CommandRunner.RunEnv, explicitly
 // forwarding OP_SERVICE_ACCOUNT_TOKEN (when present) through opts.Env rather
 // than relying solely on ambient os.Environ() inheritance. Options.Env was
-// previously read once at Open() and then never consulted again (M3) — every
+// previously read once at Open() and then never consulted again — every
 // op subprocess call now depends on the injected lookup, which matters under
 // daemon/sandboxed exec paths where the parent's ambient env is not
 // implicitly passed through to the op CLI process.
 //
 // op's interactive/biometric session state (op signin, Touch ID) is managed
 // entirely by op's own daemon — this seam only forwards the service-account
-// token; it does not maintain a keylatch-side session cache (see H5:
+// token; it does not maintain a keylatch-side session cache (see
 // newOPSigninCmd's Long help for why op deliberately has no cache).
 func (b *OnePasswordBackend) runWithEnv(ctx context.Context, args []string, stdin []byte) ([]byte, []byte, int, error) {
 	var extraEnv []string

@@ -60,8 +60,8 @@ interactive terminal on stdin and is refused inside a detected LLM session
 
 			// LLM session guard: denials must not run inside LLM sessions.
 			// Returns a *CLIError rather than printing directly here — main.go
-			// is the single place that prints it (C5); printing here too
-			// would double-print (Finding-001).
+			// is the single place that prints it; printing here too
+			// would double-print.
 			if llmcontext.IsLLMSession(env) {
 				return &CLIError{
 					Class:   "SecurityBlock",

@@ -38,7 +38,7 @@ var agentMarkers = []agentMarker{
 // this informationally with a link to the relevant integration guide. If the
 // integration config exists, the check passes.
 //
-// H11: this used to Warn (forcing doctor's exit code to 1) whenever ANY
+// This used to Warn (forcing doctor's exit code to 1) whenever ANY
 // agent marker (CLAUDE.md, AGENTS.md, .cursor/rules, ...) was present without
 // integration config — extremely common simply because a project uses an AI
 // coding agent for unrelated reasons, not because anything about the
@@ -92,7 +92,7 @@ func checkIntegrationMarkers() Check {
 			}
 		}
 
-		// Build a concise informational message (H11: no longer Warn — see
+		// Build a concise informational message (no longer Warn — see
 		// the doc comment above).
 		first := detected[0]
 		detail := fmt.Sprintf(

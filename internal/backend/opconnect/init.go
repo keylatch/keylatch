@@ -26,7 +26,7 @@ func init() {
 }
 
 func opConnectFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
-	// M1 excludes op-connect from the supported manager set (F44) — refuse
+	// The support manifest excludes op-connect — refuse
 	// selection here so no caller can instantiate it or reach the adapter's
 	// duplicate-creating write path.
 	if !manifest.Current().Enabled("opconnect") {

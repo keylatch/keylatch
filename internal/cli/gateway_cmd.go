@@ -142,7 +142,7 @@ func newGatewayInitCmd() *cobra.Command {
 				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key already exists")
 			}
 
-			// Write gateway config. M1: a re-run must not clobber a
+			// Write gateway config. A re-run must not clobber a
 			// previously customised bind/mode — only missing fields are
 			// filled with defaults, existing values are kept as-is.
 			cfgPath := paths.GatewayConfig(env)
@@ -234,7 +234,7 @@ func newGatewayUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 
-			// Check if gateway is already running. L2: with --force, a
+			// Check if gateway is already running. With --force, a
 			// "running" pid is not taken at face value — it may be a stale
 			// pid file pointing at a recycled, unrelated process.
 			pidPath := paths.GatewayPID(env)
@@ -374,7 +374,7 @@ func newGatewayUpCmd() *cobra.Command {
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
 				Budget:            budgetCounter,
-				// PolicyPath: default policy location (H7). New() treats a
+				// PolicyPath: default policy location. New() treats a
 				// missing file as "not configured" and stays pass-through —
 				// this does not change behavior for operators who have
 				// never created a policy file.
@@ -452,7 +452,7 @@ const (
 
 // resolveGatewayUpRunning checks whether the gateway is already running and,
 // if force is true, attempts best-effort stale-PID recovery via process
-// identity verification (L2): IsRunning only signal-0-probes the pid, so a
+// identity verification: IsRunning only signal-0-probes the pid, so a
 // recycled pid can false-positive as "gateway running".
 //
 // Side effect: when recovery succeeds (pid confirmed stale, or identity is
@@ -482,7 +482,7 @@ func resolveGatewayUpRunning(ctx context.Context, pidPath string, force bool, ru
 		_ = gateway.RemovePID(pidPath)
 		return gatewayUpProceed, pid, fmt.Sprintf("stale PID file recovered — pid %d does not look like a keylatch process; removed and starting fresh.", pid)
 	default:
-		// Inconclusive (review finding, warn-4): checked=false covers both
+		// Inconclusive: checked=false covers both
 		// "the process legitimately died between IsRunning's probe and this
 		// ps call" (safe to proceed) and "ps itself failed for an unrelated
 		// reason — missing binary, sandboxed environment, permission issue —
@@ -535,7 +535,7 @@ const (
 )
 
 // resolveGatewayDownAction mirrors resolveGatewayUpRunning's process-identity
-// verification (L2) for the stop path: IsRunning only signal-0-probes the
+// verification for the stop path: IsRunning only signal-0-probes the
 // pid, so a recycled pid can belong to a completely unrelated process by the
 // time `gateway down` runs — sending SIGTERM there kills someone else's
 // process instead of doing nothing. `gateway up --force` already gets this

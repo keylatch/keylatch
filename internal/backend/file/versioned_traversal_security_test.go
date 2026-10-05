@@ -16,11 +16,11 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 )
 
-// KNOWN-FAILING (F36): decryption binds only to the ciphertext, nonce, and
+// KNOWN-FAILING: decryption binds only to the ciphertext, nonce, and
 // version sidecar files, not to the path they're stored under, so a
 // ciphertext copied to a different secret's path decrypts successfully
 // there.
-func TestSecurityRegression_F36_VersionedRecordRelocation(t *testing.T) {
+func TestSecurityRegression_VersionedRecordRelocation(t *testing.T) {
 	d := t.TempDir()
 	kr, _ := buildKeyring(t, d, envelope.XChaCha20Poly1305)
 	fb, e := file.OpenWithKeyring(file.Options{Dir: d}, kr)
@@ -49,9 +49,9 @@ func TestSecurityRegression_F36_VersionedRecordRelocation(t *testing.T) {
 	}
 }
 
-// F37: DeleteVersioned confines the resolved path to the vault root, so a
+// DeleteVersioned confines the resolved path to the vault root, so a
 // "../"-prefixed key is rejected before any file is touched.
-func TestSecurityRegression_F37_DeleteVersionedTraversal(t *testing.T) {
+func TestSecurityRegression_DeleteVersionedTraversal(t *testing.T) {
 	root := t.TempDir()
 	d := filepath.Join(root, "vault")
 	fb, e := file.Open(file.Options{Dir: d})

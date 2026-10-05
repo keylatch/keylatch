@@ -20,10 +20,10 @@ func (r auditRunner) RunEnv(c context.Context, b string, a []string, s []byte, _
 	return r.Run(c, b, a, s)
 }
 
-// KNOWN-FAILING (F09): Keeper/Proton Pass caches return a shared mutable
+// KNOWN-FAILING: Keeper/Proton Pass caches return a shared mutable
 // byte slice, so wiping the caller's copy — required by the backend.Backend
 // contract — corrupts the cached value for the next reader.
-func TestSecurityRegression_F09_ManagerCacheSurvivesCallerWipe(t *testing.T) {
+func TestSecurityRegression_ManagerCacheSurvivesCallerWipe(t *testing.T) {
 	k, err := keeper.Open(keeper.Options{Bin: "/fake/keeper", Runner: auditRunner{[]byte(`{"password":"synthetic-secret"}`)}})
 	if err != nil {
 		t.Fatal(err)

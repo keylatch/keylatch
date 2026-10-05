@@ -552,7 +552,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 		return Identity{}, ErrCIIssuerMismatch
 	}
 
-	// C-4: exp claim is required.
+	// Exp claim is required.
 	exp, ok := claims["exp"].(float64)
 	if !ok {
 		return Identity{}, fmt.Errorf("CI OIDC token missing required exp claim")
@@ -572,7 +572,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 	// Extract repo claim.
 	repo, _ := claims[cfg.RepoClaim].(string)
 
-	// C-3: empty repo bypasses allowlist — deny if repo is empty and allowlist is set.
+	// Empty repo bypasses allowlist — deny if repo is empty and allowlist is set.
 	if len(opts.AllowedRepos) > 0 {
 		if repo == "" || !matchAny(opts.AllowedRepos, repo) {
 			return Identity{}, ErrCIRepoDenied
@@ -584,7 +584,7 @@ func Verify(ctx context.Context, rawJWT string, opts VerifyOpts) (Identity, erro
 	// Normalize branch ref (github uses "refs/heads/main").
 	branch = normalizeBranch(branch)
 
-	// C-3: empty branch bypasses allowlist — deny if branch is empty and allowlist is set.
+	// Empty branch bypasses allowlist — deny if branch is empty and allowlist is set.
 	if len(opts.AllowedBranches) > 0 {
 		if branch == "" || !matchAny(opts.AllowedBranches, branch) {
 			return Identity{}, ErrCIBranchDenied

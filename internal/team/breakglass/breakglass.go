@@ -5,8 +5,8 @@
 // - Rate-limiting per member: max 3 opens per 24h.
 // - Cooling period enforced: min 1h between close and next open.
 // - Counters backed by files in ~/.keylatch/team/breakglass/ — survive restarts.
-// - M-1: File-level locking prevents TOCTOU races on counter files.
-// - N-5: Corrupt counter file returns error instead of silently resetting.
+// - File-level locking prevents TOCTOU races on counter files.
+// - Corrupt counter file returns error instead of silently resetting.
 // - Reason IS stored in audit (loud by design — spec §6.7).
 package breakglass
 
@@ -88,7 +88,7 @@ type memberCounter struct {
 }
 
 // withCounterLock acquires an exclusive file lock on path+".lock", calls fn with the
-// loaded counter, then saves and releases. M-1: prevents TOCTOU races on counter files.
+// loaded counter, then saves and releases. Prevents TOCTOU races on counter files.
 func withCounterLock(path string, fn func(*memberCounter) error) error {
 	lockPath := path + ".lock"
 	dir := filepath.Dir(path)
@@ -117,7 +117,7 @@ func withCounterLock(path string, fn func(*memberCounter) error) error {
 }
 
 // loadCounterLocked loads the counter file. Must be called with the lock held.
-// N-5: corrupt counter file returns error instead of silently resetting.
+// Corrupt counter file returns error instead of silently resetting.
 func loadCounterLocked(path string) (*memberCounter, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -152,7 +152,7 @@ func saveCounterLocked(path string, c *memberCounter) error {
 }
 
 // CheckRateLimit returns ErrRateLimitExceeded if member has exceeded 3 opens in 24h.
-// . M-1: uses withCounterLock for atomic read-check.
+// It uses withCounterLock for an atomic read-check.
 func CheckRateLimit(_ context.Context, member team.Member) error {
 	path := memberCounterPath(member)
 	var rateLimitErr error
@@ -178,7 +178,7 @@ func CheckRateLimit(_ context.Context, member team.Member) error {
 }
 
 // CheckCoolingPeriod returns ErrCoolingPeriod if cooling period has not elapsed.
-// min 1h between close and next open. M-1: uses withCounterLock for atomic read-check.
+// min 1h between close and next open. Uses withCounterLock for atomic read-check.
 func CheckCoolingPeriod(_ context.Context, member team.Member) error {
 	path := memberCounterPath(member)
 	var coolingErr error
@@ -199,7 +199,7 @@ func CheckCoolingPeriod(_ context.Context, member team.Member) error {
 }
 
 // Open opens a break-glass request.
-// M-1: the rate-limit check, cooling-period check, and counter update are all
+// The rate-limit check, cooling-period check, and counter update are all
 // performed atomically inside a single withCounterLock call.
 func Open(ctx context.Context, member team.Member, reason string) (*BreakGlassRequest, error) {
 	// blocked during LLM sessions.
@@ -217,7 +217,7 @@ func Open(ctx context.Context, member team.Member, reason string) (*BreakGlassRe
 
 	path := memberCounterPath(member)
 	if err := withCounterLock(path, func(c *memberCounter) error {
-		// rate limit — prune stale opens first (M-2).
+		// rate limit — prune stale opens first.
 		cutoff := now.Add(-24 * time.Hour)
 		pruned := c.Opens[:0]
 		for _, t := range c.Opens {
@@ -259,7 +259,7 @@ func Open(ctx context.Context, member team.Member, reason string) (*BreakGlassRe
 }
 
 // Close closes an open break-glass session.
-// M-1: the last-close timestamp update is performed atomically inside withCounterLock.
+// The last-close timestamp update is performed atomically inside withCounterLock.
 func Close(_ context.Context, req *BreakGlassRequest, member team.Member) error {
 	if req.Status != BGOpen {
 		return fmt.Errorf("breakglass: request %q is not open (status=%v)", req.ID, req.Status)

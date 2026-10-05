@@ -13,8 +13,7 @@ package runtime_test
 // distinct from direct_classic which remains permanently removed.
 //
 // This test FAILS if someone re-adds direct_classic to the registry enum.
-// It was scaffolded in P0 and went green in P1 wave 1
-// when direct_classic was removed from AllModes.
+// It went green when direct_classic was removed from AllModes.
 
 import (
 	"testing"

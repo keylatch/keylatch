@@ -173,12 +173,12 @@ func checkACLKeychainUnlock() Check {
 }
 
 // checkKeychainDBPermissions verifies the keychain-db file is not
-// world/group-readable (M10). `security create-keychain` creates the file
+// world/group-readable. `security create-keychain` creates the file
 // using the process's umask-derived default permissions, which can be as
 // loose as 0644 depending on the caller's umask — the db is only
 // password-protected, not filesystem-protected, unless the file mode is
 // tightened. Informational tier (OK, no Warn): loose permissions do not fail
-// the whole doctor run, matching the H11 pattern where an optional/repairable
+// the whole doctor run, matching the pattern where an optional/repairable
 // condition is surfaced without being exit-code-blocking.
 func checkKeychainDBPermissions() Check {
 	return func(_ context.Context) Status {
@@ -347,7 +347,7 @@ func checkHookPreToolUse(env llmcontext.Lookup) Check {
 }
 
 // checkNoConnections is an informational check that fires when no
-// connections are configured yet. H11: this used to Warn (forcing doctor's
+// connections are configured yet. This used to Warn (forcing doctor's
 // exit code to 1) even on an otherwise-healthy install where the user simply
 // hasn't added a connection yet — not a problem requiring attention, so it
 // no longer sets Warn. Detail/Fix are unchanged and remain visible with
@@ -391,7 +391,7 @@ func checkNoConnections(env llmcontext.Lookup) Check {
 
 // checkGatewayRunning reports whether the gateway is running.
 //
-// H11: the gateway is an optional runtime feature (gateway_typed mode) —
+// The gateway is an optional runtime feature (gateway_typed mode) —
 // most installs never start it, so "gateway not running" no longer sets
 // Warn (which forced doctor's exit code to 1 on every normal install that
 // hasn't opted into the gateway). A stale PID file (process no longer
@@ -439,7 +439,7 @@ func checkGatewayRunning(env llmcontext.Lookup) Check {
 			// Stale PID file — process is not running. This is a genuine
 			// leftover-state problem (not just "the optional feature is
 			// off"), so it still warns. Name/Tags fixed to match every other
-			// branch of this check (H11: was "gateway" with no tags).
+			// branch of this check (was "gateway" with no tags).
 			return Status{
 				Name:    "gateway.running",
 				Section: "daemon",
@@ -498,13 +498,13 @@ func checkCosignInstalled(probe kexec.Probe) Check {
 	}
 }
 
-// checkPlaintextRetention implements doctor check F3.
+// checkPlaintextRetention implements the plaintext-retention doctor check.
 //
-// F3 verifies that keylatchd does not retain credential plaintext
+// It verifies that keylatchd does not retain credential plaintext
 // after a run completes. The check:
 //  1. Pings keylatchd on the default UI address.
-//  2. If keylatchd is not running: reports F3 informationally with a start
-//     hint (H11: this used to Warn, forcing exit 1 on every install that
+//  2. If keylatchd is not running: reports informationally with a start
+//     hint (this used to Warn, forcing exit 1 on every install that
 //     hasn't started the optional runtime monitor — most installs never do).
 //  3. If the runtime monitor is running: queries /v1/retention-canary (a memory
 //
@@ -516,7 +516,7 @@ func checkCosignInstalled(probe kexec.Probe) Check {
 // gap, not a problem with the current install.
 func checkPlaintextRetention(env llmcontext.Lookup) Check {
 	return func(ctx context.Context) Status {
-		const checkName = "F3 plaintext_retention"
+		const checkName = "plaintext_retention"
 		const section = "daemon"
 
 		// Resolve runtime monitor address.
@@ -535,7 +535,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 				Name:    checkName,
 				Section: section,
 				OK:      true,
-				Detail:  "F3 plaintext retention: runtime monitor is not running; heap-monitoring check skipped (optional feature)",
+				Detail:  "plaintext retention: runtime monitor is not running; heap-monitoring check skipped (optional feature)",
 				Fix:     "Run `keylatch ui` in the background to enable runtime heap-monitoring checks.",
 				Tags:    []string{"daemon", "retention"},
 			}
@@ -551,7 +551,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 				Section: section,
 				OK:      true,
 				Warn:    true,
-				Detail:  "F3 plaintext retention: could not build canary request — keylatchd may need upgrade",
+				Detail:  "plaintext retention: could not build canary request — keylatchd may need upgrade",
 				Fix:     "Upgrade keylatchd to a version that supports /v1/retention-canary.",
 				Tags:    []string{"daemon", "retention"},
 			}
@@ -567,7 +567,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 				Name:    checkName,
 				Section: section,
 				OK:      true,
-				Detail:  "F3 plaintext retention: /v1/retention-canary not available — upgrade keylatchd",
+				Detail:  "plaintext retention: /v1/retention-canary not available — upgrade keylatchd",
 				Fix:     "Upgrade keylatchd to a version that supports the retention-canary endpoint.",
 				Tags:    []string{"daemon", "retention"},
 			}
@@ -585,7 +585,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 				Section: section,
 				OK:      true,
 				Warn:    true,
-				Detail:  "F3 plaintext retention: could not parse canary response",
+				Detail:  "plaintext retention: could not parse canary response",
 				Tags:    []string{"daemon", "retention"},
 			}
 		}
@@ -595,7 +595,7 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 				Name:    checkName,
 				Section: section,
 				OK:      false,
-				Detail:  "F3 plaintext retention: canary still present in keylatchd memory — memory leak",
+				Detail:  "plaintext retention: canary still present in keylatchd memory — memory leak",
 				Fix:     "keylatchd memory leak detected: upgrade or restart keylatchd.",
 				Tags:    []string{"daemon", "retention", "security"},
 			}
@@ -605,13 +605,13 @@ func checkPlaintextRetention(env llmcontext.Lookup) Check {
 			Name:    checkName,
 			Section: section,
 			OK:      true,
-			Detail:  "F3 plaintext retention: cleared after run",
+			Detail:  "plaintext retention: cleared after run",
 			Tags:    []string{"daemon", "retention"},
 		}
 	}
 }
 
-// checkBootstrapKeyring — F1
+// checkBootstrapKeyring — bootstrap.keyring
 //
 // Verifies that ~/.keylatch/keyring/keyring.json (or the env-overridden path)
 // exists and is non-empty. A missing or empty keyring means keylatch has never
@@ -624,7 +624,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 		if cfg, err := config.Load(cfgPath); err == nil {
 			if canonical, ok := backend.CanonicalName(cfg.Backend); ok && canonical != "file" {
 				return Status{
-					Name:    "F1 bootstrap.keyring",
+					Name:    "bootstrap.keyring",
 					Section: "environment",
 					OK:      true,
 					Detail:  fmt.Sprintf("keyring managed by %s backend (no keyring.json needed)", canonical),
@@ -638,7 +638,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 		if err != nil {
 			if os.IsNotExist(err) {
 				return Status{
-					Name:    "F1 bootstrap.keyring",
+					Name:    "bootstrap.keyring",
 					Section: "environment",
 					OK:      false,
 					Detail:  fmt.Sprintf("keyring not found at %s — keylatch not bootstrapped", p),
@@ -647,7 +647,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 				}
 			}
 			return Status{
-				Name:    "F1 bootstrap.keyring",
+				Name:    "bootstrap.keyring",
 				Section: "environment",
 				OK:      false,
 				Detail:  fmt.Sprintf("could not stat keyring at %s: %v", p, err),
@@ -656,7 +656,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 		}
 		if info.Size() == 0 {
 			return Status{
-				Name:    "F1 bootstrap.keyring",
+				Name:    "bootstrap.keyring",
 				Section: "environment",
 				OK:      false,
 				Detail:  fmt.Sprintf("keyring file is empty at %s", p),
@@ -665,7 +665,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 			}
 		}
 		return Status{
-			Name:    "F1 bootstrap.keyring",
+			Name:    "bootstrap.keyring",
 			Section: "environment",
 			OK:      true,
 			Detail:  fmt.Sprintf("keyring present at %s (%d bytes)", p, info.Size()),
@@ -674,7 +674,7 @@ func checkBootstrapKeyring(env llmcontext.Lookup) Check {
 	}
 }
 
-// checkBootstrapConfig — F2
+// checkBootstrapConfig — bootstrap.config
 //
 // Verifies that ~/.keylatch/config.json (or the env-overridden path) exists
 // and can be parsed.
@@ -685,7 +685,7 @@ func checkBootstrapConfig(env llmcontext.Lookup) Check {
 		if err != nil {
 			if os.IsNotExist(err) {
 				return Status{
-					Name:    "F2 bootstrap.config",
+					Name:    "bootstrap.config",
 					Section: "environment",
 					OK:      false,
 					Detail:  fmt.Sprintf("config not found at %s — keylatch not bootstrapped", p),
@@ -694,7 +694,7 @@ func checkBootstrapConfig(env llmcontext.Lookup) Check {
 				}
 			}
 			return Status{
-				Name:    "F2 bootstrap.config",
+				Name:    "bootstrap.config",
 				Section: "environment",
 				OK:      false,
 				Detail:  fmt.Sprintf("could not read config at %s: %v", p, err),
@@ -704,7 +704,7 @@ func checkBootstrapConfig(env llmcontext.Lookup) Check {
 		var raw map[string]any
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return Status{
-				Name:    "F2 bootstrap.config",
+				Name:    "bootstrap.config",
 				Section: "environment",
 				OK:      false,
 				Detail:  fmt.Sprintf("config at %s is not valid JSON: %v", p, err),
@@ -713,7 +713,7 @@ func checkBootstrapConfig(env llmcontext.Lookup) Check {
 			}
 		}
 		return Status{
-			Name:    "F2 bootstrap.config",
+			Name:    "bootstrap.config",
 			Section: "environment",
 			OK:      true,
 			Detail:  fmt.Sprintf("config present and parseable at %s", p),
@@ -733,7 +733,7 @@ type namedCheck struct {
 // The section field enables pre-execution category filtering.
 func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) []namedCheck {
 	return []namedCheck{
-		// F1/F2: bootstrap presence checks — run first so other checks have context.
+		// Bootstrap presence checks — run first so other checks have context.
 		{"environment", checkBootstrapKeyring(env)},
 		{"environment", checkBootstrapConfig(env)},
 		{"environment", checkVersionBinary()},
@@ -769,7 +769,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		// Soft checks.
 		{"providers", checkNoConnections(env)},
 		{"daemon", checkGatewayRunning(env)},
-		// F3 — plaintext retention after run.
+		// Plaintext retention after run.
 		{"daemon", checkPlaintextRetention(env)},
 		// Integration-marker checks.
 		{"environment", checkIntegrationMarkers()},

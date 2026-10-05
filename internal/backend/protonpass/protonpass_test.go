@@ -93,7 +93,7 @@ func TestProtonPassGet_BinaryNotFound(t *testing.T) {
 }
 
 func TestProtonPassSet_SecretNotInArgs(t *testing.T) {
-	// C3: the secret must NOT appear in the args slice — only "-" as stdin sentinel.
+	// The secret must NOT appear in the args slice — only "-" as stdin sentinel.
 	secret := []byte("super-secret-value-xyz")
 	key := argKey(fakeProtonBin, "item", "create", "--type", "login", "--name", "keylatch/prod/api_key", "--note", "-")
 	runner := &kexec.MockRunner{

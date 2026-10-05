@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDoctor_BackendSelected_AllKnownCanonicalNamesPass is the H4 regression
+// TestDoctor_BackendSelected_AllKnownCanonicalNamesPass is the regression
 // test: checkBackendSelected must accept every backend in
 // backend.KnownCanonicalNames() (derived from the same catalog the registry
 // uses), not just the stale 7-entry literal list that hard-FAILed vault,

@@ -1,6 +1,6 @@
 package bw_test
 
-// session_cache_test.go — H5 session-cache seam: SaveSession/LoadSession/
+// session_cache_test.go — session-cache seam: SaveSession/LoadSession/
 // ClearSession/StatSession round-trip, TTL expiry, file modes, and the
 // "StatSession never reads the token file" invariant.
 

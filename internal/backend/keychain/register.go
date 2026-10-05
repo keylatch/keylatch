@@ -31,7 +31,7 @@ func init() {
 }
 
 func keychainFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
-	// M1 excludes macOS from the certified platform cohort (F16) — refuse
+	// macOS is not a certified platform — refuse
 	// selection here too, not just via the darwin build tag, so the backend
 	// stays unreachable even from a darwin build of an unreleased profile.
 	if !manifest.Current().Enabled("keychain") {

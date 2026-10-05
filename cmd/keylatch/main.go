@@ -12,7 +12,7 @@ import (
 func main() {
 	root := cli.NewRootCommand()
 	if err := root.Execute(); err != nil {
-		// §2.5/C5: root.SilenceErrors=true means cobra never prints anything
+		// Root.SilenceErrors=true means cobra never prints anything
 		// on its own — print the error before the doctor hint so the user
 		// sees WHAT failed, not just the generic hint.
 		//

@@ -489,7 +489,7 @@ make test-e2e-bw    # requires the Vaultwarden+Caddy fixture already running —
 
 # Web UI
 make build-web      # build SPA into web/dist/
-make test-phase10   # Go + bun tests for Phase 10
+make test-ui        # Go + bun tests for the web UI
 
 # Canary leak detection
 make test-canary

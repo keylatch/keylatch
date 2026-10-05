@@ -40,7 +40,7 @@ import (
 // Declared as a var so tests can replace it with a scanner over a pipe or
 // bytes.Buffer without touching os.Stdin at package-init time.
 //
-// C2: lazy init replaces the package-level stdinScanner to preserve test isolation.
+// Lazy init replaces the package-level stdinScanner to preserve test isolation.
 var stdinScannerFn = func() *bufio.Scanner {
 	return bufio.NewScanner(os.Stdin)
 }
@@ -74,7 +74,7 @@ type setupHeadlessResult struct {
 
 // setupSecurityBlockMessage builds the stderr message printed when
 // interactive setup refuses to run because llmcontext.IsLLMSession detected
-// an AI session (M8). It names the concrete triggering signal(s) instead of
+// an AI session. It names the concrete triggering signal(s) instead of
 // a generic refusal, so a human in an editor-integrated terminal can tell
 // what to unset — without weakening the guard itself (no override flag).
 func setupSecurityBlockMessage(env llmcontext.Lookup) string {
@@ -361,7 +361,7 @@ func ResolveStdinFields(stdinFields []string) (map[string]string, error) {
 // setupStep1DetectPlatform handles [1/5] — detect OS and recommend the best backend.
 // Returns the recommended backend slug.
 //
-// H2: on resume (an existing config already names a backend), the OS
+// On resume (an existing config already names a backend), the OS
 // recommendation is not returned here — recommending a different backend
 // than what's configured is exactly what lets Enter-through resume silently
 // switch backends and orphan stored secrets. The OS recommendation is only
@@ -395,7 +395,7 @@ func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 // setupStep2BackendSetup handles [2/5] — confirm backend and run bootstrap.
 // Takes the recommended backend from step 1; returns the chosen backend.
 //
-// H2: an existing config with a backend already set means secrets may
+// An existing config with a backend already set means secrets may
 // already be stored under that backend. On resume, this defaults the prompt
 // to *keeping* the configured backend rather than the OS recommendation,
 // and requires a typed "switch" confirmation before actually persisting a
@@ -458,7 +458,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	}
 	chosen = canonical
 
-	// H2: switching away from the configured backend orphans whatever is
+	// Switching away from the configured backend orphans whatever is
 	// already stored under it (nothing migrates). Require an explicit typed
 	// confirmation before persisting the switch — anything else keeps the
 	// configured backend.
@@ -685,7 +685,7 @@ func persistSetupBackend(c *cobra.Command, chosen string) error {
 }
 
 // loadConfigOrWarn loads the config at cfgPath, classifying failures into
-// three distinct cases (review finding, blocking) so a transient/permission
+// three distinct cases so a transient/permission
 // read failure is never treated the same as a genuinely corrupt file —
 // which would otherwise let the caller silently overwrite (via
 // config.Save's rename, which only needs directory write permission, not
@@ -711,7 +711,7 @@ func persistSetupBackend(c *cobra.Command, chosen string) error {
 // graceful degradation instead of silent data loss). setupStep1DetectPlatform
 // and setupStep2BackendSetup's resume detection use the same classification
 // via loadConfiguredBackend so a case-2 read failure can't silently look
-// like "no existing config" and skip the H2 switch-confirmation gate.
+// like "no existing config" and skip the switch-confirmation gate.
 func loadConfigOrWarn(c *cobra.Command, cfgPath string) (config.Config, error) {
 	data, readErr := os.ReadFile(cfgPath)
 	if readErr != nil {
@@ -740,8 +740,8 @@ func loadConfigOrWarn(c *cobra.Command, cfgPath string) (config.Config, error) {
 
 // loadConfiguredBackend inspects cfgPath for an existing backend selection,
 // using the same three-way classification as loadConfigOrWarn (review
-// finding, warn-1) so a permission/IO read failure can't silently look like
-// "no existing config" and let a resume skip H2's switch-confirmation gate:
+// so a permission/IO read failure can't silently look like
+// "no existing config" and let a resume skip the switch-confirmation gate:
 //
 //  1. Not exist → ("", nil): fresh install, no configured backend.
 //  2. Read/IO error → ("", err): the caller must abort. Silently treating
@@ -947,7 +947,7 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 }
 
 // setupGatewayPSRunner and setupGatewayPSBin back setupStep3SpawnDaemon's
-// process-identity verification (review finding, warn-2). Declared as vars
+// process-identity verification. Declared as vars
 // so tests can inject a mock without touching the real ps binary — same
 // injectable-var pattern as stdinScannerFn/storeNewResolver above.
 var (
@@ -957,19 +957,19 @@ var (
 
 // setupStep3SpawnDaemon handles [3/5] — initialise and start the gateway.
 //
-// M1: on a resumed setup where the gateway is already running, shelling out
+// On a resumed setup where the gateway is already running, shelling out
 // to `gateway up --detach` anyway makes the child's expected "already
 // running" refusal look like a setup failure. Check IsRunning ourselves
 // first and present it as the success case it actually is.
 //
-// warn-2 (review finding): IsRunning alone only signal-0-probes the pid —
+// IsRunning alone only signal-0-probes the pid —
 // if the gateway crashed and its pid got recycled by an unrelated process,
 // IsRunning false-positives as "running" and setup would report a
 // misleading success with no functioning gateway. Reuse the same
 // resolveGatewayUpRunning/VerifyProcessIdentity best-effort check `gateway
 // up --force` uses (force=true mirrors --force's stale-PID recovery
 // semantics): a confirmed match or an inconclusive check both resolve to
-// "skip" here (inconclusive fails safe — see warn-4), but a confirmed
+// "skip" here (inconclusive fails safe), but a confirmed
 // mismatch means the pid is stale, so setup removes it and proceeds to
 // actually start the gateway instead of silently doing nothing.
 func setupStep3SpawnDaemon(c *cobra.Command) {
@@ -986,7 +986,7 @@ func setupStep3SpawnDaemon(c *cobra.Command) {
 	switch action {
 	case gatewayUpRefuse:
 		// Covers both a confirmed match (genuinely running) and an
-		// inconclusive check (fail-safe, see warn-4) — either way the
+		// inconclusive check (fail-safe) — either way the
 		// correct action here is the same: skip starting a new one.
 		fmt.Fprintf(c.OutOrStdout(), "  Gateway already running (pid %d) — skipping.\n", pid)
 		if note != "" {

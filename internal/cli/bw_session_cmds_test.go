@@ -1,6 +1,6 @@
 package cli_test
 
-// bw_session_cmds_test.go — H5 CLI-level coverage for `bw lock` / `bw
+// bw_session_cmds_test.go — CLI-level coverage for `bw lock` / `bw
 // status` (the parts of the session-orchestration surface that don't
 // require a real terminal / master-password prompt; `bw unlock`'s capture
 // + cache + injection + expiry + invalidate logic is covered at the

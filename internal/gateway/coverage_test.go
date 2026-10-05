@@ -81,7 +81,7 @@ func newGatewayServerWithAudit(t *testing.T) (port int, cancel context.CancelFun
 
 // --- approveHandler tests ---
 
-// TestApproveHandler_MissingToken verifies approval is unavailable in M1
+// TestApproveHandler_MissingToken verifies approval is unavailable
 // even when the token is empty.
 func TestApproveHandler_MissingToken(t *testing.T) {
 	key := make([]byte, 32)
@@ -117,7 +117,7 @@ func TestApproveHandler_MissingToken(t *testing.T) {
 	}
 }
 
-// TestApproveHandler_InvalidToken verifies approval is unavailable in M1
+// TestApproveHandler_InvalidToken verifies approval is unavailable
 // even when the token does not exist.
 func TestApproveHandler_InvalidToken(t *testing.T) {
 	key := make([]byte, 32)
@@ -153,7 +153,7 @@ func TestApproveHandler_InvalidToken(t *testing.T) {
 	}
 }
 
-// TestApprovalsHandler_Empty verifies GET /approvals is unavailable in M1
+// TestApprovalsHandler_Empty verifies GET /approvals is unavailable
 // rather than disclosing a (real or fake) pending-approval list.
 func TestApprovalsHandler_Empty(t *testing.T) {
 	key := make([]byte, 32)
@@ -998,7 +998,7 @@ func TestServer_New_ValidLoopbackAddresses(t *testing.T) {
 // TestGateway_LLMSession_RequiresTwoPersonApproval verifies that a spec
 // simulating an LLM session with a hardware approval claim (ApprovalRootID
 // set, TwoPerson=false) can never reach the gateway's two-person gate: Mint
-// rejects it outright (F34; see also token.TestMint_RejectsHardwareApprovalClaims).
+// rejects it outright (see also token.TestMint_RejectsHardwareApprovalClaims).
 func TestGateway_LLMSession_RequiresTwoPersonApproval(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key)

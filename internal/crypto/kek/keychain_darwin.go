@@ -20,7 +20,7 @@ type keychainKEK struct {
 type CommandRunner func(name string, args ...string) ([]byte, error)
 
 // defaultRunner runs the real command through runManagerCLI, bounded by the
-// same timeout/output limits as the op/bw manager CLIs (F47) — an
+// same timeout/output limits as the op/bw manager CLIs — an
 // unresponsive "security" call (e.g. blocked on a keychain-unlock prompt)
 // must not hang indefinitely either.
 var defaultRunner CommandRunner = func(name string, args ...string) ([]byte, error) {

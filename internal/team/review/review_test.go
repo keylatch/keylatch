@@ -68,7 +68,7 @@ func TestReview_ActiveItem_Keep(t *testing.T) {
 }
 
 // TestRevokeUnused_StaleGrant_ReturnsExplicitError verifies that a stale
-// grant-type item produces an explicit error naming the item (M9a) instead
+// grant-type item produces an explicit error naming the item instead
 // of the previous silent-no-op "success" — reaching this call site with a
 // clean nil result used to falsely imply the grant had actually been
 // revoked.

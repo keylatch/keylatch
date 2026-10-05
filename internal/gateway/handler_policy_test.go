@@ -50,7 +50,7 @@ func policyEventsSince(t *testing.T, l *audit.Logger) []audit.Event {
 // TestHandler_Policy_NotConfigured_PassThrough verifies that when
 // ServerOptions.PolicyPath is unset, Step 6 stays pass-through: the request
 // proceeds past the policy check to the vault lookup exactly as it did
-// before H7 wiring (surfacing credential_not_found, not policy_denied).
+// before wiring (surfacing credential_not_found, not policy_denied).
 func TestHandler_Policy_NotConfigured_PassThrough(t *testing.T) {
 	key := make([]byte, 32)
 	rand.Read(key) //nolint:errcheck
@@ -176,7 +176,7 @@ func TestGatewayNew_PolicyLoad_MalformedFails(t *testing.T) {
 }
 
 // TestGatewayNew_RejectsCommandsCWDsRule is the regression test for review
-// finding non-blocking-1 (2026-08-06): a gateway-loaded policy rule with a
+// review finding (2026-08-06): a gateway-loaded policy rule with a
 // Commands or CWDs constraint can never match gateway traffic (the
 // gateway's policy.Request never sets Command/CWD — there is no shell
 // command or working directory for an HTTP request). Such a rule must be

@@ -83,7 +83,7 @@ func TestSCIM_CreateUser(t *testing.T) {
 }
 
 func TestSCIM_DeleteUser(t *testing.T) {
-	// N-6: RemoveMember writes to disk — use a temp dir.
+	// RemoveMember writes to disk — use a temp dir.
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_TEAM_DIR", dir)
 

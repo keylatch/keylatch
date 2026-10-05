@@ -3,8 +3,8 @@ package kek_test
 // live_manager_test.go exercises OPKEK/BWKEK against a REAL, installed
 // op/bw CLI and a real signed-in manager session. Every test here is
 // skipped unless explicitly opted in — ordinary `go test ./...` (and CI)
-// must never discover or invoke an installed password-manager binary
-// (F47). Run manually against disposable test vault items:
+// must never discover or invoke an installed password-manager binary.
+// Run manually against disposable test vault items:
 //
 //	KEYLATCH_LIVE_MANAGER_TESTS=1 \
 //	KEYLATCH_LIVE_OP_VAULT=... KEYLATCH_LIVE_OP_ITEM=... KEYLATCH_LIVE_OP_FIELD=... \

@@ -90,7 +90,7 @@ func TestDirectClassicSandboxed_FeatureFlagFalse(t *testing.T) {
 	}
 
 	_, err := d.Run(context.Background(), req, sandboxedTmpl("testprovider"))
-	// The driver checks the feature flag first (C3) — before any filesystem access.
+	// The driver checks the feature flag first — before any filesystem access.
 	// ErrFeatureFlagRequired is returned immediately, no hash computation occurs.
 	require.ErrorIs(t, err, sandbox.ErrFeatureFlagRequired,
 		"disabled feature flag must cause launch failure with ErrFeatureFlagRequired")
