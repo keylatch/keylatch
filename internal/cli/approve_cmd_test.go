@@ -203,11 +203,11 @@ func TestApprove_AlreadyDecided(t *testing.T) {
 
 	token := createPendingApproval(t, approvalsDir)
 	// Approve first.
-	if err := approval.Approve(context.Background(), approvalsDir, token, testDecisionKey); err != nil {
+	if err := approval.Approve(context.Background(), approvalsDir, token, shownOf(t, approvalsDir, token), testDecisionKey); err != nil {
 		t.Fatalf("first approve: %v", err)
 	}
 	// Second approve should return ErrAlreadyActed.
-	err := approval.Approve(context.Background(), approvalsDir, token, testDecisionKey)
+	err := approval.Approve(context.Background(), approvalsDir, token, shownOf(t, approvalsDir, token), testDecisionKey)
 	if !errors.Is(err, approval.ErrAlreadyActed) {
 		t.Errorf("expected ErrAlreadyActed; got %v", err)
 	}

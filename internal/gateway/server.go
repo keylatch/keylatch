@@ -298,11 +298,6 @@ func New(opts ServerOptions) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.healthHandler)
-	// Approval decisions are made only by `keylatch approve` and `deny` on a
-	// human's terminal. These former routes stay reserved so a request to
-	// them never reaches the proxy.
-	mux.Handle("/approve/", http.NotFoundHandler())
-	mux.Handle("/approvals", http.NotFoundHandler())
 
 	// Gateway proxy route (catch-all): wrap gatewayHandler with the security
 	// middleware chain. Order matches the request flow: auth-blocker first
@@ -322,7 +317,7 @@ func New(opts ServerOptions) (*Server, error) {
 
 	s.httpSrv = &http.Server{
 		Addr:              opts.Bind,
-		Handler:           mux,
+		Handler:           reserveApprovalPaths(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -431,4 +426,21 @@ func isLoopbackBind(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// reserveApprovalPaths answers 404 for every path under the former approval
+// routes, in any letter case, before routing, so none of them reaches the
+// proxy. Approval decisions are made only by `keylatch approve` and `deny`
+// on a human's terminal.
+func reserveApprovalPaths(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, p := range []string{r.URL.Path, r.URL.EscapedPath()} {
+			p = strings.ToLower(p)
+			if strings.HasPrefix(p, "/approve") || strings.HasPrefix(p, "/approvals") {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

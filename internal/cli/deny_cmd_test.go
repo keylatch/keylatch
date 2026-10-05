@@ -143,7 +143,7 @@ func TestDeny_NotFound(t *testing.T) {
 	withApprover(t)
 
 	// Verify the store itself returns ErrNotFound for unknown tokens.
-	err := approval.Deny(context.Background(), approvalsDir, "apv_00000000000000000000000000000000", testDecisionKey)
+	err := approval.Deny(context.Background(), approvalsDir, "apv_00000000000000000000000000000000", shownOf(t, approvalsDir, "apv_00000000000000000000000000000000"), testDecisionKey)
 	if !errors.Is(err, approval.ErrNotFound) {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -158,11 +158,11 @@ func TestDeny_AlreadyDecided(t *testing.T) {
 
 	token := createPendingApproval(t, approvalsDir)
 	// Deny first.
-	if err := approval.Deny(context.Background(), approvalsDir, token, testDecisionKey); err != nil {
+	if err := approval.Deny(context.Background(), approvalsDir, token, shownOf(t, approvalsDir, token), testDecisionKey); err != nil {
 		t.Fatalf("first deny: %v", err)
 	}
 	// Second deny should return ErrAlreadyActed.
-	err := approval.Deny(context.Background(), approvalsDir, token, testDecisionKey)
+	err := approval.Deny(context.Background(), approvalsDir, token, shownOf(t, approvalsDir, token), testDecisionKey)
 	if !errors.Is(err, approval.ErrAlreadyActed) {
 		t.Errorf("expected ErrAlreadyActed; got %v", err)
 	}
@@ -266,7 +266,7 @@ func TestDeny_All_SkipsPreDecidedEntries(t *testing.T) {
 	token2 := createPendingApproval(t, approvalsDir)
 
 	// Pre-approve token1 to simulate a race (already decided).
-	if err := approval.Approve(context.Background(), approvalsDir, token1, testDecisionKey); err != nil {
+	if err := approval.Approve(context.Background(), approvalsDir, token1, shownOf(t, approvalsDir, token1), testDecisionKey); err != nil {
 		t.Fatalf("pre-approve: %v", err)
 	}
 

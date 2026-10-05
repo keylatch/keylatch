@@ -12,7 +12,10 @@ Approval decisions are made only by a human on a terminal:
 - They require an interactive terminal on stdin; piped, scripted and agent tool-call invocations are refused.
 - They ask for the **approver passphrase**, set once with `keylatch approve init`. The passphrase is read only from the terminal, never from a flag, file or environment variable.
 - Every decision is signed with an Ed25519 key derived from that passphrase. An approval that is unsigned, signed with another key, or edited after signing is rejected.
-- The gateway has no approval endpoints. `/approve/` and `/approvals` return 404.
+- The signature covers exactly the request shown to the approver. If the request file changes between display and the passphrase prompt, nothing is signed and the command exits 2. Requester-written fields are shown with control characters removed.
+- A request is valid for at most one hour; a longer expiry written into the file is refused.
+- An approval can be used once, within 15 minutes of the decision.
+- The gateway has no approval endpoints. Any path under `/approve` or `/approvals`, in any letter case, returns 404.
 - Approval tokens must be exactly `apv_` followed by 32 lowercase hex characters; anything else is refused before any file is touched.
 
 ---

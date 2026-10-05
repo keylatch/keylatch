@@ -87,7 +87,7 @@ passphrase set with 'keylatch approve init'.`,
 			}
 			defer clear(key)
 
-			if err := approval.DenyWithReason(c.Context(), approvalsDir, token, reason, key); err != nil {
+			if err := approval.DenyWithReason(c.Context(), approvalsDir, token, approval.Digest(ar), reason, key); err != nil {
 				return denyError(token, err)
 			}
 
@@ -161,7 +161,7 @@ func runDenyAll(c *cobra.Command, approvalsDir, reason string, skipPrompt, useJS
 	// Deny each — tolerate races (skip non-pending silently).
 	var deniedIDs []string
 	for _, ar := range pending {
-		err := approval.DenyWithReason(ctx, approvalsDir, ar.Token, reason, key)
+		err := approval.DenyWithReason(ctx, approvalsDir, ar.Token, approval.Digest(&ar), reason, key)
 		if err == nil {
 			deniedIDs = append(deniedIDs, ar.Token)
 			continue
@@ -213,6 +213,9 @@ func denyError(token string, err error) error {
 			Code:    exitcode.UserError,
 			Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4113)", token),
 		}
+	}
+	if errors.Is(err, approval.ErrChanged) || errors.Is(err, approval.ErrTTLTooLong) {
+		return NewSecurityBlock("approval %q refused: %v. Nothing was signed. (KL-4119)", token, err)
 	}
 	return &CLIError{
 		Class:   "OperationFailed",

@@ -77,7 +77,7 @@ key derived from that passphrase; unsigned approvals are never accepted.`,
 			}
 			defer clear(key)
 
-			if err := approval.ApproveWithReason(c.Context(), approvalsDir, token, reason, key); err != nil {
+			if err := approval.ApproveWithReason(c.Context(), approvalsDir, token, approval.Digest(ar), reason, key); err != nil {
 				return approveError(token, err)
 			}
 
@@ -170,8 +170,8 @@ Use --json to emit a JSON array for scripting.`,
 				ttlStr := formatTTL(remaining)
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					ar.Token,
-					ar.Connection,
-					ar.Actor,
+					displaySafe(ar.Connection),
+					displaySafe(ar.Actor),
 					ar.CreatedAt.UTC().Format(time.RFC3339),
 					ttlStr,
 					ar.Status,
@@ -236,6 +236,9 @@ func approveError(token string, err error) error {
 			Code:    exitcode.UserError,
 			Message: fmt.Sprintf("approval %q has already been approved or denied. (KL-4103)", token),
 		}
+	}
+	if errors.Is(err, approval.ErrChanged) || errors.Is(err, approval.ErrTTLTooLong) {
+		return NewSecurityBlock("approval %q refused: %v. Nothing was signed. (KL-4109)", token, err)
 	}
 	return &CLIError{
 		Class:   "OperationFailed",

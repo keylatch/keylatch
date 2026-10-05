@@ -42,12 +42,18 @@ func TestApprovalRoutesRemoved(t *testing.T) {
 		{http.MethodPost, "/approve/..%2Fpolicy"},
 		{http.MethodPost, "/approve/../policy"},
 		{http.MethodPost, "/approve/"},
+		{http.MethodGet, "/approvals/" + ar.Token},
+		{http.MethodPost, "/APPROVE/" + ar.Token},
+		{http.MethodGet, "/Approvals"},
+		{http.MethodPost, "/approve"},
+		{http.MethodPost, "/%61pprove/" + ar.Token},
+		{http.MethodGet, "/approvals/../approvals"},
 	}
 	for _, rq := range requests {
 		w := httptest.NewRecorder()
 		s.httpSrv.Handler.ServeHTTP(w, httptest.NewRequest(rq.method, "http://127.0.0.1"+rq.path, nil))
-		if w.Code != http.StatusNotFound && (w.Code < 300 || w.Code > 399) {
-			t.Errorf("%s %s = %d, want 404 or a path-cleaning redirect", rq.method, rq.path, w.Code)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s %s = %d, want 404", rq.method, rq.path, w.Code)
 		}
 		if strings.Contains(w.Body.String(), ar.Token) {
 			t.Errorf("%s %s disclosed a pending approval token", rq.method, rq.path)

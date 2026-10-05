@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -46,7 +47,17 @@ var (
 	ErrAlreadyActed = errors.New("approval: already approved or denied")
 	ErrUnsigned     = errors.New("approval: decision is not signed by the approver key")
 	ErrHashRequired = errors.New("approval: request hash is required")
+	ErrChanged      = errors.New("approval: request changed after it was shown; review it again")
+	ErrTTLTooLong   = errors.New("approval: request asks for a validity longer than allowed")
+	ErrUsed         = errors.New("approval: already used")
 )
+
+// MaxTTL bounds how long a request stays open. Requests are written by the
+// requester, so a longer expiry on disk is refused rather than trusted.
+const MaxTTL = time.Hour
+
+// UseWindow is how long after the decision an approval can be used.
+const UseWindow = 15 * time.Minute
 
 // Status constants.
 const (
@@ -82,6 +93,7 @@ func RequestNew(_ context.Context, approvalsDir, actor, capability, connection s
 	if ttl <= 0 {
 		ttl = 15 * time.Minute
 	}
+	ttl = min(ttl, MaxTTL)
 
 	ar := &ApprovalRequest{
 		Token:       tok,
@@ -219,30 +231,41 @@ func expireOldPendingWithClock(approvalsDir string, clk Clock) (int, error) {
 	return expired, nil
 }
 
+// Digest identifies the exact content of a record. A decision names the
+// digest of the record the human was shown, and is refused if the file no
+// longer matches it.
+func Digest(ar *ApprovalRequest) string {
+	b, _ := json.Marshal(ar)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
 // Approve marks the approval approved and signs the decision with key.
-func Approve(ctx context.Context, approvalsDir, token string, key ed25519.PrivateKey) error {
-	return ApproveWithReason(ctx, approvalsDir, token, "", key)
+// shown is the Digest of the record the approver reviewed.
+func Approve(ctx context.Context, approvalsDir, token, shown string, key ed25519.PrivateKey) error {
+	return ApproveWithReason(ctx, approvalsDir, token, shown, "", key)
 }
 
-// ApproveWithReason marks the approval approved with an optional reason note
-// and signs the decision with key.
-func ApproveWithReason(_ context.Context, approvalsDir, token, reason string, key ed25519.PrivateKey) error {
-	return decide(approvalsDir, token, StatusApproved, reason, key, defaultClock)
+// ApproveWithReason is Approve with a reason note.
+func ApproveWithReason(_ context.Context, approvalsDir, token, shown, reason string, key ed25519.PrivateKey) error {
+	return decide(approvalsDir, token, shown, StatusApproved, reason, key, defaultClock)
 }
 
-// Deny marks the approval denied and signs the decision with key.
-func Deny(ctx context.Context, approvalsDir, token string, key ed25519.PrivateKey) error {
-	return DenyWithReason(ctx, approvalsDir, token, "", key)
+// Deny marks the approval denied and signs the decision with key. shown is
+// the Digest of the record the approver reviewed.
+func Deny(ctx context.Context, approvalsDir, token, shown string, key ed25519.PrivateKey) error {
+	return DenyWithReason(ctx, approvalsDir, token, shown, "", key)
 }
 
-// DenyWithReason marks the approval denied with an optional reason note and
-// signs the decision with key.
-func DenyWithReason(_ context.Context, approvalsDir, token, reason string, key ed25519.PrivateKey) error {
-	return decide(approvalsDir, token, StatusDenied, reason, key, defaultClock)
+// DenyWithReason is Deny with a reason note.
+func DenyWithReason(_ context.Context, approvalsDir, token, shown, reason string, key ed25519.PrivateKey) error {
+	return decide(approvalsDir, token, shown, StatusDenied, reason, key, defaultClock)
 }
 
 // Verify checks that token exists, is approved by a decision signed with
-// the approver key pub, has not expired, and is bound to reqHash.
+// the approver key pub, is bound to reqHash, has not expired and was
+// decided within UseWindow, and then consumes it: an approval allows exactly
+// one use.
 func Verify(ctx context.Context, approvalsDir, token, reqHash string, pub ed25519.PublicKey) error {
 	return verifyWithClock(ctx, approvalsDir, token, reqHash, pub, defaultClock)
 }
@@ -275,7 +298,24 @@ func verifyWithClock(_ context.Context, approvalsDir, token, reqHash string, pub
 	if ar.RequestHash != reqHash {
 		return errors.New("approval: request hash mismatch")
 	}
-	return nil
+	now := clk.Now()
+	if ar.DecidedAt.After(now) || now.Sub(ar.DecidedAt) > UseWindow {
+		return ErrExpired
+	}
+	return consume(root, token)
+}
+
+// consume records the single use of an approval. The marker is created
+// exclusively, so concurrent verifiers cannot both succeed.
+func consume(root *os.Root, token string) error {
+	f, err := root.OpenFile(token+".used", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return ErrUsed
+	}
+	if err != nil {
+		return fmt.Errorf("approval: record use: %w", err)
+	}
+	return f.Close()
 }
 
 // ErrExpiredTTL is returned when the caller tries to approve/deny an expired approval.
@@ -292,7 +332,7 @@ func (e *ErrExpiredTTL) Is(target error) bool {
 	return target == ErrExpired || target == ErrAlreadyActed
 }
 
-func decide(approvalsDir, token, status, reason string, key ed25519.PrivateKey, clk Clock) error {
+func decide(approvalsDir, token, shown, status, reason string, key ed25519.PrivateKey, clk Clock) error {
 	if len(key) != ed25519.PrivateKeySize {
 		return ErrUnsigned
 	}
@@ -308,11 +348,17 @@ func decide(approvalsDir, token, status, reason string, key ed25519.PrivateKey, 
 	if err != nil {
 		return err
 	}
+	if Digest(ar) != shown {
+		return ErrChanged
+	}
 	if ar.Status == StatusApproved || ar.Status == StatusDenied {
 		return ErrAlreadyActed
 	}
 	if ar.Status == StatusExpired || ar.ExpiresAt.Before(clk.Now()) {
 		return &ErrExpiredTTL{ExpiresAt: ar.ExpiresAt}
+	}
+	if ar.ExpiresAt.Sub(ar.CreatedAt) > MaxTTL {
+		return ErrTTLTooLong
 	}
 	ar.Status = status
 	if reason != "" {

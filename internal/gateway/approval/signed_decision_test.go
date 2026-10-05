@@ -29,10 +29,10 @@ func TestDecisionsRejectMalformedTokens(t *testing.T) {
 		"", "../outside", "apv_../../outside", "apv_" + "ABCDEF0123456789ABCDEF0123456789",
 		"apv_0123", valid + "0", valid[:len(valid)-1], " " + valid, valid + "\n", "apv_x/../" + valid[4:],
 	} {
-		if err := Approve(context.Background(), dir, bad, testKey); !errors.Is(err, ErrNotFound) {
+		if err := Approve(context.Background(), dir, bad, shownOf(t, dir, bad), testKey); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Approve(%q) = %v, want ErrNotFound", bad, err)
 		}
-		if err := Deny(context.Background(), dir, bad, testKey); !errors.Is(err, ErrNotFound) {
+		if err := Deny(context.Background(), dir, bad, shownOf(t, dir, bad), testKey); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Deny(%q) = %v, want ErrNotFound", bad, err)
 		}
 		if _, err := Get(context.Background(), dir, bad); !errors.Is(err, ErrNotFound) {
@@ -66,7 +66,7 @@ func TestDecisionsRefuseSymlinkedRecords(t *testing.T) {
 	if err := os.Symlink(victim, filepath.Join(dir, token+".json")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Approve(context.Background(), dir, token, testKey); err == nil {
+	if err := Approve(context.Background(), dir, token, shownOf(t, dir, token), testKey); err == nil {
 		t.Fatal("Approve followed a symlink out of the approvals directory")
 	}
 	if pending, _ := Pending(context.Background(), dir); len(pending) != 0 {
@@ -102,7 +102,7 @@ func TestDecisionNeedsApproverKey(t *testing.T) {
 	dir := t.TempDir()
 	ar := makeRequest(t, dir)
 	for _, key := range []ed25519.PrivateKey{nil, make(ed25519.PrivateKey, 10)} {
-		if err := Approve(context.Background(), dir, ar.Token, key); !errors.Is(err, ErrUnsigned) {
+		if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), key); !errors.Is(err, ErrUnsigned) {
 			t.Fatalf("Approve without a key = %v, want ErrUnsigned", err)
 		}
 	}
@@ -124,12 +124,12 @@ func TestVerifyRejectsForgedDecisions(t *testing.T) {
 			mustWrite(t, dir, ar)
 		},
 		"signed by another key": func(t *testing.T, dir string, ar *ApprovalRequest) {
-			if err := Approve(context.Background(), dir, ar.Token, otherKey); err != nil {
+			if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), otherKey); err != nil {
 				t.Fatal(err)
 			}
 		},
 		"connection changed after signing": func(t *testing.T, dir string, ar *ApprovalRequest) {
-			if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+			if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 				t.Fatal(err)
 			}
 			got, _ := Get(context.Background(), dir, ar.Token)
@@ -137,7 +137,7 @@ func TestVerifyRejectsForgedDecisions(t *testing.T) {
 			mustWrite(t, dir, got)
 		},
 		"denial flipped to approved": func(t *testing.T, dir string, ar *ApprovalRequest) {
-			if err := Deny(context.Background(), dir, ar.Token, testKey); err != nil {
+			if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 				t.Fatal(err)
 			}
 			got, _ := Get(context.Background(), dir, ar.Token)
@@ -145,7 +145,7 @@ func TestVerifyRejectsForgedDecisions(t *testing.T) {
 			mustWrite(t, dir, got)
 		},
 		"expiry extended after signing": func(t *testing.T, dir string, ar *ApprovalRequest) {
-			if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+			if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 				t.Fatal(err)
 			}
 			got, _ := Get(context.Background(), dir, ar.Token)
@@ -154,7 +154,7 @@ func TestVerifyRejectsForgedDecisions(t *testing.T) {
 		},
 		"signature copied from another approval": func(t *testing.T, dir string, ar *ApprovalRequest) {
 			donor := makeRequest(t, dir)
-			if err := Approve(context.Background(), dir, donor.Token, testKey); err != nil {
+			if err := Approve(context.Background(), dir, donor.Token, shownOf(t, dir, donor.Token), testKey); err != nil {
 				t.Fatal(err)
 			}
 			signed, _ := Get(context.Background(), dir, donor.Token)
@@ -184,7 +184,7 @@ func TestVerifyRejectsForgedDecisions(t *testing.T) {
 func TestVerifyAcceptsSignedApproval(t *testing.T) {
 	dir := t.TempDir()
 	ar := makeRequest(t, dir)
-	if err := ApproveWithReason(context.Background(), dir, ar.Token, "checked", testKey); err != nil {
+	if err := ApproveWithReason(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), "checked", testKey); err != nil {
 		t.Fatal(err)
 	}
 	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub); err != nil {

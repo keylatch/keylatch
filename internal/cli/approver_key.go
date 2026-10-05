@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -63,12 +65,31 @@ func unlockApprover(command, missingCode, wrongCode string) (ed25519.PrivateKey,
 }
 
 // printApprovalSummary shows the human what they are about to decide.
+// Every field but the token is written by the requester, so control and
+// format characters are removed before display.
 func printApprovalSummary(w io.Writer, ar *approval.ApprovalRequest) {
 	fmt.Fprintf(w, "Request %s\n", ar.Token)
-	fmt.Fprintf(w, "  actor:       %s\n", ar.Actor)
-	fmt.Fprintf(w, "  connection:  %s\n", ar.Connection)
-	fmt.Fprintf(w, "  capability:  %s\n", ar.Capability)
-	fmt.Fprintf(w, "  expires:     %s\n", ar.ExpiresAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(w, "  actor:         %s\n", displaySafe(ar.Actor))
+	fmt.Fprintf(w, "  connection:    %s\n", displaySafe(ar.Connection))
+	fmt.Fprintf(w, "  capability:    %s\n", displaySafe(ar.Capability))
+	fmt.Fprintf(w, "  request hash:  %s\n", displaySafe(ar.RequestHash))
+	if ar.Note != "" {
+		fmt.Fprintf(w, "  note:          %s\n", displaySafe(ar.Note))
+	}
+	fmt.Fprintf(w, "  requested:     %s\n", ar.CreatedAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(w, "  expires:       %s\n", ar.ExpiresAt.UTC().Format(time.RFC3339))
+}
+
+// displaySafe drops control and format characters (escape sequences,
+// carriage returns, bidi overrides) that could rewrite what the terminal
+// shows.
+func displaySafe(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 func newApproveInitCmd() *cobra.Command {

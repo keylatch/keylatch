@@ -169,10 +169,10 @@ func TestPending_ReturnsOnlyPending(t *testing.T) {
 	approvedAR := makeRequest(t, dir)
 	deniedAR := makeRequest(t, dir)
 
-	if err := Approve(context.Background(), dir, approvedAR.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, approvedAR.Token, shownOf(t, dir, approvedAR.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
-	if err := Deny(context.Background(), dir, deniedAR.Token, testKey); err != nil {
+	if err := Deny(context.Background(), dir, deniedAR.Token, shownOf(t, dir, deniedAR.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
 
@@ -286,7 +286,7 @@ func TestApprove_TransitionsPendingToApproved(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -301,7 +301,7 @@ func TestApprove_TransitionsPendingToApproved(t *testing.T) {
 
 func TestApprove_NotFoundReturnsErrNotFound(t *testing.T) {
 	dir := withDir(t)
-	err := Approve(context.Background(), dir, tok("does_not_exist"), testKey)
+	err := Approve(context.Background(), dir, tok("does_not_exist"), shownOf(t, dir, tok("does_not_exist")), testKey)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -311,10 +311,10 @@ func TestApprove_AlreadyApprovedReturnsErrAlreadyActed(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("first Approve: %v", err)
 	}
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != ErrAlreadyActed {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != ErrAlreadyActed {
 		t.Errorf("second Approve must return ErrAlreadyActed; got %v", err)
 	}
 }
@@ -323,10 +323,10 @@ func TestApprove_DeniedThenApproveReturnsErrAlreadyActed(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Deny(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != ErrAlreadyActed {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != ErrAlreadyActed {
 		t.Errorf("Approve after Deny must return ErrAlreadyActed; got %v", err)
 	}
 }
@@ -335,7 +335,7 @@ func TestDeny_TransitionsPendingToDenied(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
 
-	if err := Deny(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
 
@@ -350,7 +350,7 @@ func TestDeny_TransitionsPendingToDenied(t *testing.T) {
 
 func TestDeny_NotFoundReturnsErrNotFound(t *testing.T) {
 	dir := withDir(t)
-	err := Deny(context.Background(), dir, tok("nope"), testKey)
+	err := Deny(context.Background(), dir, tok("nope"), shownOf(t, dir, tok("nope")), testKey)
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound; got %v", err)
 	}
@@ -361,7 +361,7 @@ func TestDeny_NotFoundReturnsErrNotFound(t *testing.T) {
 func TestVerify_HappyPath(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub); err != nil {
@@ -372,7 +372,7 @@ func TestVerify_HappyPath(t *testing.T) {
 func TestVerify_EmptyRequestHashRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 	if err := Verify(context.Background(), dir, ar.Token, "", testPub); !errors.Is(err, ErrHashRequired) {
@@ -400,7 +400,7 @@ func TestVerify_PendingStatusRejected(t *testing.T) {
 func TestVerify_DeniedStatusRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Deny(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
 	err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub)
@@ -412,7 +412,7 @@ func TestVerify_DeniedStatusRejected(t *testing.T) {
 func TestVerify_ExpiredReturnsErrExpired(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 	clk := fakeClock{t: ar.ExpiresAt.Add(time.Minute)}
@@ -425,7 +425,7 @@ func TestVerify_ExpiredReturnsErrExpired(t *testing.T) {
 func TestVerify_RequestHashMismatchRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 	err := Verify(context.Background(), dir, ar.Token, "different-hash", testPub)
@@ -571,7 +571,7 @@ func TestFlow_RequestApproveVerifyHappyPath(t *testing.T) {
 	}
 
 	// Approve.
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -598,7 +598,7 @@ func TestFlow_RequestApproveVerifyHappyPath(t *testing.T) {
 func TestFlow_RequestDenyVerifyRejected(t *testing.T) {
 	dir := withDir(t)
 	ar := makeRequest(t, dir)
-	if err := Deny(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Deny(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
 	if err := Verify(context.Background(), dir, ar.Token, ar.RequestHash, testPub); err == nil {
@@ -655,7 +655,7 @@ func TestList_Populated(t *testing.T) {
 	ar2 := makeRequest(t, dir)
 
 	// Approve one — approved should NOT appear in List.
-	if err := Approve(context.Background(), dir, ar1.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar1.Token, shownOf(t, dir, ar1.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -779,7 +779,7 @@ func TestStore_TTLSweep_NoDoubleDecide(t *testing.T) {
 
 	// Create and approve a request.
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token, testKey); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), testKey); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
@@ -841,7 +841,7 @@ func TestApprove_OnExpired_ReturnsActionableError(t *testing.T) {
 		t.Fatalf("writeApproval: %v", err)
 	}
 
-	err := Approve(context.Background(), dir, expiredToken, testKey)
+	err := Approve(context.Background(), dir, expiredToken, shownOf(t, dir, expiredToken), testKey)
 	if err == nil {
 		t.Fatal("expected error when approving expired request")
 	}
