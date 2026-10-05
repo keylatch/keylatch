@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -538,6 +539,9 @@ func TestPassphraseKEK_ZeroedOnError(t *testing.T) {
 // handling against a controlled child process.
 func writeFakeManagerCLI(t *testing.T, name, script string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell stub")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o700); err != nil {

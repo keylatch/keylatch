@@ -6,12 +6,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestListenSocket_OwnerOnlyAndNoStagingLeft(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := shortTempDir(t)
 	path := filepath.Join(dir, "x.sock")
 
 	ln, err := listenSocket(path)
@@ -69,5 +70,26 @@ func TestListenSocket_PathTakenByDirectory(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Dir(path))
 	if len(entries) != 1 {
 		t.Errorf("staging directory left behind: %d entries", len(entries))
+	}
+}
+
+func TestListenSocket_RejectsTooLongPath(t *testing.T) {
+	t.Parallel()
+	dir := shortTempDir(t)
+	long := filepath.Join(dir, strings.Repeat("d", maxSocketPath), "x.sock")
+	if _, err := listenSocket(long); err == nil || !strings.Contains(err.Error(), "too long") {
+		t.Fatalf("expected a too-long error, got %v", err)
+	}
+}
+
+func TestListenSocket_TargetIsDirectory(t *testing.T) {
+	t.Parallel()
+	dir := shortTempDir(t)
+	path := filepath.Join(dir, "x.sock")
+	if err := os.MkdirAll(filepath.Join(path, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := listenSocket(path); err == nil || !strings.Contains(err.Error(), "move socket into place") {
+		t.Fatalf("expected a move error, got %v", err)
 	}
 }
