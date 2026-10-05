@@ -593,7 +593,7 @@ func newRunCmd() *cobra.Command {
 			}
 
 			// Guard 2: keyring must exist — if not, keylatch has never been bootstrapped.
-			_, statErr := os.Stat(paths.KeyringPath(llmcontext.DefaultLookup))
+			_, statErr := os.Stat(paths.ResolveKeyringPath(llmcontext.DefaultLookup))
 			if statErr != nil {
 				if os.IsNotExist(statErr) {
 					cliErr := NewBootstrapMissing("keylatch not bootstrapped — run: keylatch bootstrap")

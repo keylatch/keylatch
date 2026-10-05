@@ -72,7 +72,7 @@ func runMigrateCipher(cmd *cobra.Command, toAlgStr string) error {
 	}
 
 	vaultDir := paths.Vault(os.Getenv)
-	krPath := filepath.Join(vaultDir, "keyring", "keyring.json")
+	krPath := paths.ResolveKeyringPath(os.Getenv)
 
 	kr, k, _, err := openKeyringFromEnv()
 	if err != nil {

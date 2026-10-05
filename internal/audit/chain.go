@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -25,8 +26,9 @@ type ChainReport struct {
 // - auditDEK == nil: header-only mode (no AEAD; chain integrity only).
 // - auditDEK != nil: full mode (AEAD-open each event body + chain check).
 //
-// salt is the 32-byte HMAC salt used to derive the chain MAC key.
-func VerifyChain(path string, salt []byte, auditDEK []byte) (ChainReport, error) {
+// salt is the 32-byte HMAC salt used to derive the chain MAC key. olderDEKs
+// open events sealed before the DEK changed.
+func VerifyChain(path string, salt []byte, auditDEK []byte, olderDEKs ...[]byte) (ChainReport, error) {
 	// Derive chainMACKey from salt only (matches Logger.Open / DeriveChainMACKey).
 	// This key is DEK-independent so VerifyChain works in header-only mode.
 	chainMACKey := DeriveChainMACKey(salt)
@@ -129,7 +131,7 @@ func VerifyChain(path string, salt []byte, auditDEK []byte) (ChainReport, error)
 			} else {
 				nonce := sealed[:24]
 				ct := sealed[24:]
-				if _, err := envelope.Open(envelope.XChaCha20Poly1305, auditDEK, ct, nonce, hdrBytes); err != nil {
+				if _, err := openSealed(append([][]byte{auditDEK}, olderDEKs...), ct, nonce, hdrBytes); err != nil {
 					if report.FirstBadLine == 0 {
 						report.FirstBadLine = lineNum
 						report.FirstBadReason = "AEAD authentication failed"
@@ -149,4 +151,19 @@ func VerifyChain(path string, salt []byte, auditDEK []byte) (ChainReport, error)
 	}
 
 	return report, nil
+}
+
+// openSealed decrypts an event body with the current DEK or a read key.
+func openSealed(keys [][]byte, ct, nonce, hdr []byte) ([]byte, error) {
+	var err error
+	for _, k := range keys {
+		var pt []byte
+		if pt, err = envelope.Open(envelope.XChaCha20Poly1305, k, ct, nonce, hdr); err == nil {
+			return pt, nil
+		}
+	}
+	if err == nil {
+		err = errors.New("audit: no key to open event")
+	}
+	return nil, err
 }
