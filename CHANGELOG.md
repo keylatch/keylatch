@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-10-05
+
 ### Added
 
 - `keylatch launch [--harness <name>] -- <command>` starts an agent harness with a signed session ticket bound to the launcher process; every process below it is treated as an agent session.
@@ -21,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The gateway's `/approve/` and `/approvals` routes are removed. Approvals and denials need a terminal, no detected agent session and the approver passphrase (`keylatch approve init`). They are signed with a key derived from that passphrase, and unsigned or tampered approvals are rejected. Approval tokens are validated strictly and confined to the approvals directory.
+- The untrusted-write gate ignores caller-supplied approval headers.
+- Unverified session claims (`KEYLATCH_LLM_TICKET`, an unanswered daemon socket, `KEYLATCH_ALLOW_UNVERIFIED_SESSION`) no longer open raw-credential access.
+- Audit rotation no longer recurses past the size cap, and it keeps 20 numbered generations. The `keylatchd` retention sweep deletes only rotated audit logs.
+- The audit logger finds the keyring bootstrap creates, so audit is on right after bootstrap.
+- Bitwarden and 1Password backends pass secret values on stdin, never on the command line.
+- Team invites, org policy and registry bundles are signed with Ed25519, and unsigned or legacy bundles are refused.
+- Admins can no longer take ownership. Role changes and invites cannot grant owner or a role at or above the caller's. Team membership changes are disabled until authenticated member identity ships.
+- The admin console takes the role from the authenticated session only.
+- Masking redacts credential-named fields in every format, strict masking covers `password`, and untrusted content is never returned unprocessed.
+- Grants enforce their command and working-directory scope.
+- Sandbox mounts cannot expose Keylatch state, and deny paths are enforced or the sandbox refuses to start.
+- The broker's cached credentials stay independent of the results it returns.
 - v0.9.7 was published without cosign signatures, SBOMs or SLSA provenance while the docs said every artifact was signed. See the [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md); the docs now state what each release carries.
 - Releases are created as drafts and published only after every archive, the checksums file, both SBOMs and the release manifest are cosign-signed and SLSA provenance covers every archive. Homebrew and Scoop are updated afterwards, from the signed checksums, and never for pre-releases.
 - Release tags must point at a commit on `main` whose required checks passed.
@@ -44,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Every CLI error is printed once and keeps its exit code.
+- `migrate cipher` re-encrypts every stored version.
+- Policy commands work without a policy file.
+- `setup` in reference mode works on a fresh install.
 - `keylatch gateway up` now reads credentials from the configured backend. It used to start without a vault and forward credentialed requests upstream with no credential; it now fails at startup when the backend is unusable, and the gateway answers 503 `vault_not_configured` for a credentialed route without a vault.
 - The sidecar IPC socket is created owner-only without changing the process umask, which could leave files created concurrently by other goroutines unreadable.
 
