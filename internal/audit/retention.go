@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/config"
@@ -37,12 +38,14 @@ func LoadSweepIntervalHours(cfg config.AuditConfig) int {
 	return h
 }
 
-// RunAuditRetentionSweep removes audit log entries (rotated files) older than
-// retentionDays. It operates on .1 rotation files in the same directory as logPath.
-// Errors are logged at WARN level but do not terminate the goroutine.
+// RunAuditRetentionSweep removes rotated generations of logPath
+// (audit.log.1, audit.log.2, …) last modified more than retentionDays ago.
+// The live log and every other file in the directory are left alone: the
+// audit log shares its directory with the keyring and configuration.
 func RunAuditRetentionSweep(logPath string, retentionDays int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 	dir := filepath.Dir(logPath)
+	prefix := filepath.Base(logPath) + "."
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -52,22 +55,31 @@ func RunAuditRetentionSweep(logPath string, retentionDays int) error {
 	var firstErr error
 	for _, entry := range entries {
 		name := entry.Name()
-		// Only consider rotated log files (audit.log.1, audit.log.2, etc.)
-		if entry.IsDir() {
+		if entry.IsDir() || !isGeneration(name, prefix) {
 			continue
 		}
-		fullPath := filepath.Join(dir, name)
 		info, err := entry.Info()
-		if err != nil {
+		if err != nil || !info.ModTime().Before(cutoff) {
 			continue
 		}
-		if info.ModTime().Before(cutoff) && name != filepath.Base(logPath) {
-			if rmErr := os.Remove(fullPath); rmErr != nil && firstErr == nil {
-				firstErr = rmErr
-			}
+		if rmErr := os.Remove(filepath.Join(dir, name)); rmErr != nil && firstErr == nil {
+			firstErr = rmErr
 		}
 	}
 	return firstErr
+}
+
+func isGeneration(name, prefix string) bool {
+	n, ok := strings.CutPrefix(name, prefix)
+	if !ok || n == "" {
+		return false
+	}
+	for _, r := range n {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // StartRetentionSweepLoop starts a background goroutine that calls

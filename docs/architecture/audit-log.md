@@ -77,6 +77,13 @@ NEW FILE (audit.log):
   event[2]  ...
 ```
 
+Each rotation shifts older generations up by one (`audit.log.1` becomes
+`audit.log.2`, and so on). Twenty rotated generations are kept; the oldest is
+removed. `rotated_to` and `rotated_from` name the generation at the time of
+rotation. The keylatchd retention sweep removes only `audit.log.<n>` files
+older than `audit.retention_days` and never touches other files in the
+configuration directory.
+
 ### Cross-File Chain Invariant
 
 The `prev_file_hmac` value in the new file's first event equals:

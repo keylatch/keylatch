@@ -222,10 +222,14 @@ var (
 	ErrSaltUnavailable  = errors.New("audit: salt unavailable")
 	ErrLogCorrupt       = errors.New("audit: log corrupt")
 	ErrAuditFsyncFailed = errors.New("audit: fsync failed")
+	ErrLogClosed        = errors.New("audit: log closed")
 )
 
 // maxLogSize is the default size cap for auto-rotation (5 MiB).
 const maxLogSize = 5 * 1024 * 1024
+
+// DefaultRetainFiles is how many rotated generations (audit.log.1 …) are kept.
+const DefaultRetainFiles = 20
 
 // Logger is an append-only audit log writer.
 type Logger struct {
@@ -241,7 +245,8 @@ type Logger struct {
 	seq      int64
 	prevHMAC string
 
-	maxSize int64
+	maxSize     int64
+	retainFiles int
 
 	// fsyncFailHook is used for fault-injection tests.
 	fsyncFailHook func() error
@@ -277,6 +282,7 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 		auditDEK:    auditDEK,
 		chainMACKey: chainMACKey,
 		maxSize:     maxLogSize,
+		retainFiles: DefaultRetainFiles,
 	}
 
 	// Seed chain state from the last line of an existing log.
@@ -343,7 +349,8 @@ func (l *Logger) Summarize(opts SummaryOpts) (Summary, error) {
 	return l.summarize(opts)
 }
 
-// Rotate renames the current log file to .1 and opens a new empty log.
+// Rotate moves the current log file to generation .1, shifting older
+// generations, and opens a new log.
 func (l *Logger) Rotate() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
