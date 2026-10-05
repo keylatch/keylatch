@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -94,6 +95,9 @@ var (
 	ErrMissingScopes       = errors.New("broker: required scopes not available for this capability")
 	ErrExpiredRefreshToken = errors.New("broker: refresh token has expired or been revoked")
 	ErrRevokedSession      = errors.New("broker: session has been revoked")
+	// ErrAuditFailed means the exchange could not be audited, so no
+	// credential was handed out.
+	ErrAuditFailed = errors.New("broker: audit log unavailable; credential withheld")
 )
 
 // BrokerImpl is the production implementation of Broker.
@@ -127,6 +131,11 @@ func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, c
 	if b.locked.Load() {
 		return ExchangeResult{}, ErrVaultLocked
 	}
+	if b.auditEmitter != nil {
+		if err := audit.Ready(b.auditEmitter); err != nil {
+			return ExchangeResult{}, fmt.Errorf("%w: %w", ErrAuditFailed, err)
+		}
+	}
 
 	// 2. Build cache key.
 	key := cacheKey(provider, capability, actor, sessionID, namespace)
@@ -141,7 +150,10 @@ func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, c
 			ExchangeType: CacheHit,
 			tokenBytes:   entry.tokenBytes,
 		}
-		b.emitCacheHit(ctx, actor, sessionID, provider, capability, entry)
+		if err := b.emitCacheHit(ctx, actor, sessionID, provider, capability, entry); err != nil {
+			result.Zero()
+			return ExchangeResult{}, err
+		}
 		return result, nil
 	}
 
@@ -170,8 +182,10 @@ func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, c
 	}
 	b.cache.set(key, entry)
 
-	b.emitExchange(ctx, actor, sessionID, provider, capability, namespace, strategy, result)
-
+	if err := b.emitExchange(ctx, actor, sessionID, provider, capability, namespace, strategy, result); err != nil {
+		result.Zero()
+		return ExchangeResult{}, err
+	}
 	return result, nil
 }
 
@@ -182,9 +196,9 @@ func (b *BrokerImpl) Revoke(_ context.Context, sessionID string) error {
 }
 
 // emitExchange emits a broker.exchange audit event. Actor/session IDs are HMAC-hashed.
-func (b *BrokerImpl) emitExchange(ctx context.Context, actor, sessionID, provider, capability, namespace string, strategy ExchangeStrategy, result ExchangeResult) {
+func (b *BrokerImpl) emitExchange(ctx context.Context, actor, sessionID, provider, capability, namespace string, strategy ExchangeStrategy, result ExchangeResult) error {
 	if b.auditEmitter == nil {
-		return
+		return nil
 	}
 	// Use the typed struct to build the event, ensuring ScopesCount is populated
 	// and schema stays in sync with BrokerExchangeEvent.
@@ -212,13 +226,16 @@ func (b *BrokerImpl) emitExchange(ctx context.Context, actor, sessionID, provide
 			"scopes_count":      evt.ScopesCount,
 		},
 	}
-	_ = b.auditEmitter.Emit(ctx, ev)
+	if err := b.auditEmitter.Emit(ctx, ev); err != nil {
+		return fmt.Errorf("%w: %w", ErrAuditFailed, err)
+	}
+	return nil
 }
 
 // emitCacheHit emits a broker.cache_hit audit event.
-func (b *BrokerImpl) emitCacheHit(ctx context.Context, actor, sessionID, provider, capability string, entry *cacheEntry) {
+func (b *BrokerImpl) emitCacheHit(ctx context.Context, actor, sessionID, provider, capability string, entry *cacheEntry) error {
 	if b.auditEmitter == nil {
-		return
+		return nil
 	}
 	ev := audit.Event{
 		Action:  audit.ActionBrokerCacheHit,
@@ -232,7 +249,10 @@ func (b *BrokerImpl) emitCacheHit(ctx context.Context, actor, sessionID, provide
 			"ttl_remaining_seconds": int64(time.Until(entry.deadline).Seconds()),
 		},
 	}
-	_ = b.auditEmitter.Emit(ctx, ev)
+	if err := b.auditEmitter.Emit(ctx, ev); err != nil {
+		return fmt.Errorf("%w: %w", ErrAuditFailed, err)
+	}
+	return nil
 }
 
 // hashID returns a short HMAC-SHA256 hex digest of id using key.

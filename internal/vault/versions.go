@@ -126,6 +126,9 @@ func RotateValue(
 	if err != nil {
 		return 0, err
 	}
+	if err := auditReady(ctx); err != nil {
+		return 0, err
+	}
 
 	b, err := dispatch.Select(ctx, cfg, env)
 	if err != nil {
@@ -266,12 +269,14 @@ func RotateValue(
 
 	// Emit ActionWrite audit event after successful write (mirrors vault.Set).
 	// Credential value bytes are NEVER included in the event.
-	emitVaultEvent(ctx, audit.Event{
+	if err := emitVaultEvent(ctx, audit.Event{
 		Timestamp: now,
 		Action:    audit.ActionWrite,
 		Outcome:   audit.OutcomeOK,
 		Path:      canonical,
-	})
+	}); err != nil {
+		return newVersion, err
+	}
 
 	return newVersion, nil
 }

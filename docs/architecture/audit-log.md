@@ -84,6 +84,12 @@ rotation. The keylatchd retention sweep removes only `audit.log.<n>` files
 older than `audit.retention_days` and never touches other files in the
 configuration directory.
 
+If a rotation fails (for example the new file cannot be created), the logger
+puts the full file back, keeps appending to it and retries a minute later. If
+no file can be written at all, `Log` returns `audit.ErrUnavailable` and every
+audited secret access through the broker and the vault is refused until the
+log can be opened again. `keylatch doctor` reports this as `audit.writable`.
+
 ### Cross-File Chain Invariant
 
 The `prev_file_hmac` value in the new file's first event equals:
