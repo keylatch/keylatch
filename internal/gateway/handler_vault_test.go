@@ -643,3 +643,77 @@ func TestGatewayAuth_OnVaultLock_FlushesCache(t *testing.T) {
 		t.Errorf("OnVaultUnlock: %v", err)
 	}
 }
+
+// TestGatewayVault_NoVaultFailsClosed verifies that a credentialed route is
+// refused with 503 vault_not_configured when the gateway has no vault, rather
+// than being forwarded upstream without a credential.
+func TestGatewayVault_NoVaultFailsClosed(t *testing.T) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	dir := t.TempDir()
+	storePath := filepath.Join(dir, "tokens.json")
+
+	jwtStr, _, err := token.Mint(token.TokenSpec{
+		Actor:        "test-actor",
+		Capabilities: []string{"openrouter.chat.completion"},
+		TTL:          1 * time.Hour,
+		SigningKey:   key,
+		StorePath:    storePath,
+	})
+	if err != nil {
+		t.Fatalf("Mint: %v", err)
+	}
+
+	upstreamCalled := false
+	transport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		upstreamCalled = true
+		return nil, fmt.Errorf("upstream must not be called")
+	})
+
+	port := freePort(t)
+	srv, err := gateway.New(gateway.ServerOptions{
+		Bind:               fmt.Sprintf("127.0.0.1:%d", port),
+		SigningKey:         key,
+		ApprovalsDir:       dir + "/approvals",
+		TokenStorePath:     storePath,
+		Env:                llmcontext.DefaultLookup,
+		OverrideHTTPClient: &http.Client{Transport: transport, Timeout: 5 * time.Second},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go srv.Serve(ctx) //nolint:errcheck
+	time.Sleep(100 * time.Millisecond)
+
+	req, _ := http.NewRequest("POST",
+		fmt.Sprintf("http://127.0.0.1:%d/api/openrouter/chat.completion", port),
+		strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+jwtStr)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (body: %s)", resp.StatusCode, body)
+	}
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("parse error response: %v (body: %s)", err, body)
+	}
+	if errResp.Error != "vault_not_configured" {
+		t.Errorf("error = %q, want vault_not_configured", errResp.Error)
+	}
+	if upstreamCalled {
+		t.Error("upstream was called without a credential")
+	}
+}
