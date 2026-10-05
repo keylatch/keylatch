@@ -155,7 +155,6 @@ field and the `KEYLATCH_*` var are empty.
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_ACTOR` | Actor identifier for audit events (HMAC'd before use) | No | Never |
 | `KEYLATCH_ACTORS_PATH` | Path to the actors definition file | No | Never |
-| `KEYLATCH_MEMBER_ID` | Team member identifier | No | Never |
 | `KEYLATCH_SESSIONS_PATH` | Path to the sessions store | No | Never |
 | `KEYLATCH_DAEMON_STATE_PATH` | Override the path to `keylatchd`'s daemon-state JSON file (default `daemon-state.json` in the config dir), which stores lifecycle flags such as `first_launch_done`. Read/written by `paths.DaemonState()` and loaded in `cmd/keylatchd/main.go` to gate the first-launch notification. | No | Never |
 | `KEYLATCH_SESSION_TICKET` | Session ticket `keylatch launch` passes to the harness it starts. Signed, valid for 12 hours, and bound to the launching process; a valid ticket marks every descendant as an agent session. An absent, forged or foreign ticket changes nothing. | Yes | Set by `keylatch launch` only |

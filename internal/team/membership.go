@@ -48,29 +48,48 @@ func RemoveMember(ctx context.Context, t *Team, memberID string) error {
 	return nil
 }
 
-// Transfer changes the team owner to newOwnerID.
-// The previous owner is downgraded to admin.
-func Transfer(_ context.Context, t *Team, newOwnerID string) error {
-	found := false
-	for i := range t.Members {
-		if t.Members[i].ID == newOwnerID {
-			if t.Members[i].Status != MemberActive {
-				return fmt.Errorf("team: cannot transfer ownership to non-active member %q", newOwnerID)
-			}
-			found = true
-		}
+// Transfer hands ownership from actorID, who must be the active owner, to
+// newOwnerID. The previous owner becomes admin.
+func Transfer(_ context.Context, t *Team, actorID, newOwnerID string) error {
+	actor, err := FindMember(t, actorID)
+	if err != nil {
+		return err
 	}
-	if !found {
-		return ErrMemberNotFound
+	newOwner, err := FindMember(t, newOwnerID)
+	if err != nil {
+		return err
 	}
-
-	// Demote current owners, promote new owner.
+	if err := AuthorizeTransfer(actor, newOwner); err != nil {
+		return err
+	}
 	for i := range t.Members {
 		if t.Members[i].Role == RoleOwner {
 			t.Members[i].Role = RoleAdmin
 		}
 		if t.Members[i].ID == newOwnerID {
 			t.Members[i].Role = RoleOwner
+		}
+	}
+	return writeTeam(t)
+}
+
+// ChangeRole sets targetID's role on behalf of actorID after
+// AuthorizeRoleChange allows it, and persists the team.
+func ChangeRole(_ context.Context, t *Team, actorID, targetID string, newRole Role) error {
+	actor, err := FindMember(t, actorID)
+	if err != nil {
+		return err
+	}
+	target, err := FindMember(t, targetID)
+	if err != nil {
+		return err
+	}
+	if err := AuthorizeRoleChange(actor, target, newRole); err != nil {
+		return err
+	}
+	for i := range t.Members {
+		if t.Members[i].ID == targetID {
+			t.Members[i].Role = newRole
 		}
 	}
 	return writeTeam(t)
