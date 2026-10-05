@@ -8,6 +8,7 @@ package scim
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,7 +48,7 @@ func NewServer(t *team.Team, opts ServerOpts) *Server {
 			return false // no token configured → deny all
 		}
 		auth := r.Header.Get("Authorization")
-		return auth == "Bearer "+opts.BearerToken
+		return subtle.ConstantTimeCompare([]byte(auth), []byte("Bearer "+opts.BearerToken)) == 1
 	}
 
 	return &Server{
