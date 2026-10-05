@@ -51,7 +51,7 @@ func firstEventExtra(t *testing.T, path string, dek []byte) map[string]any {
 		t.Fatal(err)
 	}
 	line, _, _ := strings.Cut(string(data), "\n")
-	e, ok := decodeAuditLine(line, dek)
+	e, ok := decodeAuditLine(line, [][]byte{dek})
 	if !ok {
 		t.Fatalf("first line of %s does not decode", path)
 	}
