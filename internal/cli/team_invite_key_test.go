@@ -10,8 +10,8 @@ import (
 )
 
 func TestTeamInvitePrintsTeamKeyThatVerifiesTheBundle(t *testing.T) {
-	dir := setupTeamDir(t)
-	writeTeamFixture(t, dir)
+	writeRosterFixture(t)
+	actAs(t, "owner")
 
 	out := &bytes.Buffer{}
 	root := NewRootCommand()
