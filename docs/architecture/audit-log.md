@@ -90,6 +90,12 @@ no file can be written at all, `Log` returns `audit.ErrUnavailable` and every
 audited secret access through the broker and the vault is refused until the
 log can be opened again. `keylatch doctor` reports this as `audit.writable`.
 
+Audit is required, not best-effort. The broker and the vault refuse any
+operation that carries no audit emitter. `keylatch gateway up`, `keylatch set`
+and `keylatch list --raw` open the audit log first and exit with a security
+error when it cannot be opened, for example before the keyring exists; run
+`keylatch bootstrap` (file backend) or `keylatch keyring init` (other backends).
+
 ### Cross-File Chain Invariant
 
 The `prev_file_hmac` value in the new file's first event equals:

@@ -49,7 +49,7 @@ func TestVersionsCmd_ThreeRotations(t *testing.T) {
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 
@@ -87,7 +87,7 @@ func TestVersionsCmd_DestroyedVersionState(t *testing.T) {
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 
@@ -128,7 +128,7 @@ func TestVersionsCmd_RollbackShowsNewVersion(t *testing.T) {
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 
@@ -176,7 +176,7 @@ func TestGetVersion_DestroyedReturnsError(t *testing.T) {
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 
@@ -206,7 +206,7 @@ func TestVersionsCmd_CanaryAbsent(t *testing.T) {
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 

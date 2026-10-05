@@ -131,10 +131,8 @@ func (b *BrokerImpl) Exchange(ctx context.Context, actor, sessionID, provider, c
 	if b.locked.Load() {
 		return ExchangeResult{}, ErrVaultLocked
 	}
-	if b.auditEmitter != nil {
-		if err := audit.Ready(b.auditEmitter); err != nil {
-			return ExchangeResult{}, fmt.Errorf("%w: %w", ErrAuditFailed, err)
-		}
+	if err := audit.Ready(b.auditEmitter); err != nil {
+		return ExchangeResult{}, fmt.Errorf("%w: %w", ErrAuditFailed, err)
 	}
 
 	// 2. Build cache key.
@@ -198,7 +196,7 @@ func (b *BrokerImpl) Revoke(_ context.Context, sessionID string) error {
 // emitExchange emits a broker.exchange audit event. Actor/session IDs are HMAC-hashed.
 func (b *BrokerImpl) emitExchange(ctx context.Context, actor, sessionID, provider, capability, namespace string, strategy ExchangeStrategy, result ExchangeResult) error {
 	if b.auditEmitter == nil {
-		return nil
+		return fmt.Errorf("%w: %w", ErrAuditFailed, audit.ErrNotConfigured)
 	}
 	// Use the typed struct to build the event, ensuring ScopesCount is populated
 	// and schema stays in sync with BrokerExchangeEvent.
@@ -235,7 +233,7 @@ func (b *BrokerImpl) emitExchange(ctx context.Context, actor, sessionID, provide
 // emitCacheHit emits a broker.cache_hit audit event.
 func (b *BrokerImpl) emitCacheHit(ctx context.Context, actor, sessionID, provider, capability string, entry *cacheEntry) error {
 	if b.auditEmitter == nil {
-		return nil
+		return fmt.Errorf("%w: %w", ErrAuditFailed, audit.ErrNotConfigured)
 	}
 	ev := audit.Event{
 		Action:  audit.ActionBrokerCacheHit,

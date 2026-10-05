@@ -80,3 +80,14 @@ func TestExchangeWithheldWhenAuditWriteFails(t *testing.T) {
 	res, err = b.Exchange(ctx, "actor", "sess", "canary-provider", "cap", "ns")
 	requireWithheld(t, res, err)
 }
+
+func TestExchangeRefusedWithoutAuditEmitter(t *testing.T) {
+	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
+		"canary-provider": &mockCanaryStrategy{provider: "canary-provider"},
+	}, nil, []byte("test-hmac-key-32-bytes-pad!!!!!!"))
+	res, err := b.Exchange(context.Background(), "actor", "sess", "canary-provider", "cap", "ns")
+	requireWithheld(t, res, err)
+	if !errors.Is(err, audit.ErrNotConfigured) {
+		t.Fatalf("Exchange error = %v, want audit.ErrNotConfigured", err)
+	}
+}

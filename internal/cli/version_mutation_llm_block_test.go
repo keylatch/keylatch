@@ -11,6 +11,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/cli"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/keylatch/keylatch/internal/vault"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
@@ -26,7 +27,7 @@ func TestDestroyVersion_BlockedInLLMSession(t *testing.T) {
 	// Inject CLAUDE_CODE=1 so llmcontext.DefaultLookup sees the LLM signal.
 	t.Setenv("CLAUDE_CODE", "1")
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 
@@ -73,7 +74,7 @@ func TestRollback_BlockedInLLMSession(t *testing.T) {
 	// Inject CLAUDE_CODE=1 so llmcontext.DefaultLookup sees the LLM signal.
 	t.Setenv("CLAUDE_CODE", "1")
 
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 	cfg := newTestConfig(dir)
 	env := newTestEnv(t, dir)
 

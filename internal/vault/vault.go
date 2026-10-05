@@ -20,25 +20,21 @@ import (
 // return no value and writes are not attempted when audit is unavailable.
 var ErrAuditFailed = errors.New("vault: audit log unavailable; operation refused")
 
-// auditReady checks, before an operation, that the emitter in ctx (if any)
-// can record its event.
+// auditReady checks, before an operation, that ctx carries an emitter that
+// can record its event. Without one the operation is refused.
 func auditReady(ctx context.Context) error {
-	em := audit.EmitterFromCtx(ctx)
-	if em == nil {
-		return nil
-	}
-	if err := audit.Ready(em); err != nil {
+	if err := audit.Ready(audit.EmitterFromCtx(ctx)); err != nil {
 		return fmt.Errorf("%w: %w", ErrAuditFailed, err)
 	}
 	return nil
 }
 
-// emitVaultEvent emits e through the emitter stored in ctx, if any. Without
-// an emitter it does nothing; an emit failure is returned as ErrAuditFailed.
+// emitVaultEvent emits e through the emitter stored in ctx. A missing
+// emitter or an emit failure is returned as ErrAuditFailed.
 func emitVaultEvent(ctx context.Context, e audit.Event) error {
 	em := audit.EmitterFromCtx(ctx)
 	if em == nil {
-		return nil
+		return fmt.Errorf("%w: %w", ErrAuditFailed, audit.ErrNotConfigured)
 	}
 	if err := em.Emit(ctx, e); err != nil {
 		return fmt.Errorf("%w: %w", ErrAuditFailed, err)

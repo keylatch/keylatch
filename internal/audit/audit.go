@@ -163,9 +163,17 @@ type ReadyChecker interface {
 	Ready() error
 }
 
-// Ready reports whether e can record events now. Emitters that cannot tell
-// are assumed ready; their Emit error is still checked afterwards.
+// ErrNotConfigured is returned by Ready for a nil emitter: an operation
+// with no audit log attached is not audited, so it is not ready.
+var ErrNotConfigured = fmt.Errorf("%w: no audit log is configured", ErrUnavailable)
+
+// Ready reports whether e can record events now. A nil emitter is never
+// ready. Emitters that cannot tell are assumed ready; their Emit error is
+// still checked afterwards.
 func Ready(e Emitter) error {
+	if e == nil {
+		return ErrNotConfigured
+	}
 	if rc, ok := e.(ReadyChecker); ok {
 		return rc.Ready()
 	}

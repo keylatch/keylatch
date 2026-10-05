@@ -103,6 +103,20 @@ func openAuditLogger() (*audit.Logger, func(), error) {
 	return l, cleanup, nil
 }
 
+// openAuditLoggerFn opens the audit log for commands that serve or change
+// secrets; replaced in tests.
+var openAuditLoggerFn = openAuditLogger
+
+// requireAuditLogger opens the audit log for a command that serves or
+// changes secrets. Such commands refuse to run without an audit trail.
+func requireAuditLogger(command string) (*audit.Logger, func(), error) {
+	l, cleanup, err := openAuditLoggerFn()
+	if err != nil {
+		return nil, nil, NewSecurityBlock("%s: the audit log cannot be opened (%v). Keylatch does not serve or change secrets without an audit trail. Run `keylatch bootstrap` (file backend) or `keylatch keyring init` (other backends), then retry.", command, err)
+	}
+	return l, cleanup, nil
+}
+
 // loadAuditKeys returns the DEK new audit events are sealed with and the
 // older DEKs earlier events may be sealed with: retired terms of the same
 // keyring and, where an install still has the legacy keyring beside the

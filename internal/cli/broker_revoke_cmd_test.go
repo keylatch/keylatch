@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // withBrokerHandle temporarily overrides brokerHandleFactory for the duration
@@ -31,7 +32,7 @@ func TestBrokerRevoke_Success(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("revoke-test-hmac-key-32-bytes!!!"))
+	}, &testutil.AuditRecorder{}, []byte("revoke-test-hmac-key-32-bytes!!!"))
 	_, err := b.Exchange(context.Background(), "actor-rv", "sess-rv", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -65,7 +66,7 @@ func TestBrokerRevoke_Success(t *testing.T) {
 // TestBrokerRevoke_NotFound verifies ErrTokenNotFound for a non-existent token ID.
 func TestBrokerRevoke_NotFound(t *testing.T) {
 	t.Parallel()
-	b := broker.NewBroker(context.Background(), nil, nil, nil)
+	b := broker.NewBroker(context.Background(), nil, &testutil.AuditRecorder{}, nil)
 	handle := broker.NewBrokerHandle(b)
 
 	err := handle.Revoke("does-not-exist-xyz")
@@ -83,7 +84,7 @@ func TestBrokerRevoke_AlreadyRevoked(t *testing.T) {
 	t.Parallel()
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("already-revoke-hmac-key-32-pad!!"))
+	}, &testutil.AuditRecorder{}, []byte("already-revoke-hmac-key-32-pad!!"))
 	_, err := b.Exchange(context.Background(), "actor-ar", "sess-ar", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -118,7 +119,7 @@ func TestBrokerRevoke_ProviderRevocationFails_LogsButSucceeds(t *testing.T) {
 	t.Parallel()
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("prov-revoc-hmac-key-32-bytes-pad"))
+	}, &testutil.AuditRecorder{}, []byte("prov-revoc-hmac-key-32-bytes-pad"))
 	_, err := b.Exchange(context.Background(), "actor-prf", "sess-prf", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -144,7 +145,7 @@ func TestBrokerRevoke_JSON(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("json-revoke-hmac-key-32-bytes-!!"))
+	}, &testutil.AuditRecorder{}, []byte("json-revoke-hmac-key-32-bytes-!!"))
 	_, err := b.Exchange(context.Background(), "actor-json", "sess-json", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -192,7 +193,7 @@ func TestBrokerRevokeAll_Confirmed(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("all-conf-hmac-key-32-bytes-pad!!"))
+	}, &testutil.AuditRecorder{}, []byte("all-conf-hmac-key-32-bytes-pad!!"))
 	_, err := b.Exchange(context.Background(), "actor-ac", "sess-ac", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -232,7 +233,7 @@ func TestBrokerRevokeAll_Aborted(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("all-abort-hmac-key-32-bytes-pad!"))
+	}, &testutil.AuditRecorder{}, []byte("all-abort-hmac-key-32-bytes-pad!"))
 	_, err := b.Exchange(context.Background(), "actor-ab", "sess-ab", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -275,7 +276,7 @@ func TestBrokerRevokeAll_Yes_SkipsPrompt(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("yes-skip-hmac-key-32-bytes-pad!!"))
+	}, &testutil.AuditRecorder{}, []byte("yes-skip-hmac-key-32-bytes-pad!!"))
 	_, err := b.Exchange(context.Background(), "actor-ys", "sess-ys", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -316,7 +317,7 @@ func TestBrokerRevokeAll_RaceTolerance(t *testing.T) {
 	t.Parallel()
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("race-tol-hmac-key-32-bytes-pad!!"))
+	}, &testutil.AuditRecorder{}, []byte("race-tol-hmac-key-32-bytes-pad!!"))
 	_, err := b.Exchange(context.Background(), "actor-rt", "sess-rt", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
@@ -346,7 +347,7 @@ func TestBrokerRevokeAll_JSON(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("json-all-hmac-key-32-bytes-pad!!"))
+	}, &testutil.AuditRecorder{}, []byte("json-all-hmac-key-32-bytes-pad!!"))
 	_, err := b.Exchange(context.Background(), "actor-ja", "sess-ja", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)

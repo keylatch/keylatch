@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // mockStrategy is a simple ExchangeStrategy for testing.
@@ -38,7 +40,7 @@ func newTestBroker(t *testing.T) *BrokerImpl {
 			ttl:      time.Hour,
 		},
 	}
-	return NewBroker(ctx, strategies, nil, []byte("test-hmac-key-32-bytes-padding!!"))
+	return NewBroker(ctx, strategies, &testutil.AuditRecorder{}, []byte("test-hmac-key-32-bytes-padding!!"))
 }
 
 func TestVaultLock_CacheFlushed(t *testing.T) {

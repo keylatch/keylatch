@@ -12,6 +12,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/broker"
 	"github.com/keylatch/keylatch/internal/broker/strategies"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // mockOAuthServer returns a test server that simulates an OAuth token endpoint.
@@ -86,7 +87,7 @@ func TestIntegration_ExpiredRefreshToken(t *testing.T) {
 
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"test-provider": strat,
-	}, nil, nil)
+	}, &testutil.AuditRecorder{}, nil)
 
 	_, err := b.Exchange(context.Background(), "actor", "sess", "test-provider", "cap", "ns")
 	if err != broker.ErrExpiredRefreshToken {
@@ -110,7 +111,7 @@ func TestIntegration_VaultLockDuringExchange(t *testing.T) {
 
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"test-provider": strat,
-	}, nil, nil)
+	}, &testutil.AuditRecorder{}, nil)
 
 	ctx := context.Background()
 	b.OnVaultLock(ctx)
@@ -145,7 +146,7 @@ func TestIntegration_RevokeFlushesCache(t *testing.T) {
 
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"test-provider": strat,
-	}, nil, nil)
+	}, &testutil.AuditRecorder{}, nil)
 
 	ctx := context.Background()
 
@@ -232,7 +233,7 @@ func TestIntegration_NetworkFailure(t *testing.T) {
 
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"test-provider": strat,
-	}, nil, nil)
+	}, &testutil.AuditRecorder{}, nil)
 
 	_, err := b.Exchange(context.Background(), "actor", "sess", "test-provider", "cap", "ns")
 	if err == nil {
