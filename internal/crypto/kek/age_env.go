@@ -40,7 +40,7 @@ func EnvAgeIdentityKEK(salt []byte) (KEK, error) {
 // enforces mode 0o600, and derives a 32-byte wrapping key via HKDF-SHA256.
 //
 // This is the underlying implementation of EnvAgeIdentityKEK, exposed so
-// callers (e.g. the file backend factory's loadPlatformKEK) can specify an
+// callers (e.g. the file backend's LoadKeyringKEK) can specify an
 // explicit path — for example, the well-known bootstrap identity path — when
 // the KEYLATCH_AGE_IDENTITY env var is not set.
 //

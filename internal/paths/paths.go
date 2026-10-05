@@ -182,6 +182,37 @@ func KeyringPath(env Lookup) string {
 	return filepath.Join(KeyringDir(env), "keyring.json")
 }
 
+// LegacyKeyringPath is <vault>/keyring/keyring.json, where `setup` and
+// `keyring init` in 0.9.8 and earlier created a second keyring that the
+// audit and keyring commands read.
+func LegacyKeyringPath(env Lookup) string {
+	return filepath.Join(Vault(env), "keyring", "keyring.json")
+}
+
+// ResolveKeyringPath returns the keyring every component reads: the vault
+// backend, audit, doctor and the keyring commands. An explicit
+// KEYLATCH_KEYRING_PATH or KEYLATCH_KEYRING_DIR wins. Otherwise the
+// bootstrap keyring (KeyringPath) is used when it exists, then the legacy
+// keyring, and KeyringPath when neither exists.
+func ResolveKeyringPath(env Lookup) string {
+	canonical := KeyringPath(env)
+	if env("KEYLATCH_KEYRING_PATH") != "" || env("KEYLATCH_KEYRING_DIR") != "" {
+		return canonical
+	}
+	if fileExists(canonical) {
+		return canonical
+	}
+	if legacy := LegacyKeyringPath(env); fileExists(legacy) {
+		return legacy
+	}
+	return canonical
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
 // KeyringIdentityPath returns the path to the default age-env identity file.
 // Bootstrap creates this file when no platform keystore (macOS Keychain, etc.)
 // is available. At runtime the factory uses KEYLATCH_AGE_IDENTITY if set;

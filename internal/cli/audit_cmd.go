@@ -3,6 +3,7 @@ package cli
 // audit_cmd.go implements the `keylatch audit` CLI command.
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/audit/salt"
+	"github.com/keylatch/keylatch/internal/crypto/keyring"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
@@ -79,8 +81,7 @@ func openAuditLogger() (*audit.Logger, func(), error) {
 		return nil, nil, fmt.Errorf("audit: load salt: %w", err)
 	}
 
-	// Load the audit DEK from the keyring (term 1 DEK is used as audit DEK).
-	auditDEK, err := loadAuditDEK()
+	auditDEK, olderDEKs, err := loadAuditKeys()
 	if err != nil {
 		return nil, nil, fmt.Errorf("audit: load DEK: %w", err)
 	}
@@ -89,33 +90,58 @@ func openAuditLogger() (*audit.Logger, func(), error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("audit: open: %w", err)
 	}
+	l.AddReadKeys(olderDEKs...)
 
 	cleanup := func() {
 		_ = l.Close()
 		// Zero the auditDEK.
-		for i := range auditDEK {
-			auditDEK[i] = 0
+		clear(auditDEK)
+		for _, k := range olderDEKs {
+			clear(k)
 		}
 	}
 	return l, cleanup, nil
 }
 
-// loadAuditDEK returns the audit DEK by unwrapping the active DEK from the keyring.
-func loadAuditDEK() ([]byte, error) {
-	kr, _, _, err := openKeyringFromEnv()
+// loadAuditKeys returns the DEK new audit events are sealed with and the
+// older DEKs earlier events may be sealed with: retired terms of the same
+// keyring and, where an install still has the legacy keyring beside the
+// bootstrap one, that keyring's DEKs.
+func loadAuditKeys() ([]byte, [][]byte, error) {
+	kr, _, krPath, err := openKeyringFromEnv()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer kr.Zero()
-
-	dek, _, err := kr.ActiveDEK()
+	dek, term, err := kr.ActiveDEK()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// Return a copy since kr.Zero() will zero the internal buffer.
-	out := make([]byte, len(dek))
-	copy(out, dek)
-	return out, nil
+	active := bytes.Clone(dek)
+	older := retiredDEKs(kr, term)
+
+	if legacy := paths.LegacyKeyringPath(os.Getenv); legacy != krPath {
+		if _, statErr := os.Stat(legacy); statErr == nil {
+			if lkr, _, _, openErr := openKeyringAt(legacy, false); openErr == nil {
+				if ldek, lterm, dekErr := lkr.ActiveDEK(); dekErr == nil {
+					older = append(older, bytes.Clone(ldek))
+					older = append(older, retiredDEKs(lkr, lterm)...)
+				}
+				lkr.Zero()
+			}
+		}
+	}
+	return active, older, nil
+}
+
+func retiredDEKs(kr *keyring.Keyring, activeTerm int) [][]byte {
+	var out [][]byte
+	for t := activeTerm - 1; t >= 1; t-- {
+		if dek, err := kr.DEKForTerm(t); err == nil {
+			out = append(out, bytes.Clone(dek))
+		}
+	}
+	return out
 }
 
 // runAuditSummary implements `keylatch audit [--summary]`.
@@ -193,19 +219,20 @@ func runAuditRaw(cmd *cobra.Command) error {
 		return fmt.Errorf("audit: load salt: %w", err)
 	}
 
-	auditDEK, err := loadAuditDEK()
+	auditDEK, olderDEKs, err := loadAuditKeys()
 	if err != nil {
 		return fmt.Errorf("audit: load DEK: %w", err)
 	}
 	defer func() {
-		for i := range auditDEK {
-			auditDEK[i] = 0
+		clear(auditDEK)
+		for _, k := range olderDEKs {
+			clear(k)
 		}
 	}()
 
 	// Delegate to VerifyChain with full AEAD mode but stream the events.
 	// Use a raw file read + decrypt loop.
-	report, err := audit.VerifyChain(auditPath, saltBytes, auditDEK)
+	report, err := audit.VerifyChain(auditPath, saltBytes, auditDEK, olderDEKs...)
 	if err != nil {
 		return fmt.Errorf("audit --raw: %w", err)
 	}

@@ -265,6 +265,7 @@ type Logger struct {
 	file        *os.File
 	salt        []byte
 	auditDEK    []byte
+	readKeys    [][]byte
 	chainMACKey []byte
 
 	// Chain state (protected by mu).
@@ -289,6 +290,18 @@ type Logger struct {
 
 func openLogFile(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600) //nolint:gosec // G304: path is the configured audit log
+}
+
+// AddReadKeys registers older DEKs that events already in the log may be
+// sealed with. New events are always sealed with the DEK given to Open.
+func (l *Logger) AddReadKeys(keys ...[]byte) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.readKeys = append(l.readKeys, keys...)
+}
+
+func (l *Logger) keys() [][]byte {
+	return append([][]byte{l.auditDEK}, l.readKeys...)
 }
 
 // Open opens or creates the audit log at path.
