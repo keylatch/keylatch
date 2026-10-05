@@ -539,6 +539,9 @@ func TestPassphraseKEK_ZeroedOnError(t *testing.T) {
 // handling against a controlled child process.
 func writeFakeManagerCLI(t *testing.T, name, script string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell stub")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o700); err != nil {
@@ -548,9 +551,6 @@ func writeFakeManagerCLI(t *testing.T, name, script string) string {
 }
 
 func TestRunManagerCLI_TimesOutOnHang(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("uses a POSIX shell stub")
-	}
 	// Not t.Parallel(): mutates the package-level subprocessTimeout var.
 	orig := subprocessTimeout
 	subprocessTimeout = 50 * time.Millisecond
