@@ -79,15 +79,15 @@ cosign verify-blob \
 
 ### Release gate
 
-The `release-gates/registry-signature-verify.sh` script verifies all bundles in a
+The `release-checks/registry-signature-verify.sh` script verifies all bundles in a
 directory. It automatically selects the verification mode based on `REGISTRY_COSIGN_USE_KEYED`.
 
 ```bash
 # Keyless (default):
-bash release-gates/registry-signature-verify.sh dist/provider-bundles
+bash release-checks/registry-signature-verify.sh dist/provider-bundles
 
 # Keyed:
-REGISTRY_COSIGN_USE_KEYED=1 bash release-gates/registry-signature-verify.sh dist/provider-bundles
+REGISTRY_COSIGN_USE_KEYED=1 bash release-checks/registry-signature-verify.sh dist/provider-bundles
 ```
 
 ---

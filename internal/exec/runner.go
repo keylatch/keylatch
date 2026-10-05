@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 )
@@ -15,7 +16,18 @@ type CommandRunner interface {
 	// Run executes name with args. stdin is piped to the process if non-nil.
 	// Returns stdout, stderr, exit code, and any execution error.
 	// The implementation MUST NOT invoke "sh -c" or interpolate user input into args.
+	//
+	// Run inherits the ambient process environment unchanged (equivalent to
+	// RunEnv(ctx, name, args, stdin, nil)).
 	Run(ctx context.Context, name string, args []string, stdin []byte) (stdout, stderr []byte, exitCode int, err error)
+
+	// RunEnv is Run plus explicit environment overrides. extraEnv entries are
+	// "KEY=VALUE" strings appended AFTER the inherited process environment
+	// (os.Environ()), so they win on duplicate keys (Go's os/exec keeps only
+	// the last occurrence of each key — see exec.Cmd.Env docs). This is the
+	// append-to-inherited seam backends use to inject session tokens
+	// (e.g. BW_SESSION) without ever passing them as CLI args.
+	RunEnv(ctx context.Context, name string, args []string, stdin []byte, extraEnv []string) (stdout, stderr []byte, exitCode int, err error)
 }
 
 // DefaultRunner is the process-level CommandRunner using os/exec.CommandContext.
@@ -28,7 +40,14 @@ type defaultRunner struct{}
 
 // Run implements CommandRunner using os/exec.CommandContext.
 // rejects relative paths before any exec call.
-func (defaultRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+func (r defaultRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return r.RunEnv(ctx, name, args, stdin, nil)
+}
+
+// RunEnv implements CommandRunner using os/exec.CommandContext, optionally
+// appending extraEnv ("KEY=VALUE" strings) after the inherited process
+// environment. rejects relative paths before any exec call.
+func (defaultRunner) RunEnv(ctx context.Context, name string, args []string, stdin []byte, extraEnv []string) ([]byte, []byte, int, error) {
 	// reject relative paths — only absolute paths are accepted.
 	// filepath.IsAbs handles platform semantics: a "/"-prefix check rejected
 	// every Windows path (C:\...), breaking external CLI exec on Windows.
@@ -37,6 +56,13 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string, stdin 
 	}
 
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: name is validated to be an absolute path by the HasPrefix check above
+
+	if len(extraEnv) > 0 {
+		// Append-to-inherited semantics: os/exec keeps only the last
+		// occurrence of each KEY on duplicates, so entries in extraEnv
+		// override the ambient environment for matching keys.
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)

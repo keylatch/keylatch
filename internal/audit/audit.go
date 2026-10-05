@@ -153,7 +153,9 @@ func (le *loggerEmitter) Emit(ctx context.Context, e Event) error {
 	return le.l.Log(ctx, e)
 }
 
-// Event is an audit log entry. All fields are value-free per .
+// Event is an audit log entry. All fields are value-free: paths identify
+// secrets by location only, and Accessor/Actor are HMAC'd identifiers —
+// no raw secret value or plaintext identity is ever recorded.
 type Event struct {
 	// Timestamp is the RFC3339Nano time of the event.
 	Timestamp time.Time `json:"ts"`
@@ -264,8 +266,8 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 	}
 
 	// Derive the chain MAC key from salt only (no DEK).
-	// This allows VerifyChain to work in header-only mode without the AuditDEK
-	//: the chain MAC key depends only on the salt, not the DEK.
+	// This allows VerifyChain to work in header-only mode without the AuditDEK:
+	// the chain MAC key depends only on the salt, not the DEK.
 	chainMACKey := DeriveChainMACKey(salt)
 
 	l := &Logger{

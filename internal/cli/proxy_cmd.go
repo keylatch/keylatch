@@ -4,6 +4,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -15,9 +16,16 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
 )
+
+// ErrProxyUnsupported is returned by both proxy startup forms (`proxy up`
+// and `gateway up --with-proxy`) when gateway_proxy is excluded from the
+// current build's manifest. Neither path binds a listener
+// or writes a PID file in that case — no fake-healthy state is published.
+var ErrProxyUnsupported = errors.New("proxy: gateway_proxy is not supported in this release")
 
 // proxyPIDPath returns the proxy PID file path.
 func proxyPIDPath(env llmcontext.Lookup) string {
@@ -127,6 +135,13 @@ func newProxyUpCmd() *cobra.Command {
 		Use:   "up",
 		Short: "Start the CONNECT proxy listener",
 		RunE: func(c *cobra.Command, _ []string) error {
+			// gateway_proxy is unavailable — refuse
+			// before any listener/PID-file side effect so no caller can
+			// observe a fake-healthy proxy.
+			if !manifest.Current().Enabled("gateway_proxy") {
+				return NewRuntimeNotAvailable("%v", ErrProxyUnsupported)
+			}
+
 			env := llmcontext.DefaultLookup
 			pidPath := proxyPIDPath(env)
 			statePath := proxyStatePath(env)
@@ -173,7 +188,15 @@ func newProxyUpCmd() *cobra.Command {
 			}
 			defer ln.Close() //nolint:errcheck
 
-			// Write PID file and state file (C3: store port alongside PID).
+			// Register signal handler before writing the PID file so that a SIGINT
+			// delivered immediately after PID file creation is always caught.
+			// If the handler is registered after the write, the test (or any caller)
+			// that polls for the PID file and then sends SIGINT can race the
+			// registration window and kill the process instead of cancelling ctx.
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+			defer cancel()
+
+			// Write PID file and state file (store port alongside PID).
 			if err := gateway.WritePID(pidPath, os.Getpid()); err != nil {
 				return fmt.Errorf("proxy up: write PID: %w", err)
 			}
@@ -200,9 +223,6 @@ func newProxyUpCmd() *cobra.Command {
 
 			fmt.Fprintf(c.OutOrStdout(), "proxy: listening on %s\n", addr)
 			fmt.Fprintln(c.OutOrStdout(), "proxy: press Ctrl+C to stop")
-
-			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-			defer cancel()
 
 			// Accept connections until context cancelled.
 			go func() {
@@ -254,7 +274,7 @@ func newProxyDownCmd() *cobra.Command {
 			// Check liveness.
 			_, running := gateway.IsRunning(pidPath)
 			if !running {
-				// C1: emit audit event for already-dead stale PID path.
+				// Emit audit event for already-dead stale PID path.
 				if em := audit.EmitterFromCtx(c.Context()); em != nil {
 					_ = em.Emit(c.Context(), audit.Event{
 						Action:  "proxy.stopped",
@@ -355,7 +375,7 @@ func newProxyStatusCmd() *cobra.Command {
 				pidPtr = &pid
 			}
 
-			// C3: read port from state file; fall back to default 8888.
+			// Read port from state file; fall back to default 8888.
 			port := 8888
 			if st, err := readProxyState(statePath); err == nil && st.Port != 0 {
 				port = st.Port
@@ -404,6 +424,13 @@ func newProxyStatusCmd() *cobra.Command {
 // to wait for a clean shutdown (e.g. tests) should receive on the done channel
 // after cancelling ctx.
 func startProxyWithGateway(ctx context.Context, port int, pidPath string) (<-chan struct{}, error) {
+	// gateway_proxy is unavailable — refuse before any
+	// listener/PID-file side effect so no caller can observe a fake-healthy
+	// proxy.
+	if !manifest.Current().Enabled("gateway_proxy") {
+		return nil, ErrProxyUnsupported
+	}
+
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

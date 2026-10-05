@@ -88,7 +88,7 @@ func ActiveMembers(t *Team) []Member {
 }
 
 // FindMember returns the member with the given ID, or ErrMemberNotFound.
-// M-7: used by CLI commands to look up caller identity before privilege checks.
+// Used by CLI commands to look up caller identity before privilege checks.
 func FindMember(t *Team, memberID string) (Member, error) {
 	for _, m := range t.Members {
 		if m.ID == memberID {

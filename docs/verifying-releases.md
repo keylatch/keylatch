@@ -116,7 +116,7 @@ Windows code signing, which is not in place yet.
 ## One-command checks from a source checkout
 
 ```bash
-release-gates/cosign-verify.sh v<VERSION>
+release-checks/cosign-verify.sh v<VERSION>
 release-checks/verify-release-assets.sh <directory with every release asset> v<VERSION>
 ```
 

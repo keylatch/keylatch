@@ -50,14 +50,14 @@ type AuditEvent struct {
 type Exporter struct {
 	adapter  SIEMAdapter
 	endpoint string
-	hmacKey  []byte // C-10: team-scoped key derived via HKDF
+	hmacKey  []byte // Team-scoped key derived via HKDF
 	buf      chan AuditEvent
 	dropped  atomic.Int64
 	client   *http.Client
 }
 
 // New creates an async buffered exporter. Buffer size: 1000.
-// C-10: teamID is used to derive a team-scoped HMAC key via HKDF.
+// TeamID is used to derive a team-scoped HMAC key via HKDF.
 func New(adapter SIEMAdapter, endpoint, teamID string) *Exporter {
 	// Derive team-scoped HMAC key using HKDF-SHA256.
 	h := hkdf.New(sha256.New, []byte(teamID), []byte("keylatch/siem/export/v1"), nil)
@@ -176,7 +176,7 @@ func hmacValue(value string, key []byte) string {
 }
 
 // hmacDetails returns a copy of details map with all string values HMACd.
-// C-10: recurses into nested maps.
+// Recurses into nested maps.
 func hmacDetails(details map[string]interface{}, key []byte) map[string]interface{} {
 	if details == nil {
 		return nil

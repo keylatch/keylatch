@@ -16,7 +16,6 @@ import (
 //
 // Skipped unless KEYLATCH_TEST_E2E_KEYCHAIN=1 is set — requires interactive
 // macOS keychain access (user password prompt) and /usr/bin/security.
-// .
 func TestKeychainInitE2E(t *testing.T) {
 	if os.Getenv("KEYLATCH_TEST_E2E_KEYCHAIN") == "" {
 		t.Skip("skipping keychain E2E test: set KEYLATCH_TEST_E2E_KEYCHAIN=1 with macOS keychain access to run")

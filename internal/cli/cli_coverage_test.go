@@ -384,7 +384,7 @@ func TestValidateApprovalRootJWT_WithClaims(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSecurityBlockHook_Default(t *testing.T) {
-	t.Parallel()
+	// Not parallel: replaces the package-level SecurityBlockHook.
 	// Default hook must not panic.
 	original := cli.SecurityBlockHook
 	defer func() { cli.SecurityBlockHook = original }()

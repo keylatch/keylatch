@@ -18,7 +18,7 @@ import (
 // Asserts the canary does NOT appear in stdout, stderr, audit log, or files outside
 // the in-memory read path. Asserts it DOES appear in decrypted output via Read.
 func TestSharedSecretCanary(t *testing.T) {
-	const sentinel = "KEYLATCH_CANARY_PHASE12_SHARED_sharedsecret_0xDEADBEEF"
+	const sentinel = "KEYLATCH_CANARY_TEAM_SHARED_sharedsecret_0xDEADBEEF"
 	plaintext := []byte(sentinel)
 	ctx := context.Background()
 

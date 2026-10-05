@@ -29,7 +29,7 @@ func TestDemoConnections_CanaryFree(t *testing.T) {
 	t.Parallel()
 	conns := demo.Connections()
 	canary.AssertNoLeak(t,
-		[]string{canary.Phase10Sentinel},
+		[]string{canary.UISentinel},
 		canary.JSONResponse(conns),
 	)
 }

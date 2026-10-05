@@ -66,7 +66,7 @@ func New(opts Options) (*Adapter, error) {
 		if e.ModulePath == opts.ModulePath {
 			if hashErr := VerifyModuleHash(opts.ModulePath, e.SHA256Hex); hashErr != nil {
 				if errors.Is(hashErr, trust.ErrModuleHashUnpinned) {
-					// M-1: warn but allow loading — run 'keylatch trust allowlist add' to pin.
+					// Warn but allow loading — run 'keylatch trust allowlist add' to pin.
 					slog.Warn("loading PKCS#11 module without hash verification — run 'keylatch trust allowlist add' to pin a hash",
 						"module_path", opts.ModulePath,
 						"remediation", "keylatch trust allowlist add",

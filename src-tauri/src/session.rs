@@ -1,6 +1,6 @@
 // src/session.rs — DesktopSession: bootstrap token flow.
 //
-// Implements the FIND-011 bootstrap flow:
+// Implements the bootstrap flow:
 //   1. fresh_bootstrap_token() → calls IPC MintBootstrapToken; returns one-time token
 //   2. navigate_with_bootstrap(window) → navigates to /__bootstrap?b=<token>;
 //      zeros the token immediately after navigation is initiated

@@ -7,7 +7,7 @@ import (
 )
 
 // TestLoadManifest_TraversalRejected verifies that LoadManifest rejects profile
-// IDs that contain path separators or are relative traversal references (C3).
+// IDs that contain path separators or are relative traversal references.
 func TestLoadManifest_TraversalRejected(t *testing.T) {
 	traversalInputs := []string{
 		"../../etc/passwd",

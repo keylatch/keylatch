@@ -63,6 +63,9 @@ type Options struct {
 	Env         llmcontext.Lookup
 	// Probe is injected for external-binary checks. If nil, RealProbe is used.
 	Probe kexec.Probe
+	// Runner is injected for checks that execute external binaries beyond
+	// find/version (e.g. `op whoami`). If nil, kexec.DefaultRunner is used.
+	Runner kexec.CommandRunner
 }
 
 // categoryMatches returns true if the normalised section matches any of the
@@ -96,8 +99,13 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 		probe = kexec.RealProbe{}
 	}
 
+	runner := opts.Runner
+	if runner == nil {
+		runner = kexec.DefaultRunner
+	}
+
 	// Gather all checks in order.
-	allChecks := gatherChecks(env, probe)
+	allChecks := gatherChecks(env, probe, runner)
 
 	// Normalise requested categories to lowercase (W8).
 	var normCategories []string

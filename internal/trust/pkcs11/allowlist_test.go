@@ -123,7 +123,7 @@ func TestIsAllowed(t *testing.T) {
 }
 
 func TestVerifyModuleHash_EmptyExpected(t *testing.T) {
-	// Empty expected hash = module is unpinned; must return ErrModuleHashUnpinned (M-1).
+	// Empty expected hash = module is unpinned; must return ErrModuleHashUnpinned.
 	err := pkcs11.VerifyModuleHash("/nonexistent", "")
 	if !errors.Is(err, trust.ErrModuleHashUnpinned) {
 		t.Errorf("empty expected hash: want ErrModuleHashUnpinned, got %v", err)

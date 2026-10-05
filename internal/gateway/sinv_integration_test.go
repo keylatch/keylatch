@@ -266,7 +266,7 @@ func TestSINV12_InvalidTokenReturns401(t *testing.T) {
 // returned by vault.Get never appears verbatim in the gateway HTTP response
 // body or headers (credential non-echo invariant).
 //
-// S-04: uses an httptest.Server as the mock upstream so the positive path
+// Uses an httptest.Server as the mock upstream so the positive path
 // (upstream returns 200) is exercised, not just an absence-of-canary assertion
 // against a 502 from a real remote URL.
 func TestSINV12_VaultCredentialNotEchoedInResponse(t *testing.T) {

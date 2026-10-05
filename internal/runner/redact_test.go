@@ -183,7 +183,7 @@ func TestRedact_SlackTokens(t *testing.T) {
 	}
 }
 
-// TestRedactionPatternsJSON_MatchesGoTable is the L3 parity guard: it fails
+// TestRedactionPatternsJSON_MatchesGoTable is the parity guard: it fails
 // the build if packaging/redaction-patterns.json (consumed by the bash
 // substring scanner packaging/ci/scan-no-secret-in-storage.sh) drifts from
 // internal/runner's redactionDefs table (the single source of truth). Run

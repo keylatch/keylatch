@@ -165,7 +165,7 @@ func TestProcessRunner_CredentialEnvVarPresent(t *testing.T) {
 	)
 }
 
-// TestProcessRunner_AllowlistExactMatch verifies the allowlist bypass fix (C-1):
+// TestProcessRunner_AllowlistExactMatch verifies the allowlist bypass fix:
 //   - "node" in allowlist → "node" allowed, "node_modules/.bin/evil" denied, "nodejs" denied
 //   - "python3" in allowlist → "python3.12" allowed (dot-suffix rule)
 func TestProcessRunner_AllowlistExactMatch(t *testing.T) {
@@ -245,7 +245,7 @@ func TestProcessRunner_AllowlistExactMatch(t *testing.T) {
 	}
 }
 
-// TestProcessRunner_RedactionAppliedToOutput verifies H-3: credential values in
+// TestProcessRunner_RedactionAppliedToOutput verifies that credential values in
 // subprocess output are replaced with "****" by the redactingWriter.
 // Uses the "openrouter" provider whose redaction pattern is sk-or-[A-Za-z0-9\-_]{20,}.
 func TestProcessRunner_RedactionAppliedToOutput(t *testing.T) {
@@ -282,7 +282,7 @@ func TestProcessRunner_RedactionAppliedToOutput(t *testing.T) {
 
 	output := outBuf.String()
 	assert.NotContains(t, output, credValue,
-		"raw credential value must not appear in subprocess output (H-3)")
+		"raw credential value must not appear in subprocess output")
 	assert.Contains(t, output, "****",
 		"redacted placeholder must appear in subprocess output")
 }

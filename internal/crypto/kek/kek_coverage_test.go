@@ -138,15 +138,18 @@ func TestEnvAgeIdentityKEK_Unwrap_TooShort(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // OPKEK — no real CLI required; test the error path
+//
+// PATH is pointed at an empty directory so "op" is deterministically not
+// found regardless of whether the machine running this test has a real op
+// CLI installed. Ordinary `go test ./...` must never discover or invoke an
+// installed manager binary; live-CLI coverage lives in
+// live_manager_test.go, gated behind KEYLATCH_LIVE_MANAGER_TESTS=1.
 // ---------------------------------------------------------------------------
 
 func TestOPKEK_NoOPCLI(t *testing.T) {
-	t.Parallel()
-	// op CLI is not expected in tests — must return ErrKEKUnavailable.
+	t.Setenv("PATH", t.TempDir())
 	_, err := kek.OPKEK("vault", "item", "field")
-	if err == nil {
-		t.Skip("op CLI is available; skipping no-op test")
-	}
+	require.Error(t, err)
 	assert.ErrorIs(t, err, kek.ErrKEKUnavailable)
 }
 
@@ -191,13 +194,13 @@ func TestKEKErrors_AreSentinels(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBWKEK_SessionSetButRunnerFails(t *testing.T) {
-	// bw CLI not available in tests — just verify session check passes and
-	// runner failure returns ErrKEKUnavailable.
+	// PATH points at an empty directory so "bw" is deterministically not
+	// found — the session check passes (BW_SESSION is set) but the runner
+	// call must fail with ErrKEKUnavailable, never reach a real bw binary.
+	t.Setenv("PATH", t.TempDir())
 	t.Setenv("BW_SESSION", "fake-session-token")
 	_, err := kek.BWKEK("fake-item-id", "field-name")
-	if err == nil {
-		t.Skip("bw CLI is available with a valid session; skipping")
-	}
+	require.Error(t, err)
 	assert.ErrorIs(t, err, kek.ErrKEKUnavailable)
 }
 

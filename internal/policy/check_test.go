@@ -8,7 +8,7 @@ import (
 )
 
 // canaryKey is the canary that must not appear in any output.
-const canaryKey = "KEYLATCH_CANARY_PHASE8_0xDEADBEEF"
+const canaryKey = "KEYLATCH_CANARY_POLICY_0xDEADBEEF"
 
 func basePolicy() policy.Policy {
 	return policy.Policy{

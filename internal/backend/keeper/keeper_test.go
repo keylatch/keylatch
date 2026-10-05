@@ -83,7 +83,7 @@ func TestKeeperGet_NotLoggedIn(t *testing.T) {
 }
 
 func TestKeeperSet_SecretNotInArgs(t *testing.T) {
-	// C2: the secret must NOT appear in the args slice — only "-" as stdin sentinel.
+	// The secret must NOT appear in the args slice — only "-" as stdin sentinel.
 	secret := []byte("super-secret-keeper-value")
 	key := argKey(fakeKeeperBin, "add", "--title", "keylatch/prod/api_key", "--pass", "-", "--folder", "keylatch")
 	runner := &kexec.MockRunner{

@@ -2,11 +2,11 @@
 #
 # Keylatch CLI container image — multi-stage build from source.
 #
-# Stage 1 (web):     oven/bun builds the embedded SPA (web/dist).
-# Stage 2 (builder): golang:1.26-alpine compiles the CLI binary with the
-#                     embedded_ui build tag, embedding the SPA build from
-#                     stage 1 via internal/ui/web/dist.
-# Stage 3 (runtime): distroless/static, non-root user, /keylatch ENTRYPOINT.
+# web:      oven/bun builds the embedded SPA (web/dist).
+# builder:  golang:1.26-alpine compiles the CLI binary with the embedded_ui
+#           build tag, embedding the SPA from the web build via
+#           internal/ui/web/dist.
+# runtime:  distroless/static, non-root user, /keylatch ENTRYPOINT.
 #
 # The image ships ONLY the `keylatch` CLI. The Tauri desktop shell is
 # produced by goreleaser into platform-native bundles (.app, .msi,
@@ -23,7 +23,7 @@
 # .goreleaser.yml `dockers` stanza.
 
 # -----------------------------------------------------------------------
-# Stage 1: web — build the embedded SPA (Vite/bun).
+# web — build the embedded SPA (Vite/bun).
 #
 # Kept as its own stage so the (slow) `bun install` layer only rebuilds
 # when web/ changes, independent of Go source changes.
@@ -41,7 +41,7 @@ COPY web/ .
 RUN bun run build
 
 # -----------------------------------------------------------------------
-# Stage 2: builder — compile the Go binary with the embedded UI.
+# builder — compile the Go binary with the embedded UI.
 # -----------------------------------------------------------------------
 FROM golang:1.26-alpine AS builder
 
@@ -90,7 +90,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 RUN mkdir -p /home/nonroot/.keylatch && chown -R 65532:65532 /home/nonroot
 
 # -----------------------------------------------------------------------
-# Stage 3: runtime.
+# runtime.
 #
 # distroless/static is ~2 MiB. No shell, no libc, no package manager —
 # minimum attack surface. The `nonroot` variant runs as UID 65532.

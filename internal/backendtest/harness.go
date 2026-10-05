@@ -127,8 +127,8 @@ func RunBackendComplianceTests(t *testing.T, factory func() backend.Backend) {
 			return
 		}
 		if err != nil {
-			// Wave 1 stub: GetMeta may return a "not yet implemented" error.
-			// Skip rather than fail — Wave 2 replaces the stub with a real impl.
+			// Backends without metadata support return a "not yet implemented"
+			// error; skip rather than fail.
 			t.Skipf("GetMeta not yet implemented on %s backend: %v", b.Name(), err)
 			return
 		}

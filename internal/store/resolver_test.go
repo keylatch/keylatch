@@ -22,7 +22,7 @@ import (
 )
 
 // Compile-time assertion: mockRunner must satisfy the same CommandRunner interface
-// as internal/exec.CommandRunner, confirming the two interfaces are in sync (S-03).
+// as internal/exec.CommandRunner, confirming the two interfaces are in sync.
 var _ internalexec.CommandRunner = (*mockRunner)(nil)
 
 // --- Mock CommandRunner ---
@@ -43,7 +43,13 @@ type mockRunner struct {
 	err      error
 }
 
-func (m *mockRunner) Run(_ context.Context, bin string, args []string, _ []byte) ([]byte, []byte, int, error) {
+func (m *mockRunner) Run(ctx context.Context, bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	return m.RunEnv(ctx, bin, args, stdin, nil)
+}
+
+// RunEnv satisfies store.CommandRunner's mirrored RunEnv method. extraEnv is
+// ignored — no resolver_test.go case exercises env injection.
+func (m *mockRunner) RunEnv(_ context.Context, bin string, args []string, _ []byte, _ []string) ([]byte, []byte, int, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, capturedCall{bin: bin, args: args})
 	m.mu.Unlock()
@@ -359,7 +365,7 @@ func TestResolver_NoScheme_ReturnsError(t *testing.T) {
 	}
 }
 
-// --- Binary-not-found tests (C-01) ---
+// --- Binary-not-found tests ---
 
 // TestResolver_BinaryNotFound_SentinelWrapped verifies that when a binary cannot be
 // found on PATH, Resolve returns an error wrapping ErrBinaryNotFound.

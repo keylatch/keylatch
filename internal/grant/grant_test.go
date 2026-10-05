@@ -12,7 +12,7 @@ import (
 )
 
 // canaryKey is the canary value that must never appear in grant output.
-const canaryKey = "KEYLATCH_CANARY_PHASE8_0xDEADBEEF"
+const canaryKey = "KEYLATCH_CANARY_POLICY_0xDEADBEEF"
 
 // tempEnv returns a Lookup that uses a temp dir for all keylatch paths.
 func tempEnv(t *testing.T) func(string) string {
@@ -227,9 +227,9 @@ func TestFind_RevokedNotReturned(t *testing.T) {
 	}
 }
 
-// TestFind_S8_12_LLMGrantDeniedForReadClass verifies that grants issued
+// TestGrant_LLMGrantDeniedForReadClass verifies that grants issued
 // from an LLM session are denied for read-class capabilities.
-func TestFind_S8_12_LLMGrantDeniedForReadClass(t *testing.T) {
+func TestGrant_LLMGrantDeniedForReadClass(t *testing.T) {
 	dir := t.TempDir()
 	llmEnv := func(k string) string {
 		switch k {

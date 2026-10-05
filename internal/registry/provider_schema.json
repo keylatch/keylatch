@@ -174,7 +174,7 @@
     },
     "actions": {
       "type": "object",
-      "description": "EPIC-20 action catalog — named HTTP operations available via keylatch call.",
+      "description": "Action catalog — named HTTP operations available via keylatch call.",
       "additionalProperties": {
         "type": "object",
         "required": ["method", "path"],

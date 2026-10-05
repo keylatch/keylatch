@@ -170,7 +170,7 @@ run_case "p9 B: FOO=bar BAZ=qux printenv blocked"           Bash  "FOO=bar BAZ=q
 run_case "p9 B: /usr/bin/env blocked"                       Bash  "/usr/bin/env"                         2
 run_case "p9 B: env NODE_ENV=production npm start blocked"  Bash  "env NODE_ENV=production npm start"    2
 
-# Group C — round-1 / round-2 regressions.
+# Group C — regressions from the first reviews.
 run_case "p9 C: bash -c 'env' blocked"                       Bash  "bash -c 'env'"                        2
 run_case "p9 C: sh -c \"printenv\" blocked"                  Bash  'sh -c "printenv"'                      2
 run_case "p9 C: bash -c ' env' (leading ws) blocked"         Bash  "bash -c ' env'"                        2
@@ -184,7 +184,7 @@ run_case "p9 C: bash -c 'true; env' compound blocked"        Bash  "bash -c 'tru
 run_case "p9 C: bash -c 'true && env' compound blocked"      Bash  "bash -c 'true && env'"                 2
 run_case "p9 C: bash -c 'true' -c 'env' (only first -c honoured) blocked" Bash "bash -c 'true' -c 'env'"   2
 
-# Group D — round-3 bypasses 1, 2, 3, 5, 6, 7 (the core of the rewrite).
+# Group D — bypasses 1, 2, 3, 5, 6, 7 (the core of the rewrite).
 run_case "p9 D1: bash -c env (unquoted) blocked"             Bash  "bash -c env"                          2
 run_case "p9 D1: sh -c env blocked"                          Bash  "sh -c env"                            2
 run_case "p9 D1: zsh -c env blocked"                         Bash  "zsh -c env"                           2
@@ -244,7 +244,7 @@ run_case_stdin "stdin p9: grep -n env allowed"        '{"tool_name":"Bash","tool
 run_case_stdin_nojq "stdin nojq: bash -c env blocked" '{"tool_name":"Bash","tool_input":{"command":"bash -c env"}}'                 2
 run_case_stdin_nojq "stdin nojq: echo hello allowed"  '{"tool_name":"Bash","tool_input":{"command":"echo hello"}}'                  0
 
-# Group I — security-auditor round 2 (2026-07-30): two narrow implementation
+# Group I — security review (2026-07-30): two narrow implementation
 # bugs found in the tokenizer/resolver, not design flaws in the tokenizer
 # approach itself.
 #
@@ -268,14 +268,14 @@ run_case "p9 I: bash -cex env (c not trailing) blocked" Bash "bash -cex env" 2
 run_case "p9 I: bash \\<newline>-c env (line continuation) blocked"      Bash $'bash \\\n-c env'      2
 run_case "p9 I: bash \\<newline>-c printenv (line continuation) blocked" Bash $'bash \\\n-c printenv' 2
 
-# Group J — round 6 review (2026-07-30): same bug CLASS as Bypass B (backslash-
+# Group J — review (2026-07-30): same bug CLASS as Bypass B (backslash-
 # newline line continuation) but in the double-quote (dq) tokenizer branch,
 # which the Bypass B fix never touched. Real bash strips \<newline> inside
 # double quotes too (POSIX: backslash retains escaping meaning before $, `,
 # ", \, and newline) -- `"e\<newline>nv"` executes as `env` (verified).
 #
 # Completeness check across all three quoting contexts for backslash-newline:
-#   1. Unquoted   -- fixed round 5 (Bypass B), re-confirmed still correct above.
+#   1. Unquoted   -- fixed with Bypass B, re-confirmed still correct above.
 #   2. Double-quoted -- fixed here (Bypass C).
 #   3. Single-quoted -- POSIX gives backslash NO escaping meaning inside single
 #      quotes, so `'e\<newline>nv'` is genuinely two literal lines of content,
@@ -288,7 +288,7 @@ run_case "p9 J: bypass C bare - dq backslash-newline blocked"          Bash $'"e
 run_case "p9 J: bypass C nested in bash -c blocked"                    Bash 'bash -c '"'"$'"e\\\nnv"'"'"                   2
 run_case "p9 J: sq backslash-newline pinned allowed (no fix needed)"   Bash $'\'e\\\nnv\''        0
 
-# Group K — round 8 review (2026-07-30): a scope/design gap, not an
+# Group K — review (2026-07-30): a scope/design gap, not an
 # implementation slip like Bypass A/B/C. A bare top-level ANSI-C-quoted
 # command word ($'...', no wrapper at all) decodes to `env` in real bash
 # and dumps the environment directly -- confirmed live: was exit 0
@@ -309,7 +309,7 @@ run_case "p9 K: bare top-level \$'\\145nv' (octal, no wrapper) blocked" Bash $'$
 run_case "p9 K: bash -c \$'\\x65nv' (depth>0, re-confirmed) blocked"    Bash $'bash -c $'"'"'\x65nv'"'"''    2
 run_case "p9 K: bash -c \"\$'\\x65nv\"' (dollar-quote inside dq, depth>0, re-confirmed) blocked" Bash 'bash -c "$'"'"'\x65nv'"'"'"'    2
 
-# Group L — round 10 review (2026-07-30): same well-scoped class as Bypass D
+# Group L — review (2026-07-30): same well-scoped class as Bypass D
 # (deterministic, no-execution-needed sub-cases wrongly left open), not
 # implementation slips.
 #
@@ -340,14 +340,14 @@ run_case "p9 L: \${9:-printenv} (positional default) blocked" Bash '${9:-printen
 run_case "p9 L: \${SOME_VAR:-env} (named var default) allowed" Bash '${SOME_VAR:-env}' 0
 
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
-# must stay byte-identical to this contrib copy modulo the "S0-6 " comment
-# prefix, so the two can never silently drift apart again. PASS-neutral if
+# must stay byte-identical to this contrib copy, so the two can never
+# silently drift apart again. PASS-neutral if
 # the internal copy is absent (the contrib directory may be vendored
 # standalone).
 INTERNAL_HOOK="$SCRIPT_DIR/../../../internal/guard/scripts/block-keylatch-exfiltration.sh"
 if [ -f "$INTERNAL_HOOK" ]; then
-	if diff -q <(sed 's/# S0-6 pattern /# pattern /' "$INTERNAL_HOOK") "$HOOK" >/dev/null 2>&1; then
-		echo "PASS: internal/contrib copy-sync (byte-identical modulo S0-6 prefix)"
+	if diff -q "$INTERNAL_HOOK" "$HOOK" >/dev/null 2>&1; then
+		echo "PASS: internal/contrib copy-sync (byte-identical)"
 		PASS=$((PASS + 1))
 	else
 		echo "FAIL: internal/contrib copy-sync (files have drifted apart)"

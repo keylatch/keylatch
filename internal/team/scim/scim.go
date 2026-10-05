@@ -90,7 +90,7 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 // assertLoopback returns an error if addr is not a loopback address.
-// C-8: "localhost" is NOT accepted — only numeric loopback IPs (127.x or ::1).
+// "localhost" is NOT accepted — only numeric loopback IPs (127.x or ::1).
 func assertLoopback(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -243,7 +243,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, userID strin
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, userID string) {
-	// N-6: use team.RemoveMember to trigger shared-secret rotation callback.
+	// Use team.RemoveMember to trigger shared-secret rotation callback.
 	if err := team.RemoveMember(r.Context(), s.t, userID); err != nil {
 		if err == team.ErrMemberNotFound {
 			writeError(w, http.StatusNotFound, "user not found")
@@ -270,8 +270,10 @@ func (s *Server) groupsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) groupHandler(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+func (s *Server) groupHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/scim+json")
+	w.WriteHeader(http.StatusNotImplemented)
+	_, _ = w.Write([]byte(`{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"501","detail":"SCIM Groups endpoint not yet implemented"}`))
 }
 
 // memberToSCIM converts a team.Member to a SCIM user (value-free).

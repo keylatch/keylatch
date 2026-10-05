@@ -130,7 +130,7 @@ func setupCheckExpiryFixture(t *testing.T) (dir string, cfgForTest config.Config
 	if err := os.MkdirAll(filepath.Dir(canaryPath), 0o700); err != nil {
 		t.Fatalf("mkdir canary: %v", err)
 	}
-	canary := "KEYLATCH_CANARY_PHASE4_EXPIRY_0xDEADBEEF"
+	canary := "KEYLATCH_CANARY_VERSIONS_EXPIRY_0xDEADBEEF"
 	if err := os.WriteFile(canaryPath, []byte(canary), 0o600); err != nil {
 		t.Fatalf("write canary: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestCheckExpiry_JSONOutput(t *testing.T) {
 	}
 }
 
-// TestCheckExpiry_CanaryAbsent verifies S4-1: the canary value is never in output.
+// TestCheckExpiry_CanaryAbsent verifies the canary value is never in output.
 func TestCheckExpiry_CanaryAbsent(t *testing.T) {
 	testutil.SetupHermeticConfig(t)
 	resetDispatchForTest(t)
@@ -265,10 +265,10 @@ func TestCheckExpiry_CanaryAbsent(t *testing.T) {
 		t.Fatalf("unexpected error from root.Execute(): %v", err)
 	}
 
-	if strings.Contains(outBuf.String(), "KEYLATCH_CANARY_PHASE4_EXPIRY_0xDEADBEEF") {
+	if strings.Contains(outBuf.String(), "KEYLATCH_CANARY_VERSIONS_EXPIRY_0xDEADBEEF") {
 		t.Error("canary value appeared in check-expiry stdout — S4-1 violated")
 	}
-	if strings.Contains(errBuf.String(), "KEYLATCH_CANARY_PHASE4_EXPIRY_0xDEADBEEF") {
+	if strings.Contains(errBuf.String(), "KEYLATCH_CANARY_VERSIONS_EXPIRY_0xDEADBEEF") {
 		t.Error("canary value appeared in check-expiry stderr — S4-1 violated")
 	}
 }

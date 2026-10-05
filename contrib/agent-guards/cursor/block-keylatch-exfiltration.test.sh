@@ -74,9 +74,7 @@ run_case "p9 prose near-miss allowed"           Bash  "grep -n 'env' settings.js
 run_case "p9 VAR=val env still blocked"         Bash  "FOO=bar env"                                      2
 
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
-# must stay byte-identical to this contrib copy -- this variant has no
-# comment-prefix difference to normalize (unlike claude-code's "S0-6 "
-# prefix), so a plain byte-for-byte diff applies. This is exactly the check
+# must stay byte-identical to this contrib copy. This is exactly the check
 # that would have caught the internal copy silently drifting at
 # keylatch-hook-version 1 while contrib moved to v2 and then v3. PASS-neutral
 # if the internal copy is absent (the contrib directory may be vendored

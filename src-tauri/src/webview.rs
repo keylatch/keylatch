@@ -1,10 +1,10 @@
 // src/webview.rs — WebView host configuration.
 //
 // Implements the navigation policy hook that restricts the WebView to
-// ONLY navigate to https://127.0.0.1:<active-port>/* (FIND2-014 / S14-4).
+// ONLY navigate to https://127.0.0.1:<active-port>/*.
 // All other navigations are blocked and audited.
 //
-// CSP is configured in tauri.conf.json (S14-5) and asserted at startup.
+// CSP is configured in tauri.conf.json and asserted at startup.
 
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime, WebviewWindow};
@@ -30,7 +30,7 @@ impl WebViewHost {
 
     /// Evaluate the navigation policy for a target URL.
     /// Allowed: https://127.0.0.1:<active_port>/* and tauri://localhost/error.html
-    /// Blocked: everything else (FIND2-014).
+    /// Blocked: everything else.
     pub fn evaluate_navigation(&self, url: &str) -> NavigationPolicy {
         // Allow the bundled static error page.
         if url.starts_with("tauri://localhost/error.html") {
@@ -57,7 +57,7 @@ impl WebViewHost {
         }
     }
 
-    /// Assert that the window's CSP matches the S14-5 policy string.
+    /// Assert that the window's CSP matches the policy string.
     /// Returns an error string if the active CSP is weaker than expected.
     ///
     /// In Tauri v2 the CSP is set in tauri.conf.json and cannot be weakened
@@ -67,7 +67,7 @@ impl WebViewHost {
         // was loaded correctly by checking the compile-time constant.
         // The actual enforcement is in the Tauri runtime.
         //
-        // S14-5 required policy:
+        // Required policy:
         const REQUIRED_CSP: &str =
             "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'";
 

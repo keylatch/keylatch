@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/team"
 )
 
@@ -31,7 +32,16 @@ type AdminHandler struct {
 }
 
 // ServeHTTP routes admin requests.
+// Gated unavailable — denied before any role/CSRF check runs, so
+// no caller-supplied header or token can reach the role logic below. Real
+// server-authenticated role/JWT/membership verification is expansion work
+// for when the admin surface re-enters scope.
 func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !manifest.Current().Enabled("admin") {
+		writeAdminError(w, http.StatusNotFound, "admin console unavailable in this build")
+		return
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/admin")
 
 	// Role gate: extract JWT and require admin.

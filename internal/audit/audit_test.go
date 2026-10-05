@@ -254,7 +254,7 @@ func TestCanaryNeverPlaintextInAuditLog(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 
-	const canary = "KEYLATCH_CANARY_PHASE5_AUDIT_0xDEADBEEF"
+	const canary = "KEYLATCH_CANARY_AUDIT_AUDIT_0xDEADBEEF"
 
 	ctx := context.Background()
 	l.Log(ctx, audit.Event{

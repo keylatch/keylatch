@@ -84,7 +84,7 @@ func TestLastPassGet_NotLoggedIn(t *testing.T) {
 }
 
 func TestLastPassSet_ValuePassedViaStdin(t *testing.T) {
-	// C1: the value must be passed via stdin in the expected lpass format.
+	// The value must be passed via stdin in the expected lpass format.
 	key := argKey(fakeLpassBin, "add", "--non-interactive", "--name", "keylatch/default/db/password")
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{

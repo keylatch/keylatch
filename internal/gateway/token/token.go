@@ -38,6 +38,10 @@ var (
 	ErrInvalidRuntime     = errors.New("token: direct_classic_sandboxed is not a gateway runtime")
 	ErrTokenPersistFailed = errors.New("token: persist failed")
 	ErrMaxUsesRequired    = errors.New("token: MaxUses required for runner-minted tokens")
+	// ErrHardwareApprovalUnsupported is returned when a TokenSpec carries
+	// hardware approval claim fields: this build has no hardware attestation
+	// or approval workflow, so no gateway token may be minted from one.
+	ErrHardwareApprovalUnsupported = errors.New("token: hardware approval claims are not supported")
 )
 
 var (
@@ -166,6 +170,11 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 
 	if spec.MaxUses > 0 && spec.StorePath == "" {
 		return "", nil, fmt.Errorf("token: MaxUses > 0 requires StorePath to be set for cross-process safety")
+	}
+
+	if spec.ApprovalRootID != "" || len(spec.ApprovalRootIDs) > 0 || spec.ApprovalExpiry != nil ||
+		spec.ApprovalCapability != "" || spec.ApprovalMaxAgeSec != 0 || spec.ApprovalBinding != "" || spec.TwoPerson {
+		return "", nil, ErrHardwareApprovalUnsupported
 	}
 
 	// Generate token ID (UUID v4).

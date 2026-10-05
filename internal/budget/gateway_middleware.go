@@ -35,7 +35,7 @@ func NewBudgetMiddleware(counter BudgetCounter, capability string, amountPerRequ
 // and reference only — do NOT mount it on a production chain. The live
 // gateway enforces budgets inline in gatewayHandler using the verified JWT
 // actor claim.
-// Uses CheckAndRecord atomically before dispatching to avoid TOCTOU (C-4).
+// Uses CheckAndRecord atomically before dispatching to avoid TOCTOU.
 // All attempts are counted; failed handlers do not decrement (pragmatic safe approach).
 func (m *BudgetMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

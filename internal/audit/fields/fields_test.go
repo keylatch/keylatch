@@ -47,7 +47,7 @@ func TestRedactDoesNotLeakUnsafeKeys(t *testing.T) {
 
 func TestCanaryNeverPlaintext(t *testing.T) {
 	salt := []byte("canary-test-salt")
-	canary := "KEYLATCH_CANARY_PHASE5_FIELDS_0xDEADBEEF"
+	canary := "KEYLATCH_CANARY_AUDIT_FIELDS_0xDEADBEEF"
 
 	extra := map[string]any{
 		"_canary_unsafe_key": canary,

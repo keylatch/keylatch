@@ -2,7 +2,7 @@ package events
 
 // mux_internal_test.go — white-box parity guard for scrub().
 //
-// docker-server-security hardening (L3): scrub() used to carry its own
+// docker-server-security hardening: scrub() used to carry its own
 // hand-maintained copy of the credential-prefix list (a THIRD copy, alongside
 // internal/runner/redact.go's redactionDefs table and
 // packaging/redaction-patterns.json, which is itself generated from
@@ -40,7 +40,7 @@ func TestScrub_MatchesRunnerRedactionPrefixes(t *testing.T) {
 // TestScrub_CanaryStillScrubbed guards the compile-time canary value
 // independently of the runner-sourced prefixes.
 func TestScrub_CanaryStillScrubbed(t *testing.T) {
-	const canary = "KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF"
+	const canary = "KEYLATCH_CANARY_DESKTOP_0xDEADBEEF"
 	got := scrub("some text containing " + canary + " embedded")
 	if !strings.Contains(got, "[REDACTED]") {
 		t.Errorf("scrub() did not redact the canary value: got %q", got)

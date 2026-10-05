@@ -158,7 +158,7 @@ func TestApprove_ZeroProof_Rejected(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// C-9: zero PresenceProof must be rejected.
+	// Zero PresenceProof must be rejected.
 	zeroProof := trust.PresenceProof{} // zero-value: ConfirmedAt.IsZero() == true
 	err = approval.Approve(ctx, req, approver, zeroProof)
 	if err != approval.ErrHardwarePresenceRequired {

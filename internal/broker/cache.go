@@ -203,7 +203,7 @@ func (c *tokenCache) flush() {
 }
 
 // deleteBySession removes all entries whose key contains sessionID as a component.
-// Uses null byte separator to match cacheKey construction (N-8).
+// Uses null byte separator to match cacheKey construction.
 func (c *tokenCache) deleteBySession(sessionID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

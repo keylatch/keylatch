@@ -219,7 +219,7 @@ func TestChain_ResolveAll_MissingOne(t *testing.T) {
 }
 
 // TestChain_ResolveAll_RequiredRootTypes_Enforced verifies that ResolveAll applies
-// RequiredRootTypes per-entry (M-3): passphrase roots should be rejected when only
+// RequiredRootTypes per-entry: passphrase roots should be rejected when only
 // secure_enclave is allowed.
 func TestChain_ResolveAll_RequiredRootTypes_Enforced(t *testing.T) {
 	const typePass trust.RootType = "test_resolveall_passphrase_rrt"

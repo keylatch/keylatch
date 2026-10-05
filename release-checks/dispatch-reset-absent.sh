@@ -5,10 +5,10 @@
 # keylatch binary. dispatch.Reset is gated behind //go:build test_only and
 # must never be linked into release builds.
 #
-# S-FIND-21: `go tool nm <binary> | grep -i reset` must return empty for
+# `go tool nm <binary> | grep -i reset` must return empty for
 # the production binary; the symbol is test-only.
 #
-# Usage: bash release-gates/dispatch-reset-absent.sh <binary>
+# Usage: bash release-checks/dispatch-reset-absent.sh <binary>
 # Exit:  0 if Reset symbol absent (gate passes), 1 if present (gate fails).
 set -euo pipefail
 

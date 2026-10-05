@@ -1,15 +1,13 @@
 // src/update.rs — UpdateManager implementation.
 //
-// Implements S14-3, S14-9, S14-12, FIND2-007, FIND2-015.
-//
 // Update flow:
-//   1. CheckForUpdate: fetch manifest from baked-in URL (S14-9), verify cosign sig.
+//   1. CheckForUpdate: fetch manifest from baked-in URL, verify cosign sig.
 //   2. Download: stream to staged dir with 0700/0600 permissions.
 //   3. VerifySignature: cosign verify + store SHA256 hash of every staged file.
 //   4. ApplyUpdate: inside flock critical section, RE-HASH every file and compare
-//      against stored hashes; abort on drift (FIND2-007 TOCTOU protection).
+//      against stored hashes; abort on drift (TOCTOU protection).
 //
-// Fresh-install state machine (FIND2-015):
+// Fresh-install state machine:
 //   - First update: state="fresh-install-first-update-pending"
 //   - Heartbeat confirmed: state="running-version-X"
 //   - First update FAILS: state="fresh-install-update-failed", block ApplyUpdate
@@ -24,7 +22,7 @@ use std::time::SystemTime;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-/// The production manifest URL — compile-time constant (S14-9).
+/// The production manifest URL — compile-time constant.
 /// In staging builds, this is overridable via the `staging` feature flag.
 #[cfg(not(feature = "staging"))]
 const MANIFEST_URL: &str = "https://releases.keylatch.app/manifest/latest.json";
@@ -32,10 +30,10 @@ const MANIFEST_URL: &str = "https://releases.keylatch.app/manifest/latest.json";
 #[cfg(feature = "staging")]
 const MANIFEST_URL: &str = "https://staging.releases.keylatch.app/manifest/latest.json";
 
-/// ErrHashDriftAfterVerify is the sentinel error for TOCTOU violations (FIND2-007).
+/// ErrHashDriftAfterVerify is the sentinel error for TOCTOU violations.
 #[derive(Debug, thiserror::Error)]
 pub enum UpdateError {
-    #[error("hash drift detected after verify — possible TOCTOU attack (FIND2-007)")]
+    #[error("hash drift detected after verify — possible TOCTOU attack")]
     HashDriftAfterVerify,
     #[error("cosign verification failed: {0}")]
     CosignVerify(String),
@@ -43,9 +41,9 @@ pub enum UpdateError {
     MissingSignature,
     #[error("version not newer than current ({current} >= {candidate})")]
     NotNewer { current: String, candidate: String },
-    #[error("fresh-install update failed — user must click Re-download (FIND2-015)")]
+    #[error("fresh-install update failed — user must click Re-download")]
     FreshInstallFailed,
-    #[error("rollback record missing cosign-verified manifest fragment (S14-12)")]
+    #[error("rollback record missing cosign-verified manifest fragment")]
     RollbackMissingRecord,
     #[error("invalid manifest: {0}")]
     InvalidManifest(String),
@@ -57,7 +55,7 @@ pub enum UpdateError {
     Json(String),
 }
 
-/// AppState tracks the fresh-install state machine (FIND2-015).
+/// AppState tracks the fresh-install state machine.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AppLifecycleState {
     #[serde(rename = "fresh-install-first-update-pending")]
@@ -98,7 +96,7 @@ pub struct ReleaseArtifact {
 pub struct UpdateManagerImpl {
     config_dir: PathBuf,
     current_version: String,
-    /// Verified SHA256 hashes per staged file path (FIND2-007).
+    /// Verified SHA256 hashes per staged file path.
     verified_sha: HashMap<String, [u8; 32]>,
     lifecycle_state: AppLifecycleState,
 }
@@ -113,23 +111,23 @@ impl UpdateManagerImpl {
         }
     }
 
-    /// Fetch the release manifest and check if a newer version exists (S14-9).
+    /// Fetch the release manifest and check if a newer version exists.
     /// Returns Ok(None) if no update is available; Ok(Some(manifest)) if newer.
     pub fn check_for_update(&self) -> Result<Option<ReleaseManifest>, UpdateError> {
         // In tests, the manifest URL can be mocked via environment.
         let url = std::env::var("KEYLATCH_TEST_MANIFEST_URL")
             .unwrap_or_else(|_| MANIFEST_URL.to_string());
 
-        // Fetch raw manifest bytes for signature verification (M3).
+        // Fetch raw manifest bytes for signature verification.
         let manifest_bytes = self.fetch_bytes(&url)?;
 
-        // M3: verify the manifest signature before trusting any manifest fields.
+        // Verify the manifest signature before trusting any manifest fields.
         let manifest: ReleaseManifest = serde_json::from_slice(&manifest_bytes)
             .map_err(|e| UpdateError::Json(e.to_string()))?;
 
         self.verify_manifest_signature(&manifest_bytes, &manifest.signature_url)?;
 
-        // M4: use proper semver comparison instead of lexicographic string comparison.
+        // Use proper semver comparison instead of lexicographic string comparison.
         let manifest_ver = Version::parse(&manifest.version)
             .map_err(|_| UpdateError::InvalidManifest("bad version in manifest".into()))?;
         let current_ver = Version::parse(&self.current_version)
@@ -142,9 +140,9 @@ impl UpdateManagerImpl {
         Ok(Some(manifest))
     }
 
-    /// M3: Verify the manifest's detached cosign signature.
+    /// Verify the manifest's detached cosign signature.
     /// Fetches the signature from sig_url and runs cosign verify-blob with
-    /// the pinned issuer and identity (C5).
+    /// the pinned issuer and identity.
     fn verify_manifest_signature(
         &self,
         manifest_bytes: &[u8],
@@ -160,7 +158,7 @@ impl UpdateManagerImpl {
         let sig_tmp = tmp_dir.join("keylatch-manifest-verify.json.sig");
         fs::write(&sig_tmp, &sig_bytes).map_err(UpdateError::Io)?;
 
-        // Invoke cosign with pinned issuer and identity (C5).
+        // Invoke cosign with pinned issuer and identity.
         let output = Command::new("cosign")
             .arg("verify-blob")
             .arg("--signature")
@@ -227,7 +225,7 @@ impl UpdateManagerImpl {
     }
 
     /// Verify the cosign signature of the staged artifact and store SHA256
-    /// of every staged file in verified_sha (FIND2-007).
+    /// of every staged file in verified_sha.
     pub fn verify_signature(&mut self, staged_path: &Path) -> Result<(), UpdateError> {
         // Check for the signature file.
         let sig_path = staged_path.with_extension("sig");
@@ -235,7 +233,7 @@ impl UpdateManagerImpl {
             return Err(UpdateError::MissingSignature);
         }
 
-        // C5: invoke cosign with pinned GitHub Actions OIDC issuer and identity.
+        // Invoke cosign with pinned GitHub Actions OIDC issuer and identity.
         // --certificate-oidc-issuer-regexp .* is intentionally NOT used here.
         let output = Command::new("cosign")
             .arg("verify-blob")
@@ -254,7 +252,7 @@ impl UpdateManagerImpl {
             return Err(UpdateError::CosignVerify(stderr.to_string()));
         }
 
-        // Store SHA256 of the verified file (FIND2-007).
+        // Store SHA256 of the verified file.
         let hash = sha256_file(staged_path)?;
         self.verified_sha.insert(staged_path.to_string_lossy().to_string(), hash);
 
@@ -262,25 +260,25 @@ impl UpdateManagerImpl {
     }
 
     /// Apply the staged update. TOCTOU-protected: re-hashes every staged file
-    /// inside a flock critical section and aborts if any hash drifts (FIND2-007).
+    /// inside a flock critical section and aborts if any hash drifts.
     ///
     /// Refuses if:
-    ///   - verify_signature was not called first (S14-3).
-    ///   - Fresh-install state is "failed" (FIND2-015).
+    ///   - verify_signature was not called first.
+    ///   - Fresh-install state is "failed".
     pub fn apply_update(&mut self, staged_path: &Path) -> Result<(), UpdateError> {
-        // S14-3: require prior VerifySignature.
+        // Require prior VerifySignature.
         if self.verified_sha.is_empty() {
             return Err(UpdateError::MissingSignature);
         }
 
-        // FIND2-015: block if fresh-install update failed.
+        // Block if the fresh-install update failed.
         if self.lifecycle_state == AppLifecycleState::FreshInstallUpdateFailed {
             return Err(UpdateError::FreshInstallFailed);
         }
 
-        // C4: TOCTOU critical section — acquire an exclusive file lock on the
+        // TOCTOU critical section — acquire an exclusive file lock on the
         // staged artifact before the rehash so no other process can swap the
-        // file between our hash read and the rename (FIND2-007).
+        // file between our hash read and the rename.
         let lock_file = fs::File::open(staged_path).map_err(UpdateError::Io)?;
         lock_file_exclusive(&lock_file).map_err(UpdateError::Io)?;
 
@@ -298,11 +296,11 @@ impl UpdateManagerImpl {
                 let _ = fs::remove_dir_all(parent);
             }
             // Emit security event (wired to notify in main.rs).
-            log::error!("update: ErrHashDriftAfterVerify — staged file modified after verify (FIND2-007)");
+            log::error!("update: ErrHashDriftAfterVerify — staged file modified after verify");
             return Err(UpdateError::HashDriftAfterVerify);
         }
 
-        // Store rollback record (S14-12).
+        // Store rollback record.
         self.write_rollback_record(staged_path)?;
 
         // Atomic apply (rename). Lock is held across the rename for TOCTOU safety.
@@ -315,7 +313,7 @@ impl UpdateManagerImpl {
         Ok(())
     }
 
-    /// Handle the fresh-install first-update failure case (FIND2-015).
+    /// Handle the fresh-install first-update failure case.
     pub fn record_fresh_install_failure(&mut self) {
         self.lifecycle_state = AppLifecycleState::FreshInstallUpdateFailed;
         let _ = self.persist_config();
@@ -381,7 +379,7 @@ impl UpdateManagerImpl {
     }
 }
 
-/// C4: Acquire an exclusive file lock on the given file (FIND2-007 TOCTOU protection).
+// Acquire an exclusive file lock on the given file (TOCTOU protection).
 /// The lock is held until the `File` is dropped.
 fn lock_file_exclusive(f: &std::fs::File) -> std::io::Result<()> {
     #[cfg(unix)]

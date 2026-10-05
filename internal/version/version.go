@@ -1,5 +1,8 @@
 // Package version exposes build-time version metadata injected via ldflags.
-// Default values ("1.0.0-dev", "unknown") are safe for local builds and tests.
+// Default values ("0.0.0-devbuild", "unknown") are safe for local builds and
+// tests. The fallback is deliberately below the v0.9.x release train (never
+// "1.0.0-dev") so an un-ldflagged local build can never be mistaken for a
+// version ahead of an actual release.
 package version
 
 import "fmt"
@@ -10,7 +13,7 @@ import "fmt"
 //	-X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
 //	-X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
 var (
-	Version   = "1.0.0-dev"
+	Version   = "0.0.0-devbuild"
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )

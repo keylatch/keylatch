@@ -16,7 +16,7 @@ import (
 // Asserts canary does NOT appear in: audit log, output, any session-state file, any keyring file.
 // Verifies canary IS present in session.Subject in-memory during login.
 func TestOIDCIDTokenCanary(t *testing.T) {
-	const sentinel = "KEYLATCH_CANARY_PHASE12_OIDC_oidc_0xDEADBEEF"
+	const sentinel = "KEYLATCH_CANARY_TEAM_OIDC_oidc_0xDEADBEEF"
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_TEAM_DIR", dir)
 

@@ -63,8 +63,8 @@ func (s *Server) Listen(ctx context.Context) error {
 	// Remove stale socket file if it exists.
 	_ = os.Remove(s.socketPath)
 
-	// listenSocket sets a restrictive umask on Unix before creating the
-	// socket file (platform-specific: socket_unix.go / socket_windows.go).
+	// listenSocket creates the socket owner-only (socket_unix.go /
+	// socket_windows.go).
 	ln, err := listenSocket(s.socketPath)
 	if err != nil {
 		return fmt.Errorf("ipc: listen on %s: %w", s.socketPath, err)

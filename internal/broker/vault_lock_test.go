@@ -93,7 +93,7 @@ func TestVaultLock_FlushSynchronous(t *testing.T) {
 	b := newTestBroker(t)
 	ctx := context.Background()
 
-	// Prime cache with multiple distinct entries (N-5: use distinct keys per iteration).
+	// Prime cache with multiple distinct entries (use distinct keys per iteration).
 	for i := 0; i < 5; i++ {
 		key := cacheKey("test-provider", "cap", "actor", "sess", fmt.Sprintf("ns-%d", i))
 		b.cache.set(key, &cacheEntry{

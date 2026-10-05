@@ -4,11 +4,11 @@
 //   1. Scheme MUST be "keylatch" — anything else is rejected + audited.
 //   2. Host MUST be on the allow-list {oauth, enrol, setup, approval, diagnostics}.
 //   3. For "oauth" host: state parameter validated against in-flight OAuth state.
-//   4. For "enrol" host: routed to Phase 12 bundle verification via IPC.
+//   4. For "enrol" host: routed to bundle verification via IPC.
 //   5. Other hosts: route to WebView navigation.
 //
-// FIND2-013: second-instance deep-links are routed through Dispatch (full validation).
-// S14-2: OAuth state mismatch → warning notification; link dropped.
+// Second-instance deep-links are routed through Dispatch (full validation).
+// OAuth state mismatch → warning notification; link dropped.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ use url::Url;
 
 use crate::notify::{Notification, NotifierImpl, Urgency};
 
-/// Allowed deep-link hosts. Any host not in this set is rejected (S14-2).
+/// Allowed deep-link hosts. Any host not in this set is rejected.
 const ALLOWED_HOSTS: &[&str] = &["oauth", "enrol", "setup", "approval", "diagnostics"];
 
 /// DeepLinkError is returned for invalid deep-links.
@@ -28,7 +28,7 @@ pub enum DeepLinkError {
     InvalidScheme(String),
     #[error("unknown host: {0}")]
     UnknownHost(String),
-    #[error("OAuth state mismatch or expired (S14-2)")]
+    #[error("OAuth state mismatch or expired")]
     OAuthStateMismatch,
     #[error("enrolment team ID mismatch")]
     TeamIdMismatch,
@@ -87,7 +87,7 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
     ///
     /// Called for:
     ///   - Incoming deep-links from the OS
-    ///   - Second-instance argv (FIND2-013)
+    ///   - Second-instance argv
     pub fn dispatch(&self, raw_url: &str) -> Result<(), DeepLinkError> {
         let url = Url::parse(raw_url).map_err(|e| DeepLinkError::UrlParse(e.to_string()))?;
 
@@ -124,10 +124,10 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
         let code = params.get("code").cloned().unwrap_or_default();
         let state = params.get("state").cloned().unwrap_or_default();
 
-        // S14-2: validate state against in-flight OAuth state cache.
+        // Validate state against in-flight OAuth state cache.
         if !self.oauth_state.consume(&state) {
-            log::warn!("deeplink: OAuth state mismatch or expired (S14-2): state={state}");
-            // Show a warning notification (S14-2 requirement).
+            log::warn!("deeplink: OAuth state mismatch or expired: state={state}");
+            // Show a warning notification (requirement).
             let notif = Notification::new(
                 "oauth-state-mismatch",
                 "Unexpected OAuth callback ignored",
@@ -144,7 +144,7 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
             return Err(DeepLinkError::OAuthStateMismatch);
         }
 
-        // M6: forward code + state to the frontend via Tauri event emission instead
+        // Forward code + state to the frontend via Tauri event emission instead
         // of embedding user-controlled strings in a JS navigation call (DD-3).
         // The WebView frontend listens for "oauth-callback" and handles routing.
         log::info!("deeplink: emitting oauth-callback event (code len={})", code.len());
@@ -159,7 +159,7 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
     fn handle_enrol(&self, url: &Url) -> Result<(), DeepLinkError> {
         let bundle = url.path().trim_start_matches('/');
 
-        // M6: validate bundle identifier before using in any navigation call.
+        // Validate bundle identifier before using in any navigation call.
         // Must match ^[a-zA-Z0-9][a-zA-Z0-9\-]{0,127}$
         if bundle.is_empty() || !is_valid_bundle_id(bundle) {
             log::warn!("deeplink: invalid bundle identifier rejected");
@@ -168,10 +168,10 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
 
         log::info!("deeplink: routing enrolment bundle via IPC");
 
-        // TeamID validation (FIND2-013 point 3).
+        // TeamID validation (point 3).
         if let Some(team_id) = &self.configured_team_id {
             // In production the bundle contains a TeamID; we extract and compare.
-            // Placeholder: the actual extraction is in Phase 12 bundle verification.
+            // Placeholder: the actual extraction is in bundle verification.
             let _ = team_id;
         } else {
             // No team configured: require explicit user confirmation before team.Join.
@@ -180,7 +180,7 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
             return Ok(());
         }
 
-        // Route to Phase 12 bundle verification.
+        // Route to bundle verification.
         self.navigate_webview(&format!("/enrol?bundle={bundle}"));
         Ok(())
     }
@@ -197,12 +197,12 @@ impl<R: Runtime> DeepLinkHandlerImpl<R> {
         }
     }
 
-    /// Handle a second-instance argv (FIND2-013).
+    /// Handle a second-instance argv.
     /// Routes any keylatch:// URL through the full Dispatch validation chain.
     pub fn on_second_instance_handler(&self, argv: &[String]) {
         for arg in argv {
             if arg.starts_with("keylatch://") {
-                log::info!("deeplink: routing second-instance URL through Dispatch (FIND2-013)");
+                log::info!("deeplink: routing second-instance URL through Dispatch");
                 // Audit: ActionTeamMemberAdd, Outcome=Warn, Extra:{reason:"single_instance_deep_link"}
                 match self.dispatch(arg) {
                     Ok(()) => {}
@@ -255,7 +255,7 @@ mod tests {
 }
 
 /// Validate that a bundle identifier matches ^[a-zA-Z0-9][a-zA-Z0-9\-]{0,127}$
-/// This prevents injecting arbitrary strings into navigation calls (M6).
+/// This prevents injecting arbitrary strings into navigation calls.
 fn is_valid_bundle_id(s: &str) -> bool {
     let bytes = s.as_bytes();
     if bytes.is_empty() || bytes.len() > 128 {

@@ -27,7 +27,7 @@ type stsCredentials struct {
 }
 
 // roleSessionNameRe matches characters that are NOT allowed in AWS RoleSessionName.
-// Allowed: a-z, A-Z, 0-9, =, ,, ., @, _, - (N-6).
+// Allowed: a-z, A-Z, 0-9, =, ,, ., @, _, -.
 var roleSessionNameRe = regexp.MustCompile(`[^a-zA-Z0-9=,.@_-]`)
 
 // AWSStsStrategy calls AWS STS AssumeRole using Signature Version 4.

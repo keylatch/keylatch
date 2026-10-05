@@ -2,7 +2,7 @@
 //
 // Dispatches native OS notifications via tauri-plugin-notification.
 //
-// S14-6: Notification struct fields are ONLY value-free identifiers, strings,
+// Notification struct fields are ONLY value-free identifiers, strings,
 //        timestamps — NEVER credential values, tokens, or request bodies.
 //        The CI lint (lint-notification-fields.sh) enforces this.
 //
@@ -32,9 +32,9 @@ pub enum Urgency {
 pub struct Notification {
     /// Unique identifier for coalescing (updated notifications replace older ones). // security-reviewed: 2026-05-14
     pub id: String,
-    /// Short notification title. Must not contain credential material (S14-6). // security-reviewed: 2026-05-14
+    /// Short notification title. Must not contain credential material. // security-reviewed: 2026-05-14
     pub title: String,
-    /// Notification body. Must not contain credential material (S14-6). // security-reviewed: 2026-05-14
+    /// Notification body. Must not contain credential material. // security-reviewed: 2026-05-14
     pub body: String,
     /// Deep-link URL to open when the user clicks the notification. // security-reviewed: 2026-05-14
     pub action_url: Option<String>,
@@ -92,7 +92,7 @@ impl<R: Runtime> NotifierImpl<R> {
     /// Show a notification. If a notification with the same ID is already
     /// active, it is replaced (coalesced — no duplicate OS toasts).
     pub fn show(&self, notification: Notification) {
-        // S14-6 runtime check in dev/test builds.
+        // Runtime check in dev/test builds.
         #[cfg(debug_assertions)]
         self.assert_value_free(&notification);
 
@@ -128,7 +128,7 @@ impl<R: Runtime> NotifierImpl<R> {
         self.active.lock().unwrap().remove(id);
     }
 
-    /// S14-6 runtime check: reject notifications containing credential patterns.
+    /// runtime check: reject notifications containing credential patterns.
     #[cfg(debug_assertions)]
     fn assert_value_free(&self, notification: &Notification) {
         for pattern in crate::redaction::REDACTION_PATTERNS {

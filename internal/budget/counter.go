@@ -35,7 +35,7 @@ type InMemoryBudgetCounter struct {
 }
 
 // NewInMemoryBudgetCounter creates a counter with the given policy.
-// The eviction goroutine is tied to ctx — cancel ctx to stop it cleanly (M-1).
+// The eviction goroutine is tied to ctx — cancel ctx to stop it cleanly.
 func NewInMemoryBudgetCounter(ctx context.Context, policy BudgetPolicy) *InMemoryBudgetCounter {
 	c := &InMemoryBudgetCounter{
 		windows:      make(map[budgetKey]*windowBucket),
@@ -46,7 +46,7 @@ func NewInMemoryBudgetCounter(ctx context.Context, policy BudgetPolicy) *InMemor
 	return c
 }
 
-// evictionLoop periodically removes expired windows and stops when ctx is cancelled (M-1).
+// evictionLoop periodically removes expired windows and stops when ctx is cancelled.
 func (c *InMemoryBudgetCounter) evictionLoop(ctx context.Context) {
 	defer close(c.evictionDone)
 	ticker := time.NewTicker(60 * time.Second)
@@ -93,7 +93,7 @@ func (c *InMemoryBudgetCounter) Check(_ context.Context, actor, capability strin
 }
 
 // CheckAndRecord atomically checks the budget and records the usage in one locked operation.
-// This eliminates the TOCTOU race between separate Check + Record calls (C-4).
+// This eliminates the TOCTOU race between separate Check + Record calls.
 // On success the usage is recorded; on ErrBudgetExceeded no usage is recorded.
 func (c *InMemoryBudgetCounter) CheckAndRecord(_ context.Context, actor, capability string, amount float64) error {
 	now := time.Now()

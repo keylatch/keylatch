@@ -126,7 +126,7 @@ export function Connections() {
         onDeleteProvider={handleDelete}
       />
 
-      {/* Delete confirmation dialog — accessible modal, no BEM classes (S-01) */}
+      {/* Delete confirmation dialog — accessible modal, no BEM classes */}
       <Dialog open={!!confirmDelete} onOpenChange={(open) => { if (!open) handleCancelDelete() }}>
         <DialogContent aria-modal="true" className="sm:max-w-md">
           <DialogHeader>

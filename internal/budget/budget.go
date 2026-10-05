@@ -24,7 +24,7 @@ type BudgetPolicy struct {
 // BudgetCounter is the interface for checking and recording budget usage.
 type BudgetCounter interface {
 	// CheckAndRecord atomically checks the budget and records usage in one locked
-	// operation, eliminating the TOCTOU race between separate Check + Record calls (C-4).
+	// operation, eliminating the TOCTOU race between separate Check + Record calls.
 	CheckAndRecord(ctx context.Context, actor, capability string, amount float64) error
 	// Check is a read-only query — use for status display only, not enforcement.
 	Check(ctx context.Context, actor, capability string, amount float64) error

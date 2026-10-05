@@ -14,7 +14,7 @@ test:
 lint:
 	go vet ./...
 
-## security-grep: S2-8 check — no session token format-string interpolation
+## security-grep: no session token format-string interpolation
 security-grep:
 	bash scripts/security-grep.sh
 

@@ -17,7 +17,7 @@ type redactionPattern struct {
 // both the full regex used by Redact() at runtime, and the literal substring
 // prefix usable by lightweight, regex-free scanners.
 //
-// docker-server-security hardening (L3): packaging/redaction-patterns.json
+// docker-server-security hardening: packaging/redaction-patterns.json
 // (consumed by packaging/ci/scan-no-secret-in-storage.sh, a bash script that
 // only does `grep -F` literal substring matching — it has no regex engine
 // dependency) used to be maintained by hand and had drifted from this table

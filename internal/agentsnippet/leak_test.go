@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const canaryValue = "KEYLATCH_CANARY_PHASE3_SNIPPET_0xDEADBEEF"
+const canaryValue = "KEYLATCH_CANARY_CLI_SNIPPET_0xDEADBEEF"
 
 // highEntropyToken is a 32-byte high-entropy substring that must not appear
 // in MCP config for stdio mode.

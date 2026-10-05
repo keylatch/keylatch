@@ -14,7 +14,7 @@ import (
 )
 
 // canaryToken is a known-format token that must never appear in observable outputs.
-const canaryToken = "sk-canary-PHASE13-0xDEADBEEF"
+const canaryToken = "sk-canary-BROKER-0xDEADBEEF"
 
 // mockCanaryStrategy implements ExchangeStrategy returning the canary token.
 type mockCanaryStrategy struct {

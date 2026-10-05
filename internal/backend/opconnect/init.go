@@ -9,6 +9,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/manifest"
 )
 
 // OPConnectConfig holds the typed configuration for the 1Password Connect backend.
@@ -25,6 +26,13 @@ func init() {
 }
 
 func opConnectFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
+	// The support manifest excludes op-connect — refuse
+	// selection here so no caller can instantiate it or reach the adapter's
+	// duplicate-creating write path.
+	if !manifest.Current().Enabled("opconnect") {
+		return nil, fmt.Errorf("%w: op-connect is not supported in this release", backend.ErrUnavailable)
+	}
+
 	settings := backend.StripNonStringSettings(cfg.Settings)
 
 	var typed OPConnectConfig

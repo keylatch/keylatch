@@ -4,6 +4,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -161,6 +162,33 @@ func (e *VersionMismatch) Error() string {
 	return fmt.Sprintf("config version mismatch: got %d, want %d", e.Got, e.Want)
 }
 
+// migrations maps a source schema version to the function that upgrades a
+// Config from that version to the next one. Currently empty: v1 is the only
+// version this build understands, so there is nothing to migrate yet. This
+// is a scaffold — when currentVersion is bumped, add the v(N)->v(N+1) step
+// here rather than reaching for a fresh config.Default() on every mismatch
+// (see Migrate and loadConfigOrWarn in internal/cli/setup_cmd.go).
+var migrations = map[int]func(Config) (Config, error){}
+
+// Migrate upgrades c to currentVersion by walking the migrations chain.
+// Returns an error if no migration is registered for c.Version (including
+// when c.Version == currentVersion — callers should check that first via
+// Load's *VersionMismatch and only call Migrate on an actual mismatch).
+func Migrate(c Config) (Config, error) {
+	for c.Version != currentVersion {
+		step, ok := migrations[c.Version]
+		if !ok {
+			return Config{}, fmt.Errorf("no migration path from config version %d to %d", c.Version, currentVersion)
+		}
+		next, err := step(c)
+		if err != nil {
+			return Config{}, fmt.Errorf("migrate config from version %d: %w", c.Version, err)
+		}
+		c = next
+	}
+	return c, nil
+}
+
 // Default returns a Config populated with safe defaults.
 func Default() Config {
 	return Config{
@@ -182,13 +210,24 @@ func Default() Config {
 // Load reads and parses the config file at path. Unknown fields are rejected.
 // Returns *VersionMismatch if version != 1.
 func Load(path string) (Config, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("open config %q: %w", path, err)
+		return Config{}, fmt.Errorf("read config %q: %w", path, err)
 	}
-	defer f.Close() //nolint:errcheck // defer close of config file, error non-actionable in read path
+	return LoadBytes(path, data)
+}
 
-	dec := json.NewDecoder(f)
+// LoadBytes decodes and validates config content that the caller has already
+// read from disk. Split out from Load so callers that must distinguish a
+// read/IO failure (permission denied, transient I/O — the bytes were never
+// even inspected) from a content-level failure (malformed JSON, unknown
+// fields, version mismatch, failed validation — the bytes were read fine but
+// are unusable) can read the file themselves first and classify accordingly.
+// See internal/cli/setup_cmd.go's loadConfigOrWarn, which needs exactly this
+// distinction to avoid silently resetting a config it was merely unable to
+// open.
+func LoadBytes(path string, data []byte) (Config, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
 	var c Config

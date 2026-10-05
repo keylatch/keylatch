@@ -28,6 +28,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/proxy"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -48,7 +49,7 @@ const DoctorHint = "Run `keylatch doctor` for a health check, or visit keylatch.
 func IsDoctorHintSuppressed(c *cobra.Command) bool {
 	name := c.Name()
 	switch name {
-	case "doctor", "help", "completion", "__complete", "__completeNoDesc":
+	case "doctor", "help", "completion", "__complete", "__completeNoDesc", "version":
 		return true
 	}
 	// Suppress if --help or --version was requested.
@@ -68,7 +69,7 @@ func NewRootCommand() *cobra.Command {
 		Short: "Keylatch — zero-trust credential vault CLI",
 		Long:  "Keylatch manages credentials with LLM-session blocking and gateway-aware runtime modes.",
 		// Version is used by cobra to respond to --version; the template below
-		// formats the output as a short one-liner (e.g. "keylatch v1.0.0-dev").
+		// formats the output as a short one-liner (e.g. "keylatch v0.0.0-devbuild").
 		Version: version.String(),
 		// PersistentPreRunE handles --version and registry initialisation before
 		// any subcommand runs.
@@ -143,6 +144,31 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
+// newVersionCmd returns the `version` subcommand. It produces the same
+// output as the `--version` flag handled in PersistentPreRunE above —
+// docs/installation.md documents `keylatch version` as the post-install
+// verification step, but only the flag existed until this command was added.
+// NOT guarded — version metadata is not a credential.
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version information and exit",
+		RunE: func(c *cobra.Command, _ []string) error {
+			jsonOut, _ := c.Flags().GetBool("json")
+			if jsonOut {
+				b, err := json.Marshal(version.JSON())
+				if err != nil {
+					return fmt.Errorf("keylatch version: marshal: %w", err)
+				}
+				fmt.Fprintln(c.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintln(c.OutOrStdout(), version.String())
+			return nil
+		},
+	}
+}
+
 // addCmd is a helper that adds a command to root with a groupID set.
 func addCmd(root *cobra.Command, cmd *cobra.Command, groupID string) {
 	cmd.GroupID = groupID
@@ -159,6 +185,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newConnectCmd(), "start")
 	addCmd(root, newAgentCmd(), "start")
 	addCmd(root, newDoctorCmdImpl(), "start")
+	addCmd(root, newVersionCmd(), "start")
 	addCmd(root, newUICmd(), "start")
 	addCmd(root, newBootstrapCmd(), "start")
 	addCmd(root, newInstallGuardCmd(), "start")
@@ -264,6 +291,9 @@ func Register(root *cobra.Command) {
 
 	// runtime group is now implemented.
 	addCmd(root, newRuntimeCmd(), "advanced")
+
+	// `scope` — prints the support manifest (internal/manifest).
+	addCmd(root, newScopeCmd(), "advanced")
 }
 
 // newRegistryCmd returns the `registry` subcommand group.
@@ -757,16 +787,27 @@ func newRunCmd() *cobra.Command {
 			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
 			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
 
+			// The support manifest excludes direct_brokered, gateway_proxy and
+			// direct_classic_sandboxed from the supported runtime set
+			// — WithManifestGuard makes each unreachable regardless
+			// of runtime.Resolve's fallback hierarchy, so a denied or
+			// unavailable gateway can never fall back into a direct
+			// secret-injection mode.
+			supported := manifest.Current()
 			dr := runner.DispatchRunner{
 				Guard: guardFn,
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.
-					string(runtime.RuntimeGatewayTyped):   runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeGatewaySDK):     runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeDirectBrokered): runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil),
-					string(runtime.RuntimeGatewayProxy):   runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
+					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
+					string(runtime.RuntimeGatewaySDK):   runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
+					string(runtime.RuntimeDirectBrokered): runner.WithManifestGuard(
+						runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil), supported, "direct_brokered"),
+					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
+						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
+						supported, "gateway_proxy"),
 					// direct_classic_sandboxed reinstated.
-					string(runtime.RuntimeDirectClassicSandboxed): runner.NewClassicSandboxedDriver(nil),
+					string(runtime.RuntimeDirectClassicSandboxed): runner.WithManifestGuard(
+						runner.NewClassicSandboxedDriver(nil), supported, "direct_classic_sandboxed"),
 				},
 			}
 
@@ -1158,7 +1199,7 @@ func parseRunArgs(args []string) (string, []string, error) {
 
 // closeAndZeroBackend closes b and, if it holds decrypted key material in
 // memory (currently: only the file backend's attached keyring), zeroes it
-// (L2: docker-server-security hardening).
+// (docker-server-security hardening).
 //
 // Only call this at a command's TERMINAL exit point (immediately before
 // os.Exit / process end) — internal/backend/dispatch.Select caches backend

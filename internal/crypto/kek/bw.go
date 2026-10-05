@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
@@ -22,11 +21,7 @@ type bwKEK struct {
 // Requires the BW_SESSION environment variable to be set.
 func BWKEK(itemID, fieldName string) (KEK, error) {
 	runner := func(args ...string) ([]byte, error) {
-		out, err := exec.Command("bw", args...).Output() //nolint:gosec // G204: "bw" is the Bitwarden CLI binary; it is a fixed string, not user input
-		if err != nil {
-			return nil, err
-		}
-		return out, nil
+		return runManagerCLI("bw", args)
 	}
 	return bwKEKWithRunner(itemID, fieldName, runner)
 }

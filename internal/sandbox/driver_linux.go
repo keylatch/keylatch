@@ -63,7 +63,7 @@ func RunSandboxed(ctx context.Context, m *SandboxManifest, featureEnabled bool, 
 	//nolint:gosec // G204: argv is constructed from validated manifest fields, not user input.
 	cmd := exec.CommandContext(ctx, "bwrap", args...)
 	// Strip the calling process environment so KEYLATCH_* vars never leak
-	// into bwrap's startup environment or /proc/<pid>/environ (C1).
+	// into bwrap's startup environment or /proc/<pid>/environ.
 	// Preserve BWRAP_ARGV_DUMP when set (test-only env var for argv introspection).
 	env := []string{"PATH=" + os.Getenv("PATH")}
 	if dump := os.Getenv("BWRAP_ARGV_DUMP"); dump != "" {

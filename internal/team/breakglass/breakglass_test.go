@@ -37,7 +37,7 @@ func TestRateLimit_ThreeOpensAllowed_FourthBlocked(t *testing.T) {
 
 	// Test rate limit independently using bob.
 	// Open 3 times without closing to avoid cooling period (open doesn't set LastClose).
-	// M-10: removed the dead loop that only ran one iteration due to unconditional break.
+	// Removed the dead loop that only ran one iteration due to unconditional break.
 	member2 := newMember("bob")
 
 	for i := 0; i < 3; i++ {

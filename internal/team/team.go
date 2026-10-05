@@ -78,7 +78,7 @@ func HMACValue(teamID, value string) string {
 }
 
 // hmacTeamKey derives a 32-byte HMAC key scoped to teamID using HKDF-SHA256.
-// N-9: replaces the weaker SHA-256-over-known-prefix derivation with proper HKDF.
+// Replaces the weaker SHA-256-over-known-prefix derivation with proper HKDF.
 func hmacTeamKey(teamID string) []byte {
 	h := hkdf.New(sha256.New, []byte(teamID), []byte("keylatch/team/hmac-key/v1"), nil)
 	key := make([]byte, 32)

@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,8 +16,8 @@ func TestApprovalsHandler_List(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/approvals", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "approvals")
+	assert.Equal(t, http.StatusNotImplemented, rec.Code)
+	assert.Contains(t, rec.Body.String(), "not_implemented")
 }
 
 func TestApprovalsHandler_Approve(t *testing.T) {
@@ -27,8 +26,8 @@ func TestApprovalsHandler_Approve(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/approvals/abc123/approve", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "approve")
+	require.Equal(t, http.StatusNotImplemented, rec.Code)
+	assert.Contains(t, rec.Body.String(), "not_implemented")
 }
 
 func TestApprovalsHandler_Deny(t *testing.T) {
@@ -37,8 +36,8 @@ func TestApprovalsHandler_Deny(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/approvals/abc123/deny", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "deny")
+	require.Equal(t, http.StatusNotImplemented, rec.Code)
+	assert.Contains(t, rec.Body.String(), "not_implemented")
 }
 
 func TestApprovalsHandler_InvalidAction(t *testing.T) {
@@ -54,14 +53,8 @@ func TestApprovalsHandler_Stream_SSE(t *testing.T) {
 	t.Parallel()
 	h := &api.ApprovalsHandler{}
 	req := httptest.NewRequest(http.MethodGet, "/api/approvals/stream", nil)
-	// Cancel context immediately so stream exits.
-	ctx, cancel := context.WithCancel(req.Context())
-	defer cancel()
-	cancel()
-	req = req.WithContext(ctx)
-
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
-	assert.Contains(t, rec.Body.String(), "heartbeat")
+	assert.Equal(t, http.StatusNotImplemented, rec.Code)
+	assert.Contains(t, rec.Body.String(), "not_implemented")
 }

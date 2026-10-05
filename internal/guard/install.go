@@ -42,7 +42,7 @@ var AgentHookMechanism = map[Agent]string{
 	AgentAider:       "pre-tool-use-hook (.aider.conf.yml)",
 	AgentWindsurf:    "not supported — gateway mode recommended",
 	AgentCodex:       "PreToolUse (hooks.json)",
-	AgentCopilot:     "shell wrapper (native hook path unconfirmed)",
+	AgentCopilot:     "shell wrapper (patches shell rc)",
 	AgentGemini:      "BeforeTool (settings.json)",
 	AgentOpenCode:    "tool.execute.before (TypeScript plugin)",
 	AgentAntigravity: "not supported — gateway mode recommended",
@@ -96,28 +96,115 @@ func Install(agent Agent, opts InstallOpts) (settingsPath string, err error) {
 }
 
 // IsInstalled returns true when the guard for agent is already wired into the
-// Claude Code settings file. This is the same idempotency check used by Install.
+// agent's hook configuration. This is the same idempotency check used by Install.
 func IsInstalled(agent Agent, opts InstallOpts) (bool, error) {
-	if agent != AgentClaudeCode {
-		return false, fmt.Errorf("install-guard: IsInstalled only supported for claude-code currently")
-	}
-	settingsPath, err := resolveSettingsPath(opts)
-	if err != nil {
-		return false, err
-	}
-	settings, err := loadSettings(settingsPath)
-	if err != nil {
-		// If the file does not exist the guard is definitely not installed.
-		if os.IsNotExist(err) {
-			return false, nil
+	switch agent {
+	case AgentClaudeCode:
+		settingsPath, err := resolveSettingsPath(opts)
+		if err != nil {
+			return false, err
 		}
-		return false, err
+		settings, err := loadSettings(settingsPath)
+		if err != nil {
+			// If the file does not exist the guard is definitely not installed.
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		scriptPath, err := guardScriptPath(agent, opts)
+		if err != nil {
+			return false, err
+		}
+		return hookAlreadyInstalled(settings, scriptPath), nil
+
+	case AgentCursor:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		}
+		settingsPath := filepath.Join(home, ".cursor", "settings.json")
+		data, err := os.ReadFile(settingsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		return contains(string(data), "block-keylatch-exfiltration"), nil
+
+	case AgentAider:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		}
+		confPath := filepath.Join(home, ".aider.conf.yml")
+		data, err := os.ReadFile(confPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		for _, line := range splitLines(string(data)) {
+			if contains(line, "pre-tool-use-hook") && contains(line, "block-keylatch-exfiltration") {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	case AgentCodex:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		}
+		hooksPath := filepath.Join(home, ".codex", "hooks.json")
+		data, err := os.ReadFile(hooksPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		return contains(string(data), "block-keylatch-exfiltration"), nil
+
+	case AgentGemini:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		}
+		settingsPath := filepath.Join(home, ".gemini", "settings.json")
+		if _, statErr := os.Stat(settingsPath); os.IsNotExist(statErr) {
+			alt := filepath.Join(home, ".config", "gemini", "settings.json")
+			if _, statErr2 := os.Stat(alt); statErr2 == nil {
+				settingsPath = alt
+			}
+		}
+		data, err := os.ReadFile(settingsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		return contains(string(data), "block-keylatch-exfiltration"), nil
+
+	case AgentOpenCode:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		}
+		pluginDir := filepath.Join(home, ".config", "opencode", "plugins", "keylatch-guard")
+		_, err = os.Stat(pluginDir)
+		return err == nil, nil
+
+	case AgentWindsurf, AgentCopilot, AgentAntigravity:
+		// These agents rely on env-var-only Layer 1 guard.
+		return os.Getenv("CREDENTIALS_LLM_SESSION") != "", nil
+
+	default:
+		return false, fmt.Errorf("install-guard: unsupported agent %q (supported: %v)", agent, SupportedAgents)
 	}
-	scriptPath, err := guardScriptPath(agent, opts)
-	if err != nil {
-		return false, err
-	}
-	return hookAlreadyInstalled(settings, scriptPath), nil
 }
 
 // --- agent-specific install functions ---

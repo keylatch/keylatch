@@ -10,6 +10,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/manifest"
 )
 
 // ProtonPassConfig holds the typed configuration for the Proton Pass backend.
@@ -31,6 +32,12 @@ func init() {
 }
 
 func protonPassFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
+	// The support manifest excludes proton-pass —
+	// refuse selection here so no caller can instantiate it.
+	if !manifest.Current().Enabled("proton-pass") {
+		return nil, fmt.Errorf("%w: proton-pass is not supported in this release", backend.ErrUnavailable)
+	}
+
 	settings := backend.StripNonStringSettings(cfg.Settings)
 
 	var typed ProtonPassConfig

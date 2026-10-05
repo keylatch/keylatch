@@ -68,6 +68,25 @@ jobs:
       - name: lint-no-production-todos
         run: bash scripts/lint-no-production-todos.sh
 
+  naming:
+    # Code, docs and commit subjects describe what the code does, never the
+    # internal work item or finding id behind a change.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: naming scan self-test
+        run: bash release-checks/naming-scan.sh --self-test
+      - name: code and file names
+        run: bash release-checks/naming-scan.sh
+      - name: docs
+        run: bash release-checks/naming-scan.sh --docs
+      - name: commit subjects
+        if: github.event_name == 'pull_request'
+        run: bash release-checks/naming-scan.sh --range "origin/${{ github.base_ref }}..HEAD"
+
   go-test:
     needs: lint
     strategy:
@@ -87,7 +106,7 @@ jobs:
           KEYLATCH_BACKEND: file
         run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
       - name: Check coverage threshold
-        run: bash release-gates/coverage-threshold.sh coverage.out
+        run: bash release-checks/coverage-threshold.sh coverage.out
       - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -369,7 +388,7 @@ jobs:
       - name: Build keylatch binary
         run: go build -buildvcs=false -o $RUNNER_TEMP/keylatch ./cmd/keylatch
       - name: Validate provider YAML templates
-        run: bash release-gates/provider-template-validate.sh $RUNNER_TEMP/keylatch
+        run: bash release-checks/provider-template-validate.sh $RUNNER_TEMP/keylatch
 
   gateway-e2e:
     name: Gateway E2E

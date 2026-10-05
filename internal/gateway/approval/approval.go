@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -263,6 +264,9 @@ func Verify(ctx context.Context, approvalsDir, token, reqHash string) error {
 
 // verifyWithClock is the internal implementation with an injected clock.
 func verifyWithClock(_ context.Context, approvalsDir, token, reqHash string, clk Clock) error {
+	if !validToken(token) {
+		return ErrNotFound
+	}
 	path := filepath.Join(approvalsDir, token+".json")
 	ar, err := readApproval(path)
 	if err != nil {
@@ -288,6 +292,19 @@ func newApprovalToken() (string, error) {
 		return "", err
 	}
 	return "apv_" + hex.EncodeToString(b), nil
+}
+
+// tokenPattern allows the "apv_"-prefixed alphanumeric tokens this package
+// and its tests use, while rejecting anything that could escape approvalsDir
+// when joined into a filesystem path (path separators, "..", etc.). Every
+// caller that joins a token into a path (verifyWithClock,
+// updateStatusWithClock) must reject a non-matching token first — both this
+// package and the `keylatch approve`/`deny` CLI commands pass a
+// caller-controlled token straight through to here.
+var tokenPattern = regexp.MustCompile(`^apv_[A-Za-z0-9_-]+$`)
+
+func validToken(token string) bool {
+	return tokenPattern.MatchString(token)
 }
 
 func readApproval(path string) (*ApprovalRequest, error) {
@@ -342,6 +359,9 @@ func updateStatus(approvalsDir, token, status, reason string) error {
 
 // updateStatusWithClock is the internal implementation with an injected clock.
 func updateStatusWithClock(approvalsDir, token, status, reason string, clk Clock) error {
+	if !validToken(token) {
+		return ErrNotFound
+	}
 	path := filepath.Join(approvalsDir, token+".json")
 	ar, err := readApproval(path)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/manifest"
 )
 
 // KeeperConfig holds the typed configuration for the Keeper Commander backend.
@@ -28,6 +29,12 @@ func init() {
 }
 
 func keeperFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
+	// The support manifest excludes keeper — refuse
+	// selection here so no caller can instantiate it, regardless of config.
+	if !manifest.Current().Enabled("keeper") {
+		return nil, fmt.Errorf("%w: keeper is not supported in this release", backend.ErrUnavailable)
+	}
+
 	settings := backend.StripNonStringSettings(cfg.Settings)
 
 	var typed KeeperConfig

@@ -15,7 +15,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/trust"
@@ -526,5 +530,75 @@ func TestPassphraseKEK_ZeroedOnError(t *testing.T) {
 	}
 }
 
-// Silence the unused import of os.
-var _ = os.Getenv
+// ---------------------------------------------------------------------------
+// runManagerCLI — timeout and output-bound enforcement
+// ---------------------------------------------------------------------------
+
+// writeFakeManagerCLI drops a shell script at <dir>/<name> and returns its
+// path, for exercising runManagerCLI's real subprocess timeout/bound
+// handling against a controlled child process.
+func writeFakeManagerCLI(t *testing.T, name, script string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell stub")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o700); err != nil {
+		t.Fatalf("writing fake %s: %v", name, err)
+	}
+	return path
+}
+
+func TestRunManagerCLI_TimesOutOnHang(t *testing.T) {
+	// Not t.Parallel(): mutates the package-level subprocessTimeout var.
+	orig := subprocessTimeout
+	subprocessTimeout = 50 * time.Millisecond
+	defer func() { subprocessTimeout = orig }()
+
+	// "exec" replaces the shell with sleep instead of forking it, so killing
+	// the direct child on timeout closes its stdout pipe immediately — a
+	// forked grandchild would keep that pipe open and stall cmd.Wait().
+	bin := writeFakeManagerCLI(t, "op", "exec sleep 5\n")
+	start := time.Now()
+	_, err := runManagerCLI(bin, nil)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("expected a timeout error, got: %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("runManagerCLI took %s, want well under the real 15s default (timeout override should have fired)", elapsed)
+	}
+}
+
+func TestRunManagerCLI_BoundsOutput(t *testing.T) {
+	// Not t.Parallel(): mutates the package-level maxSubprocessOutput var.
+	orig := maxSubprocessOutput
+	maxSubprocessOutput = 1024
+	defer func() { maxSubprocessOutput = orig }()
+
+	bin := writeFakeManagerCLI(t, "bw", "head -c 4096 /dev/zero\n")
+	_, err := runManagerCLI(bin, nil)
+	if err == nil {
+		t.Fatal("expected output-limit error for a 4KiB payload against a 1KiB bound, got nil")
+	}
+	if !strings.Contains(err.Error(), "byte limit") {
+		t.Errorf("expected an output-limit error, got: %v", err)
+	}
+}
+
+func TestRunManagerCLI_SuccessWithinBounds(t *testing.T) {
+	t.Parallel()
+	bin := writeFakeManagerCLI(t, "op", "printf hello\n")
+	out, err := runManagerCLI(bin, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "hello" {
+		t.Errorf("out = %q, want %q", out, "hello")
+	}
+}

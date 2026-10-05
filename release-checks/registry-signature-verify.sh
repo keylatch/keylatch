@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Verify that every provider bundle has a valid cosign signature (S7-13 / FIND-008).
+# Verify that every provider bundle has a valid cosign signature.
 #
-# Supports two signing modes (EPIC-08 / ADR-001):
+# Supports two signing modes (ADR-001):
 #
 #   Keyless (default): bundle has <file>.sig + <file>.cert
 #     cosign verify-blob --certificate <file>.cert --signature <file>.sig \

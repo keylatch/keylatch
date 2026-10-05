@@ -10,7 +10,7 @@ import (
 	"github.com/keylatch/keylatch/internal/sidecar/events"
 )
 
-const canary = "KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF"
+const canary = "KEYLATCH_CANARY_DESKTOP_0xDEADBEEF"
 
 func TestMuxSubscribeUnsubscribe(t *testing.T) {
 	mux := events.NewMux()

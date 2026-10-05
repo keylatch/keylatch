@@ -45,7 +45,10 @@ func (fb *FileBackend) MigrateIfFlat(ctx context.Context, canonical string) erro
 // next call to retry.
 func (fb *FileBackend) migrateIfFlat(ctx context.Context, canonical string) error {
 	// Check if the versioned layout already exists — no migration needed.
-	vp := valuePath(fb.dir, canonical, 1)
+	vp, err := valuePath(fb.dir, canonical, 1)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(vp); err == nil {
 		return nil // already migrated
 	}

@@ -113,7 +113,7 @@ When `REGISTRY_COSIGN_USE_KEYED=1` is active:
   keyless path passes `--output-certificate`.
 - `internal/registry/verify.go`: detect `.cert` file → keyless verify path using
   `cosign verify-blob --certificate`; else → keyed path.
-- `release-gates/registry-signature-verify.sh`: test both paths with fixtures.
+- `release-checks/registry-signature-verify.sh`: test both paths with fixtures.
 - `docs/architecture/registry-signing.md`: operator reference for both modes.
 
 ---

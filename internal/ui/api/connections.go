@@ -584,7 +584,7 @@ func (h *ConnectionDetailHandler) update(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Resolve namespace consistently: prefer conn.Namespace, fall back to the
-	// package default. This avoids the C-04 bug where secretFieldPath used
+	// package default. This avoids a bug where secretFieldPath used
 	// defaultConnectionNamespace while saveFieldModes/loadFieldModes used conn.Namespace.
 	ns := conn.Namespace
 	if ns == "" {

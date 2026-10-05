@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const canaryToken = "KEYLATCH_CANARY_PHASE5_AUDIT_0xDEADBEEF"
+const canaryToken = "KEYLATCH_CANARY_AUDIT_AUDIT_0xDEADBEEF"
 
 func TestCanaryNeverPlaintextInAuditLogWhitebox(t *testing.T) {
 	baseDir := t.TempDir()

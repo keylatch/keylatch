@@ -64,15 +64,15 @@ func TestHumanOnlyCommands_RefuseWithoutTerminal(t *testing.T) {
 			token := createPendingApproval(t, approvalsDir)
 
 			cmd := tc.run()
-			var errOut bytes.Buffer
 			cmd.SetOut(&bytes.Buffer{})
-			cmd.SetErr(&errOut)
+			cmd.SetErr(&bytes.Buffer{})
 			cmd.SetIn(strings.NewReader("y\n"))
 			cmd.SetArgs(tc.args(token))
 
-			assertSecurityBlock(t, cmd.ExecuteContext(context.Background()))
-			if !strings.Contains(errOut.String(), "requires an interactive terminal") {
-				t.Errorf("stderr should explain the terminal requirement, got %q", errOut.String())
+			err := cmd.ExecuteContext(context.Background())
+			assertSecurityBlock(t, err)
+			if !strings.Contains(err.Error(), "requires an interactive terminal") {
+				t.Errorf("error should explain the terminal requirement, got %q", err)
 			}
 			assertStillPending(t, approvalsDir, token)
 		})
@@ -91,14 +91,14 @@ func TestHumanOnlyCommands_RefuseInDetectedSessionEvenWithTerminal(t *testing.T)
 				token := createPendingApproval(t, approvalsDir)
 
 				cmd := newCmd()
-				var errOut bytes.Buffer
 				cmd.SetOut(&bytes.Buffer{})
-				cmd.SetErr(&errOut)
+				cmd.SetErr(&bytes.Buffer{})
 				cmd.SetArgs([]string{token})
 
-				assertSecurityBlock(t, cmd.ExecuteContext(context.Background()))
-				if !strings.Contains(errOut.String(), "LLM session") {
-					t.Errorf("stderr should name the LLM session block, got %q", errOut.String())
+				err := cmd.ExecuteContext(context.Background())
+				assertSecurityBlock(t, err)
+				if !strings.Contains(err.Error(), "LLM session") {
+					t.Errorf("error should name the LLM session block, got %q", err)
 				}
 				assertStillPending(t, approvalsDir, token)
 			})

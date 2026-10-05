@@ -33,7 +33,7 @@ func (s *StaticGatewayOnlyStrategy) Provider() string { return s.provider }
 // Exchange returns the static token. Returns ErrUnsupportedExchange if the
 // namespace signals a direct_brokered context.
 func (s *StaticGatewayOnlyStrategy) Exchange(_ context.Context, _, _, namespace string) (broker.ExchangeResult, error) {
-	// Gate: static tokens are not available in direct_brokered mode (N-1).
+	// Gate: static tokens are not available in direct_brokered mode.
 	if strings.HasPrefix(namespace, "direct_brokered:") {
 		return broker.ExchangeResult{}, broker.ErrUnsupportedExchange
 	}

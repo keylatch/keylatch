@@ -115,7 +115,7 @@ type HighSeverityAuditEvent interface {
 // Each channel carries the upstream event type; adapter goroutines convert
 // them to value-free Event structs before publishing on the mux.
 //
-// All payloads are scrubbed: the canary KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF
+// All payloads are scrubbed: the canary KEYLATCH_CANARY_DESKTOP_0xDEADBEEF
 // MUST NOT appear in any emitted event (enforced by the corresponding unit test).
 //
 // Upstream bus channels are typed as chan interface{} to avoid importing
@@ -266,7 +266,7 @@ func convertToSecurityEvent(raw interface{}, kind, severity string) *SecurityEve
 
 // scrub removes any credential or canary patterns from a string.
 //
-// docker-server-security hardening (L3): this used to carry its own
+// docker-server-security hardening: this used to carry its own
 // hand-maintained copy of the credential-prefix list, with a comment
 // requiring it be kept in sync with packaging/redaction-patterns.json by
 // hand — a THIRD copy of that table, alongside internal/runner/redact.go's
@@ -276,7 +276,7 @@ func convertToSecurityEvent(raw interface{}, kind, severity string) *SecurityEve
 // to drift: see TestScrub_MatchesRunnerRedactionPrefixes for the parity
 // guard covering this consumer.
 func scrub(s string) string {
-	const canary = "KEYLATCH_CANARY_PHASE14_DESKTOP_0xDEADBEEF"
+	const canary = "KEYLATCH_CANARY_DESKTOP_0xDEADBEEF"
 	if strings.Contains(s, canary) {
 		return "[REDACTED]"
 	}

@@ -63,7 +63,7 @@ func TestValidateSession_MaxSessionAge(t *testing.T) {
 }
 
 func TestValidateSession_MaxSessionAge_ExceededFromIssuedAt(t *testing.T) {
-	// M-11: session was issued MaxSessionAge+1 ago — must return ErrMaxSessionAge.
+	// Session was issued MaxSessionAge+1 ago — must return ErrMaxSessionAge.
 	maxAge := 2 * time.Hour
 	issuedAt := time.Now().Add(-(maxAge + time.Minute)) // issued maxAge+1min ago
 	session := &oidc.Session{

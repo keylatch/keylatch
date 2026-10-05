@@ -442,7 +442,7 @@ func TestProxyServer_TLSMinVersion_Constant(t *testing.T) {
 }
 
 // TestProxyServer_RouteNotAllowed verifies that a request to an allowlisted host
-// with no matching route returns 403 with "route_not_allowed" (C1 — fail-closed).
+// with no matching route returns 403 with "route_not_allowed" (fail-closed).
 func TestProxyServer_RouteNotAllowed(t *testing.T) {
 	profile := proxy.ProxyProfile{
 		ID:    "test",

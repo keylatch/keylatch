@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -262,11 +263,11 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// TestProxyUp_Foreground verifies that `proxy up` starts listening and writes a PID file.
-func TestProxyUp_Foreground(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("SIGINT signal delivery to self is not supported on Windows")
-	}
+// TestSecurityRegression_ProxyUpRejectsUnsupported verifies that
+// `proxy up` refuses immediately (gateway_proxy is unavailable) —
+// no listener bound, no PID/state file written, no fake-healthy state
+// published.
+func TestSecurityRegression_ProxyUpRejectsUnsupported(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 
@@ -274,56 +275,34 @@ func TestProxyUp_Foreground(t *testing.T) {
 	pidPath := proxyPIDPathFromDir(dir)
 
 	cmd := newProxyUpCmd()
-	var out bytes.Buffer
-	var errOut bytes.Buffer
+	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 	cmd.SetArgs([]string{fmt.Sprintf("--port=%d", port)})
 
-	// Run the command in a goroutine since it blocks until signal.
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Execute()
-	}()
-
-	// Poll for PID file and confirm the process is listening.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(pidPath); err == nil {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected proxy up to refuse; got nil error")
+	}
+	var cliErr *CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected *CLIError, got %T: %v", err, err)
+	}
+	if cliErr.Class != "RuntimeNotAvailable" {
+		t.Errorf("expected Class=RuntimeNotAvailable, got %q", cliErr.Class)
+	}
+	if !strings.Contains(cliErr.Message, ErrProxyUnsupported.Error()) {
+		t.Errorf("expected message to mention proxy unsupported, got %q", cliErr.Message)
 	}
 
-	if _, err := os.Stat(pidPath); err != nil {
-		t.Fatal("PID file was not written by proxy up")
+	if _, statErr := os.Stat(pidPath); !os.IsNotExist(statErr) {
+		t.Error("expected no PID file to be written when proxy is unsupported")
 	}
 
-	// Confirm the address is listed in output or PID file has the right PID.
-	pid, readErr := gateway.ReadPID(pidPath)
-	if readErr != nil || pid != os.Getpid() {
-		t.Errorf("PID file contains %d, want %d (err: %v)", pid, os.Getpid(), readErr)
-	}
-
-	// Confirm a TCP connection can be established.
-	conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
-	if dialErr != nil {
-		t.Errorf("proxy not listening: %v", dialErr)
-	} else {
+	// Confirm nothing is actually listening on the requested port.
+	if conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond); dialErr == nil {
 		conn.Close()
-	}
-
-	// Trigger shutdown by sending SIGINT to self.
-	p, _ := os.FindProcess(os.Getpid())
-	_ = p.Signal(os.Interrupt)
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Errorf("proxy up returned error: %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Error("proxy up did not return after SIGINT")
+		t.Error("expected no listener; connection to proxy port unexpectedly succeeded")
 	}
 }
 
@@ -356,11 +335,10 @@ func TestProxyUp_AlreadyRunning(t *testing.T) {
 	}
 }
 
-// TestProxyUp_StalePIDFile verifies that `proxy up` cleans a stale PID file and starts.
+// TestProxyUp_StalePIDFile verifies that `proxy up` refuses before touching
+// an existing stale PID file — gateway_proxy is unsupported, so the
+// stale-cleanup path is never reached.
 func TestProxyUp_StalePIDFile(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("SIGINT signal delivery to self is not supported on Windows")
-	}
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 
@@ -373,42 +351,20 @@ func TestProxyUp_StalePIDFile(t *testing.T) {
 
 	port := freePort(t)
 	cmd := newProxyUpCmd()
-	var out bytes.Buffer
-	cmd.SetOut(&out)
+	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{fmt.Sprintf("--port=%d", port)})
 
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Execute()
-	}()
-
-	// Wait for the PID file to be refreshed with the real PID.
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		pid, _ := gateway.ReadPID(pidPath)
-		if pid == os.Getpid() {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected proxy up to refuse; got nil error")
 	}
 
+	// The stale PID file must be left untouched (refusal happens before any
+	// cleanup or listener side effect).
 	pid, _ := gateway.ReadPID(pidPath)
-	if pid != os.Getpid() {
-		t.Errorf("expected PID file to be refreshed with current PID %d, got %d", os.Getpid(), pid)
-	}
-
-	// Trigger shutdown.
-	p, _ := os.FindProcess(os.Getpid())
-	_ = p.Signal(os.Interrupt)
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Errorf("proxy up returned error: %v", err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Error("proxy up did not return after SIGINT")
+	if pid != stalePID {
+		t.Errorf("expected stale PID file untouched (%d), got %d", stalePID, pid)
 	}
 }
 
@@ -622,9 +578,11 @@ func TestGatewayUp_WithProxy_ProxyAlreadyRunning(t *testing.T) {
 	// This is the no-op path.
 }
 
-// TestGatewayUp_WithProxy_HappyPath verifies that startProxyWithGateway binds a listener
-// and writes a PID file when called directly.
-func TestGatewayUp_WithProxy_HappyPath(t *testing.T) {
+// TestSecurityRegression_GatewayWithProxyRejectsUnsupported verifies
+// that startProxyWithGateway (the `gateway up --with-proxy` startup form)
+// refuses immediately — gateway_proxy is unavailable — without binding
+// a listener or writing a PID file.
+func TestSecurityRegression_GatewayWithProxyRejectsUnsupported(t *testing.T) {
 	dir := t.TempDir()
 	port := freePort(t)
 	pidPath := proxyPIDPathFromDir(dir)
@@ -633,62 +591,18 @@ func TestGatewayUp_WithProxy_HappyPath(t *testing.T) {
 	defer cancel()
 
 	done, err := startProxyWithGateway(ctx, port, pidPath)
-	if err != nil {
-		t.Fatalf("startProxyWithGateway: %v", err)
+	if !errors.Is(err, ErrProxyUnsupported) {
+		t.Fatalf("expected ErrProxyUnsupported, got: %v", err)
+	}
+	if done != nil {
+		t.Error("expected nil done channel on refusal")
 	}
 
-	// PID file should have been written.
-	pid, readErr := gateway.ReadPID(pidPath)
-	if readErr != nil {
-		t.Fatalf("ReadPID: %v", readErr)
+	if _, statErr := os.Stat(pidPath); !os.IsNotExist(statErr) {
+		t.Error("expected no PID file to be written when proxy is unsupported")
 	}
-	if pid != os.Getpid() {
-		t.Errorf("pid = %d, want %d", pid, os.Getpid())
-	}
-
-	// Listener should be accepting connections.
-	conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
-	if dialErr != nil {
-		t.Errorf("proxy not listening after startProxyWithGateway: %v", dialErr)
-	} else {
+	if conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond); dialErr == nil {
 		conn.Close()
-	}
-
-	// Cancel context — proxy goroutine should shut down.
-	cancel()
-
-	// W6: wait on done channel instead of sleeping.
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("startProxyWithGateway cleanup did not complete within 3s")
-	}
-
-	// PID file should be removed after ctx cancel.
-	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
-		t.Error("expected PID file removed after context cancel")
-	}
-}
-
-// TestGatewayUp_WithProxy_ProxyFails verifies that startProxyWithGateway returns an error
-// when the port is already in use (simulates proxy start failure).
-func TestGatewayUp_WithProxy_ProxyFails(t *testing.T) {
-	dir := t.TempDir()
-	port := freePort(t)
-	pidPath := proxyPIDPathFromDir(dir)
-
-	// Occupy the port so the proxy cannot bind.
-	occupier, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		t.Fatalf("occupy port: %v", err)
-	}
-	defer occupier.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	_, proxyErr := startProxyWithGateway(ctx, port, pidPath)
-	if proxyErr == nil {
-		t.Fatal("expected error when proxy port is occupied, got nil")
+		t.Error("expected no listener; connection to proxy port unexpectedly succeeded")
 	}
 }

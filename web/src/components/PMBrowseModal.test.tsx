@@ -95,7 +95,7 @@ describe('PMBrowseModal — authenticated', () => {
     expect(screen.getByRole('button', { name: 'GitHub PAT' })).toBeInTheDocument()
   })
 
-  it('populates the manual URI input with a placeholder when an op item is clicked (C-01)', async () => {
+  it('populates the manual URI input with a placeholder when an op item is clicked', async () => {
     // For 1Password items, clicking an item populates the manual URI input with an
     // op://<slug>/<field> placeholder rather than immediately calling onSelect.
     // The user must replace <field> with the actual field name before submitting.

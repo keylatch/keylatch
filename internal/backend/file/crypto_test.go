@@ -240,7 +240,7 @@ func TestEncryptedValuesOpaqueOnDisk(t *testing.T) {
 	ctx := context.Background()
 	canonical := "default/test/opaque_key"
 	version := 1
-	plaintext := []byte("KEYLATCH_CANARY_PHASE5_0xDEADBEEF")
+	plaintext := []byte("KEYLATCH_CANARY_AUDIT_0xDEADBEEF")
 
 	// Write through the encrypted backend.
 	if err := fbEnc.SetVersioned(ctx, canonical, version, plaintext); err != nil {

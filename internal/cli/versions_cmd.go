@@ -14,7 +14,7 @@ import (
 
 // newVersionsCmd returns the `versions` subcommand.
 // Security invariant: MUST NOT print values or call vault.Get.
-// Canary invariant: output must not contain KEYLATCH_CANARY_PHASE4_VERSIONS_0xDEADBEEF.
+// Canary invariant: output must not contain KEYLATCH_CANARY_VERSIONS_VERSIONS_0xDEADBEEF.
 func newVersionsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "versions <path>",

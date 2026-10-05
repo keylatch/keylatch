@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -235,4 +236,25 @@ func TestSubscribeEvents_DeliversFrames(t *testing.T) {
 	}
 	pw.Close()
 	pr.Close()
+}
+
+func TestBrowserCommand_PerPlatform(t *testing.T) {
+	u, _ := url.Parse("https://example.test/a?b=c")
+	cases := map[string][]string{
+		"darwin":  {"open", u.String()},
+		"linux":   {"xdg-open", u.String()},
+		"windows": {"cmd", "/c", "start", "", u.String()},
+	}
+	for goos, want := range cases {
+		cmd, err := browserCommand(goos, u)
+		if err != nil {
+			t.Fatalf("%s: %v", goos, err)
+		}
+		if got := cmd.Args; strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("%s: args = %q, want %q", goos, got, want)
+		}
+	}
+	if _, err := browserCommand("aix", u); err == nil {
+		t.Error("expected an unsupported-platform error")
+	}
 }
