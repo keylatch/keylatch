@@ -48,17 +48,16 @@ func checkPlatform() Check {
 // checkLLMSession reports the LLM session detection result.
 func checkLLMSession(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
-		isLLM := llmcontext.IsLLMSession(env)
-		reasons := llmcontext.Reasons(env)
+		session := llmcontext.Classify(env)
 		detail := "llm_session=false"
-		if isLLM {
-			detail = fmt.Sprintf("llm_session=true reasons=%v", reasons)
+		if session.Detected() {
+			detail = fmt.Sprintf("llm_session=true reasons=%v", session.Signals)
 		}
 		return Status{
 			Name:    "llm.session",
 			Section: "environment",
 			OK:      true,
-			Warn:    isLLM,
+			Warn:    session.Detected(),
 			Detail:  detail,
 			Tags:    []string{"llm"},
 		}

@@ -166,6 +166,13 @@ func KeyringDir(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "keyring")
 }
 
+// SessionTicketKey returns the path to the key that signs the session
+// tickets `keylatch launch` issues. It has no override: the key's location is
+// not something a caller's environment may choose.
+func SessionTicketKey(env Lookup) string {
+	return filepath.Join(KeyringDir(env), "session-ticket.key")
+}
+
 // KeyringPath returns the path to the keyring.json file.
 // Override: KEYLATCH_KEYRING_PATH
 func KeyringPath(env Lookup) string {

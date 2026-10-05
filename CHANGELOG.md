@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `keylatch launch [--harness <name>] -- <command>` starts an agent harness with a signed session ticket bound to the launcher process; every process below it is treated as an agent session.
+- `keylatch doctor --json` reports `agent_session.detected`, `agent_session.signals` and `agent_session.harness`.
+
 ### Security
 
 - v0.9.7 was published without cosign signatures, SBOMs or SLSA provenance while the docs said every artifact was signed. See the [v0.9.7 advisory](docs/security/advisory-v0.9.7-unsigned-release.md); the docs now state what each release carries.
@@ -21,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release tags must point at a commit on `main` whose required checks passed.
 - New `attest-release.yml` workflow rebuilds a published release from its tag and either signs and attests it or marks it unverified.
 - syft and trivy are downloaded at pinned versions and verified against committed SHA-256 digests instead of piping install scripts to `sh`; goreleaser is pinned.
+- Agent detection also walks the process ancestry: a process started below a harness executable (`claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `aider`, `copilot`) is an agent session even with its environment cleared.
+- No environment variable relaxes a decision any more: `KEYLATCH_ALLOW_UNVERIFIED_SESSION` is removed, and the presence of a session ticket no longer opens raw-credential paths. Only `allow_unverified_session` in `config.json` does.
 
 ### Changed
 
@@ -28,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keylatch scope` no longer prints a milestone line, and its JSON output no longer has a `Milestone` field.
 - The release check scripts moved from `release-gates/` to `release-checks/`.
 - CI runs `release-checks/naming-scan.sh`, which rejects internal work-item labels and finding ids in file names, code, docs and commit subjects.
+- Harness signals come from one table (`internal/harness`); `keylatch env` lists every one, and actor inference names Cursor, Gemini CLI, OpenCode and Aider sessions. `KEYLATCH_AGENT_SESSION=1` is the documented manual label.
+- `keylatch setup` names the agent signals it detected and no longer suggests unsetting them.
+
+### Removed
+
+- `keylatchd --llm-session-socket`, `KEYLATCH_DAEMON_SOCKET` and `KEYLATCH_LLM_TICKET`: nothing registered sessions with the daemon, and the query used the CLI's own PID.
 
 ### Fixed
 

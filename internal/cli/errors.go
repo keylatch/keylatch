@@ -37,6 +37,8 @@ type CLIError struct {
 	Code int
 	// Message is the human-readable error description printed to stderr.
 	Message string
+	// Quiet errors carry only an exit code; main prints nothing for them.
+	Quiet bool
 }
 
 // Error implements the error interface.

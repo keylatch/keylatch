@@ -52,7 +52,6 @@ func newRootCmd() *cobra.Command {
 	var (
 		fromDesktopShell bool
 		ipcSocket        string
-		llmSessionSocket string
 		port             int
 		demo             bool
 		logLevel         string
@@ -168,23 +167,6 @@ When run without --from-desktop-shell, behaviour is identical to
 			sweepHours := audit.LoadSweepIntervalHours(auditCfg)
 			audit.StartRetentionSweepLoop(ctx, paths.Audit(env), retentionDays, sweepHours)
 
-			// Start LLM session server if a socket path is configured.
-			// Provides GET /v1/llm-session and POST /v1/llm-session
-			// endpoints for CLI processes to register/query active LLM sessions.
-			if llmSessionSocket != "" {
-				sessionRegistry := llmcontext.NewSessionRegistry()
-				sessionSrv, sessionErr := llmcontext.NewSessionServer(llmSessionSocket, signingKey, sessionRegistry)
-				if sessionErr != nil {
-					return fmt.Errorf("keylatchd: LLM session server: %w", sessionErr)
-				}
-				go func() {
-					if listenErr := sessionSrv.Listen(ctx); listenErr != nil {
-						slog.Error("LLM session server error", "error", listenErr)
-					}
-				}()
-				slog.Info("LLM session server started", "socket", llmSessionSocket)
-			}
-
 			// Start IPC server if in desktop-shell mode.
 			if fromDesktopShell {
 				ipcServer, startErr := ipc.NewServer(ipcSocket, hmacKey)
@@ -222,10 +204,6 @@ When run without --from-desktop-shell, behaviour is identical to
 		"Enable desktop-shell integration (IPC + FD key ingestion)")
 	cmd.Flags().StringVar(&ipcSocket, "ipc-socket", "",
 		"Unix socket path for IPC (required with --from-desktop-shell)")
-	cmd.Flags().StringVar(&llmSessionSocket, "llm-session-socket", "",
-		"Unix socket path for the LLM session HTTP endpoint. "+
-			"When set, starts GET/POST /v1/llm-session for CLI processes. "+
-			"Child processes that need IPC access must inherit KEYLATCH_DAEMON_SOCKET=<socket-path> in their environment.")
 	cmd.Flags().IntVar(&port, "port", 7890, "Port for the UI HTTP server")
 	cmd.Flags().BoolVar(&demo, "demo", false, "Run in demo mode with stub data")
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "log verbosity: debug|info|warn|error")

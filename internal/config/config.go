@@ -35,14 +35,9 @@ type Config struct {
 	Mode   string            `json:"mode,omitempty"`   // operating mode (standard/telemetry/canary/custom)
 	Custom *CustomModeConfig `json:"custom,omitempty"` // custom mode feature overrides
 
-	// AllowUnverifiedSession is the permanent, config-file form of the
-	// KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 escape hatch (docker-server-security
-	// raw-credential session gate hardening). When true, `keylatch get` and `keylatch run` in
-	// direct/brokered runtime modes (the paths that expose a raw provider
-	// credential to the child process) no longer require a signed session
-	// ticket or a reachable keylatchd before proceeding. Gateway/proxy modes
-	// are never affected by this flag either way — they never expose a raw
-	// secret to begin with. Default: false (fail closed).
+	// AllowUnverifiedSession lets `keylatch get` and `keylatch run` in
+	// raw-credential runtime modes expose a raw provider credential. Gateway
+	// and proxy modes never do. Default: false (fail closed).
 	AllowUnverifiedSession bool `json:"allow_unverified_session,omitempty"`
 }
 

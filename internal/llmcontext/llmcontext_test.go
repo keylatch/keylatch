@@ -94,7 +94,9 @@ func TestReasons_Labels(t *testing.T) {
 		{"real Claude Code shell", map[string]string{"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"},
 			[]string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"}},
 		{"manual flag with legacy aliases", map[string]string{"CLAUDE_CODE": "1", "CODEX_ENV": "1", "CREDENTIALS_LLM_SESSION": "1"},
-			[]string{"CREDENTIALS_LLM_SESSION", "CLAUDE_CODE", "CODEX_ENV"}},
+			[]string{"CLAUDE_CODE", "CODEX_ENV", "CREDENTIALS_LLM_SESSION"}},
+		{"manual agent label", map[string]string{"KEYLATCH_AGENT_SESSION": "1"}, []string{"KEYLATCH_AGENT_SESSION"}},
+		{"manual agent label off", map[string]string{"KEYLATCH_AGENT_SESSION": "0"}, []string{}},
 	}
 
 	for _, tc := range cases {
@@ -145,7 +147,7 @@ func TestIsLLMSession_HarnessEnvNames(t *testing.T) {
 			t.Parallel()
 			assert.True(t, llmcontext.IsLLMSession(lookup(map[string]string{name: "1"})), "%s=1 must be detected", name)
 			assert.Equal(t, []string{name}, llmcontext.Reasons(lookup(map[string]string{name: "1"})))
-			assert.Equal(t, llmcontext.SignalHeuristic, llmcontext.ClassifySession(lookup(map[string]string{name: "seatbelt"})))
+			assert.True(t, llmcontext.Classify(lookup(map[string]string{name: "seatbelt"})).Detected())
 			assert.False(t, llmcontext.IsLLMSession(lookup(map[string]string{name: ""})), "empty %s must not be detected", name)
 		})
 	}
@@ -170,66 +172,35 @@ func TestReasons_EmptyIsNotNil(t *testing.T) {
 	assert.Len(t, r, 0)
 }
 
-func TestClassifySession_Tiers(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name     string
-		env      map[string]string
-		expected llmcontext.SessionSignal
-	}{
-		{"none set", map[string]string{}, llmcontext.SignalNone},
-		{"ticket present", map[string]string{"KEYLATCH_LLM_TICKET": "abc"}, llmcontext.SignalTicket},
-		{"ticket takes priority over heuristic", map[string]string{
-			"KEYLATCH_LLM_TICKET": "abc",
-			"CLAUDE_CODE":         "1",
-		}, llmcontext.SignalTicket},
-		{"heuristic only", map[string]string{"CLAUDE_CODE": "1"}, llmcontext.SignalHeuristic},
-		// queryDaemonLLMSession's own fail-closed contract returns (active:
-		// true, err: nil) for network errors (see ipc_client.go) rather than
-		// a non-nil error, so an unreachable socket classifies as
-		// SignalDaemonActive here, not SignalDaemonError. SignalDaemonError
-		// is reserved for a future queryDaemonLLMSession implementation that
-		// surfaces a real error instead of folding it into active=true.
-		{"daemon socket set but unreachable — fails closed as SignalDaemonActive", map[string]string{
-			"KEYLATCH_DAEMON_SOCKET": "/nonexistent/socket/path/for/test",
-		}, llmcontext.SignalDaemonActive},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := llmcontext.ClassifySession(lookup(tc.env))
-			assert.Equal(t, tc.expected, got)
-		})
-	}
-}
-
-func TestClassifySession_MatchesIsLLMSession(t *testing.T) {
-	t.Parallel()
-	cases := []map[string]string{
-		{},
-		{"CLAUDE_CODE": "1"},
-		{"KEYLATCH_LLM_TICKET": "abc"},
-		{"CREDENTIALS_LLM_SESSION": "0"},
-	}
-	for _, env := range cases {
-		l := lookup(env)
-		isLLM := llmcontext.IsLLMSession(l)
-		signal := llmcontext.ClassifySession(l)
-		assert.Equal(t, isLLM, signal != llmcontext.SignalNone, "IsLLMSession/ClassifySession invariant broken for %v", env)
-	}
-}
-
 func TestSignals_CanonicalList(t *testing.T) {
 	t.Parallel()
 	keys := make(map[string]bool)
 	for _, sig := range llmcontext.Signals {
 		assert.NotEmpty(t, sig.EnvKey)
 		assert.NotEmpty(t, sig.Label)
-		assert.NotEmpty(t, sig.MatchRule)
 		assert.False(t, keys[sig.EnvKey], "duplicate EnvKey %q in Signals", sig.EnvKey)
 		keys[sig.EnvKey] = true
 	}
+}
+
+// TestLegacyAliases checks that every legacy name is still detected and is
+// attributed to the harness it stands for.
+func TestLegacyAliases(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"CLAUDE_CODE":      "claude-code",
+		"CODEX_ENV":        "codex",
+		"CURSOR_SESSION":   "cursor",
+		"GEMINI_SESSION":   "gemini-cli",
+		"OPENCODE_SESSION": "opencode",
+		"AIDER_SESSION":    "aider",
+	}
+	for name, harnessID := range cases {
+		c := llmcontext.Classify(lookup(map[string]string{name: "1"}))
+		assert.True(t, c.Detected(), name)
+		assert.Equal(t, harnessID, c.Harness, name)
+	}
+	c := llmcontext.Classify(lookup(map[string]string{"CREDENTIALS_LLM_SESSION": "1"}))
+	assert.True(t, c.Detected())
+	assert.Empty(t, c.Harness)
 }

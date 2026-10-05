@@ -273,10 +273,10 @@ func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
 	require.Len(t, matches, 1, "the unusable config must still be backed up once, when it is actually persisted over")
 }
 
-// TestSetupSecurityBlockMessage_NamesTriggeringSignal verifies the LLM
-// session guard explains itself with the concrete env var that fired,
-// instead of a generic refusal.
-func TestSetupSecurityBlockMessage_NamesTriggeringSignal(t *testing.T) {
+// TestSetupSecurityBlockMessage_NamesSignalsWithoutBypassHint verifies the
+// refusal names the signals that fired and never tells the reader to unset
+// them.
+func TestSetupSecurityBlockMessage_NamesSignalsWithoutBypassHint(t *testing.T) {
 	env := func(k string) string {
 		if k == "CLAUDE_CODE" {
 			return "1"
@@ -288,16 +288,12 @@ func TestSetupSecurityBlockMessage_NamesTriggeringSignal(t *testing.T) {
 	require.Contains(t, msg, "must be run interactively")
 	require.Contains(t, msg, "CLAUDE_CODE")
 	require.Contains(t, msg, "--headless")
+	require.NotContains(t, msg, "unset")
 }
 
-// TestSetupSecurityBlockMessage_NoEnvSignal covers the case where the block
-// came from a stronger signal than an env var (ticket/daemon) — Reasons()
-// reports nothing, so the message must not claim a specific env var fired.
-func TestSetupSecurityBlockMessage_NoEnvSignal(t *testing.T) {
-	env := func(string) string { return "" }
-
-	msg := setupSecurityBlockMessage(env)
+func TestSetupSecurityBlockMessage_NoSignalNamed(t *testing.T) {
+	msg := setupSecurityBlockMessage(func(string) string { return "" })
 	require.Contains(t, msg, "must be run interactively")
-	require.Contains(t, msg, "not an environment variable")
+	require.NotContains(t, msg, "signals:")
 	require.Contains(t, msg, "--headless")
 }

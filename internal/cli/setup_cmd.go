@@ -82,15 +82,9 @@ func setupSecurityBlockMessage(env llmcontext.Lookup) string {
 	b.WriteString("Error: setup must be run interactively — not inside an AI session.\n")
 
 	if reasons := llmcontext.Reasons(env); len(reasons) > 0 {
-		fmt.Fprintf(&b, "  blocked: %s env var set — if you are a human in an editor-integrated terminal, unset it or run with --headless.\n", strings.Join(reasons, ", "))
-		return b.String()
+		fmt.Fprintf(&b, "  blocked: agent session signals: %s.\n", strings.Join(reasons, ", "))
 	}
-
-	// No env-var heuristic fired, so the block came from a stronger signal
-	// (a signed KEYLATCH_LLM_TICKET, or a keylatchd IPC query) — llmcontext.
-	// Reasons() only reports the env-var tier, so there is no single env var
-	// to name here.
-	b.WriteString("  blocked: session corroborated via a signed session ticket or keylatchd — not an environment variable, so unsetting env vars will not change this. If you are automating this, run with --headless.\n")
+	b.WriteString("  Run setup yourself in a terminal outside the agent, or use --headless for automation.\n")
 	return b.String()
 }
 

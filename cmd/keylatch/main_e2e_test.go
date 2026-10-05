@@ -8,13 +8,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/cli"
+	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // CanarySecret is a sentinel value used to verify no credential leak.
@@ -60,7 +63,7 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = os.Environ()
 	// Strip signals and XDG vars that leak runner state into the isolated subprocess env.
-	stripped := map[string]bool{"XDG_CONFIG_HOME": true, "KEYLATCH_CONFIG_DIR": true}
+	stripped := map[string]bool{"XDG_CONFIG_HOME": true, "KEYLATCH_CONFIG_DIR": true, llmcontext.TicketEnv: true}
 	for _, sig := range llmcontext.Signals {
 		stripped[sig.EnvKey] = true
 	}
@@ -177,41 +180,25 @@ func TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get(t *testing.T) {
 // `run` modes are never gated: the child only ever receives a scoped session
 // token there, never the raw secret.
 //
-// The gate (RequireVerifiedSession, internal/cli/session_enforce.go) is
-// satisfied by:
-//   - a signed session ticket (KEYLATCH_LLM_TICKET), or
-//   - keylatchd's authenticated IPC confirming this PID as an active tracked
-//     session (llmcontext.SignalDaemonActive), or
-//   - the explicit escape hatch: KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 (env)
-//     or allow_unverified_session (config.json).
+// The gate (RequireRawCredentialOptIn, internal/cli/session_enforce.go) is
+// satisfied only by allow_unverified_session in config.json; no environment
+// variable and no session ticket opens it.
 //
-// This is layered UNDER GuardLLMSession (`get`) and GuardRuntime (`run`):
-//   - A *detected* LLM session (positive signals: CLAUDE_CODE, CODEX_ENV,
-//     CREDENTIALS_LLM_SESSION=1) hits GuardLLMSession first on `get`, which
-//     hard-blocks unconditionally (exit 2, "Blocked in LLM session" message,
-//     no escape hatch) — the raw-credential session gate is never reached and its message never shown.
-//   - A SignalNone `get` (no signals, or CREDENTIALS_LLM_SESSION=0) passes
-//     GuardLLMSession, then hits the raw-credential session gate, which fails closed absent corroboration
-//     or the opt-out (exit 2, the raw-credential session gate's message mentioning
-//     KEYLATCH_ALLOW_UNVERIFIED_SESSION — a real hatch here, unlike get's
-//     hard block).
-//   - `run` in gateway_typed/gateway_sdk/gateway_proxy is unaffected by the raw-credential session gate
-//     regardless of session (never exposes a raw secret).
-//   - `run` in direct_brokered / direct_classic_sandboxed IS gated by the raw-credential session gate for
-//     ANY session (LLM-detected or SignalNone) even though GuardRuntime
-//     itself allows those modes in LLM sessions — the raw-credential session gate supersedes
-//     that allowance for the raw-credential boundary. The opt-out (env var
-//     or config) restores the previous unrestricted behavior.
+// It is layered under GuardLLMSession (`get`) and GuardRuntime (`run`): a
+// detected agent session is hard-blocked by GuardLLMSession first and never
+// sees the gate's message.
 // ---------------------------------------------------------------------------
 
-// rawCredGateOptOut returns a copy of base with the raw-credential session gate escape hatch
-// (KEYLATCH_ALLOW_UNVERIFIED_SESSION=1) merged in.
-func rawCredGateOptOut(base map[string]string) map[string]string {
-	merged := map[string]string{"KEYLATCH_ALLOW_UNVERIFIED_SESSION": "1"}
-	for k, v := range base {
-		merged[k] = v
-	}
-	return merged
+// rawCredGateOptOut writes a config.json with allow_unverified_session set
+// into the KEYLATCH_CONFIG_DIR runKeylatch derives from base's HOME.
+func rawCredGateOptOut(t *testing.T, base map[string]string) map[string]string {
+	t.Helper()
+	cfg := config.Default()
+	cfg.AllowUnverifiedSession = true
+	dir := filepath.Join(base["HOME"], ".keylatch")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, config.Save(filepath.Join(dir, "config.json"), cfg))
+	return base
 }
 
 // TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut verifies that
@@ -227,7 +214,7 @@ func TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut(t *testing.T) {
 		"get", "svc", "key")
 
 	assert.Equal(t, 2, code, "expected exit 2 (the raw-credential session gate fail-closed on SignalNone raw get)")
-	assert.NotContains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
+	assert.NotContains(t, string(stderr), "allow_unverified_session", "refusal must not advertise the opt-out")
 	assert.NotContains(t, string(stderr), "Blocked in LLM session",
 		"SignalNone must never see GuardLLMSession's hard-block message")
 }
@@ -238,7 +225,7 @@ func TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut(t *testing.T) {
 func TestE2E_CREDENTIALS_LLM_SESSION_0_OptOutReachesHandler(t *testing.T) {
 	homeDir := t.TempDir()
 	_, _, code := runKeylatch(t,
-		rawCredGateOptOut(map[string]string{"CREDENTIALS_LLM_SESSION": "0", "HOME": homeDir}),
+		rawCredGateOptOut(t, map[string]string{"CREDENTIALS_LLM_SESSION": "0", "HOME": homeDir}),
 		"get", "svc", "key")
 
 	assert.Equal(t, 5, code, "expected exit 5 (OperationFailed/not-implemented) once the raw-credential session gate is opted out")
@@ -254,7 +241,7 @@ func TestE2E_no_signals_GatedWithoutOptOut(t *testing.T) {
 		"get", "svc", "key")
 
 	assert.Equal(t, 2, code, "expected exit 2 (the raw-credential session gate fail-closed on SignalNone raw get)")
-	assert.NotContains(t, string(stderr), "KEYLATCH_ALLOW_UNVERIFIED_SESSION", "refusal must not advertise the opt-out")
+	assert.NotContains(t, string(stderr), "allow_unverified_session", "refusal must not advertise the opt-out")
 	assert.NotContains(t, string(stderr), "Blocked in LLM session",
 		"SignalNone must never see GuardLLMSession's hard-block message")
 }
@@ -264,7 +251,7 @@ func TestE2E_no_signals_GatedWithoutOptOut(t *testing.T) {
 func TestE2E_no_signals_OptOutReachesHandler(t *testing.T) {
 	homeDir := t.TempDir()
 	_, _, code := runKeylatch(t,
-		rawCredGateOptOut(map[string]string{"HOME": homeDir}),
+		rawCredGateOptOut(t, map[string]string{"HOME": homeDir}),
 		"get", "svc", "key")
 
 	assert.Equal(t, 5, code, "expected exit 5 once the raw-credential session gate is opted out")
@@ -309,18 +296,24 @@ func TestE2E_help_exits_0_in_llm_session(t *testing.T) {
 	assert.Equal(t, 0, code, "--help must exit 0 in LLM session")
 }
 
-// TestLeafPackageDeps verifies internal/llmcontext has no internal/* deps.
+// TestLeafPackageDeps verifies that internal/harness imports no internal
+// package and internal/llmcontext imports only internal/harness.
 func TestLeafPackageDeps(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "github.com/keylatch/keylatch/internal/llmcontext").Output()
-	if err != nil {
-		t.Fatalf("go list -deps failed: %v", err)
+	const prefix = "github.com/keylatch/keylatch/internal/"
+	allowed := map[string][]string{
+		"harness":    {"harness"},
+		"llmcontext": {"llmcontext", "harness"},
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "github.com/keylatch/keylatch/internal/") &&
-			line != "github.com/keylatch/keylatch/internal/llmcontext" {
-			t.Errorf("llmcontext imports disallowed internal package: %s", line)
+	for pkg, ok := range allowed {
+		out, err := exec.Command("go", "list", "-deps", prefix+pkg).Output()
+		if err != nil {
+			t.Fatalf("go list -deps %s failed: %v", pkg, err)
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			dep := strings.TrimPrefix(strings.TrimSpace(line), prefix)
+			if strings.HasPrefix(line, prefix) && !slices.Contains(ok, dep) {
+				t.Errorf("%s imports disallowed internal package %s", pkg, line)
+			}
 		}
 	}
 }

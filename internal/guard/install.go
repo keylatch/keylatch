@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/keylatch/keylatch/internal/harness"
 )
 
 // Agent identifies a supported agent integration.
@@ -200,7 +202,7 @@ func IsInstalled(agent Agent, opts InstallOpts) (bool, error) {
 
 	case AgentWindsurf, AgentCopilot, AgentAntigravity:
 		// These agents rely on env-var-only Layer 1 guard.
-		return os.Getenv("CREDENTIALS_LLM_SESSION") != "", nil
+		return os.Getenv(harness.LegacyManualLabel) != "", nil
 
 	default:
 		return false, fmt.Errorf("install-guard: unsupported agent %q (supported: %v)", agent, SupportedAgents)

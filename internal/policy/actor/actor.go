@@ -1,11 +1,11 @@
 // Package actor derives and validates keylatch actor identities.
 // Priority order for Infer:
-// 1. env("KEYLATCH_ACTOR") — explicit override (Source="env")
-// 2. any Claude Code variable (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT, CLAUDE_CODE) → "claude-code" (Source="infer")
-// 3. any Codex CLI variable (CODEX_SANDBOX, CODEX_SANDBOX_NETWORK_DISABLED, CODEX_ENV) → "codex" (Source="infer")
-// 4. env("CREDENTIALS_LLM_SESSION") == "1" → "llm-session" (Source="infer")
-// 5. stdin is a terminal → "human-shell" (Source="infer")
-// 6. fallback → "unknown-non-tty" (Source="infer")
+//  1. env("KEYLATCH_ACTOR") — explicit override (Source="env")
+//  2. any variable of a harness in internal/harness, current or legacy → the
+//     harness ID, e.g. "claude-code" or "codex" (Source="infer")
+//  3. a manual agent label → "llm-session" (Source="infer")
+//  4. stdin is a terminal → "human-shell" (Source="infer")
+//  5. fallback → "unknown-non-tty" (Source="infer")
 //
 // Infer never returns an empty Name.
 package actor
@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"golang.org/x/term"
 )
@@ -36,14 +37,9 @@ func Validate(name string) error {
 	return nil
 }
 
-var (
-	claudeCodeEnv = []string{"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE"}
-	codexEnv      = []string{"CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED", "CODEX_ENV"}
-)
-
-func anySet(env llmcontext.Lookup, keys []string) bool {
-	for _, k := range keys {
-		if env(k) != "" {
+func anyFires(env llmcontext.Lookup, signals []harness.EnvSignal) bool {
+	for _, s := range signals {
+		if s.Match.Fires(env(s.Name)) {
 			return true
 		}
 	}
@@ -57,19 +53,14 @@ func Infer(env llmcontext.Lookup) Actor {
 	if v := env("KEYLATCH_ACTOR"); v != "" {
 		return Actor{Name: v, Source: "env"}
 	}
-	// Priority 2: Claude Code LLM session.
-	if anySet(env, claudeCodeEnv) {
-		return Actor{Name: "claude-code", Source: "infer"}
+	for _, d := range harness.All() {
+		if anyFires(env, d.Env) || anyFires(env, d.LegacyEnv) {
+			return Actor{Name: d.ID, Source: "infer"}
+		}
 	}
-	// Priority 3: Codex session.
-	if anySet(env, codexEnv) {
-		return Actor{Name: "codex", Source: "infer"}
-	}
-	// Priority 4: generic LLM session signal.
-	if env("CREDENTIALS_LLM_SESSION") == "1" {
+	if anyFires(env, harness.ManualSignals) {
 		return Actor{Name: "llm-session", Source: "infer"}
 	}
-	// Priority 5: check if stdin is a terminal.
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		return Actor{Name: "human-shell", Source: "infer"}
 	}
