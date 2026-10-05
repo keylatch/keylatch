@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/spf13/cobra"
@@ -72,7 +73,7 @@ func newRegistryDescribeCmd() *cobra.Command {
 			if err != nil {
 				if errors.Is(err, registry.ErrProviderNotFound) {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: provider %q not found\n", slug)
-					return fmt.Errorf("provider %q not found", slug)
+					return reported(exitcode.UserError, err)
 				}
 				return err
 			}
