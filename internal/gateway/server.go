@@ -75,8 +75,8 @@ type ServerOptions struct {
 	ApprovalsDir      string
 	TokenStorePath    string
 	AllowExternalBind bool // Requires explicit opt-in AND non-LLM session
-	// Vault is the credential store. When nil and SecretRef is non-empty, the
-	// handler skips vault lookup and passes an empty credential to the broker.
+	// Vault is the credential store. When nil, requests to routes with a
+	// non-empty SecretRef fail with 503 vault_not_configured.
 	Vault VaultReader
 	// OverrideHTTPClient replaces ALL per-provider and default HTTP clients.
 	// Use only in tests to intercept upstream calls.
