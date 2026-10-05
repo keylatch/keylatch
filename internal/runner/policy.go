@@ -107,7 +107,7 @@ func CheckPolicy(conn string, command []string, opts PolicyOptions) (policy.Deci
 	}
 
 	// Build request.
-	cwd, _ := os.Getwd()
+	cwd, _ := workingDir()
 	req := policy.Request{
 		Actor:       actorName,
 		Connection:  conn,

@@ -83,9 +83,9 @@ func TestLLMSession_ReadCapabilityDenied(t *testing.T) {
 	}
 }
 
-// TestLLMSession_NonReadCapabilityAllowed ensures Find succeeds for non-read
-// capabilities on LLM-issued grants.
-func TestLLMSession_NonReadCapabilityAllowed(t *testing.T) {
+// TestLLMSession_NonReadCapabilityAlsoDenied ensures Find never returns a
+// grant issued from an agent session, whatever the capability.
+func TestLLMSession_NonReadCapabilityAlsoDenied(t *testing.T) {
 	dir := t.TempDir()
 	llmEnv := func(k string) string {
 		if k == "KEYLATCH_CONFIG_DIR" {
@@ -114,7 +114,7 @@ func TestLLMSession_NonReadCapabilityAllowed(t *testing.T) {
 		Connection: g.Connection,
 		Capability: "inject",
 	})
-	if !ok || found == nil {
-		t.Error("Find(inject) should succeed for LLM-issued grant with non-read capability")
+	if ok || found != nil {
+		t.Error("Find(inject) must not return a grant issued from an agent session")
 	}
 }
