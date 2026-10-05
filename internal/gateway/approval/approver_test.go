@@ -66,7 +66,7 @@ func TestApproverKeyFileRoundTrip(t *testing.T) {
 
 	dir := t.TempDir()
 	ar := makeRequest(t, dir)
-	if err := Approve(context.Background(), dir, ar.Token, priv); err != nil {
+	if err := Approve(context.Background(), dir, ar.Token, shownOf(t, dir, ar.Token), priv); err != nil {
 		t.Fatal(err)
 	}
 	pub, err := loaded.Public()

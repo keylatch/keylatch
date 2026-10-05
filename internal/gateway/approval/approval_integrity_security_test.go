@@ -26,7 +26,7 @@ func TestSecurityRegression_ApprovalTraversal(t *testing.T) {
 	if e := os.WriteFile(victim, []byte(`{"status":"pending","expires_at":"2099-01-01T00:00:00Z"}`), 0600); e != nil {
 		t.Fatal(e)
 	}
-	e := Approve(context.Background(), dir, "../outside", testKey)
+	e := Approve(context.Background(), dir, "../outside", shownOf(t, dir, "../outside"), testKey)
 	if e == nil {
 		t.Fatal("approval accepted ../outside and rewrote JSON outside approvals directory")
 	}
@@ -40,7 +40,7 @@ func TestSecurityRegression_ApprovalHashRequired(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = Approve(context.Background(), d, ar.Token, testKey); e != nil {
+	if e = Approve(context.Background(), d, ar.Token, shownOf(t, d, ar.Token), testKey); e != nil {
 		t.Fatal(e)
 	}
 	if Verify(context.Background(), d, ar.Token, "", testPub) == nil {

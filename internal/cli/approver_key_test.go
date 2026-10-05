@@ -121,7 +121,7 @@ func TestApproveDecidedRequestIsRefusedBeforePrompting(t *testing.T) {
 	dir := approvalTestEnv(t)
 	withApprover(t)
 	token := createPendingApproval(t, dir)
-	if err := approval.Deny(context.Background(), dir, token, testDecisionKey); err != nil {
+	if err := approval.Deny(context.Background(), dir, token, shownOf(t, dir, token), testDecisionKey); err != nil {
 		t.Fatal(err)
 	}
 	prev := promptHiddenFn

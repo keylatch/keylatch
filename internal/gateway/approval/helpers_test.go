@@ -1,6 +1,7 @@
 package approval
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -49,4 +50,15 @@ func mustWrite(t *testing.T, dir string, ar *ApprovalRequest) {
 	if err := writeApprovalFile(filepath.Join(dir, ar.Token+".json"), ar); err != nil {
 		t.Fatalf("writeApproval: %v", err)
 	}
+}
+
+// shownOf returns the digest of the record as a reviewer would see it, or
+// "" when it cannot be read.
+func shownOf(t *testing.T, dir, token string) string {
+	t.Helper()
+	ar, err := Get(context.Background(), dir, token)
+	if err != nil {
+		return ""
+	}
+	return Digest(ar)
 }

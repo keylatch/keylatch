@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/ed25519"
 	"path/filepath"
 	"slices"
@@ -58,4 +59,15 @@ func withHiddenAnswers(t *testing.T, answers ...string) {
 		return slices.Clone([]byte(a)), nil
 	}
 	t.Cleanup(func() { promptHiddenFn = prev })
+}
+
+// shownOf returns the digest of the record as a reviewer would see it, or
+// "" when it cannot be read.
+func shownOf(t *testing.T, dir, token string) string {
+	t.Helper()
+	ar, err := approval.Get(context.Background(), dir, token)
+	if err != nil {
+		return ""
+	}
+	return approval.Digest(ar)
 }
