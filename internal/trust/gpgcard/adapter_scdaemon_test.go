@@ -326,7 +326,8 @@ echo "`+agentSock+`"
 		t.Fatalf("scdaemonSocket = %q, %v; want %q", got, err, sock)
 	}
 
-	r, err := trust.New(trust.RootSpec{Type: trust.RootGPGCard, Label: "L", Extra: map[string]any{"keygrip": "KG"}})
+	extra := map[string]any{"keygrip": "KG"}
+	r, err := trust.New(trust.RootSpec{Type: trust.RootGPGCard, Label: "L", Extra: extra})
 	if err != nil {
 		t.Fatalf("trust.New: %v", err)
 	}

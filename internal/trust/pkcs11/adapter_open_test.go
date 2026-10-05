@@ -215,13 +215,15 @@ func TestRegisteredFactory(t *testing.T) {
 	if _, err := trust.New(trust.RootSpec{Type: trust.RootPKCS11}); !errors.Is(err, trust.ErrRootUnavailable) || !strings.Contains(err.Error(), "module_path not set") {
 		t.Fatalf("no module: err = %v", err)
 	}
-	_, err := trust.New(trust.RootSpec{Type: trust.RootPKCS11, Extra: map[string]any{"module_path": "/opt/evil.so", "slot_label": "s"}})
+	extra := map[string]any{"module_path": "/opt/evil.so", "slot_label": "s"}
+	_, err := trust.New(trust.RootSpec{Type: trust.RootPKCS11, Extra: extra})
 	if !errors.Is(err, trust.ErrModuleNotAllowlisted) {
 		t.Fatalf("evil module: err = %v", err)
 	}
 
 	// Default allowlist entries are unpinned; the factory reaches the on-disk check.
-	r, err := trust.New(trust.RootSpec{Type: trust.RootPKCS11, Label: "x", Extra: map[string]any{"module_path": "/usr/lib/softhsm/libsofthsm2.so", "slot_label": "s"}})
+	extra = map[string]any{"module_path": "/usr/lib/softhsm/libsofthsm2.so", "slot_label": "s"}
+	r, err := trust.New(trust.RootSpec{Type: trust.RootPKCS11, Label: "x", Extra: extra})
 	if err == nil {
 		if r.ID() != "pkcs11:/usr/lib/softhsm/libsofthsm2.so:s" {
 			t.Fatalf("ID = %q", r.ID())

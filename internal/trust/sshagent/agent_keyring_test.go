@@ -381,7 +381,8 @@ func TestRegisteredFactoryUsesAuthSock(t *testing.T) {
 	t.Setenv("SSH_AUTH_SOCK", sock)
 
 	fp := gossh.FingerprintSHA256(ks.rsa)
-	r, err := trust.New(trust.RootSpec{Type: trust.RootSSHAgent, Label: "work", Extra: map[string]any{"fingerprint": fp}})
+	extra := map[string]any{"fingerprint": fp}
+	r, err := trust.New(trust.RootSpec{Type: trust.RootSSHAgent, Label: "work", Extra: extra})
 	if err != nil {
 		t.Fatal(err)
 	}
