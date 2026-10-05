@@ -538,7 +538,7 @@ func consumeUseForToken(t *Token) bool {
 	return consumeTokenUseLog(t)
 }
 
-// isReadClassCap mirrors the grant/policy read-class check.
+// isReadClassCap mirrors the policy read-class check.
 func isReadClassCap(cap string) bool {
 	switch cap {
 	case "read", "export":
