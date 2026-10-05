@@ -41,7 +41,7 @@ func TestServer_ListenRoundTrip(t *testing.T) {
 	// so this test runs on all CI platforms.
 	t.Parallel()
 
-	sockPath := filepath.Join(t.TempDir(), "ipc.sock")
+	sockPath := filepath.Join(shortTempDir(t), "ipc.sock")
 	key := testKey()
 	s, err := NewServer(sockPath, key)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestServer_ListenRoundTrip(t *testing.T) {
 
 func TestRecordInvalidFrame_WindowCounting(t *testing.T) {
 	t.Parallel()
-	s, err := NewServer(filepath.Join(t.TempDir(), "x.sock"), testKey())
+	s, err := NewServer(filepath.Join(shortTempDir(t), "x.sock"), testKey())
 	if err != nil {
 		t.Fatal(err)
 	}
