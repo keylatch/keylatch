@@ -166,12 +166,15 @@ pass "step 4: connect succeeded (exit 0)"
 log "Step 5: run after setup (expect exit 5 or 0)..."
 # With the connection now present, this raw (direct_brokered) run passes the
 # bootstrap and connection guards and reaches the raw-credential session gate.
-# This automated smoke test is an unverified session (no signed ticket, no
-# keylatchd), so opt out explicitly to exercise the post-setup runtime path.
-# Steps 1 and 3 deliberately do NOT set this — they verify that the bootstrap
-# (exit 7) and connection (exit 6) guards take priority over the session gate.
+# Opt in through config.json to exercise the post-setup runtime path; no
+# environment variable opens that gate. Steps 1 and 3 deliberately run
+# without it — they verify that the bootstrap (exit 7) and connection
+# (exit 6) guards take priority over it.
+cfg="$KEYLATCH_CONFIG_DIR/config.json"
+awk 'NR == 1 && /^\{/ { print "{"; print "  \"allow_unverified_session\": true,"; next } { print }' "$cfg" > "$cfg.tmp"
+mv "$cfg.tmp" "$cfg"
 set +e
-combined_5="$(KEYLATCH_ALLOW_UNVERIFIED_SESSION=1 "$KEYLATCH_BIN" run anthropic --runtime direct_brokered --allow echo -- echo hi 2>&1)"
+combined_5="$("$KEYLATCH_BIN" run anthropic --runtime direct_brokered --allow echo -- echo hi 2>&1)"
 exit_5=$?
 set -e
 

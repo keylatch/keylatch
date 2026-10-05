@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"text/tabwriter"
 
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
@@ -34,8 +35,9 @@ type envEntry struct {
 	Description string
 }
 
-// knownEnvVars is the ordered list of keylatch-relevant environment variables.
-var knownEnvVars = []envEntry{
+// knownEnvVars is the ordered list of keylatch-relevant environment
+// variables; the agent session signals come from internal/harness.
+var knownEnvVars = append([]envEntry{
 	{"KEYLATCH_BACKEND", "sets storage backend (file|keychain|op|bw)"},
 	{"KEYLATCH_CONFIG_DIR", "override default config directory (~/.keylatch)"},
 	{"KEYLATCH_VAULT_PATH", "overrides vault directory"},
@@ -46,21 +48,18 @@ var knownEnvVars = []envEntry{
 	{"KEYLATCH_OP_VAULT", "1Password vault name"},
 	{"KEYLATCH_OP_BIN", "path to 1Password CLI binary"},
 	{"BW_SESSION", "Bitwarden session token"},
-	{"CLAUDECODE", `set to "1" by Claude Code in the shells it spawns — LLM session signal`},
-	{"CLAUDE_CODE_ENTRYPOINT", "set by Claude Code — LLM session signal"},
-	{"CODEX_SANDBOX", "set by Codex CLI under its macOS sandbox — LLM session signal"},
-	{"CODEX_SANDBOX_NETWORK_DISABLED", "set by Codex CLI when network is disabled — LLM session signal"},
-	{"CURSOR_AGENT", `set to "1" by the Cursor agent terminal — LLM session signal`},
-	{"CURSOR_TRACE_ID", "set by Cursor — LLM session signal"},
-	{"GEMINI_CLI", `set to "1" by Gemini CLI in shell commands — LLM session signal`},
-	{"OPENCODE", `set to "1" by OpenCode — LLM session signal`},
-	{"CREDENTIALS_LLM_SESSION", `set to "1" to mark a shell as an LLM session manually`},
-	{"CLAUDE_CODE", "legacy alias for a manual LLM session label"},
-	{"CODEX_ENV", "legacy alias for a manual LLM session label"},
-	{"CURSOR_SESSION", "legacy alias for a manual LLM session label"},
-	{"AIDER_SESSION", "manual LLM session label (Aider sets nothing)"},
-	{"GEMINI_SESSION", "legacy alias for a manual LLM session label"},
-	{"OPENCODE_SESSION", "legacy alias for a manual LLM session label"},
+}, agentSignalEnvVars()...)
+
+func agentSignalEnvVars() []envEntry {
+	var out []envEntry
+	for _, sig := range harness.Signals() {
+		desc := sig.Note + " — agent session signal"
+		if d, ok := harness.Lookup(sig.Harness); ok {
+			desc = d.Name + ": " + desc
+		}
+		out = append(out, envEntry{Name: sig.Name, Description: desc})
+	}
+	return out
 }
 
 // newEnvCmd returns the `keylatch env` command.

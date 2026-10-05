@@ -79,6 +79,36 @@ func TestInferPriority(t *testing.T) {
 			wantSrc:  "infer",
 		},
 		{
+			name:     "Cursor agent terminal",
+			env:      map[string]string{"CURSOR_AGENT": "1"},
+			wantName: "cursor",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "Gemini CLI",
+			env:      map[string]string{"GEMINI_CLI": "1"},
+			wantName: "gemini-cli",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "OpenCode",
+			env:      map[string]string{"OPENCODE": "1"},
+			wantName: "opencode",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "Aider manual label",
+			env:      map[string]string{"AIDER_SESSION": "1"},
+			wantName: "aider",
+			wantSrc:  "infer",
+		},
+		{
+			name:     "KEYLATCH_AGENT_SESSION manual label",
+			env:      map[string]string{"KEYLATCH_AGENT_SESSION": "1"},
+			wantName: "llm-session",
+			wantSrc:  "infer",
+		},
+		{
 			name:     "fallback to unknown-non-tty when no signals",
 			env:      map[string]string{},
 			wantName: "unknown-non-tty",

@@ -14,6 +14,5 @@ func ClearLLMSessionEnv(t testing.TB) {
 	for _, sig := range llmcontext.Signals {
 		t.Setenv(sig.EnvKey, "")
 	}
-	t.Setenv("KEYLATCH_LLM_TICKET", "")
-	t.Setenv("KEYLATCH_DAEMON_SOCKET", "")
+	t.Setenv(llmcontext.TicketEnv, "")
 }

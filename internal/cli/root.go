@@ -475,23 +475,12 @@ func newGetCmd() *cobra.Command {
 	// blocked there with the "Blocked in LLM session" message (exit 2) and
 	// never reaches this inner handler at all — no escape hatch applies.
 	//
-	// Only once GuardLLMSession has passed (SignalNone, or the session
-	// verification checks below) do we reach the raw-credential session gate's
-	// corroboration check. This ordering matters for messaging correctness:
-	// that gate's message advertises the KEYLATCH_ALLOW_UNVERIFIED_SESSION escape
-	// hatch, but that hatch has no effect on GuardLLMSession's hard block —
-	// so a genuinely detected LLM session must never see that message.
-	//
-	// Raw-credential session gate: raw-credential-path corroboration (fail closed). `get`
-	// (non-masked) always returns a raw credential value, so
-	// rawCredentialExposure is unconditionally true here — this applies to
-	// SignalNone sessions (no LLM signals detected at all), which is the
-	// spoof-to-human case this check exists to close. Gateway/proxy `run` is
-	// the only path left unaffected — see RequireVerifiedSession for the
-	// full rationale and the escape hatch (env var or config field).
+	// Once GuardLLMSession has passed, the raw-credential gate still applies:
+	// `get` (non-masked) always returns a raw value. See
+	// RequireRawCredentialOptIn.
 	notImpl := Handler(func(_ context.Context, hArgs HandlerArgs) (Result, error) {
 		env := llmcontext.DefaultLookup
-		if verErr := RequireVerifiedSession(env, true, configAllowsUnverifiedSession(env)); verErr != nil {
+		if verErr := RequireRawCredentialOptIn(true, configAllowsUnverifiedSession(env)); verErr != nil {
 			fmt.Fprintf(hArgs.Stderr, "%v\n", verErr)
 			return Result{ExitCode: exitcode.SecurityBlock}, nil
 		}
@@ -637,18 +626,12 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			// Guard 3b (raw-credential session gate): raw-credential-path corroboration (fail closed).
-			// Runs AFTER the bootstrap (Guard 2) and connection (Guard 3) checks so a
-			// first-run user gets the actionable "bootstrap"/"setup" errors (exit 7 / 6)
-			// rather than a fail-closed message — before setup there is no credential to
-			// protect. Skipped for --dry-run (handled earlier, never decrypts).
-			// rawCredentialExposure is true only for direct/brokered runtime modes
-			// (runtime.IsRawCredentialMode) — the modes that inject the actual secret
-			// into the child env; gateway/proxy modes never expose a raw secret, so this
-			// is a no-op for them regardless of session verdict. See RequireVerifiedSession
-			// for the escape hatch (KEYLATCH_ALLOW_UNVERIFIED_SESSION / allow_unverified_session).
+			// Guard 3b: the raw-credential gate. It runs after the bootstrap and
+			// connection checks so a first-run user gets the actionable setup
+			// errors; gateway and proxy modes never expose a raw secret and pass
+			// through. Skipped for --dry-run (handled earlier, never decrypts).
 			runEnv := llmcontext.DefaultLookup
-			if verErr := RequireVerifiedSession(runEnv, runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
+			if verErr := RequireRawCredentialOptIn(runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession(runEnv)); verErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 				os.Exit(exitcode.SecurityBlock)
 			}

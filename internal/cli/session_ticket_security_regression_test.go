@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package cli
 
 import (
@@ -8,17 +6,17 @@ import (
 	"github.com/keylatch/keylatch/internal/runtime"
 )
 
-// KNOWN-FAILING: RequireVerifiedSession accepts any nonempty
-// KEYLATCH_LLM_TICKET, and GuardRuntime allows all currently listed modes;
-// neither verifies signature, issuer, expiry, or process binding.
+// TestSecurityRegression_UnverifiedTicketMustNotAuthorizeDirectRuntime checks
+// that arbitrary ticket text in the environment cannot open a raw-credential
+// path.
 func TestSecurityRegression_UnverifiedTicketMustNotAuthorizeDirectRuntime(t *testing.T) {
 	env := func(k string) string {
-		if k == "KEYLATCH_LLM_TICKET" {
+		if k == "KEYLATCH_SESSION_TICKET" {
 			return "not-a-signed-ticket"
 		}
 		return ""
 	}
-	err := RequireVerifiedSession(env, true, false)
+	err := RequireRawCredentialOptIn(true, false)
 	blocked, _ := GuardRuntime(runtime.RuntimeDirectBrokered, "", env, nil)
 	if err == nil && !blocked {
 		t.Error("arbitrary ticket text passes both raw-exposure gates")
