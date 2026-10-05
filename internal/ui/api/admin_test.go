@@ -3,11 +3,6 @@ package api_test
 import (
 	"bufio"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +13,7 @@ import (
 	"github.com/keylatch/keylatch/internal/team"
 	"github.com/keylatch/keylatch/internal/team/approval"
 	"github.com/keylatch/keylatch/internal/ui/api"
+	"github.com/keylatch/keylatch/internal/ui/csrf"
 )
 
 // newTestTeam returns a minimal team for admin handler tests.
@@ -44,325 +40,117 @@ func newTestTeam() *team.Team {
 	}
 }
 
-const testCSRFSecret = "test-secret"
-
-// AdminHandler.ServeHTTP is gated unavailable (see admin.go) —
-// every request is denied before role/CSRF logic runs. The tests below now
-// assert that gate holds regardless of role/token shape; the role/CSRF/
-// value-free assertions they previously made stay meaningful for when the
-// admin surface re-enters scope, so the request shapes are unchanged.
-const wantAdminUnavailableCode = http.StatusNotFound
-
-// newAdminHandler returns an AdminHandler wired to the test team.
-func newAdminHandler() *api.AdminHandler {
+// adminHandlerFor returns a handler whose authenticated session carries role.
+func adminHandlerFor(role team.Role) *api.AdminHandler {
 	return &api.AdminHandler{
-		Team:       newTestTeam(),
-		CSRFSecret: testCSRFSecret,
-		// JWTSigningKey falls back to []byte(CSRFSecret) when nil.
+		Team:        newTestTeam(),
+		SessionRole: func(*http.Request) (team.Role, bool) { return role, true },
 	}
 }
 
-// csrfTokenFor computes the correct HMAC-SHA256 CSRF token for the given Authorization header value.
-func csrfTokenFor(auth string) string {
-	mac := hmac.New(sha256.New, []byte(testCSRFSecret))
-	mac.Write([]byte(auth))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-// --- Role gate ---
-
-func TestAdminHandler_NonAdmin_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleDeveloper))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-	var resp map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("body not JSON: %v", err)
-	}
-	if resp["error"] == "" {
-		t.Error("expected error field in JSON response")
-	}
-}
-
-func TestAdminHandler_Viewer_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleViewer))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-func TestAdminHandler_NoAuth_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	// No X-Keylatch-Role, no Authorization header.
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-// TestAdminHandler_AdminRole_Passes previously asserted that a valid admin
-// role header was accepted; the admin gate covers the whole surface unavailable,
-// so an admin role header can no longer reach a 200 either.
-func TestAdminHandler_AdminRole_Passes(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleAdmin))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-func TestAdminHandler_OwnerRole_Passes(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleOwner))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-// mintRoleJWT mints a properly HS256-signed JWT with the given role claim.
-// Signs with testCSRFSecret (which is the fallback JWTSigningKey when JWTSigningKey is nil).
-// admin.go now verifies the signature — unsigned tokens must be rejected.
-func mintRoleJWT(role string) string {
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	claims, _ := json.Marshal(map[string]string{"role": role})
-	payload := base64.RawURLEncoding.EncodeToString(claims)
-	unsigned := header + "." + payload
-	mac := hmac.New(sha256.New, []byte(testCSRFSecret))
-	mac.Write([]byte(unsigned))
-	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return unsigned + "." + sig
-}
-
-// TestAdminJWT_AlgNone_Returns403 verifies that an alg:none style JWT (empty signature)
-// is rejected with 403. The forged-signature sub-case is already covered by
-// TestAdminHandler_UnsignedJWT_Returns403 and is not duplicated here.
-func TestAdminJWT_AlgNone_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	claims, _ := json.Marshal(map[string]string{"role": string(team.RoleAdmin)})
-	payload := base64.RawURLEncoding.EncodeToString(claims)
-	// alg:none style — empty signature.
-	noneJWT := header + "." + payload + "."
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("Authorization", "Bearer "+noneJWT)
+func serveAdmin(h *api.AdminHandler, r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("alg:none JWT: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+	return w
+}
+
+func withCSRF(r *http.Request) *http.Request {
+	r.AddCookie(&http.Cookie{Name: csrf.CookieName, Value: "csrf-token"})
+	r.Header.Set(csrf.HeaderName, "csrf-token")
+	return r
+}
+
+func TestAdminHandler_UnavailableBuildDeniesAdminSession(t *testing.T) {
+	w := serveAdmin(adminHandlerFor(team.RoleAdmin), httptest.NewRequest(http.MethodGet, "/admin/team", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("admin console in an unavailable build: got %d, want 404", w.Code)
 	}
 }
 
-// TestAdminHandler_UnsignedJWT_Returns403 is the gate:
-// a JWT with a forged/unsigned signature must be rejected with 403.
-func TestAdminHandler_UnsignedJWT_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	// Build a JWT manually with a fake signature (not HMAC'd with test-secret).
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	claims, _ := json.Marshal(map[string]string{"role": string(team.RoleAdmin)})
-	payload := base64.RawURLEncoding.EncodeToString(claims)
-	fakeSig := base64.RawURLEncoding.EncodeToString([]byte("forged-signature"))
-	forgedJWT := header + "." + payload + "." + fakeSig
-
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("Authorization", "Bearer "+forgedJWT)
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("unsigned JWT: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+func TestAdminHandler_SessionRoleGate(t *testing.T) {
+	api.EnableAdminConsole(t)
+	cases := []struct {
+		role team.Role
+		want int
+	}{
+		{team.RoleViewer, http.StatusForbidden},
+		{team.RoleDeveloper, http.StatusForbidden},
+		{team.Role("ADMIN"), http.StatusForbidden},
+		{team.Role(""), http.StatusForbidden},
+		{team.RoleAdmin, http.StatusOK},
+		{team.RoleOwner, http.StatusOK},
+	}
+	for _, tc := range cases {
+		w := serveAdmin(adminHandlerFor(tc.role), httptest.NewRequest(http.MethodGet, "/admin/policy", nil))
+		if w.Code != tc.want {
+			t.Errorf("session role %q: got %d, want %d", tc.role, w.Code, tc.want)
+		}
 	}
 }
 
-// --- Bearer token role extraction ---
-
-func TestAdminHandler_BearerToken_DeveloperRole_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("Authorization", "Bearer "+mintRoleJWT(string(team.RoleDeveloper)))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("developer bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+func TestAdminHandler_NoSessionDenied(t *testing.T) {
+	api.EnableAdminConsole(t)
+	unauthenticated := &api.AdminHandler{
+		Team:        newTestTeam(),
+		SessionRole: func(*http.Request) (team.Role, bool) { return "", false },
 	}
-}
-
-func TestAdminHandler_BearerToken_ViewerRole_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("Authorization", "Bearer "+mintRoleJWT(string(team.RoleViewer)))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("viewer bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-func TestAdminHandler_BearerToken_AdminRole_Passes(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("Authorization", "Bearer "+mintRoleJWT(string(team.RoleAdmin)))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("admin bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-func TestAdminHandler_BearerToken_OwnerRole_Passes(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("Authorization", "Bearer "+mintRoleJWT(string(team.RoleOwner)))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("owner bearer token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-func TestAdminHandler_BearerToken_NoAuth_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	// No auth header at all.
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("no auth: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+	for _, h := range []*api.AdminHandler{{Team: newTestTeam()}, unauthenticated} {
+		if w := serveAdmin(h, httptest.NewRequest(http.MethodGet, "/admin/team", nil)); w.Code != http.StatusForbidden {
+			t.Errorf("no authenticated session: got %d, want 403", w.Code)
+		}
 	}
 }
 
 // --- CSRF gate ---
 
 func TestAdminHandler_MutationWithoutCSRF_Returns403(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodPost, "/admin/team", strings.NewReader(`{"email_hmac":"hmac-x","role":"developer"}`))
-	r.Header.Set("X-Keylatch-Role", string(team.RoleAdmin))
-	r.Header.Set("Content-Type", "application/json")
-	// No X-CSRF-Token header.
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("missing CSRF token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+	api.EnableAdminConsole(t)
+	w := serveAdmin(adminHandlerFor(team.RoleAdmin), httptest.NewRequest(http.MethodPost, "/admin/policy", nil))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("mutation without CSRF token: got %d, want 403", w.Code)
 	}
 }
 
-// TestAdminHandler_MutationWithCSRF_Passes previously asserted a mutation
-// with a valid CSRF token was accepted; the admin gate covers the whole surface
-// unavailable, so even a correctly CSRF-guarded mutation is denied.
+func TestAdminHandler_MutationWithMismatchedCSRF_Returns403(t *testing.T) {
+	api.EnableAdminConsole(t)
+	r := httptest.NewRequest(http.MethodPost, "/admin/policy", nil)
+	r.AddCookie(&http.Cookie{Name: csrf.CookieName, Value: "csrf-token"})
+	r.Header.Set(csrf.HeaderName, "other-token")
+	if w := serveAdmin(adminHandlerFor(team.RoleAdmin), r); w.Code != http.StatusForbidden {
+		t.Fatalf("mismatched CSRF token: got %d, want 403", w.Code)
+	}
+}
+
 func TestAdminHandler_MutationWithCSRF_Passes(t *testing.T) {
-	h := newAdminHandler()
-	body := `{"email_hmac":"hmac-x","role":"developer"}`
-	// Use X-Keylatch-Role (not Bearer) so the CSRF HMAC is computed over the Authorization header.
-	// When using X-Keylatch-Role, Authorization is empty; HMAC("", secret) is used for CSRF.
-	authHeader := "" // no Bearer token when using X-Keylatch-Role
-	r := httptest.NewRequest(http.MethodPost, "/admin/team", strings.NewReader(body))
-	r.Header.Set("X-Keylatch-Role", string(team.RoleAdmin))
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("X-CSRF-Token", csrfTokenFor(authHeader))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("valid CSRF token: expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+	api.EnableAdminConsole(t)
+	r := withCSRF(httptest.NewRequest(http.MethodPost, "/admin/policy", nil))
+	if w := serveAdmin(adminHandlerFor(team.RoleAdmin), r); w.Code != http.StatusOK {
+		t.Fatalf("valid CSRF token: got %d, want 200", w.Code)
 	}
 }
 
 // --- Team list value-free ---
 
-// TestAdminHandler_TeamList_ValueFree previously verified member emails
-// never leak raw in the team-list response; the admin gate covers the whole surface
-// unavailable, so the response now carries no team data at all
-// (trivially value-free) — this asserts the gate holds on this route.
 func TestAdminHandler_TeamList_ValueFree(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/team", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleAdmin))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Fatalf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+	api.EnableAdminConsole(t)
+	w := serveAdmin(adminHandlerFor(team.RoleAdmin), httptest.NewRequest(http.MethodGet, "/admin/team", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("team list: got %d", w.Code)
 	}
 	body := w.Body.String()
-	if strings.Contains(body, "@example.com") || strings.Contains(body, "@") {
-		t.Error("admin-unavailable response contains raw email — value-free invariant violated")
+	if strings.Contains(body, "@") {
+		t.Error("team list contains a raw email")
+	}
+	if !strings.Contains(body, "hmac-admin") {
+		t.Errorf("team list missing member HMAC: %s", body)
 	}
 }
 
-// --- Policy handler ---
-
-// TestAdminHandler_PolicyGet previously verified the policy GET route
-// returns an active-status payload; the admin gate makes the whole surface unavailable,
-// so this route is now denied like every other admin route.
-func TestAdminHandler_PolicyGet(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/policy", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleAdmin))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
-	}
-}
-
-// --- Approvals handler ---
-
-// TestAdminHandler_ApprovalsGet previously verified the approvals GET route
-// returns an empty-inbox payload; the admin gate makes the whole surface unavailable,
-// so this route is now denied like every other admin route.
 func TestAdminHandler_ApprovalsGet(t *testing.T) {
-	h := newAdminHandler()
-	r := httptest.NewRequest(http.MethodGet, "/admin/approvals", nil)
-	r.Header.Set("X-Keylatch-Role", string(team.RoleAdmin))
-	w := httptest.NewRecorder()
-
-	h.ServeHTTP(w, r)
-
-	if w.Code != wantAdminUnavailableCode {
-		t.Errorf("expected %d (admin unavailable), got %d", wantAdminUnavailableCode, w.Code)
+	api.EnableAdminConsole(t)
+	w := serveAdmin(adminHandlerFor(team.RoleAdmin), httptest.NewRequest(http.MethodGet, "/admin/approvals", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("approvals: got %d", w.Code)
 	}
 }
 

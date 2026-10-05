@@ -1,18 +1,14 @@
 // Package api — admin route group for team governance UI.
 //
 // Security invariants:
-// - Role enforcement at package layer.
-// - All admin routes require admin role (extracted from JWT).
-// - All admin POST/PUT/DELETE require CSRF token (HMAC double-submit).
-// - All output is value-free (member data HMACd).
-// - JWT signature is verified via HMAC-SHA256 before any claims are trusted.
+//   - The caller's role comes only from server-side state for the request's
+//     authenticated UI session (AdminHandler.SessionRole); no request header,
+//     cookie value or token claim can name a role.
+//   - All admin POST/PUT/DELETE require the UI's double-submit CSRF token.
+//   - All output is value-free (member data HMACd).
 package api
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,37 +17,40 @@ import (
 
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/team"
+	"github.com/keylatch/keylatch/internal/ui/csrf"
 )
+
+// adminEnabled reports whether the admin console ships in this build.
+// Replaced in tests.
+var adminEnabled = func() bool { return manifest.Current().Enabled("admin") }
 
 // AdminHandler handles /admin/* routes for team governance.
 // All routes enforce admin role and CSRF on mutations.
 type AdminHandler struct {
-	Team          *team.Team
-	CSRFSecret    string // CSRF HMAC secret for double-submit pattern
-	JWTSigningKey []byte // HS256 key; falls back to []byte(CSRFSecret) if nil
+	Team *team.Team
+	// SessionRole returns the team role bound to the request's authenticated
+	// UI session, looked up from server-side session state. It must not read
+	// anything the client chooses beyond the session cookie it validates.
+	// Nil, or ok=false, denies the request.
+	SessionRole func(r *http.Request) (role team.Role, ok bool)
 }
 
 // ServeHTTP routes admin requests.
-// Gated unavailable — denied before any role/CSRF check runs, so
-// no caller-supplied header or token can reach the role logic below. Real
-// server-authenticated role/JWT/membership verification is expansion work
-// for when the admin surface re-enters scope.
 func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !manifest.Current().Enabled("admin") {
+	if !adminEnabled() {
 		writeAdminError(w, http.StatusNotFound, "admin console unavailable in this build")
 		return
 	}
 
 	path := strings.TrimPrefix(r.URL.Path, "/admin")
 
-	// Role gate: extract JWT and require admin.
 	if !h.requireAdmin(w, r) {
 		return
 	}
 
-	// CSRF gate on mutations.
 	if isMutation(r.Method) {
-		if !h.checkCSRF(w, r) {
+		if err := csrf.Validate(r); err != nil {
+			writeAdminError(w, http.StatusForbidden, "invalid CSRF token")
 			return
 		}
 	}
@@ -72,89 +71,20 @@ func (h *AdminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// requireAdmin checks the request carries a valid admin-role JWT.
-// bearer token must have a valid HS256 signature before any claims are trusted.
+// requireAdmin admits the request only when its authenticated session holds
+// at least the admin role.
 func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
-	// Check X-Keylatch-Role header (set by gateway after JWT validation).
-	role := r.Header.Get("X-Keylatch-Role")
-	if role == "" {
-		// Extract from Bearer token — signature is verified inside extractRoleFromJWT.
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") {
-			writeAdminError(w, http.StatusForbidden, "missing authorization")
-			return false
-		}
-		role = h.extractRoleFromJWT(strings.TrimPrefix(auth, "Bearer "))
-		if role == "" {
-			writeAdminError(w, http.StatusForbidden, "missing or invalid role claim in token")
-			return false
-		}
+	if h.SessionRole == nil {
+		writeAdminError(w, http.StatusForbidden, "missing authorization")
+		return false
 	}
-
-	// role enforcement at package layer.
-	member := team.Member{Role: team.Role(role)}
-	if err := team.RequireRole(member, team.RoleAdmin); err != nil {
+	role, ok := h.SessionRole(r)
+	if !ok {
+		writeAdminError(w, http.StatusForbidden, "missing authorization")
+		return false
+	}
+	if err := team.RequireRole(team.Member{Role: role}, team.RoleAdmin); err != nil {
 		writeAdminError(w, http.StatusForbidden, "insufficient role")
-		return false
-	}
-	return true
-}
-
-// extractRoleFromJWT verifies the HS256 JWT signature then parses role from claims.
-// an unverified or forged JWT returns "" so requireAdmin denies the request.
-func (h *AdminHandler) extractRoleFromJWT(tokenStr string) string {
-	parts := strings.Split(tokenStr, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-
-	// Determine signing key: prefer JWTSigningKey, fall back to CSRFSecret.
-	key := h.JWTSigningKey
-	if len(key) == 0 {
-		key = []byte(h.CSRFSecret)
-	}
-	if len(key) == 0 {
-		return "" // no key configured — reject
-	}
-
-	// Verify HS256 signature over header.payload.
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(parts[0] + "." + parts[1]))
-	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	// parts[2] may be "" for alg:none style tokens — hmac.Equal always returns false for mismatched lengths.
-	if !hmac.Equal([]byte(expected), []byte(parts[2])) {
-		return "" // invalid signature
-	}
-
-	// Signature valid — decode and parse claims.
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return ""
-	}
-	var claims struct {
-		Role string `json:"role"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return ""
-	}
-	return claims.Role
-}
-
-// checkCSRF validates the CSRF double-submit token on mutation requests.
-// the X-CSRF-Token must be HMAC-SHA256(CSRFSecret, Authorization-header).
-// A missing or incorrect token results in 403 — no state mutation proceeds.
-func (h *AdminHandler) checkCSRF(w http.ResponseWriter, r *http.Request) bool {
-	token := r.Header.Get("X-CSRF-Token")
-	if token == "" {
-		writeAdminError(w, http.StatusForbidden, "missing CSRF token")
-		return false
-	}
-	auth := r.Header.Get("Authorization")
-	mac := hmac.New(sha256.New, []byte(h.CSRFSecret))
-	mac.Write([]byte(auth))
-	expected := hex.EncodeToString(mac.Sum(nil))
-	if !hmac.Equal([]byte(token), []byte(expected)) {
-		writeAdminError(w, http.StatusForbidden, "invalid CSRF token")
 		return false
 	}
 	return true
