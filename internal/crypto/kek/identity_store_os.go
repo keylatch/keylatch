@@ -28,13 +28,7 @@ const (
 type identityRunner func(ctx context.Context, stdin []byte, name string, args ...string) (stdout, stderr []byte, err error)
 
 func execIdentityRunner(ctx context.Context, stdin []byte, name string, args ...string) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: name is the resolved security/secret-tool binary; args are fixed or validated
-	cmd.Stdin = bytes.NewReader(stdin)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return stdout.Bytes(), stderr.Bytes(), err
+	return runBounded(ctx, stdin, name, args...)
 }
 
 // DefaultIdentityStore returns the OS keyring for this platform, or nil when
