@@ -126,16 +126,13 @@ func TestAuthMethodSelection(t *testing.T) {
 }
 
 func TestRegisteredFactoryReadsExtra(t *testing.T) {
-	r, err := trust.New(trust.RootSpec{
-		Type:  trust.RootVaultTransit,
-		Label: "corp",
-		Extra: map[string]any{
-			"addr":        "http://vault.invalid",
-			"auth_method": "approle",
-			"transit_key": "kek2",
-			"namespace":   "ns",
-		},
-	})
+	extra := map[string]any{
+		"addr":        "http://vault.invalid",
+		"auth_method": "approle",
+		"transit_key": "kek2",
+		"namespace":   "ns",
+	}
+	r, err := trust.New(trust.RootSpec{Type: trust.RootVaultTransit, Label: "corp", Extra: extra})
 	if err != nil {
 		t.Fatalf("trust.New: %v", err)
 	}
