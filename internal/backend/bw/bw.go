@@ -266,7 +266,7 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 		}
 		encoded := base64.StdEncoding.EncodeToString(body)
 
-		_, stderr, exitCode, err := b.runWithSession(ctx, []string{"edit", "item", existing.ID, encoded}, nil)
+		_, stderr, exitCode, err := b.runWithSession(ctx, []string{"edit", "item", existing.ID}, []byte(encoded))
 		if err != nil {
 			return fmt.Errorf("bw Set: runner error: %w", err)
 		}
@@ -305,7 +305,7 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 		}
 		encoded := base64.StdEncoding.EncodeToString(body)
 
-		_, stderr, exitCode, err := b.runWithSession(ctx, []string{"create", "item", encoded}, nil)
+		_, stderr, exitCode, err := b.runWithSession(ctx, []string{"create", "item"}, []byte(encoded))
 		if err != nil {
 			return fmt.Errorf("bw Set: runner error: %w", err)
 		}
