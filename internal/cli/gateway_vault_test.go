@@ -3,9 +3,12 @@ package cli
 import (
 	"context"
 	"crypto/rand"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -143,6 +146,44 @@ func TestNewGatewayVaultReader_UnknownBackendFails(t *testing.T) {
 		config.Config{Backend: "no-such-backend"}, func(string) string { return "" })
 	if err == nil {
 		t.Fatal("expected error for unknown backend, got nil")
+	}
+}
+
+func TestGatewayUp_UnusableVaultReportsBackendUnavailable(t *testing.T) {
+	cfgDir := testutil.SetupHermeticConfig(t)
+	t.Setenv("KEYLATCH_BACKEND", "no-such-backend")
+	dispatch.ClearCached()
+	t.Cleanup(dispatch.ClearCached)
+
+	keyPath := filepath.Join(cfgDir, "gateway", "signing.key")
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, port, err := net.SplitHostPort(freeLoopbackAddr(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := newGatewayUpCmd()
+	cmd.SetArgs([]string{"--port", port})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetContext(context.Background())
+
+	err = cmd.Execute()
+	var cliErr *CLIError
+	if !errors.As(err, &cliErr) || cliErr.Class != "BackendUnavailable" {
+		t.Fatalf("gateway up error = %v, want a BackendUnavailable CLIError", err)
+	}
+	if !strings.Contains(cliErr.Message, "open vault backend") {
+		t.Fatalf("message %q does not name the vault backend", cliErr.Message)
 	}
 }
 

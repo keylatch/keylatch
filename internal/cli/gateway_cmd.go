@@ -369,7 +369,7 @@ func newGatewayUpCmd() *cobra.Command {
 			// unauthenticated, so an unusable backend is fatal here.
 			vaultReader, err := newGatewayVaultReader(ctx, loadCLIConfig(c), env)
 			if err != nil {
-				return fmt.Errorf("gateway up: %w (run `keylatch doctor`)", err)
+				return NewBackendUnavailable("gateway up: %v", err)
 			}
 
 			opts := gateway.ServerOptions{

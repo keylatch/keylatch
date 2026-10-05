@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-gateway-end-to-end.sh
 #
-# End-to-end gateway integration test using an in-process memory backend.
+# End-to-end gateway integration test against a bootstrapped file vault.
 # Verifies: gateway init → token create → request proxied → token revoke.
 #
 # Requirements: go (in PATH), bash 4+, standard POSIX tools.
@@ -98,7 +98,16 @@ GATEWAY_HOME="$TMPDIR_ROOT/home"
 mkdir -p "$GATEWAY_HOME"
 export HOME="$GATEWAY_HOME"
 export KEYLATCH_CONFIG_DIR="$GATEWAY_HOME/.keylatch"
-mkdir -p "$KEYLATCH_CONFIG_DIR"
+export KEYLATCH_DATA_DIR="$KEYLATCH_CONFIG_DIR/vault"
+export KEYLATCH_BACKEND="file"
+mkdir -p "$KEYLATCH_DATA_DIR"
+
+# ─── bootstrap vault ──────────────────────────────────────────────────────────
+# `gateway up` refuses to start without a usable vault backend.
+
+log "Running: keylatch bootstrap --backend file"
+"$KEYLATCH_BIN" bootstrap --backend file >/dev/null || fail "bootstrap failed"
+pass "bootstrap"
 
 # ─── gateway init ─────────────────────────────────────────────────────────────
 
@@ -114,15 +123,29 @@ pass "gateway init"
 
 GATEWAY_PORT=17878
 log "Starting gateway on port $GATEWAY_PORT..."
-GATEWAY_PID_FILE="$KEYLATCH_CONFIG_DIR/gateway/gateway.pid"
 
-"$KEYLATCH_BIN" gateway up --port "$GATEWAY_PORT" &
+GATEWAY_LOG="$TMPDIR_ROOT/gateway.log"
+"$KEYLATCH_BIN" gateway up --port "$GATEWAY_PORT" >"$GATEWAY_LOG" 2>&1 &
 GATEWAY_BG_PID=$!
-trap 'kill "$GATEWAY_BG_PID" 2>/dev/null || true; chmod -R u+w "$TMPDIR_ROOT" 2>/dev/null || true; rm -rf "$TMPDIR_ROOT"' EXIT
+
+cleanup_gateway() {
+  local rc=$?
+  kill "$GATEWAY_BG_PID" 2>/dev/null || true
+  if [[ $rc -ne 0 && -s "$GATEWAY_LOG" ]]; then
+    printf '[gateway-e2e] gateway output:\n' >&2
+    sed 's/^/  /' "$GATEWAY_LOG" >&2 || true
+  fi
+  chmod -R u+w "$TMPDIR_ROOT" 2>/dev/null || true
+  rm -rf "$TMPDIR_ROOT"
+}
+trap cleanup_gateway EXIT
 
 # Wait for the gateway to become healthy (up to 5 s).
 ATTEMPTS=0
 until curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" >/dev/null 2>&1; do
+  if ! kill -0 "$GATEWAY_BG_PID" 2>/dev/null; then
+    fail "gateway exited before becoming healthy"
+  fi
   ATTEMPTS=$((ATTEMPTS + 1))
   if [[ $ATTEMPTS -ge 50 ]]; then
     fail "gateway did not become healthy after 5 s"
