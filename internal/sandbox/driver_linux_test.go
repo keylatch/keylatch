@@ -203,3 +203,39 @@ func TestRunSandboxed_KeylatchDirAbsent(t *testing.T) {
 		}
 	}
 }
+
+func TestRunSandboxed_HomeMountForbidden(t *testing.T) {
+	dir := t.TempDir()
+	execPath, execHash := writeFakeExec(t, dir, "myexec")
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	m := &sandbox.SandboxManifest{
+		Executable: execPath,
+		ExecHash:   execHash,
+		BindMounts: []sandbox.BindMount{{Src: home, Dest: "/home", RO: true}},
+	}
+	err = sandbox.RunSandboxed(context.Background(), m, true, nil, nil)
+	assert.ErrorIs(t, err, sandbox.ErrForbiddenMount)
+}
+
+func TestRunSandboxed_UnenforceableDenyRefusesToStart(t *testing.T) {
+	dir := t.TempDir()
+	execPath, execHash := writeFakeExec(t, dir, "myexec")
+	writeBwrapStub(t, dir)
+	prependPath(t, dir)
+	dumpFile := filepath.Join(dir, "argv.txt")
+	t.Setenv("BWRAP_ARGV_DUMP", dumpFile)
+	require.NoError(t, os.Symlink(execPath, filepath.Join(dir, "link")))
+
+	m := &sandbox.SandboxManifest{
+		Executable: execPath,
+		ExecHash:   execHash,
+		BindMounts: []sandbox.BindMount{{Src: dir, Dest: "/work"}},
+		Deny:       []string{"/work/link"},
+	}
+	err := sandbox.RunSandboxed(context.Background(), m, true, nil, nil)
+	require.ErrorIs(t, err, sandbox.ErrDenyUnenforceable)
+	_, statErr := os.Stat(dumpFile)
+	assert.True(t, os.IsNotExist(statErr), "bwrap must not run when a deny path cannot be masked")
+}
