@@ -3,7 +3,6 @@ package masking
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 )
 
 // redactedPlaceholder replaces matched sensitive strings.
@@ -14,10 +13,6 @@ var basicClasses = []string{"api_key", "auth_header", "oauth_code", "access_toke
 
 // strictClasses adds additional classes on top of basic.
 var strictClasses = []string{"email", "phone", "customer_id", "payment_id", "presigned_url"}
-
-// strictTokenRe catches credential-shaped runs that no named class knows, so
-// strict mode redacts them in any format, parsed or not.
-var strictTokenRe = regexp.MustCompile(`[A-Za-z0-9+/_\-]{32,}={0,2}`)
 
 // Redactor applies masking policies to response bodies.
 type Redactor struct{}
@@ -48,7 +43,7 @@ func (r *Redactor) Redact(body []byte, policy MaskingPolicy) ([]byte, error) {
 		out := RedactSecretFields(body, redactedPlaceholder)
 		out = r.applyClasses(out, basicClasses)
 		out = r.applyClasses(out, strictClasses)
-		out = strictTokenRe.ReplaceAll(out, []byte(redactedPlaceholder))
+		out = StrictTokenRe.ReplaceAll(out, []byte(redactedPlaceholder))
 		if policy.BlockAttachments {
 			out = r.applyClass(out, "attachment_url")
 		}
