@@ -743,6 +743,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		{"environment", checkPathsConfig(env)},
 		{"environment", checkPathsVault(env)},
 		{"environment", checkPathsAudit(env)},
+		{"environment", checkAuditWritable(env)},
 		// Operating mode check.
 		{"environment", checkOperatingMode(env)},
 		{"backends", checkBackendSelected(env)},

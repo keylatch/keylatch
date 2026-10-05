@@ -2,7 +2,11 @@ package doctor
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -118,6 +122,41 @@ func checkPathsAudit(env llmcontext.Lookup) Check {
 			Detail:  fmt.Sprintf("path=%s mode=0600", p),
 			Tags:    []string{"paths"},
 		}
+	}
+}
+
+// checkAuditWritable reports whether the audit log can be appended to and
+// rotated. Audited secret access is refused while the log cannot be written.
+func checkAuditWritable(env llmcontext.Lookup) Check {
+	return func(_ context.Context) Status {
+		p := paths.Audit(env)
+		st := Status{Name: "audit.writable", Section: "environment", Tags: []string{"audit"}}
+		f, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0) //nolint:gosec // G304: p is the configured audit log
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			st.OK = true
+			st.Detail = fmt.Sprintf("path=%s not created yet", p)
+			return st
+		case err != nil:
+			st.Detail = fmt.Sprintf("path=%s cannot be opened for writing: %v; audited secret access is refused", p, err)
+			st.Fix = fmt.Sprintf("Make %s writable by your user (chmod 0600) and its directory writable (chmod 0700).", p)
+			return st
+		}
+		_ = f.Close()
+
+		probe, err := os.CreateTemp(filepath.Dir(p), ".audit-writable-*")
+		if err != nil {
+			st.OK = true
+			st.Warn = true
+			st.Detail = fmt.Sprintf("dir=%s is not writable: %v; the log cannot rotate and keeps growing", filepath.Dir(p), err)
+			st.Fix = fmt.Sprintf("Run `chmod 0700 %s`.", filepath.Dir(p))
+			return st
+		}
+		_ = probe.Close()
+		_ = os.Remove(probe.Name())
+		st.OK = true
+		st.Detail = fmt.Sprintf("path=%s writable", p)
+		return st
 	}
 }
 

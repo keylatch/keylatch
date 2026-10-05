@@ -153,6 +153,25 @@ func (le *loggerEmitter) Emit(ctx context.Context, e Event) error {
 	return le.l.Log(ctx, e)
 }
 
+func (le *loggerEmitter) Ready() error {
+	return le.l.Ready()
+}
+
+// ReadyChecker is implemented by emitters that can tell, before an
+// operation runs, whether its audit event could be written.
+type ReadyChecker interface {
+	Ready() error
+}
+
+// Ready reports whether e can record events now. Emitters that cannot tell
+// are assumed ready; their Emit error is still checked afterwards.
+func Ready(e Emitter) error {
+	if rc, ok := e.(ReadyChecker); ok {
+		return rc.Ready()
+	}
+	return nil
+}
+
 // Event is an audit log entry. All fields are value-free: paths identify
 // secrets by location only, and Accessor/Actor are HMAC'd identifiers —
 // no raw secret value or plaintext identity is ever recorded.
@@ -223,7 +242,14 @@ var (
 	ErrLogCorrupt       = errors.New("audit: log corrupt")
 	ErrAuditFsyncFailed = errors.New("audit: fsync failed")
 	ErrLogClosed        = errors.New("audit: log closed")
+	// ErrUnavailable means no audit file can be written. Operations that
+	// must be audited are refused while it is returned.
+	ErrUnavailable = errors.New("audit: log unavailable")
 )
+
+// rotateRetryInterval spaces out rotation attempts after one fails; until
+// then events keep going to the current file.
+const rotateRetryInterval = time.Minute
 
 // maxLogSize is the default size cap for auto-rotation (5 MiB).
 const maxLogSize = 5 * 1024 * 1024
@@ -248,8 +274,21 @@ type Logger struct {
 	maxSize     int64
 	retainFiles int
 
+	// closed is set by Close; file is nil without closed only when the log
+	// could not be reopened, and every write retries opening it.
+	closed bool
+	// nextRotate holds back rotation retries after a failed rotation.
+	nextRotate time.Time
+
+	// openFile opens the log file for appending; replaced in tests.
+	openFile func(path string) (*os.File, error)
+
 	// fsyncFailHook is used for fault-injection tests.
 	fsyncFailHook func() error
+}
+
+func openLogFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600) //nolint:gosec // G304: path is the configured audit log
 }
 
 // Open opens or creates the audit log at path.
@@ -265,7 +304,7 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 		return nil, err
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	f, err := openLogFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +322,7 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 		chainMACKey: chainMACKey,
 		maxSize:     maxLogSize,
 		retainFiles: DefaultRetainFiles,
+		openFile:    openLogFile,
 	}
 
 	// Seed chain state from the last line of an existing log.
@@ -303,12 +343,22 @@ func (l *Logger) Path() string {
 func (l *Logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.closed = true
 	if l.file != nil {
 		err := l.file.Close()
 		l.file = nil
 		return err
 	}
 	return nil
+}
+
+// Ready reports whether events can be written now. It returns ErrLogClosed
+// after Close and an ErrUnavailable error while the log file cannot be
+// opened.
+func (l *Logger) Ready() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ensureFile()
 }
 
 // Log appends an audit event to the log.

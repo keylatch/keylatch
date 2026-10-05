@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -28,12 +29,45 @@ type chainHeader struct {
 
 // appendEvent implements Logger.Log (must hold l.mu): it writes the event and
 // rotates once the file passes the size cap.
+//
+// A failed rotation leaves events going to the current file and is retried
+// after rotateRetryInterval. It is an error only when no file is left to
+// write to.
 func (l *Logger) appendEvent(e Event) error {
 	if err := l.writeEvent(e); err != nil {
 		return err
 	}
-	if info, err := l.file.Stat(); err == nil && info.Size() > l.maxSize {
-		_ = l.rotate() // best-effort; size-cap failure is non-fatal
+	info, err := l.file.Stat()
+	if err != nil || info.Size() <= l.maxSize || time.Now().Before(l.nextRotate) {
+		return nil
+	}
+	if err := l.rotate(); err != nil {
+		l.nextRotate = time.Now().Add(rotateRetryInterval)
+		slog.Warn("audit log rotation failed; writing to the current file", "path", l.path, "error", err)
+		if l.file == nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureFile reopens the log after a failed rotation (must hold l.mu).
+func (l *Logger) ensureFile() error {
+	if l.closed {
+		return ErrLogClosed
+	}
+	if l.file != nil {
+		return nil
+	}
+	f, err := l.openFile(l.path)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrUnavailable, l.path, err)
+	}
+	l.file = f
+	if err := l.seedChainState(); err != nil {
+		_ = f.Close()
+		l.file = nil
+		return fmt.Errorf("%w: %s: %v", ErrUnavailable, l.path, err)
 	}
 	return nil
 }
@@ -41,8 +75,8 @@ func (l *Logger) appendEvent(e Event) error {
 // writeEvent seals and appends one event without checking the size cap, so
 // rotate can write its sentinels through it without re-entering rotation.
 func (l *Logger) writeEvent(e Event) error {
-	if l.file == nil {
-		return ErrLogClosed
+	if err := l.ensureFile(); err != nil {
+		return err
 	}
 
 	// Step 1: set timestamp and sequence.
@@ -299,12 +333,14 @@ func (l *Logger) rotate() error {
 	}
 	rotated := rotatedName(l.path, 1)
 
-	_ = l.writeEvent(Event{ // best-effort; a failure here does not abort rotation
+	if err := l.writeEvent(Event{
 		Timestamp: time.Now(),
 		Action:    ActionAuditRotate,
 		Outcome:   OutcomeOK,
 		Extra:     map[string]any{"rotated_to": rotated},
-	})
+	}); err != nil {
+		return fmt.Errorf("audit: write rotation marker: %w", err)
+	}
 	prevHMACForNewFile := l.prevHMAC
 
 	_ = l.file.Sync()
@@ -312,23 +348,25 @@ func (l *Logger) rotate() error {
 	l.file = nil
 
 	if err := shiftGenerations(l.path, l.retainFiles); err != nil {
-		l.reopen()
-		return err
+		return l.keepCurrent(err)
 	}
 	if err := os.Rename(l.path, rotated); err != nil {
-		l.reopen()
-		return fmt.Errorf("audit: rotate rename: %w", err)
+		return l.keepCurrent(fmt.Errorf("audit: rotate rename: %w", err))
 	}
 
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	f, err := l.openFile(l.path)
 	if err != nil {
-		return fmt.Errorf("audit: open new log after rotate: %w", err)
+		// Put the full file back so events keep chaining onto it.
+		if rerr := os.Rename(rotated, l.path); rerr != nil {
+			return fmt.Errorf("%w: open new log after rotate: %v; restore %s: %v", ErrUnavailable, err, rotated, rerr)
+		}
+		return l.keepCurrent(fmt.Errorf("audit: open new log after rotate: %w", err))
 	}
 	l.file = f
 	l.seq = 0
 	l.prevHMAC = ""
 
-	_ = l.writeEvent(Event{ // best-effort; the new file is already in place
+	if err := l.writeEvent(Event{
 		Timestamp: time.Now(),
 		Action:    ActionAuditRotate,
 		Outcome:   OutcomeOK,
@@ -336,16 +374,22 @@ func (l *Logger) rotate() error {
 			"rotated_from":   rotated,
 			"prev_file_hmac": prevHMACForNewFile,
 		},
-	})
+	}); err != nil {
+		return fmt.Errorf("audit: write rotation-continued marker: %w", err)
+	}
 	return nil
 }
 
-// reopen restores the current file after a failed rotation, keeping the
-// chain state so later events still link to the existing lines.
-func (l *Logger) reopen() {
-	if f, err := os.OpenFile(l.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600); err == nil {
-		l.file = f
+// keepCurrent reopens the current file after a failed rotation, keeping the
+// chain state so later events still link to its last line. It returns
+// cause, wrapped in ErrUnavailable when the file cannot be reopened either.
+func (l *Logger) keepCurrent(cause error) error {
+	f, err := l.openFile(l.path)
+	if err != nil {
+		return fmt.Errorf("%w: %v; reopen %s: %v", ErrUnavailable, cause, l.path, err)
 	}
+	l.file = f
+	return cause
 }
 
 func rotatedName(path string, generation int) string {
