@@ -111,10 +111,6 @@ var commonPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)"bearer[^"]*"\s*:\s*"[^"]{8,}"`),
 }
 
-// strictTokenRe matches credential-shaped runs, quoted or not, so strict
-// mode covers bodies in any format.
-var strictTokenRe = regexp.MustCompile(`[A-Za-z0-9_.\-]{32,}={0,2}`)
-
 // Body applies provider-specific redaction patterns + masking profile
 // to a response body. Credential-named fields and basic patterns are always
 // redacted; strict/metadata_only are honoured when declared, and any other
@@ -162,7 +158,7 @@ func Body(provider string, body []byte, profile MaskingProfile, patterns []strin
 	}
 
 	if profile == ProfileStrict {
-		result = strictTokenRe.ReplaceAllString(result, "****")
+		result = masking.StrictTokenRe.ReplaceAllString(result, "****")
 	}
 
 	return []byte(result)
