@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -329,7 +331,7 @@ func newPolicyRemoveCmd() *cobra.Command {
 			ruleID := args[0]
 			policyPath := paths.Policy(llmcontext.DefaultLookup)
 
-			p, err := policy.Load(policyPath)
+			p, err := loadOrDefaultPolicy(policyPath)
 			if err != nil {
 				return err
 			}
@@ -360,7 +362,7 @@ func newPolicyRemoveCmd() *cobra.Command {
 func loadOrDefaultPolicy(policyPath string) (policy.Policy, error) {
 	p, err := policy.Load(policyPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return policy.Policy{
 				SchemaVersion: 1,
 				Mode:          policy.ModeEnforcing,

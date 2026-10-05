@@ -6,7 +6,9 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -53,20 +55,17 @@ values are re-encrypted, and the old terms are retired.`,
 	return cmd
 }
 
-// runMigrateCipher performs the full migration workflow.
+// runMigrateCipher re-encrypts every stored version under a new DEK term and
+// the target algorithm.
 //
-// Steps:
-//  1. Open the existing keyring and validate the target algorithm differs.
-//  2. Rotate to a new DEK term (preserving old terms for rollback).
-//  3. For each versioned value: decrypt under old DEK + old alg; re-encrypt under new DEK + new alg.
-//  4. Update KeyringFile.Algorithm atomically.
-//  5. On any failure: no ciphertexts have been overwritten, so old values remain readable.
+// Every stored version is decrypted before anything is written, so an
+// unreadable version aborts the migration with the vault untouched. Once
+// writing starts, a failure restores each rewritten ciphertext, nonce,
+// binding sidecar and metadata record.
 func runMigrateCipher(cmd *cobra.Command, toAlgStr string) error {
-	// Validate target algorithm.
 	toAlg := envelope.Algorithm(toAlgStr)
 	switch toAlg {
 	case envelope.XChaCha20Poly1305, envelope.AES256GCM:
-		// valid
 	default:
 		return fmt.Errorf("migrate cipher: unknown algorithm %q (want xchacha20-poly1305 or aes-256-gcm)", toAlgStr)
 	}
@@ -88,7 +87,6 @@ func runMigrateCipher(cmd *cobra.Command, toAlgStr string) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "migrating vault from %q to %q\n", currentAlg, toAlg)
 
-	// Open the file backend.
 	fb, err := file.Open(file.Options{Dir: vaultDir})
 	if err != nil {
 		return fmt.Errorf("migrate cipher: open backend: %w", err)
@@ -96,14 +94,12 @@ func runMigrateCipher(cmd *cobra.Command, toAlgStr string) error {
 
 	ctx := context.Background()
 
-	// List all metadata records.
 	metas, err := fb.ListMeta(ctx, "")
 	if err != nil {
 		return fmt.Errorf("migrate cipher: list metadata: %w", err)
 	}
 
 	if len(metas) == 0 {
-		// No values to migrate — just update the algorithm in the keyring file.
 		if err := updateKeyringAlgorithm(krPath, toAlg); err != nil {
 			return fmt.Errorf("migrate cipher: update keyring algorithm: %w", err)
 		}
@@ -111,162 +107,282 @@ func runMigrateCipher(cmd *cobra.Command, toAlgStr string) error {
 		return nil
 	}
 
-	// Rotate to a new term that will hold the re-encrypted values.
+	items, err := readStoredVersions(vaultDir, metas, kr)
+	defer func() {
+		for _, it := range items {
+			zeroBytes(it.plaintext)
+		}
+	}()
+	if err != nil {
+		return fmt.Errorf("migrate cipher: %w (nothing was changed)", err)
+	}
+
 	newTerm, err := kr.RotateTerm(k)
 	if err != nil {
 		return fmt.Errorf("migrate cipher: rotate term: %w", err)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "created new DEK term %d for target algorithm %q\n", newTerm, toAlg)
 
-	// Re-open the keyring to pick up the new term.
+	if toAlg == envelope.AES256GCM {
+		if err := ensureGCMCounter(krPath, newTerm); err != nil {
+			return fmt.Errorf("migrate cipher: initialise nonce counter: %w", err)
+		}
+	}
+
 	kr.Zero()
-	kr, k, _, err = openKeyringFromEnv()
+	kr, _, _, err = openKeyringFromEnv()
 	if err != nil {
 		return fmt.Errorf("migrate cipher: reopen keyring after rotate: %w", err)
 	}
 	defer kr.Zero()
-	_ = k
 
-	// Track which versions have been re-encrypted for rollback on failure.
+	newDEK, err := kr.DEKForTerm(newTerm)
+	if err != nil {
+		return fmt.Errorf("migrate cipher: get new DEK: %w", err)
+	}
+
 	var backups []migrateBackup
-	migrated := 0
-
-	for _, m := range metas {
-		for _, vm := range m.Versions {
-			// Read old ciphertext + nonce.
-			ct, err := fb.GetVersioned(ctx, m.Path, vm.Version)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: read %s v%d: %w", m.Path, vm.Version, err))
-			}
-			noncePath := valuePath(vaultDir, m.Path, vm.Version) + ".nonce"
-			nonce, err := os.ReadFile(noncePath)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: read nonce %s v%d: %w", m.Path, vm.Version, err))
-			}
-
-			// Keep backup for rollback.
-			backups = append(backups, migrateBackup{
-				path: m.Path, version: vm.Version,
-				ct: ct, nonce: nonce,
-			})
-
-			// Reconstruct old AAD.
-			oldAAD, err := aad.Marshal(vm.AAD)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: marshal old AAD for %s v%d: %w", m.Path, vm.Version, err))
-			}
-
-			// Decrypt under old DEK + old algorithm.
-			oldDEK, err := kr.DEKForTerm(vm.AAD.KeyTerm)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: get old DEK for %s v%d: %w", m.Path, vm.Version, err))
-			}
-			plaintext, err := envelope.Open(envelope.Algorithm(vm.AAD.Algorithm), oldDEK, ct, nonce, oldAAD)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: decrypt %s v%d: %w", m.Path, vm.Version, err))
-			}
-
-			// Build new AAD for the target algorithm + new term.
-			newBinding := vmeta.AADBinding{
-				SchemaVersion: vmeta.CurrentSchemaVersion,
-				Namespace:     vm.AAD.Namespace,
-				Path:          m.Path,
-				Version:       vm.Version,
-				KeyTerm:       newTerm,
-				BackendID:     fb.ID(),
-				CreatedAt:     vm.CreatedAt,
-				Algorithm:     string(toAlg),
-			}
-			newAAD, err := aad.Marshal(newBinding)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: marshal new AAD for %s v%d: %w", m.Path, vm.Version, err))
-			}
-
-			// Seal under new DEK + new algorithm.
-			newDEK, err := kr.DEKForTerm(newTerm)
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: get new DEK for %s v%d: %w", m.Path, vm.Version, err))
-			}
-			var newCT, newNonce []byte
-			switch toAlg {
-			case envelope.XChaCha20Poly1305:
-				newCT, newNonce, err = envelope.SealXChaCha20(newDEK, plaintext, newAAD)
-			case envelope.AES256GCM:
-				newCT, newNonce, err = envelope.SealAESGCM(newDEK, plaintext, newAAD, kr, newTerm)
-			}
-			if err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: re-encrypt %s v%d: %w", m.Path, vm.Version, err))
-			}
-
-			// Write new ciphertext + nonce.
-			p := valuePath(vaultDir, m.Path, vm.Version)
-			if err := atomicWriteCLI(p, newCT); err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: write new ciphertext %s v%d: %w", m.Path, vm.Version, err))
-			}
-			if err := atomicWriteCLI(noncePath, newNonce); err != nil {
-				return rollback(cmd, fb, ctx, backups,
-					fmt.Errorf("migrate cipher: write new nonce %s v%d: %w", m.Path, vm.Version, err))
-			}
-
-			// Update the version metadata AAD binding.
-			vm.AAD = newBinding
-			migrated++
-		}
-
-		// Update metadata with new algorithm references.
-		//nolint:staticcheck // S1001: loop is intentionally written this way to preserve future extension points
-		for i, vm := range m.Versions {
-			m.Versions[i] = vm
-		}
-		m.UpdatedAt = time.Now().UTC()
-		if err := fb.SetMeta(ctx, m.Path, m); err != nil {
-			// Metadata update failure: rollback value files.
-			return rollback(cmd, fb, ctx, backups,
-				fmt.Errorf("migrate cipher: update metadata for %s: %w", m.Path, err))
-		}
+	var metaBackups []vmeta.Meta
+	fail := func(err error) error {
+		return rollback(cmd, fb, ctx, backups, metaBackups, err)
 	}
 
-	// Update KeyringFile.Algorithm atomically.
+	for _, it := range items {
+		backup, err := snapshotVersion(it)
+		if err != nil {
+			return fail(fmt.Errorf("migrate cipher: back up %s v%d: %w", it.path, it.version, err))
+		}
+		backups = append(backups, backup)
+
+		newBinding := it.binding
+		newBinding.KeyTerm = newTerm
+		newBinding.Algorithm = string(toAlg)
+		newAAD, err := aad.Marshal(newBinding)
+		if err != nil {
+			return fail(fmt.Errorf("migrate cipher: marshal new AAD for %s v%d: %w", it.path, it.version, err))
+		}
+
+		var newCT, newNonce []byte
+		switch toAlg {
+		case envelope.XChaCha20Poly1305:
+			newCT, newNonce, err = envelope.SealXChaCha20(newDEK, it.plaintext, newAAD)
+		case envelope.AES256GCM:
+			newCT, newNonce, err = envelope.SealAESGCM(newDEK, it.plaintext, newAAD, kr, newTerm)
+		}
+		if err != nil {
+			return fail(fmt.Errorf("migrate cipher: re-encrypt %s v%d: %w", it.path, it.version, err))
+		}
+		bindingJSON, err := json.Marshal(newBinding)
+		if err != nil {
+			return fail(fmt.Errorf("migrate cipher: marshal binding for %s v%d: %w", it.path, it.version, err))
+		}
+
+		if err := atomicWriteCLI(it.ctPath, newCT); err != nil {
+			return fail(fmt.Errorf("migrate cipher: write new ciphertext %s v%d: %w", it.path, it.version, err))
+		}
+		if err := atomicWriteCLI(it.ctPath+".nonce", newNonce); err != nil {
+			return fail(fmt.Errorf("migrate cipher: write new nonce %s v%d: %w", it.path, it.version, err))
+		}
+		if err := atomicWriteCLI(it.ctPath+versionBindingSuffix, bindingJSON); err != nil {
+			return fail(fmt.Errorf("migrate cipher: write binding %s v%d: %w", it.path, it.version, err))
+		}
+		it.meta.Versions[it.index].AAD = newBinding
+	}
+
+	now := time.Now().UTC()
+	for i := range metas {
+		original, err := fb.GetMeta(ctx, metas[i].Path)
+		if err != nil {
+			return fail(fmt.Errorf("migrate cipher: read metadata for %s: %w", metas[i].Path, err))
+		}
+		metas[i].UpdatedAt = now
+		if err := fb.SetMeta(ctx, metas[i].Path, metas[i]); err != nil {
+			return fail(fmt.Errorf("migrate cipher: update metadata for %s: %w", metas[i].Path, err))
+		}
+		metaBackups = append(metaBackups, original)
+	}
+
 	if err := updateKeyringAlgorithm(krPath, toAlg); err != nil {
-		return rollback(cmd, fb, ctx, backups,
-			fmt.Errorf("migrate cipher: update keyring algorithm: %w", err))
+		return fail(fmt.Errorf("migrate cipher: update keyring algorithm: %w", err))
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "migration complete: %d value(s) re-encrypted under %q\n", migrated, toAlg)
+	fmt.Fprintf(cmd.OutOrStdout(), "migration complete: %d value(s) re-encrypted under %q\n", len(items), toAlg)
 	return nil
 }
 
-// migrateBackup holds the original ciphertext and nonce for a single version.
-type migrateBackup struct {
-	path    string
-	version int
-	ct      []byte
-	nonce   []byte
+// versionBindingSuffix names the sidecar the file backend decrypts a stored
+// version with; it must be rewritten with the ciphertext.
+const versionBindingSuffix = ".versionmeta"
+
+// storedVersion is one decrypted version awaiting re-encryption.
+type storedVersion struct {
+	meta      *vmeta.Meta
+	index     int
+	path      string
+	version   int
+	ctPath    string
+	binding   vmeta.AADBinding
+	plaintext []byte
 }
 
-// rollback restores the original ciphertexts and returns the original error.
-func rollback(cmd *cobra.Command, fb *file.FileBackend, ctx context.Context, backups []migrateBackup, origErr error) error {
-	fmt.Fprintf(cmd.ErrOrStderr(), "migration failed (%v); rolling back %d value(s)\n", origErr, len(backups))
-	vaultDir := paths.Vault(os.Getenv)
-	for _, b := range backups {
-		p := valuePath(vaultDir, b.path, b.version)
-		noncePath := p + ".nonce"
-		// Best-effort rollback.
-		_ = atomicWriteCLI(p, b.ct)
-		_ = atomicWriteCLI(noncePath, b.nonce)
+// readStoredVersions decrypts every version whose ciphertext is on disk.
+// Destroyed versions, and versions whose ciphertext was removed, have nothing
+// to migrate.
+func readStoredVersions(vaultDir string, metas []vmeta.Meta, kr *keyring.Keyring) ([]storedVersion, error) {
+	var items []storedVersion
+	for mi := range metas {
+		m := &metas[mi]
+		for vi, vm := range m.Versions {
+			if vm.DestroyedAt != nil {
+				continue
+			}
+			ctPath := valuePath(vaultDir, m.Path, vm.Version)
+			ct, err := os.ReadFile(ctPath)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return items, fmt.Errorf("read %s v%d: %w", m.Path, vm.Version, err)
+			}
+			nonce, err := os.ReadFile(ctPath + ".nonce")
+			if err != nil {
+				return items, fmt.Errorf("read nonce %s v%d: %w", m.Path, vm.Version, err)
+			}
+			binding, err := readVersionBinding(ctPath, vm.AAD)
+			if err != nil {
+				return items, fmt.Errorf("read binding %s v%d: %w", m.Path, vm.Version, err)
+			}
+			aadBytes, err := aad.Marshal(binding)
+			if err != nil {
+				return items, fmt.Errorf("marshal AAD for %s v%d: %w", m.Path, vm.Version, err)
+			}
+			dek, err := kr.DEKForTerm(binding.KeyTerm)
+			if err != nil {
+				return items, fmt.Errorf("get DEK for %s v%d: %w", m.Path, vm.Version, err)
+			}
+			plaintext, err := envelope.Open(envelope.Algorithm(binding.Algorithm), dek, ct, nonce, aadBytes)
+			if err != nil {
+				return items, fmt.Errorf("decrypt %s v%d: %w", m.Path, vm.Version, err)
+			}
+			items = append(items, storedVersion{
+				meta:      m,
+				index:     vi,
+				path:      m.Path,
+				version:   vm.Version,
+				ctPath:    ctPath,
+				binding:   binding,
+				plaintext: plaintext,
+			})
+		}
 	}
-	_ = fb
-	_ = ctx
+	return items, nil
+}
+
+// readVersionBinding returns the binding the backend decrypts with: the
+// sidecar next to the ciphertext, or the metadata copy when no sidecar exists.
+func readVersionBinding(ctPath string, fallback vmeta.AADBinding) (vmeta.AADBinding, error) {
+	data, err := os.ReadFile(ctPath + versionBindingSuffix)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fallback, nil
+	}
+	if err != nil {
+		return vmeta.AADBinding{}, err
+	}
+	var binding vmeta.AADBinding
+	if err := json.Unmarshal(data, &binding); err != nil {
+		return vmeta.AADBinding{}, err
+	}
+	return binding, nil
+}
+
+// migrateBackup holds the original files of one stored version. A nil binding
+// means no sidecar existed.
+type migrateBackup struct {
+	ctPath  string
+	ct      []byte
+	nonce   []byte
+	binding []byte
+}
+
+func snapshotVersion(it storedVersion) (migrateBackup, error) {
+	b := migrateBackup{ctPath: it.ctPath}
+	var err error
+	if b.ct, err = os.ReadFile(it.ctPath); err != nil {
+		return b, err
+	}
+	if b.nonce, err = os.ReadFile(it.ctPath + ".nonce"); err != nil {
+		return b, err
+	}
+	b.binding, err = os.ReadFile(it.ctPath + versionBindingSuffix)
+	if errors.Is(err, fs.ErrNotExist) {
+		return b, nil
+	}
+	return b, err
+}
+
+// rollback restores the original version files and metadata records, then
+// returns the original error.
+func rollback(cmd *cobra.Command, fb *file.FileBackend, ctx context.Context, backups []migrateBackup, metas []vmeta.Meta, origErr error) error {
+	fmt.Fprintf(cmd.ErrOrStderr(), "migration failed (%v); rolling back %d value(s)\n", origErr, len(backups))
+	var failed int
+	for _, b := range backups {
+		if atomicWriteCLI(b.ctPath, b.ct) != nil || atomicWriteCLI(b.ctPath+".nonce", b.nonce) != nil {
+			failed++
+			continue
+		}
+		var err error
+		if b.binding == nil {
+			err = os.Remove(b.ctPath + versionBindingSuffix)
+			if errors.Is(err, fs.ErrNotExist) {
+				err = nil
+			}
+		} else {
+			err = atomicWriteCLI(b.ctPath+versionBindingSuffix, b.binding)
+		}
+		if err != nil {
+			failed++
+		}
+	}
+	if fb != nil {
+		for _, m := range metas {
+			if fb.SetMeta(ctx, m.Path, m) != nil {
+				failed++
+			}
+		}
+	}
+	if failed > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "rollback could not restore %d file(s); restore the vault from backup\n", failed)
+	}
 	return origErr
+}
+
+// ensureGCMCounter records a nonce counter for term in the keyring file so
+// AES-GCM sealing under that term can lease nonces before the keyring
+// algorithm switches.
+func ensureGCMCounter(krPath string, term int) error {
+	data, err := os.ReadFile(krPath)
+	if err != nil {
+		return fmt.Errorf("read keyring: %w", err)
+	}
+	var kf keyring.KeyringFile
+	if err := json.Unmarshal(data, &kf); err != nil {
+		return fmt.Errorf("parse keyring: %w", err)
+	}
+	if kf.GCMState == nil {
+		kf.GCMState = &keyring.GCMState{LeaseSize: 1024}
+	}
+	if kf.GCMState.PerTerm == nil {
+		kf.GCMState.PerTerm = map[int]uint64{}
+	}
+	if _, ok := kf.GCMState.PerTerm[term]; ok {
+		return nil
+	}
+	kf.GCMState.PerTerm[term] = 0
+	newData, err := json.Marshal(kf)
+	if err != nil {
+		return fmt.Errorf("marshal keyring: %w", err)
+	}
+	return atomicWriteCLI(krPath, newData)
 }
 
 // valuePath duplicates the layout helper from the file backend so the CLI
