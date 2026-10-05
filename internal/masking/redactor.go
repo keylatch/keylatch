@@ -3,6 +3,7 @@ package masking
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 )
 
 // redactedPlaceholder replaces matched sensitive strings.
@@ -14,17 +15,22 @@ var basicClasses = []string{"api_key", "auth_header", "oauth_code", "access_toke
 // strictClasses adds additional classes on top of basic.
 var strictClasses = []string{"email", "phone", "customer_id", "payment_id", "presigned_url"}
 
+// strictTokenRe catches credential-shaped runs that no named class knows, so
+// strict mode redacts them in any format, parsed or not.
+var strictTokenRe = regexp.MustCompile(`[A-Za-z0-9+/_\-]{32,}={0,2}`)
+
 // Redactor applies masking policies to response bodies.
 type Redactor struct{}
 
 // Redact applies the masking policy to body and returns the redacted bytes.
 //
-// - Basic: redacts basicClasses patterns.
-// - Strict: redacts basicClasses + strictClasses patterns.
-// - MetadataOnly: retains only AllowFields keys from a JSON object; strips content.
-// - BlockBody: returns "{}".
-// - MaxBodyChars > 0: truncates body before redaction.
-// - BlockAttachments: removes attachment_url pattern matches.
+//   - Basic: redacts credential-named fields and basicClasses patterns.
+//   - Strict: as Basic, plus strictClasses patterns and any long
+//     credential-shaped run, whatever the body format.
+//   - MetadataOnly: retains only AllowFields keys from a JSON object; strips content.
+//   - BlockBody: returns "{}".
+//   - MaxBodyChars > 0: truncates body before redaction.
+//   - BlockAttachments: removes attachment_url pattern matches.
 func (r *Redactor) Redact(body []byte, policy MaskingPolicy) ([]byte, error) {
 	// Truncate first.
 	if policy.MaxBodyChars > 0 && len(body) > policy.MaxBodyChars {
@@ -39,15 +45,18 @@ func (r *Redactor) Redact(body []byte, policy MaskingPolicy) ([]byte, error) {
 		return r.redactToAllowFields(body, policy.AllowFields), nil
 
 	case MaskingStrict:
-		out := r.applyClasses(body, basicClasses)
+		out := RedactSecretFields(body, redactedPlaceholder)
+		out = r.applyClasses(out, basicClasses)
 		out = r.applyClasses(out, strictClasses)
+		out = strictTokenRe.ReplaceAll(out, []byte(redactedPlaceholder))
 		if policy.BlockAttachments {
 			out = r.applyClass(out, "attachment_url")
 		}
 		return out, nil
 
 	case MaskingBasic, "":
-		out := r.applyClasses(body, basicClasses)
+		out := RedactSecretFields(body, redactedPlaceholder)
+		out = r.applyClasses(out, basicClasses)
 		if policy.BlockAttachments {
 			out = r.applyClass(out, "attachment_url")
 		}
