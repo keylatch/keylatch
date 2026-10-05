@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
@@ -85,7 +86,7 @@ func newMigrateVault(t *testing.T, alg envelope.Algorithm) *migrateVault {
 
 func (v *migrateVault) rotate(t *testing.T, value string) {
 	t.Helper()
-	if _, err := vault.RotateValue(context.Background(), migrateTestPath, []byte(value), vmeta.Meta{}, v.cfg, os.Getenv); err != nil {
+	if _, err := vault.RotateValue(audit.WithEmitter(context.Background(), discardAudit{}), migrateTestPath, []byte(value), vmeta.Meta{}, v.cfg, os.Getenv); err != nil {
 		t.Fatalf("RotateValue: %v", err)
 	}
 }
@@ -244,3 +245,9 @@ func TestMigrateCipherRollbackRestoresVersionFiles(t *testing.T) {
 		t.Fatalf("v1 = %q after rollback", got)
 	}
 }
+
+// discardAudit accepts every event, so seeding versions works whether or not
+// the vault requires an audit emitter.
+type discardAudit struct{}
+
+func (discardAudit) Emit(context.Context, audit.Event) error { return nil }
