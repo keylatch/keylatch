@@ -6,23 +6,35 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"syscall"
+	"path/filepath"
 )
 
 // listenSocket creates a Unix domain socket at path with mode 0600.
-// A restrictive umask is applied before net.Listen so the socket file
-// is never world-accessible even briefly.
+//
+// The socket is bound inside a fresh 0700 directory next to path, narrowed
+// to 0600 and then renamed into place, so it is never reachable by other
+// users even briefly. Changing the umask instead would affect every
+// goroutine in the process that creates a file at the same time.
 func listenSocket(path string) (net.Listener, error) {
-	old := syscall.Umask(0o177)
-	ln, err := net.Listen("unix", path)
-	syscall.Umask(old)
+	dir, err := os.MkdirTemp(filepath.Dir(path), ".ipc-")
+	if err != nil {
+		return nil, fmt.Errorf("create socket staging dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	staged := filepath.Join(dir, "s")
+	ln, err := net.Listen("unix", staged)
 	if err != nil {
 		return nil, err
 	}
-	// Chmod is redundant after the umask but kept for defense-in-depth.
-	if err := os.Chmod(path, 0o600); err != nil {
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	if err := os.Chmod(staged, 0o600); err != nil {
 		_ = ln.Close()
 		return nil, fmt.Errorf("chmod socket: %w", err)
+	}
+	if err := os.Rename(staged, path); err != nil {
+		_ = ln.Close()
+		return nil, fmt.Errorf("move socket into place: %w", err)
 	}
 	return ln, nil
 }

@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The release check scripts moved from `release-gates/` to `release-checks/`.
 - CI runs `release-checks/naming-scan.sh`, which rejects internal work-item labels and finding ids in file names, code, docs and commit subjects.
 
+### Fixed
+
+- The sidecar IPC socket is created owner-only without changing the process umask, which could leave files created concurrently by other goroutines unreadable.
+
 ## [0.9.7] - 2026-08-11
 
 ### Security
