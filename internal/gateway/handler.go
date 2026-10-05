@@ -468,20 +468,6 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(redactedBody) //nolint:gosec // G705: body is run through redact.Body which strips secrets; this is an API gateway, not an HTML context
 }
 
-// approveHandler is unreachable: approval mutation is not
-// implemented, so it returns an honest unavailable response for any token
-// rather than calling into the approval package.
-func (s *Server) approveHandler(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in this build")
-}
-
-// approvalsHandler is unreachable: the approval inbox is
-// not implemented, so it returns an honest unavailable response instead of
-// disclosing (or falsely accepting mutations against) pending approvals.
-func (s *Server) approvalsHandler(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusServiceUnavailable, "approval_unavailable", "approval workflow is not available in this build")
-}
-
 // injectAuth injects the access token into the upstream request per AuthPlacement.
 func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes []byte) {
 	if len(tokenBytes) == 0 {
