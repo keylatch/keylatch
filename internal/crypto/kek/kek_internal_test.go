@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -547,6 +548,9 @@ func writeFakeManagerCLI(t *testing.T, name, script string) string {
 }
 
 func TestRunManagerCLI_TimesOutOnHang(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell stub")
+	}
 	// Not t.Parallel(): mutates the package-level subprocessTimeout var.
 	orig := subprocessTimeout
 	subprocessTimeout = 50 * time.Millisecond
