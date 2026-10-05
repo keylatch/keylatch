@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The untrusted-write gate ignores caller-supplied approval headers.
 - Unverified session claims (`KEYLATCH_LLM_TICKET`, an unanswered daemon socket, `KEYLATCH_ALLOW_UNVERIFIED_SESSION`) no longer open raw-credential access.
 - Audit rotation no longer recurses past the size cap, and it keeps 20 numbered generations. The `keylatchd` retention sweep deletes only rotated audit logs.
+- Secret access fails closed when the audit log cannot be written: a failed rotation keeps writing to the current file and retries, and when no audit file can be opened the broker and the vault refuse to hand out or change secrets until it can. `keylatch doctor` reports an unwritable audit log.
 - The audit logger finds the keyring bootstrap creates, so audit is on right after bootstrap.
 - Bitwarden and 1Password backends pass secret values on stdin, never on the command line.
 - Team invites, org policy and registry bundles are signed with Ed25519, and unsigned or legacy bundles are refused.
