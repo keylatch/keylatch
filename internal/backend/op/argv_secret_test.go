@@ -16,7 +16,8 @@ import (
 const argvTripwireSecret = "argv-tripwire-7f3a9c"
 
 // fakeOpScript records every invocation's argv and stdin in the script's
-// directory. `item get` answers from item.json when it exists.
+// directory. Reads answer from item.json when it exists, and a write stores
+// its template there unless an "ignore" file makes it a silent no-op.
 const fakeOpScript = `#!/bin/sh
 d=$(dirname "$0")
 printf '%s\n' "$*" >>"$d/argv"
@@ -24,7 +25,9 @@ case "$1 $2" in
 "item get")
   if [ -f "$d/item.json" ]; then cat "$d/item.json"; else echo "\"x\" isn't an item in the \"Keylatch\" vault" >&2; exit 1; fi ;;
 "item create"|"item edit")
-  cat >"$d/stdin"; echo '{"id":"item1"}' ;;
+  cat >"$d/stdin"
+  [ -f "$d/ignore" ] || cp "$d/stdin" "$d/item.json"
+  echo '{"id":"item1"}' ;;
 esac
 `
 
@@ -84,10 +87,34 @@ func TestSetCreateKeepsSecretOffArgv(t *testing.T) {
 
 func TestSetEditKeepsSecretOffArgvAndPreservesItem(t *testing.T) {
 	argv, tmpl := runOpSet(t, existingOpItem)
-	require.Contains(t, argv, "item edit openrouter")
+	require.Contains(t, argv, "item edit openrouter --template=/dev/stdin")
 	require.NotContains(t, argv, argvTripwireSecret)
 	require.Len(t, tmpl.Sections, 1, "unmodelled item properties must survive the edit")
 	require.Len(t, tmpl.Fields, 2)
 	require.Equal(t, argvTripwireSecret, tmpl.Fields[0].Value)
 	require.Equal(t, "https://openrouter.ai/api/v1", tmpl.Fields[1].Value)
+}
+
+func TestSetFailsWhenOpDoesNotApplyTheEdit(t *testing.T) {
+	bin := writeFakeOp(t, existingOpItem)
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(bin), "ignore"), nil, 0o600))
+	b, err := op.Open(op.Options{Bin: bin, Vault: "Keylatch"})
+	require.NoError(t, err)
+
+	err = b.Set(context.Background(), "default/openrouter/api_key", []byte(argvTripwireSecret), backend.Meta{})
+	require.ErrorIs(t, err, op.ErrWriteNotApplied)
+	require.NotContains(t, err.Error(), argvTripwireSecret)
+}
+
+func TestSetSplitsAccountFromConnection(t *testing.T) {
+	bin := writeFakeOp(t, existingOpItem)
+	b, err := op.Open(op.Options{Bin: bin, Vault: "Keylatch"})
+	require.NoError(t, err)
+	require.NoError(t, b.Set(context.Background(), "default/openrouter:work/api_key", []byte(argvTripwireSecret), backend.Meta{}))
+
+	argv, err := os.ReadFile(filepath.Join(filepath.Dir(bin), "argv"))
+	require.NoError(t, err)
+	require.Contains(t, string(argv), "item edit openrouter --template=/dev/stdin")
+	require.Contains(t, string(argv), "--account=work")
+	require.NotContains(t, string(argv), "openrouter:work")
 }

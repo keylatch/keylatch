@@ -12,9 +12,12 @@ package op
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -151,6 +154,7 @@ func (b *OnePasswordBackend) Set(ctx context.Context, path string, value []byte,
 
 	// The value travels in a JSON item template on stdin: an assignment
 	// statement argument would expose it in the process list.
+	conn, account := parseConnectionAccount(connection)
 	_, raw, fetchErr := b.fetchItemJSON(ctx, connection)
 	exists := fetchErr == nil
 
@@ -163,10 +167,11 @@ func (b *OnePasswordBackend) Set(ctx context.Context, path string, value []byte,
 		if err != nil {
 			return fmt.Errorf("op Set: %w", err)
 		}
-		args = []string{"item", "edit", connection,
-			"--vault=" + b.opts.Vault,
-			"--format=json",
+		args = []string{"item", "edit", conn}
+		if stdinTemplatePath != "" {
+			args = append(args, "--template="+stdinTemplatePath)
 		}
+		args = append(args, "--vault="+b.opts.Vault, "--format=json")
 	} else {
 		template, err = createTemplate(field, value)
 		if err != nil {
@@ -174,14 +179,17 @@ func (b *OnePasswordBackend) Set(ctx context.Context, path string, value []byte,
 		}
 		args = []string{"item", "create", "-",
 			"--category=" + classifyCategory(field),
-			"--title=" + connection,
+			"--title=" + conn,
 			"--vault=" + b.opts.Vault,
 			"--tags=keylatch,ns:default",
 			"--format=json",
 		}
 	}
+	if account != "" {
+		args = append(args, "--account="+account)
+	}
 
-	stdout, stderr, exitCode, err := b.runWithEnv(ctx, args, template)
+	_, stderr, exitCode, err := b.runWithEnv(ctx, args, template)
 	if err != nil {
 		return fmt.Errorf("op Set: runner error: %w", err)
 	}
@@ -192,16 +200,33 @@ func (b *OnePasswordBackend) Set(ctx context.Context, path string, value []byte,
 		return fmt.Errorf("op Set: op exited %d", exitCode)
 	}
 
-	// Parse returned item to get accessor.
-	var updated opItem
-	if err := json.Unmarshal(stdout, &updated); err != nil {
-		// Non-fatal — item was written, we just can't return the accessor.
-		return nil
-	}
-
-	// Invalidate cache so next Get re-fetches.
 	b.cache.Delete(connection)
-	return nil
+	return b.verifyField(ctx, connection, field, value)
+}
+
+// ErrWriteNotApplied is returned when op reports success but the item read
+// back does not hold the value just written, as when op ignores a template.
+var ErrWriteNotApplied = errors.New("op: the item does not hold the value that was written")
+
+// verifyField reads the item back and checks that field holds value. Only
+// digests are compared, and neither value appears in the error.
+func (b *OnePasswordBackend) verifyField(ctx context.Context, connection, field string, value []byte) error {
+	item, _, err := b.fetchItemJSON(ctx, connection)
+	if err != nil {
+		return fmt.Errorf("op Set: read back %q: %w", connection, err)
+	}
+	want := sha256.Sum256(value)
+	for _, f := range item.Fields {
+		if f.Label != field {
+			continue
+		}
+		got := sha256.Sum256([]byte(f.Value))
+		if subtle.ConstantTimeCompare(got[:], want[:]) == 1 {
+			return nil
+		}
+		break
+	}
+	return fmt.Errorf("%w: field %q of %q", ErrWriteNotApplied, field, connection)
 }
 
 // Delete removes a 1Password item via `op item delete`.
@@ -423,6 +448,16 @@ func (b *OnePasswordBackend) runWithEnv(ctx context.Context, args []string, stdi
 	}
 	return b.opts.Runner.RunEnv(ctx, b.bin, args, stdin, extraEnv)
 }
+
+// stdinTemplatePath names stdin for the edit command's --template flag.
+// Windows has no such path; there op reads the piped template without the
+// flag, and the read-back in Set catches an edit that was not applied.
+var stdinTemplatePath = func() string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	return "/dev/stdin"
+}()
 
 // createTemplate builds the item template that carries the field for
 // `op item create -`.
