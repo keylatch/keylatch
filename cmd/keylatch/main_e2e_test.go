@@ -189,15 +189,22 @@ func TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get(t *testing.T) {
 // sees the gate's message.
 // ---------------------------------------------------------------------------
 
-// rawCredGateOptOut writes a config.json with allow_unverified_session set
-// into the KEYLATCH_CONFIG_DIR runKeylatch derives from base's HOME.
-func rawCredGateOptOut(t *testing.T, base map[string]string) map[string]string {
+// plantedOptIn writes a config.json with allow_unverified_session set into
+// the config dirs a caller controls through HOME, KEYLATCH_CONFIG_DIR and
+// XDG_CONFIG_HOME. None of them may open the gate: only the operator's own
+// default config does.
+func plantedOptIn(t *testing.T, base map[string]string) map[string]string {
 	t.Helper()
 	cfg := config.Default()
 	cfg.AllowUnverifiedSession = true
-	dir := filepath.Join(base["HOME"], ".keylatch")
-	require.NoError(t, os.MkdirAll(dir, 0o700))
-	require.NoError(t, config.Save(filepath.Join(dir, "config.json"), cfg))
+	for _, dir := range []string{
+		filepath.Join(base["HOME"], ".keylatch"),
+		filepath.Join(base["HOME"], ".config", "keylatch"),
+	} {
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+		require.NoError(t, config.Save(filepath.Join(dir, "config.json"), cfg))
+	}
+	base["XDG_CONFIG_HOME"] = filepath.Join(base["HOME"], ".config")
 	return base
 }
 
@@ -219,16 +226,15 @@ func TestE2E_CREDENTIALS_LLM_SESSION_0_GatedWithoutOptOut(t *testing.T) {
 		"SignalNone must never see GuardLLMSession's hard-block message")
 }
 
-// TestE2E_CREDENTIALS_LLM_SESSION_0_OptOutReachesHandler verifies that
-// setting the escape hatch alongside CREDENTIALS_LLM_SESSION=0 lets the
-// (SignalNone) session past the raw-credential session gate, reaching the not-implemented get handler.
-func TestE2E_CREDENTIALS_LLM_SESSION_0_OptOutReachesHandler(t *testing.T) {
+// TestE2E_CREDENTIALS_LLM_SESSION_0_PlantedOptInIgnored verifies that an
+// opt-in planted in a caller-chosen config dir does not open the gate.
+func TestE2E_CREDENTIALS_LLM_SESSION_0_PlantedOptInIgnored(t *testing.T) {
 	homeDir := t.TempDir()
 	_, _, code := runKeylatch(t,
-		rawCredGateOptOut(t, map[string]string{"CREDENTIALS_LLM_SESSION": "0", "HOME": homeDir}),
+		plantedOptIn(t, map[string]string{"CREDENTIALS_LLM_SESSION": "0", "HOME": homeDir}),
 		"get", "svc", "key")
 
-	assert.Equal(t, 5, code, "expected exit 5 (OperationFailed/not-implemented) once the raw-credential session gate is opted out")
+	assert.Equal(t, 2, code, "an opt-in outside the operator's default config must leave the gate closed")
 }
 
 // TestE2E_no_signals_GatedWithoutOptOut verifies that a session with no LLM
@@ -246,15 +252,15 @@ func TestE2E_no_signals_GatedWithoutOptOut(t *testing.T) {
 		"SignalNone must never see GuardLLMSession's hard-block message")
 }
 
-// TestE2E_no_signals_OptOutReachesHandler verifies that the escape hatch lets
-// a no-signal session past the raw-credential session gate, reaching the not-implemented get handler.
-func TestE2E_no_signals_OptOutReachesHandler(t *testing.T) {
+// TestE2E_no_signals_PlantedOptInIgnored verifies that a no-signal session
+// cannot open the gate with an opt-in in a config dir it chose.
+func TestE2E_no_signals_PlantedOptInIgnored(t *testing.T) {
 	homeDir := t.TempDir()
 	_, _, code := runKeylatch(t,
-		rawCredGateOptOut(t, map[string]string{"HOME": homeDir}),
+		plantedOptIn(t, map[string]string{"HOME": homeDir}),
 		"get", "svc", "key")
 
-	assert.Equal(t, 5, code, "expected exit 5 once the raw-credential session gate is opted out")
+	assert.Equal(t, 2, code, "an opt-in outside the operator's default config must leave the gate closed")
 }
 
 // TestE2E_masked_exits_0_in_llm_session verifies get --masked is a safe path.

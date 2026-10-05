@@ -9,7 +9,7 @@
 #   2. `keylatch bootstrap`              → succeeds (exit 0)
 #   3. `keylatch run` after bootstrap    → exit 6 + "setup" in output (no connection yet)
 #   4. `keylatch setup <provider>`       → succeeds via --stdin (exit 0)
-#   5. `keylatch run` after setup        → exit 5 (runtime unavailable) OR exit 0
+#   5. `keylatch run` after setup        → exit 2 (raw-credential gate closed: an opt-in in an overridden config dir is ignored)
 #
 # Each step also checks that there is no panic or nil-pointer output.
 #
@@ -161,15 +161,13 @@ if [[ "$exit_4" -ne 0 ]]; then
 fi
 pass "step 4: connect succeeded (exit 0)"
 
-# ─── Step 5: keylatch run after setup → exit 5 or 0 ─────────────────────────
+# ─── Step 5: keylatch run after setup → exit 2 ──────────────────────────────
 
-log "Step 5: run after setup (expect exit 5 or 0)..."
+log "Step 5: run after setup (expect exit 2)..."
 # With the connection now present, this raw (direct_brokered) run passes the
 # bootstrap and connection guards and reaches the raw-credential session gate.
-# Opt in through config.json to exercise the post-setup runtime path; no
-# environment variable opens that gate. Steps 1 and 3 deliberately run
-# without it — they verify that the bootstrap (exit 7) and connection
-# (exit 6) guards take priority over it.
+# An opt-in written to the overridden config dir must not open it: only the
+# operator's own default config can.
 cfg="$KEYLATCH_CONFIG_DIR/config.json"
 awk 'NR == 1 && /^\{/ { print "{"; print "  \"allow_unverified_session\": true,"; next } { print }' "$cfg" > "$cfg.tmp"
 mv "$cfg.tmp" "$cfg"
@@ -180,10 +178,10 @@ set -e
 
 assert_no_panic "step-5" "$combined_5"
 
-if [[ "$exit_5" -ne 5 && "$exit_5" -ne 0 ]]; then
-  fail "step 5: expected exit 5 (RuntimeNotAvailable) or 0, got $exit_5\nOutput: $combined_5"
+if [[ "$exit_5" -ne 2 ]]; then
+  fail "step 5: expected exit 2 (raw-credential gate closed), got $exit_5\nOutput: $combined_5"
 fi
-pass "step 5: exit $exit_5 (runtime unavailable or success — acceptable)"
+pass "step 5: raw-credential gate stays closed for an overridden config dir (exit 2)"
 
 # ─── All steps passed ─────────────────────────────────────────────────────────
 

@@ -28,30 +28,32 @@ func sessionClaimEnv(t *testing.T) map[string]string {
 	}
 }
 
+// isolatedGateEnv points HOME and the operator's home at a fresh directory
+// and returns the default config path inside it.
 func isolatedGateEnv(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("KEYLATCH_CONFIG_DIR", filepath.Join(home, "override"))
 	t.Setenv("KEYLATCH_KEYRING_DIR", "")
 	testutil.ClearLLMSessionEnv(t)
-	return dir
+	withOperatorHome(t, home)
+	return paths.DefaultConfig(home)
 }
 
 func TestRawCredentialGateIgnoresSessionClaims(t *testing.T) {
-	dir := isolatedGateEnv(t)
+	cfgPath := isolatedGateEnv(t)
 	for k, v := range sessionClaimEnv(t) {
 		t.Setenv(k, v)
 	}
-	env := llmcontext.DefaultLookup
 
 	gate := func() error {
-		return RequireRawCredentialOptIn(true, configAllowsUnverifiedSession(env))
+		return RequireRawCredentialOptIn(true, configAllowsUnverifiedSession())
 	}
 
 	require.ErrorIs(t, gate(), errRawCredentialExposure, "no config file")
 
-	cfgPath := paths.Config(env)
-	require.Equal(t, filepath.Join(dir, "config.json"), cfgPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o700))
 	require.NoError(t, os.WriteFile(cfgPath, []byte("{not json"), 0o600))
 	require.ErrorIs(t, gate(), errRawCredentialExposure, "unreadable config")
 
@@ -71,7 +73,7 @@ func TestRawCredentialGateIgnoresValidTicket(t *testing.T) {
 	t.Setenv(llmcontext.TicketEnv, raw)
 
 	require.ErrorIs(t,
-		RequireRawCredentialOptIn(true, configAllowsUnverifiedSession(llmcontext.DefaultLookup)),
+		RequireRawCredentialOptIn(true, configAllowsUnverifiedSession()),
 		errRawCredentialExposure, "a signed ticket marks an agent; it never opens a raw-credential path")
 }
 
@@ -83,6 +85,7 @@ func TestRawGateHelperProcess(t *testing.T) {
 	if os.Getenv(rawGateHelperEnv) != "1" {
 		t.Skip("helper process for TestGetRefusesWithSessionClaims")
 	}
+	operatorHome = func() (string, error) { return os.Getenv("HOME"), nil }
 	root := NewRootCommand()
 	root.SetArgs([]string{"get", "openrouter", "api_key"})
 	_ = root.Execute()
