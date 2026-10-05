@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 // testBrokerStrategy is a minimal ExchangeStrategy for CLI tests.
@@ -29,7 +30,7 @@ func newInProcessBrokerForTest(t *testing.T) *broker.BrokerImpl {
 	t.Cleanup(broker.ResetInProcessSingleton)
 	b := broker.NewBroker(context.Background(), map[string]broker.ExchangeStrategy{
 		"openrouter": &testBrokerStrategy{provider: "openrouter"},
-	}, nil, []byte("cli-test-hmac-key-32-bytes-pad!!"))
+	}, &testutil.AuditRecorder{}, []byte("cli-test-hmac-key-32-bytes-pad!!"))
 	_, err := b.Exchange(context.Background(), "actor-cli", "sess-cli", "openrouter", "chat", "default")
 	if err != nil {
 		t.Fatalf("broker exchange for test setup: %v", err)
@@ -82,7 +83,7 @@ func TestBrokerStatus_Populated(t *testing.T) {
 // empty broker.
 func TestBrokerStatus_Empty(t *testing.T) {
 	// Not parallel: modifies brokerHandleFactory singleton.
-	b := broker.NewBroker(context.Background(), nil, nil, nil)
+	b := broker.NewBroker(context.Background(), nil, &testutil.AuditRecorder{}, nil)
 	withBrokerHandle(t, b)
 
 	root := newBrokerCmd()

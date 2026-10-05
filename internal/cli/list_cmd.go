@@ -57,19 +57,17 @@ func newListCmdImpl() *cobra.Command {
 			cfg := loadCLIConfig(c)
 			env := llmcontext.DefaultLookup
 
-			// Inject audit emitter into context (best-effort: warn if audit
-			// logger cannot be opened, e.g. keyring not set up).
-			if al, cleanup, auditErr := openAuditLogger(); auditErr == nil {
-				defer cleanup()
-				ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
-			} else {
-				fmt.Fprintf(c.ErrOrStderr(), "warning: audit logger unavailable (%v) — vault operations will not be audited\n", auditErr)
-			}
-
 			raw, _ := c.Flags().GetBool("raw")
 			useJSON, _ := c.Flags().GetBool("json")
 
 			if raw {
+				al, cleanup, err := requireAuditLogger("list --raw")
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
+
 				// --raw: restore the old vault-path output for power users.
 				entries, err := vault.List(ctx, "", cfg, env)
 				if err != nil {

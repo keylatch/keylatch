@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/keylatch/keylatch/internal/audit"
 	"os"
 	"time"
 
@@ -70,6 +71,14 @@ Example:
 				}
 				partialMeta.IssuedAt = &t
 			}
+
+			// Refuse before asking for the value: it would not be stored.
+			al, auditCleanup, err := requireAuditLogger("set")
+			if err != nil {
+				return err
+			}
+			defer auditCleanup()
+			ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
 
 			// Read value from stdin or interactive prompt.
 			var value []byte

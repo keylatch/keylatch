@@ -2,6 +2,7 @@ package vault_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -57,7 +58,7 @@ func TestVault_GetSetList_FileBackend(t *testing.T) {
 	cfg.Backend = "file"
 	cfg.DataDir = t.TempDir()
 	env := fileBackendEnv(t)
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	// Set a value.
 	path := "default/ai/openrouter/api_key"
@@ -104,7 +105,7 @@ func TestVault_DispatchErrorPropagates(t *testing.T) {
 	cfg := config.Default()
 	cfg.Backend = "sops" // unknown — will return ErrUnavailable
 	env := fakeEnv(map[string]string{})
-	ctx := context.Background()
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
 
 	_, err := vault.Get(ctx, "default/test/key", cfg, env)
 	if err == nil {
@@ -195,7 +196,7 @@ func TestGet_AuditEvent_NotFound(t *testing.T) {
 	}
 }
 
-func TestGet_AuditEvent_NilEmitter_NoPanic(t *testing.T) {
+func TestGetWithoutEmitterIsRefused(t *testing.T) {
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
 
@@ -203,10 +204,10 @@ func TestGet_AuditEvent_NilEmitter_NoPanic(t *testing.T) {
 	cfg.Backend = "file"
 	cfg.DataDir = t.TempDir()
 	env := fileBackendEnv(t)
-	// No emitter in context — must not panic.
-	ctx := context.Background()
 
-	_, _ = vault.Get(ctx, "default/ai/any/key", cfg, env)
+	if _, err := vault.Get(context.Background(), "default/ai/any/key", cfg, env); !errors.Is(err, audit.ErrNotConfigured) {
+		t.Fatalf("Get without an audit emitter = %v, want audit.ErrNotConfigured", err)
+	}
 }
 
 // --- T02: Set audit event tests ---
@@ -411,7 +412,7 @@ func TestList_AuditEvent(t *testing.T) {
 	}
 }
 
-func TestList_AuditEvent_NilEmitter_NoPanic(t *testing.T) {
+func TestListWithoutEmitterIsRefused(t *testing.T) {
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
 
@@ -419,7 +420,8 @@ func TestList_AuditEvent_NilEmitter_NoPanic(t *testing.T) {
 	cfg.Backend = "file"
 	cfg.DataDir = t.TempDir()
 	env := fileBackendEnv(t)
-	ctx := context.Background() // No emitter — must not panic.
 
-	_, _ = vault.List(ctx, "", cfg, env)
+	if _, err := vault.List(context.Background(), "", cfg, env); !errors.Is(err, vault.ErrAuditFailed) {
+		t.Fatalf("List without an audit emitter = %v, want vault.ErrAuditFailed", err)
+	}
 }

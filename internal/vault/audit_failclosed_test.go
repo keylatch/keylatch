@@ -12,6 +12,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/keylatch/keylatch/internal/vault"
 )
 
@@ -47,7 +48,8 @@ func fileVaultWithSecret(t *testing.T) (config.Config, func(string) string, back
 	cfg.DataDir = t.TempDir()
 	lookup := fileBackendEnv(t)
 	meta := backend.Meta{Path: auditTestPath, Backend: "file", Version: 1}
-	if err := vault.Set(context.Background(), auditTestPath, []byte("secret"), meta, cfg, lookup); err != nil {
+	ctx, _ := testutil.WithAuditRecorder(context.Background())
+	if err := vault.Set(ctx, auditTestPath, []byte("secret"), meta, cfg, lookup); err != nil {
 		t.Fatal(err)
 	}
 	return cfg, lookup, meta
