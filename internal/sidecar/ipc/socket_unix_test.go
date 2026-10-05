@@ -81,3 +81,15 @@ func TestListenSocket_RejectsTooLongPath(t *testing.T) {
 		t.Fatalf("expected a too-long error, got %v", err)
 	}
 }
+
+func TestListenSocket_TargetIsDirectory(t *testing.T) {
+	t.Parallel()
+	dir := shortTempDir(t)
+	path := filepath.Join(dir, "x.sock")
+	if err := os.MkdirAll(filepath.Join(path, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := listenSocket(path); err == nil || !strings.Contains(err.Error(), "move socket into place") {
+		t.Fatalf("expected a move error, got %v", err)
+	}
+}
