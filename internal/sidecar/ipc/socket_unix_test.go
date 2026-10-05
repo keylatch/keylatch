@@ -45,3 +45,29 @@ func TestListenSocket_OwnerOnlyAndNoStagingLeft(t *testing.T) {
 	}
 	_ = conn.Close()
 }
+
+func TestListenSocket_MissingParentDir(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "missing", "x.sock")
+	if ln, err := listenSocket(path); err == nil {
+		_ = ln.Close()
+		t.Fatal("expected an error when the socket's directory does not exist")
+	}
+}
+
+func TestListenSocket_PathTakenByDirectory(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "x.sock")
+	if err := os.MkdirAll(filepath.Join(path, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := listenSocket(path)
+	if err == nil {
+		_ = ln.Close()
+		t.Fatal("expected an error when a non-empty directory occupies the socket path")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Errorf("staging directory left behind: %d entries", len(entries))
+	}
+}
