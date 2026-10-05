@@ -78,11 +78,38 @@ func Load(_ context.Context) (*Team, error) {
 	if err := json.Unmarshal(data, &t); err != nil {
 		return nil, fmt.Errorf("team: parse %q: %w", path, err)
 	}
+	if err := checkUniqueMembers(&t); err != nil {
+		return nil, fmt.Errorf("team: %q: %w", path, err)
+	}
 	return &t, nil
+}
+
+// ErrAlreadyJoined is returned by Join when a local team file exists; it is
+// never replaced, so its members and pinned keys cannot be reset by an
+// invite.
+var ErrAlreadyJoined = errors.New("team: this machine already has a team configured; remove it explicitly before joining again")
+
+// ErrDuplicateMember is returned for a roster that lists one member ID more
+// than once. Authorization looks a member up by ID, so a duplicate could let
+// a check pass against one entry while a change lands on another.
+var ErrDuplicateMember = errors.New("team: member ID appears more than once")
+
+func checkUniqueMembers(t *Team) error {
+	seen := make(map[string]bool, len(t.Members))
+	for _, m := range t.Members {
+		if seen[m.ID] {
+			return fmt.Errorf("%w: %q", ErrDuplicateMember, m.ID)
+		}
+		seen[m.ID] = true
+	}
+	return nil
 }
 
 // writeTeam atomically writes the team config to disk with mode 0600.
 func writeTeam(t *Team) error {
+	if err := checkUniqueMembers(t); err != nil {
+		return err
+	}
 	path, err := teamFilePath()
 	if err != nil {
 		return err
@@ -255,6 +282,9 @@ func Join(_ context.Context, rawBundle []byte, teamKey string) (*Team, error) {
 	}
 	if existing != nil && existing.InvitePubKey != "" && existing.InvitePubKey != teamKey {
 		return nil, errors.New("team: invite key differs from the key this team was joined with")
+	}
+	if existing != nil {
+		return nil, ErrAlreadyJoined
 	}
 
 	// Create team stub if not yet configured.

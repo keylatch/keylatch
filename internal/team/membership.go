@@ -51,6 +51,9 @@ func RemoveMember(ctx context.Context, t *Team, memberID string) error {
 // Transfer hands ownership from actorID, who must be the active owner, to
 // newOwnerID. The previous owner becomes admin.
 func Transfer(_ context.Context, t *Team, actorID, newOwnerID string) error {
+	if err := checkUniqueMembers(t); err != nil {
+		return err
+	}
 	actor, err := FindMember(t, actorID)
 	if err != nil {
 		return err
@@ -62,20 +65,18 @@ func Transfer(_ context.Context, t *Team, actorID, newOwnerID string) error {
 	if err := AuthorizeTransfer(actor, newOwner); err != nil {
 		return err
 	}
-	for i := range t.Members {
-		if t.Members[i].Role == RoleOwner {
-			t.Members[i].Role = RoleAdmin
-		}
-		if t.Members[i].ID == newOwnerID {
-			t.Members[i].Role = RoleOwner
-		}
-	}
+	ai, ni := memberIndex(t, actorID), memberIndex(t, newOwnerID)
+	t.Members[ai].Role = RoleAdmin
+	t.Members[ni].Role = RoleOwner
 	return writeTeam(t)
 }
 
 // ChangeRole sets targetID's role on behalf of actorID after
 // AuthorizeRoleChange allows it, and persists the team.
 func ChangeRole(_ context.Context, t *Team, actorID, targetID string, newRole Role) error {
+	if err := checkUniqueMembers(t); err != nil {
+		return err
+	}
 	actor, err := FindMember(t, actorID)
 	if err != nil {
 		return err
@@ -87,11 +88,7 @@ func ChangeRole(_ context.Context, t *Team, actorID, targetID string, newRole Ro
 	if err := AuthorizeRoleChange(actor, target, newRole); err != nil {
 		return err
 	}
-	for i := range t.Members {
-		if t.Members[i].ID == targetID {
-			t.Members[i].Role = newRole
-		}
-	}
+	t.Members[memberIndex(t, targetID)].Role = newRole
 	return writeTeam(t)
 }
 
@@ -104,6 +101,17 @@ func ActiveMembers(t *Team) []Member {
 		}
 	}
 	return out
+}
+
+// memberIndex returns the index of the entry FindMember returns for id. The
+// caller must have found the member already.
+func memberIndex(t *Team, id string) int {
+	for i := range t.Members {
+		if t.Members[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // FindMember returns the member with the given ID, or ErrMemberNotFound.
