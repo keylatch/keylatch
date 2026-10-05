@@ -227,9 +227,9 @@ func TestFind_RevokedNotReturned(t *testing.T) {
 	}
 }
 
-// TestGrant_LLMGrantDeniedForReadClass verifies that grants issued
-// from an LLM session are denied for read-class capabilities.
-func TestGrant_LLMGrantDeniedForReadClass(t *testing.T) {
+// TestGrant_LLMGrantDeniedForEveryCapability verifies that grants issued
+// from an agent session are never returned, for any capability.
+func TestGrant_LLMGrantDeniedForEveryCapability(t *testing.T) {
 	dir := t.TempDir()
 	llmEnv := func(k string) string {
 		switch k {
@@ -268,7 +268,7 @@ func TestGrant_LLMGrantDeniedForReadClass(t *testing.T) {
 		}
 	}
 
-	// Non-read capability should still match.
+	// Other capabilities are refused too.
 	g2, err := grant.Create(ctx, grant.GrantSpec{
 		Actor:      "claude-code",
 		Connection: "openrouter:dev",
@@ -283,8 +283,8 @@ func TestGrant_LLMGrantDeniedForReadClass(t *testing.T) {
 		Connection: g2.Connection,
 		Capability: "inject",
 	})
-	if !ok || found == nil {
-		t.Error("Find with non-read-class cap should succeed for LLM-issued grant")
+	if ok || found != nil {
+		t.Error("Find must not return an agent-issued grant for any capability")
 	}
 }
 
