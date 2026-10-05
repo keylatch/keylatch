@@ -84,8 +84,8 @@ func newGrantCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&actorName, "actor", "", "actor name (required)")
 	cmd.Flags().StringVar(&capability, "capability", "inject", "capability to grant")
 	cmd.Flags().StringVar(&ttlStr, "ttl", "1h", "time-to-live (e.g. 30m, 2h)")
-	cmd.Flags().StringVar(&cmdGlob, "command", "", "command glob pattern")
-	cmd.Flags().StringVar(&cwdGlob, "cwd", "", "CWD glob pattern")
+	cmd.Flags().StringVar(&cmdGlob, "command", "", "restrict to this exact command line, or a prefix ending in *")
+	cmd.Flags().StringVar(&cwdGlob, "cwd", "", "restrict to this working directory, or <dir>/* for it and its subdirectories")
 	cmd.Flags().IntVar(&maxUses, "max-uses", 0, "maximum number of uses (0 = unlimited)")
 	return cmd
 }
