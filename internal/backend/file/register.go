@@ -22,7 +22,7 @@ type FileConfig struct {
 	DataDir string `mapstructure:"data_dir"`
 
 	// KeyringPath overrides the default keyring.json location.
-	// Default: <KEYLATCH_CONFIG_DIR>/keyring/keyring.json
+	// Default: paths.ResolveKeyringPath
 	KeyringPath string `mapstructure:"keyring_path"`
 }
 
@@ -58,7 +58,7 @@ func fileFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend,
 	// If no keyring is configured, fail closed with a bootstrap hint.
 	krPath := typed.KeyringPath
 	if krPath == "" {
-		krPath = paths.KeyringPath(llmcontext.DefaultLookup)
+		krPath = paths.ResolveKeyringPath(llmcontext.DefaultLookup)
 	}
 
 	// Check if the keyring file exists. Absence means bootstrap has not been run.
@@ -71,7 +71,7 @@ func fileFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend,
 	// Load the KEK from the platform keystore.
 	// The KEK type is determined by what bootstrap recorded in the keyring file.
 	// On error, fail closed with a bootstrap hint.
-	k, err := loadPlatformKEK(krPath)
+	k, err := LoadKeyringKEK(krPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: cannot load keyring KEK: %v — run 'keylatch bootstrap' first", backend.ErrBootstrapRequired, err)
 	}
@@ -84,10 +84,10 @@ func fileFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend,
 	return OpenWithKeyring(Options{Dir: typed.DataDir}, kr)
 }
 
-// loadPlatformKEK reads the keyring file header to determine the KEK type and
+// LoadKeyringKEK reads the keyring file header to determine the KEK type and
 // returns the appropriate platform KEK. Returns an error if the KEK cannot be
 // loaded (platform keystore unavailable, bootstrap not run, etc.).
-func loadPlatformKEK(krPath string) (kek.KEK, error) {
+func LoadKeyringKEK(krPath string) (kek.KEK, error) {
 	// Read the KEK type from the keyring file without opening the full keyring.
 	kf, err := keyring.ReadHeader(krPath)
 	if err != nil {

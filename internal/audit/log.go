@@ -245,7 +245,7 @@ func (l *Logger) summarize(opts SummaryOpts) (Summary, error) {
 		nonce := sealed[:24]
 		ct := sealed[24:]
 
-		plaintext, err := envelope.Open(envelope.XChaCha20Poly1305, l.auditDEK, ct, nonce, hdrBytes)
+		plaintext, err := openSealed(l.keys(), ct, nonce, hdrBytes)
 		if err != nil {
 			continue
 		}

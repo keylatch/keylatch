@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/keylatch/keylatch/internal/backend/file"
 	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 	filebe "github.com/keylatch/keylatch/internal/crypto/kek"
@@ -56,18 +57,13 @@ func newKeyringInitCmd() *cobra.Command {
 				alg = envelope.AES256GCM
 			}
 
-			vaultDir := paths.Vault(os.Getenv)
-			keyringDir := filepath.Join(vaultDir, "keyring")
-			if err := os.MkdirAll(keyringDir, 0o700); err != nil {
-				return fmt.Errorf("keyring init: mkdir: %w", err)
-			}
-
-			krPath := filepath.Join(keyringDir, "keyring.json")
-
-			// Idempotent check.
+			krPath := paths.ResolveKeyringPath(os.Getenv)
 			if _, err := os.Stat(krPath); err == nil {
 				fmt.Fprintln(cmd.OutOrStdout(), "keyring already initialized at", krPath)
 				return nil
+			}
+			if err := os.MkdirAll(filepath.Dir(krPath), 0o700); err != nil {
+				return fmt.Errorf("keyring init: mkdir: %w", err)
 			}
 
 			// Generate a random salt for passphrase KEK derivation. The salt
@@ -283,8 +279,7 @@ func newCryptoCalibrateCmd() *cobra.Command {
 func buildKEK(ctx context.Context, spec string) (filebe.KEK, error) {
 	if spec == "passphrase" || spec == "" {
 		// Load the keyring file to obtain the persisted salt.
-		vaultDir := paths.Vault(os.Getenv)
-		krPath := filepath.Join(vaultDir, "keyring", "keyring.json")
+		krPath := paths.ResolveKeyringPath(os.Getenv)
 		data, err := os.ReadFile(krPath)
 		if err != nil {
 			return nil, fmt.Errorf("passphrase KEK: read keyring for salt: %w", err)
@@ -334,8 +329,7 @@ func buildKEKWithSalt(_ context.Context, spec string, salt []byte) (filebe.KEK, 
 	case spec == "age-env":
 		if len(salt) == 0 {
 			// Fall back to loading from the keyring file.
-			vaultDir := paths.Vault(os.Getenv)
-			krPath := filepath.Join(vaultDir, "keyring", "keyring.json")
+			krPath := paths.ResolveKeyringPath(os.Getenv)
 			data, err := os.ReadFile(krPath)
 			if err != nil {
 				return nil, fmt.Errorf("age-env: read keyring for salt: %w", err)
@@ -410,37 +404,43 @@ func readPassphrase() ([]byte, error) {
 	return pass, nil
 }
 
-// openKeyringFromEnv opens the audit keyring from the default path.
-// Tries the bootstrap age identity (no user interaction) first, so that audit
-// logging works automatically after `keylatch setup`. Falls back to passphrase
-// for manually-initialized keyrings that require user input.
+// openKeyringFromEnv opens the keyring paths.ResolveKeyringPath selects.
 func openKeyringFromEnv() (*keyring.Keyring, filebe.KEK, string, error) {
-	vaultDir := paths.Vault(os.Getenv)
-	krPath := filepath.Join(vaultDir, "keyring", "keyring.json")
+	return openKeyringAt(paths.ResolveKeyringPath(os.Getenv), true)
+}
 
-	// Read the salt from the existing keyring file so we can derive the right key.
-	data, err := os.ReadFile(krPath)
+// openKeyringAt opens the keyring at krPath. It tries, without user
+// interaction, the KEK the file backend uses and then the bootstrap age
+// identity, so audit works right after bootstrap or setup; manually
+// initialised keyrings fall back to the passphrase prompt when interactive
+// is set.
+func openKeyringAt(krPath string, interactive bool) (*keyring.Keyring, filebe.KEK, string, error) {
+	data, err := os.ReadFile(krPath) //nolint:gosec // G304: krPath is the resolved keyring path
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("open keyring %q: %w", krPath, err)
 	}
 	var kf keyringFileForSalt
 	if jsonErr := json.Unmarshal(data, &kf); jsonErr != nil || len(kf.Salt) == 0 {
-		// No salt: fall through to passphrase.
 		kf.Salt = nil
 	}
 
-	// Try age identity KEK (non-interactive: uses bootstrap identity file).
-	identityPath := paths.KeyringIdentityPath(os.Getenv)
+	if k, kekErr := file.LoadKeyringKEK(krPath); kekErr == nil {
+		if kr, openErr := keyring.Open(krPath, k); openErr == nil {
+			return kr, k, krPath, nil
+		}
+	}
 	if len(kf.Salt) > 0 {
-		if k, kekErr := filebe.AgeIdentityKEKFromPath(identityPath, kf.Salt); kekErr == nil {
+		if k, kekErr := filebe.AgeIdentityKEKFromPath(paths.KeyringIdentityPath(os.Getenv), kf.Salt); kekErr == nil {
 			if kr, openErr := keyring.Open(krPath, k); openErr == nil {
 				return kr, k, krPath, nil
 			}
 		}
 	}
 
-	// Fall back to passphrase (manually initialized keyrings).
-	k, err := buildKEK(context.Background(), "passphrase")
+	if !interactive || len(kf.Salt) == 0 {
+		return nil, nil, "", fmt.Errorf("open keyring %q: no KEK available without a passphrase", krPath)
+	}
+	k, err := buildKEKWithSalt(context.Background(), "passphrase", kf.Salt)
 	if err != nil {
 		return nil, nil, "", err
 	}
