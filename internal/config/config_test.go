@@ -222,3 +222,18 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestSave_CreatesMissingConfigDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "fresh", "keylatch")
+	path := filepath.Join(dir, "config.json")
+
+	require.NoError(t, config.Save(path, config.Default()))
+
+	_, err := config.Load(path)
+	require.NoError(t, err)
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(dir)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+	}
+}
