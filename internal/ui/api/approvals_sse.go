@@ -97,8 +97,8 @@ func PublishApprovalOnBus(bus *ApprovalBus, req *approval.ApprovalRequest) {
 
 // AdminApprovalsSSEHandler handles GET /admin/approvals/stream (SSE inbox).
 //
-// Security: caller must have already passed the admin role gate and CSRF
-// check in AdminHandler.ServeHTTP before reaching this handler.
+// Security: caller must have already passed the session role gate in
+// AdminHandler.ServeHTTP before reaching this handler.
 // All emitted payloads are value-free (RequesterHMAC never contains raw IDs).
 type AdminApprovalsSSEHandler struct {
 	Team *team.Team
