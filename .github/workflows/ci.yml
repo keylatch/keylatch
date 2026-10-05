@@ -109,8 +109,6 @@ jobs:
         env:
           KEYLATCH_BACKEND: file
         run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
-      - name: Check coverage threshold
-        run: bash release-checks/coverage-threshold.sh coverage.out
       - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -124,6 +122,22 @@ jobs:
         run: go test -run TestCanary -v ./internal/canary/...
       - name: go test canary meta
         run: go test -tags meta ./internal/canary/...
+
+  coverage:
+    # Floors are measured on the Linux profile so OS-specific files do not
+    # move a package between runners.
+    needs: go-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-ubuntu-latest
+      - name: coverage script tests
+        run: bash release-checks/release-checks.test.sh
+      - name: coverage floors
+        run: bash release-checks/coverage-threshold.sh --report coverage.out
 
   bootstrap-smoke:
     # Clean-machine smoke test for the bootstrap onboarding flow.

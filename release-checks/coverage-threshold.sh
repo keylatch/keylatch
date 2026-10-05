@@ -1,159 +1,162 @@
 #!/usr/bin/env bash
-# coverage-threshold.sh — assert per-package Go coverage meets the threshold.
-#
-# Usage:
-#   bash release-checks/coverage-threshold.sh [coverage.out] [--report]
-#
-# Arguments:
-#   coverage.out   Path to the coverage profile (default: coverage.out)
-#   --report       Print per-package table even when all packages pass
-#
-# Environment:
-#   COVERAGE_THRESHOLD   Minimum acceptable coverage percentage (default: 85)
-#
-# Exit codes:
-#   0   All non-allowlisted packages meet the threshold
-#   1   One or more packages are below the threshold
+# Fails unless total statement coverage and every package's coverage meet the
+# floors in coverage-floors.txt.
+# Usage: coverage-threshold.sh [--report] [--floors <file>] [coverage.out]
+#   --report  print the per-package table even when every floor is met
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# ---------------------------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------------------------
-coverage_file=""
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+floors="$here/coverage-floors.txt"
+profile=coverage.out
 report=0
-
-for arg in "$@"; do
-  case "$arg" in
+while (($#)); do
+  case "$1" in
     --report) report=1 ;;
-    *) coverage_file="$arg" ;;
+    --floors)
+      floors="${2:?--floors needs a file}"
+      shift
+      ;;
+    -*) die "unknown option: $1" ;;
+    *) profile="$1" ;;
   esac
+  shift
 done
 
-coverage_file="${coverage_file:-coverage.out}"
-allowlist="$(dirname "$0")/coverage-allowlist.txt"
-threshold="${COVERAGE_THRESHOLD:-85}"
+[[ -f "$profile" ]] || die "coverage profile not found: $profile (run: go test -coverprofile=coverage.out ./...)"
+[[ -f "$floors" ]] || die "floors file not found: $floors"
+command -v python3 >/dev/null || die "python3 is required"
+module=$(awk '$1 == "module" { print $2; exit }' "$here/../go.mod")
+[[ -n "$module" ]] || die "cannot read the module path from go.mod"
 
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
-if [[ ! -f "$coverage_file" ]]; then
-  echo "ERROR: coverage file not found: $coverage_file" >&2
-  echo "       Run: go test -coverprofile=coverage.out ./..." >&2
-  exit 1
-fi
-
-if [[ ! -f "$allowlist" ]]; then
-  echo "ERROR: allowlist file not found: $allowlist" >&2
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Require python3 — no graceful fallback under set -euo pipefail.
-# ---------------------------------------------------------------------------
-if ! command -v python3 &>/dev/null; then
-  echo "ERROR: python3 is required to run the coverage gate." >&2
-  echo "Install it: brew install python3 / apt-get install python3" >&2
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Use Python to parse coverage.out directly and compute statement-weighted
-# per-package coverage, then check against the allowlist.
-# ---------------------------------------------------------------------------
-python3 - "$coverage_file" "$allowlist" "$threshold" "$report" <<'PYEOF'
+python3 - "$profile" "$floors" "$module" "$report" <<'PY'
 import sys
-import os
 from collections import defaultdict
 
-coverage_file = sys.argv[1]
-allowlist_file = sys.argv[2]
-threshold = float(sys.argv[3])
-do_report = sys.argv[4] == "1"
+profile, floors_file, module, report = sys.argv[1], sys.argv[2], sys.argv[3] + "/", sys.argv[4] == "1"
+errors = []
 
-# Load allowlist
-allowlisted = set()
-with open(allowlist_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        allowlisted.add(line)
 
-# Parse coverage.out directly — statement-weighted aggregation.
-# Format:
-#   mode: set
-#   github.com/foo/bar/file.go:12.5,14.17 3 1
-#   ^--- file:start,end                   ^ ^
-#                                   stmts   covered (1=yes, 0=no)
-pkg_covered = defaultdict(int)
-pkg_total = defaultdict(int)
+def pct(value, where):
+    try:
+        f = float(value)
+    except ValueError:
+        f = -1
+    if not 0 <= f <= 100:
+        errors.append(f"{where}: floor must be a number from 0 to 100, got {value!r}")
+    return f
 
-with open(coverage_file) as f:
-    next(f)  # skip "mode: ..." header
-    for line in f:
-        line = line.strip()
+
+total_floor = None
+default_floor = None
+floors = {}
+exempt = {}
+with open(floors_file) as fh:
+    for n, raw in enumerate(fh, 1):
+        line = raw.split("#", 1)[0].strip()
         if not line:
             continue
+        where = f"{floors_file}:{n}"
         parts = line.split()
-        if len(parts) < 3:
+        key = parts[0]
+        if key in ("total", "default"):
+            if len(parts) != 2:
+                errors.append(f"{where}: expected '{key} <percent>'")
+                continue
+            if key == "total":
+                total_floor = pct(parts[1], where)
+            else:
+                default_floor = pct(parts[1], where)
+        elif len(parts) >= 2 and parts[1] == "exempt":
+            if len(parts) < 3:
+                errors.append(f"{where}: exemption for {key} needs a reason")
+            if key.endswith("/..."):
+                errors.append(f"{where}: exemptions name one package, not a pattern")
+            exempt[key] = " ".join(parts[2:])
+        elif len(parts) == 2:
+            if key in floors:
+                errors.append(f"{where}: duplicate floor for {key}")
+            floors[key] = pct(parts[1], where)
+        else:
+            errors.append(f"{where}: expected '<package> <percent>' or '<package> exempt <reason>'")
+if total_floor is None:
+    errors.append(f"{floors_file}: missing 'total <percent>'")
+if default_floor is None:
+    errors.append(f"{floors_file}: missing 'default <percent>'")
+if errors:
+    sys.exit("\n".join(f"error: {e}" for e in errors))
+
+blocks = {}
+with open(profile) as fh:
+    header = fh.readline()
+    if not header.startswith("mode:"):
+        errors.append(f"{profile}: not a Go coverage profile")
+    for raw in fh:
+        parts = raw.split()
+        if len(parts) != 3:
             continue
-        loc = parts[0]          # "github.com/.../file.go:start,end"
-        stmts = int(parts[1])
-        covered = int(parts[2]) # 1 = covered, 0 = not covered
+        block, stmts, count = parts[0], int(parts[1]), int(parts[2])
+        prev = blocks.get(block)
+        blocks[block] = (stmts, max(count, prev[1] if prev else 0))
 
-        file_path = loc.split(':')[0]  # strip ":start,end"
-        pkg = '/'.join(file_path.split('/')[:-1])  # strip filename
-        if pkg:
-            pkg_total[pkg] += stmts
-            if covered > 0:
-                pkg_covered[pkg] += stmts
+total = defaultdict(int)
+covered = defaultdict(int)
+for block, (stmts, count) in blocks.items():
+    pkg = block.rsplit(":", 1)[0].rsplit("/", 1)[0]
+    pkg = pkg[len(module):] if pkg.startswith(module) else pkg
+    total[pkg] += stmts
+    if count > 0:
+        covered[pkg] += stmts
+if not total:
+    errors.append(f"{profile}: no coverage blocks")
 
-# Evaluate packages
-failed_packages = []
-report_rows = []
 
-for pkg in sorted(pkg_total.keys()):
-    total = pkg_total[pkg]
-    pct = (pkg_covered[pkg] / total * 100) if total > 0 else 0.0
+def matches(key, pkg):
+    if key.endswith("/..."):
+        return pkg == key[:-4] or pkg.startswith(key[:-3])
+    return key == pkg
 
-    if pkg in allowlisted:
-        status = 'SKIP'
-    elif pct < threshold:
-        status = 'FAIL'
-        failed_packages.append(f'{pkg} ({pct:.1f}%)')
-    else:
-        status = 'PASS'
 
-    report_rows.append((status, pct, pkg))
+def floor_for(pkg):
+    hits = [k for k in floors if matches(k, pkg)]
+    used.update(hits)
+    if pkg in floors:
+        return floors[pkg]
+    return floors[max(hits, key=len)] if hits else default_floor
 
-# Compute total project coverage across all packages
-total_stmts = sum(pkg_total.values())
-total_covered = sum(pkg_covered.values())
-total_pct = (total_covered / total_stmts * 100) if total_stmts > 0 else 0.0
 
-# Output report if requested or if failures exist
-if do_report or failed_packages:
-    print()
-    print(f'Coverage gate — threshold: {threshold:.0f}%')
-    print('-' * 70)
-    print(f'{"STATUS":<8}  {"COVERAGE":>8}  {"PACKAGE"}')
-    print('-' * 70)
-    for status, pct, pkg in report_rows:
-        print(f'{status:<8}  {pct:>7.1f}%  {pkg}')
-    print('-' * 70)
-    print(f'Total project coverage: {total_pct:.1f}%')
-    print()
+used = set()
+rows = []
+for pkg in sorted(total):
+    p = 100 * covered[pkg] / total[pkg] if total[pkg] else 100.0
+    if pkg in exempt:
+        used.add(pkg)
+        rows.append(("EXEMPT", p, None, pkg))
+        continue
+    floor = floor_for(pkg)
+    status = "PASS" if p >= floor else "FAIL"
+    if status == "FAIL":
+        errors.append(f"{pkg}: {p:.1f}% is below its {floor:g}% floor")
+    rows.append((status, p, floor, pkg))
+for key in sorted(set(floors) | set(exempt)):
+    if key not in used:
+        errors.append(f"{floors_file}: {key} matches no package in the profile")
 
-if failed_packages:
-    print(f'FAILED — the following packages are below {threshold:.0f}%:', file=sys.stderr)
-    for pkg in failed_packages:
-        print(f'  {pkg}', file=sys.stderr)
-    print('', file=sys.stderr)
-    print('Fix options:', file=sys.stderr)
-    print('  1. Write additional tests for the failing packages.', file=sys.stderr)
-    print('  2. Add the package to release-checks/coverage-allowlist.txt with a rationale.', file=sys.stderr)
+all_total = sum(total.values())
+all_covered = sum(covered.values())
+overall = 100 * all_covered / all_total if all_total else 0.0
+if total_floor is not None and overall < total_floor:
+    errors.append(f"total: {overall:.1f}% is below the {total_floor:g}% floor")
+
+if errors or report:
+    print(f"{'STATUS':<7} {'COVER':>6} {'FLOOR':>6}  PACKAGE")
+    for status, p, floor, pkg in rows:
+        floor_txt = "-" if floor is None else f"{floor:g}%"
+        print(f"{status:<7} {p:5.1f}% {floor_txt:>6}  {pkg}")
+print(f"total coverage {overall:.1f}% ({all_covered}/{all_total} statements), floor {total_floor:g}%")
+if errors:
+    for e in errors:
+        print(f"error: {e}", file=sys.stderr)
     sys.exit(1)
-
-print(f'Coverage gate PASSED — all non-allowlisted packages meet {threshold:.0f}% threshold.')
-print(f'Total project coverage: {total_pct:.1f}%')
-PYEOF
+print("coverage floors met")
+PY

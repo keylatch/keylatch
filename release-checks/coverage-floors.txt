@@ -1,0 +1,35 @@
+# Statement coverage floors enforced by coverage-threshold.sh on the Linux
+# coverage profile of `go test -race -coverprofile=coverage.out ./...`.
+#
+#   total <percent>               floor for the whole module
+#   default <percent>             floor for every package not matched below
+#   <package> <percent>           package path relative to the module; a
+#                                 trailing /... also matches subpackages and
+#                                 the longest match wins over shorter ones
+#   <package> exempt <reason>     no floor; the package still counts toward
+#                                 the total
+#
+# Raise a floor when a package's coverage rises; never lower one to merge.
+
+total 85
+default 80
+
+# Security-critical: agent guard and detection, secret backends, gateway
+# auth and tokens, approvals, policy, crypto, audit and the vault.
+internal/guard 85
+internal/llmcontext 85
+internal/backend/... 85
+internal/gateway/... 85
+internal/broker/... 85
+internal/team/approval 85
+internal/policy/... 85
+internal/crypto/... 85
+internal/audit/... 85
+internal/vault/... 85
+internal/ui/session 85
+internal/ui/csrf 85
+
+# Entry points: thin main packages exercised by the binary smoke tests.
+cmd/keylatch exempt main package
+cmd/keylatchd exempt main package
+packaging/release-manifest exempt main package

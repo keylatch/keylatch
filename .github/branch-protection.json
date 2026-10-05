@@ -1,0 +1,27 @@
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [
+      "lint",
+      "naming",
+      "go-test (ubuntu-latest)",
+      "go-test (macos-latest)",
+      "go-test (windows-latest)",
+      "coverage",
+      "hook-test (ubuntu-latest)",
+      "hook-test (macos-latest)",
+      "govulncheck",
+      "gitleaks",
+      "canary-regression",
+      "sidecar-canary",
+      "docs-leak-scan"
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": true
+}
