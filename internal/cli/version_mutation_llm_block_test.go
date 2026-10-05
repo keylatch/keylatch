@@ -6,7 +6,8 @@ package cli_test
 import (
 	"bytes"
 	"context"
-	"strings"
+	"errors"
+	"github.com/keylatch/keylatch/internal/exitcode"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
@@ -51,8 +52,9 @@ func TestDestroyVersion_BlockedInLLMSession(t *testing.T) {
 	if err == nil {
 		t.Error("expected error from destroy-version in LLM session, got nil")
 	}
-	if !strings.Contains(err.Error(), "security block") {
-		t.Errorf("expected 'security block' in error, got: %v", err)
+	var cliErr *cli.CLIError
+	if !errors.As(err, &cliErr) || cliErr.Code != exitcode.SecurityBlock {
+		t.Errorf("expected a SecurityBlock CLIError, got: %v", err)
 	}
 
 	// Vault must NOT have been modified: v1 must still be accessible.
@@ -98,8 +100,9 @@ func TestRollback_BlockedInLLMSession(t *testing.T) {
 	if err == nil {
 		t.Error("expected error from rollback in LLM session, got nil")
 	}
-	if !strings.Contains(err.Error(), "security block") {
-		t.Errorf("expected 'security block' in error, got: %v", err)
+	var cliErr *cli.CLIError
+	if !errors.As(err, &cliErr) || cliErr.Code != exitcode.SecurityBlock {
+		t.Errorf("expected a SecurityBlock CLIError, got: %v", err)
 	}
 
 	// Vault must NOT have been modified: current version must still be 2.

@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
+	"github.com/keylatch/keylatch/internal/exitcode"
 	"io"
 	"os"
 	"strings"
@@ -54,13 +56,12 @@ func TestBackupLLMSessionBlocked(t *testing.T) {
 	if err == nil {
 		t.Error("expected error from backup in LLM session, got nil")
 	}
-	// The stderr message must mention "blocked in LLM sessions".
-	if !strings.Contains(errBuf.String(), "blocked in LLM sessions") {
-		t.Errorf("expected LLM block message in stderr, got: %s", errBuf.String())
+	var cliErr *CLIError
+	if !errors.As(err, &cliErr) || cliErr.Code != exitcode.SecurityBlock {
+		t.Fatalf("expected a SecurityBlock CLIError (exit %d), got: %v", exitcode.SecurityBlock, err)
 	}
-	// The error must contain "security block".
-	if err != nil && !strings.Contains(err.Error(), "security block") {
-		t.Errorf("expected 'security block' in error, got: %v", err)
+	if !strings.Contains(cliErr.Message, "blocked in LLM sessions") {
+		t.Errorf("expected LLM block message, got: %s", cliErr.Message)
 	}
 }
 

@@ -33,6 +33,8 @@ func TestReportError(t *testing.T) {
 		{"reported with cause", reported(exitcode.UserError, plain), exitcode.UserError, ""},
 		{"wrapped reported", fmt.Errorf("ctx: %w", reported(exitcode.SecurityBlock, nil)), exitcode.SecurityBlock, ""},
 		{"cli error with zero code", &CLIError{Class: "X", Message: "m"}, exitcode.UserError, "error[X]: m\n"},
+		{"coded error", withExitCode(exitcode.OperationFailed, plain), exitcode.OperationFailed, "Error: " + plain.Error() + "\n"},
+		{"wrapped coded error", fmt.Errorf("ctx: %w", withExitCode(exitcode.OperationFailed, plain)), exitcode.OperationFailed, "Error: ctx: " + plain.Error() + "\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

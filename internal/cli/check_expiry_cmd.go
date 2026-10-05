@@ -55,7 +55,7 @@ Exit code 1 if any credentials are expired; 0 otherwise.`,
 			// Security invariant: ListMeta never decrypts values.
 			metas, err := vault.ListMeta(ctx, "", cfg, env)
 			if err != nil {
-				return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.OperationFailed)
+				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
 			}
 
 			now := time.Now()
@@ -87,7 +87,7 @@ Exit code 1 if any credentials are expired; 0 otherwise.`,
 
 			if jsonOutput {
 				if err := outputCheckExpiryJSON(c, entries); err != nil {
-					return fmt.Errorf("[keylatch] error: %w (exit %d)", err, exitcode.OperationFailed)
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
 				}
 			} else {
 				outputCheckExpiryTable(c, entries)
