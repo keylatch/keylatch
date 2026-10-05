@@ -137,6 +137,9 @@ func TestSelect_Reset(t *testing.T) {
 }
 
 func TestSelect_OPUnavailable(t *testing.T) {
+	// Hermetic: a real CLI installed on the host would otherwise make the backend available.
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("KEYLATCH_OP_BIN", "")
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
 	t.Setenv("PATH", t.TempDir())
@@ -151,6 +154,9 @@ func TestSelect_OPUnavailable(t *testing.T) {
 }
 
 func TestSelect_BWUnavailable(t *testing.T) {
+	// Hermetic: a real CLI installed on the host would otherwise make the backend available.
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("KEYLATCH_BW_BIN", "")
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
 	t.Setenv("PATH", t.TempDir())
