@@ -13,15 +13,21 @@ import (
 	"golang.org/x/term"
 )
 
-// configureLaunchProcess gives the harness its own process group and, when
-// launch runs on a terminal, makes that group the terminal's foreground.
-func configureLaunchProcess(cmd *exec.Cmd) {
+// startLaunchProcess starts the harness in its own process group and, when
+// launch runs on a terminal, makes that group the terminal's foreground. The
+// returned function stops the whole group.
+func startLaunchProcess(cmd *exec.Cmd) (func() error, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if cmd.Stdin == os.Stdin && term.IsTerminal(int(os.Stdin.Fd())) {
 		cmd.SysProcAttr.Foreground = true
 		cmd.SysProcAttr.Ctty = int(os.Stdin.Fd())
 	}
-	cmd.Cancel = func() error { return stopLaunchProcess(cmd) }
+	stop := func() error { return stopLaunchProcess(cmd) }
+	cmd.Cancel = stop
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return stop, nil
 }
 
 func stopLaunchProcess(cmd *exec.Cmd) error {

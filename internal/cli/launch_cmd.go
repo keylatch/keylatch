@@ -170,17 +170,16 @@ func verifySessionTicket(env llmcontext.Lookup, raw string) (llmcontext.Ticket, 
 	return llmcontext.VerifyTicket(raw, key)
 }
 
-// superviseLaunch runs the harness in its own process group with the
-// terminal in the foreground, and on exit stops the whole group and takes
-// the terminal back.
+// superviseLaunch runs the harness with the terminal in the foreground, and
+// on exit stops every process it left running and takes the terminal back.
 func superviseLaunch(child *exec.Cmd) (result error) {
-	configureLaunchProcess(child)
-	if err := child.Start(); err != nil {
+	stop, err := startLaunchProcess(child)
+	if err != nil {
 		return fmt.Errorf("start agent: %w", err)
 	}
 	defer func() {
-		if err := stopLaunchProcess(child); err != nil {
-			result = errors.Join(result, fmt.Errorf("stop agent process group: %w", err))
+		if err := stop(); err != nil {
+			result = errors.Join(result, fmt.Errorf("stop agent processes: %w", err))
 		}
 		if err := restoreLaunchTerminal(child); err != nil {
 			result = errors.Join(result, fmt.Errorf("restore terminal: %w", err))
