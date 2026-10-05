@@ -70,7 +70,7 @@ interactive terminal on stdin and is refused inside a detected LLM session
 				}
 			}
 
-			if err := requireInteractiveTerminal(c, "deny", "KL-4115"); err != nil {
+			if err := requireInteractiveTerminal("deny", "KL-4115"); err != nil {
 				return err
 			}
 
