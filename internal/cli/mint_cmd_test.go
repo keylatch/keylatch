@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -177,6 +178,21 @@ func writeOperatorPolicy(t *testing.T, home string, policy *config.GitHubAppMint
 	require.NoError(t, os.Chmod(path, mode))
 }
 
+// linkOperatorConfig replaces the operator config with a symlink to an
+// identical file elsewhere; a link is refused even when its target is fine.
+func linkOperatorConfig(t *testing.T, home string) {
+	t.Helper()
+	path := paths.DefaultConfig(home)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	target := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(target, data, 0o600))
+	require.NoError(t, os.Remove(path))
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+}
+
 func runMintArgs(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	root := NewRootCommand()
@@ -294,10 +310,11 @@ func TestMintDenyOwnerWinsBeforeKeyRead(t *testing.T) {
 
 func TestMintPolicyRefusalsBeforeKeyRead(t *testing.T) {
 	type tc struct {
-		policy func() *config.GitHubAppMintPolicy
-		args   []string
-		mode   os.FileMode
-		human  bool
+		policy  func() *config.GitHubAppMintPolicy
+		args    []string
+		mode    os.FileMode
+		human   bool
+		symlink bool
 	}
 	withPolicy := func(f func(p *config.GitHubAppMintPolicy)) func() *config.GitHubAppMintPolicy {
 		return func() *config.GitHubAppMintPolicy { p := defaultMintPolicy(); f(p); return p }
@@ -311,12 +328,19 @@ func TestMintPolicyRefusalsBeforeKeyRead(t *testing.T) {
 		"caller kind not listed": {policy: withPolicy(func(p *config.GitHubAppMintPolicy) { p.Callers = []string{"service"} })},
 		"human by default":       {policy: defaultMintPolicy, human: true},
 		"config group-writable":  {policy: defaultMintPolicy, mode: 0o664},
+		"config is a symlink":    {policy: defaultMintPolicy, symlink: true},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
+			if c.mode != 0 && runtime.GOOS == "windows" {
+				t.Skip("Windows has no group/other mode bits; ownership is checked instead")
+			}
 			env := setupMint(t, c.policy())
 			if c.mode != 0 {
 				writeOperatorPolicy(t, env.home, c.policy(), c.mode)
+			}
+			if c.symlink {
+				linkOperatorConfig(t, env.home)
 			}
 			if c.human {
 				interactiveStdin = func() bool { return true }
