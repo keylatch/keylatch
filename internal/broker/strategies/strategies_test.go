@@ -216,7 +216,7 @@ func TestGitHubApp_InvalidPrivateKey_SignJWTFails(t *testing.T) {
 	// Override the endpoint by using the test server URL directly.
 	// We create the strategy normally; the HTTP call to GitHub.com will fail
 	// via the test server returning 401.
-	s := strategies.NewGitHubAppInstallationStrategyWithURL("app-123", "install-456", key, srv.URL+"/app/installations/%s/access_tokens")
+	s := strategies.NewGitHubAppInstallationStrategyWithAPI("app-123", "install-456", key, srv.URL, nil)
 
 	_, err = s.Exchange(context.Background(), "", "", "")
 	require.Error(t, err)
@@ -238,7 +238,7 @@ func TestGitHubApp_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := strategies.NewGitHubAppInstallationStrategyWithURL("app-123", "install-456", key, srv.URL+"/app/installations/%s/access_tokens")
+	s := strategies.NewGitHubAppInstallationStrategyWithAPI("app-123", "install-456", key, srv.URL, nil)
 	assert.Equal(t, "github", s.Provider())
 
 	res, err := s.Exchange(context.Background(), "", "", "")
@@ -255,7 +255,7 @@ func TestGitHubApp_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := strategies.NewGitHubAppInstallationStrategyWithURL("app-123", "install-456", key, srv.URL+"/app/installations/%s/access_tokens")
+	s := strategies.NewGitHubAppInstallationStrategyWithAPI("app-123", "install-456", key, srv.URL, nil)
 	_, err = s.Exchange(context.Background(), "", "", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
@@ -272,7 +272,7 @@ func TestGitHubApp_MissingToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := strategies.NewGitHubAppInstallationStrategyWithURL("app-123", "install-456", key, srv.URL+"/app/installations/%s/access_tokens")
+	s := strategies.NewGitHubAppInstallationStrategyWithAPI("app-123", "install-456", key, srv.URL, nil)
 	_, err = s.Exchange(context.Background(), "", "", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing token")
