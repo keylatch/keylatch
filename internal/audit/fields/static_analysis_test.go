@@ -76,6 +76,11 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"timestamp":                     "2026-05-18T00:00:00Z",
 			"provider_revocation_attempted": false,
 			"provider_revocation_succeeded": false,
+			// mint keys.
+			"repository":  "octo/repo",
+			"permissions": "contents=write,metadata=read",
+			"expires_at":  "2026-10-07T13:00:00Z",
+			"caller_kind": "service",
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)

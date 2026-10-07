@@ -128,6 +128,11 @@ const (
 	// ActionSandboxDenyApplied records that the deny-list was applied for a
 	// sandbox run. Extra.denied_paths lists the paths (no values).
 	ActionSandboxDenyApplied Action = "sandbox.deny_applied"
+
+	// ActionMint records one scoped credential mint. Extra holds the
+	// connection, repository, permissions, expires_at and caller kind;
+	// the minted credential is never recorded.
+	ActionMint Action = "mint"
 )
 
 // Emitter is a minimal interface for components that need to emit audit events
