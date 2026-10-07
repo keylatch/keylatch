@@ -143,6 +143,9 @@ type ConfigField struct {
 	Required    bool   `json:"required"              yaml:"required"`
 	Default     string `json:"default,omitempty"     yaml:"default,omitempty"`
 	EnvVar      string `json:"env_var,omitempty"     yaml:"env_var,omitempty"`
+	// Prefix makes Name a prefix: every supplied field named Name+suffix is
+	// stored as a config field, e.g. installation_<owner>.
+	Prefix bool `json:"prefix,omitempty" yaml:"prefix,omitempty"`
 }
 
 // Capability is a named feature advertised by a provider connection.
@@ -153,7 +156,7 @@ type Capability struct {
 
 // TestStrategy describes how to verify a provider connection is healthy.
 type TestStrategy struct {
-	Kind     string          `json:"kind"     yaml:"kind"` // "http_get" | "http_post" | "sdk_call"
+	Kind     string          `json:"kind"     yaml:"kind"` // "http_get" | "http_post" | "sdk_call" | "github_app"
 	Endpoint string          `json:"endpoint" yaml:"endpoint"`
 	Expect   TestExpectation `json:"expect"   yaml:"expect"`
 }

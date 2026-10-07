@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/broker/strategies"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -85,6 +86,8 @@ func executeTestStrategy(
 		return runHTTPStrategy(ctx, "GET", strategy, provider, account, namespace, store, httpClient)
 	case "http_post":
 		return runHTTPStrategy(ctx, "POST", strategy, provider, account, namespace, store, httpClient)
+	case "github_app":
+		return runGitHubAppStrategy(ctx, strategy, provider, namespace, store, httpClient)
 	case "sdk_call":
 		// SDK call is provider-specific; maps it to an HTTP GET for now.
 		return runHTTPStrategy(ctx, "GET", strategy, provider, account, namespace, store, httpClient)
@@ -171,6 +174,49 @@ func runHTTPStrategy(
 		StatusCode: resp.StatusCode,
 		Markers:    markers,
 	}, nil
+}
+
+// runGitHubAppStrategy authenticates as the App with a JWT signed from the
+// stored private_key and app_id. The key itself is never sent, unlike the
+// generic HTTP strategies, which place the first secret field in a header.
+func runGitHubAppStrategy(
+	ctx context.Context,
+	strategy registry.TestStrategy,
+	provider, namespace string,
+	store Store,
+	httpClient *http.Client,
+) (TestResult, error) {
+	tmpl, _ := registry.Get(provider)
+	keyPEM, _, err := store.Get(ctx, secretFieldPath(namespace, tmpl.Category, provider, "private_key"))
+	if err != nil {
+		return TestResult{}, fmt.Errorf("read private_key: %w", err)
+	}
+	key, err := strategies.ParseGitHubAppPrivateKey(keyPEM)
+	zeroBytes(keyPEM)
+	if err != nil {
+		return TestResult{Status: TestStatusInvalid}, nil
+	}
+	appID, _, err := store.Get(ctx, configFieldPath(namespace, tmpl.Category, provider, "app_id"))
+	if err != nil {
+		return TestResult{}, fmt.Errorf("read app_id: %w", err)
+	}
+	jwt, err := strategies.NewGitHubAppInstallationStrategy(strings.TrimSpace(string(appID)), "", key).SignedAppJWT()
+	if err != nil {
+		return TestResult{}, fmt.Errorf("sign app JWT: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strategy.Endpoint, nil)
+	if err != nil {
+		return TestResult{}, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return TestResult{}, fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	return TestResult{Status: mapHTTPStatusToEnum(resp.StatusCode), StatusCode: resp.StatusCode}, nil
 }
 
 // mapHTTPStatusToEnum maps an HTTP status code to a fixed TestResult.Status enum.

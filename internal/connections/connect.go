@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -107,6 +109,12 @@ func Connect(ctx context.Context, provider string, opts ConnectOptions, store St
 
 	// Process config fields (apply defaults).
 	for _, cf := range tmpl.ConfigFields {
+		if cf.Prefix {
+			if err := storePrefixedConfig(ctx, store, ns, category, provider, cf.Name, opts.Fields); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		val := ""
 		if v, ok := opts.Fields[cf.Name]; ok {
 			val = string(v)
@@ -186,6 +194,41 @@ func configFieldPath(namespace, category, provider, field string) string {
 	return fmt.Sprintf("%s/%s/%s/config/%s", namespace, category, provider, field)
 }
 
+// SecretFieldPath returns the store path of a connection's secret field.
+func SecretFieldPath(namespace, category, provider, field string) string {
+	return secretFieldPath(namespace, category, provider, field)
+}
+
+// ConfigFieldPath returns the store path of a connection's config field.
+func ConfigFieldPath(namespace, category, provider, field string) string {
+	return configFieldPath(namespace, category, provider, field)
+}
+
+var prefixSuffixRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}$`)
+
+// storePrefixedConfig stores every supplied field named prefix+suffix. The
+// suffix is lower-cased so lookups by a GitHub login are case-insensitive.
+func storePrefixedConfig(ctx context.Context, store Store, ns, category, provider, prefix string, fields map[string][]byte) error {
+	for name, v := range fields {
+		suffix, ok := strings.CutPrefix(name, prefix)
+		if !ok || suffix == "" {
+			continue
+		}
+		suffix = strings.ToLower(suffix)
+		if !prefixSuffixRe.MatchString(suffix) {
+			return fmt.Errorf("connections: field %q: suffix %q must be lowercase letters, digits and hyphens", name, suffix)
+		}
+		if len(v) == 0 {
+			continue
+		}
+		path := configFieldPath(ns, category, provider, prefix+suffix)
+		if err := store.Set(ctx, path, v, backend.Meta{Path: path, Backend: "vault", Version: 1}); err != nil {
+			return fmt.Errorf("connections: write config field %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // Delete removes all stored data for a connection (secret fields, config fields, and metadata).
 // It is the inverse of Connect and is used to rollback a failed connection.
 // Returns nil if the connection does not exist (idempotent for ErrNotFound).
@@ -218,6 +261,18 @@ func Delete(ctx context.Context, provider, account, namespace string, store Stor
 
 	// Delete config fields.
 	for _, cf := range tmpl.ConfigFields {
+		if cf.Prefix {
+			entries, listErr := store.List(ctx, configFieldPath(namespace, category, provider, cf.Name))
+			if listErr != nil && !errors.Is(listErr, backend.ErrNotFound) {
+				errs = append(errs, listErr)
+			}
+			for _, e := range entries {
+				if delErr := store.Delete(ctx, e.Path); delErr != nil && !errors.Is(delErr, backend.ErrNotFound) {
+					errs = append(errs, delErr)
+				}
+			}
+			continue
+		}
 		path := configFieldPath(namespace, category, provider, cf.Name)
 		if delErr := store.Delete(ctx, path); delErr != nil && !errors.Is(delErr, backend.ErrNotFound) {
 			errs = append(errs, delErr)
