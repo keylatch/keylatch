@@ -41,6 +41,7 @@ func TestRun_SectionSummary_OKField(t *testing.T) {
 	// Unbootstrapped home — paths checks will fail (environment section).
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	env := func(k string) string {
 		if k == "HOME" {
 			return tmp

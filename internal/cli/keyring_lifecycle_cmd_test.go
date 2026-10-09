@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -32,7 +33,9 @@ func TestKeyringInitAgeEnvIsIdempotent(t *testing.T) {
 
 	info, err := os.Stat(f.krPath)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 	before, err := os.ReadFile(f.krPath)
 	require.NoError(t, err)
 	kf := caReadKeyringFile(t, f.krPath)

@@ -36,7 +36,7 @@ func TestConfigCmd_SetGetListPersist(t *testing.T) {
 	assert.Equal(t, "aws-sm", cfg.Backend)
 	assert.Equal(t, "canary", cfg.Mode)
 	assert.Equal(t, "team-a", cfg.DefaultNamespace)
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, filepath.Join(cfgDir, "config.json")))
+	cbAssertMode(t, filepath.Join(cfgDir, "config.json"), 0o600)
 
 	out, _, err = cbRun(t, "config", "get", "mode")
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestInitCI_DefaultTargetInCwdAndPrintsSnippet(t *testing.T) {
 	assert.Contains(t, out, "GitHub Actions snippet")
 	assert.Contains(t, out, "  name: keylatch-ci")
 	assert.Contains(t, out, "Get started: keylatch.dev/start")
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, target))
+	cbAssertMode(t, target, 0o600)
 	data, err := os.ReadFile(target)
 	require.NoError(t, err)
 	assert.Equal(t, keylatchYAMLSkeleton, string(data))
@@ -111,7 +111,7 @@ func TestInitCI_WriteForceAndIdempotence(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "Written: "+wf)
 	assert.NotContains(t, out, "GitHub Actions snippet")
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, wf))
+	cbAssertMode(t, wf, 0o600)
 
 	require.NoError(t, os.WriteFile(target, []byte("custom: true\n"), 0o600))
 	require.NoError(t, os.WriteFile(wf, []byte("custom workflow\n"), 0o600))
@@ -173,7 +173,7 @@ func TestBootstrapCmd_ForceRequiresConfirmation(t *testing.T) {
 	recreated, err := os.ReadFile(krPath)
 	require.NoError(t, err)
 	assert.NotEqual(t, original, recreated, "confirmed --force re-creates the keyring")
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, krPath))
+	cbAssertMode(t, krPath, 0o600)
 }
 
 func TestInitIntegration_ScaffoldsPerLanguage(t *testing.T) {
@@ -208,7 +208,7 @@ func TestInitIntegration_ScaffoldsPerLanguage(t *testing.T) {
 			yml, err := os.ReadFile(filepath.Join(dir, ".keylatch", "integration.yml"))
 			require.NoError(t, err)
 			assert.Contains(t, string(yml), "agent: "+agent)
-			assert.Equal(t, tc.mode, cbMode(t, filepath.Join(dir, "scripts", tc.script)))
+			cbAssertMode(t, filepath.Join(dir, "scripts", tc.script), tc.mode)
 
 			out, _, err = cbRun(t, "init", "integration", "--agent", tc.agent)
 			require.NoError(t, err)

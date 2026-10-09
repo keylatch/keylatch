@@ -37,11 +37,11 @@ func TestSetupHeadless_BootstrapsFileBackendWithPrivatePerms(t *testing.T) {
 	assert.Equal(t, setupHeadlessResult{OK: true, Backend: "file"}, res)
 
 	assert.Equal(t, "file", cbLoadConfig(t, cfgDir).Backend)
-	assert.Equal(t, os.FileMode(0o700), cbMode(t, cfgDir))
-	assert.Equal(t, os.FileMode(0o700), cbMode(t, filepath.Join(cfgDir, "vault")))
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, filepath.Join(cfgDir, "config.json")))
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, filepath.Join(cfgDir, "keyring", "identity")))
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, filepath.Join(cfgDir, "keyring", "keyring.json")))
+	cbAssertMode(t, cfgDir, 0o700)
+	cbAssertMode(t, filepath.Join(cfgDir, "vault"), 0o700)
+	cbAssertMode(t, filepath.Join(cfgDir, "config.json"), 0o600)
+	cbAssertMode(t, filepath.Join(cfgDir, "keyring", "identity"), 0o600)
+	cbAssertMode(t, filepath.Join(cfgDir, "keyring", "keyring.json"), 0o600)
 	keyringPath := filepath.Join(cfgDir, "keyring", "keyring.json")
 
 	before, err := os.ReadFile(keyringPath)
@@ -78,7 +78,7 @@ func TestSetupNonInteractive_FreshInstall(t *testing.T) {
 	_, _, err := cbRun(t, "setup", "--non-interactive", "--backend", "file", "--stdin-field", "api_key=placeholder")
 	require.NoError(t, err)
 	assert.Equal(t, "file", cbLoadConfig(t, cfgDir).Backend)
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, filepath.Join(cfgDir, "keyring", "keyring.json")))
+	cbAssertMode(t, filepath.Join(cfgDir, "keyring", "keyring.json"), 0o600)
 
 	_, stderr, err := cbRun(t, "setup", "--non-interactive", "--backend", "file")
 	require.NoError(t, err)

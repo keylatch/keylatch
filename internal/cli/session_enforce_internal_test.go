@@ -31,6 +31,7 @@ func writeOptInConfig(t *testing.T, path string, allow bool, mode os.FileMode) {
 func TestOptInReadFromDefaultConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	withOperatorHome(t, home)
 	path := paths.DefaultConfig(home)
 
@@ -46,6 +47,7 @@ func TestOptInReadFromDefaultConfig(t *testing.T) {
 func TestOptInIgnoresConfigOverrides(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	withOperatorHome(t, home)
 
 	elsewhere := t.TempDir()
@@ -71,6 +73,7 @@ func TestOptInIgnoresHomeVariable(t *testing.T) {
 	planted := t.TempDir()
 	writeOptInConfig(t, paths.DefaultConfig(planted), true, 0o600)
 	t.Setenv("HOME", planted)
+	t.Setenv("USERPROFILE", planted)
 
 	assert.False(t, configAllowsUnverifiedSession(), "HOME must not redirect the opt-in")
 }
@@ -81,6 +84,7 @@ func TestOptInRefusesWritableOrLinkedConfig(t *testing.T) {
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	withOperatorHome(t, home)
 	path := paths.DefaultConfig(home)
 

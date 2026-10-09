@@ -102,6 +102,7 @@ func TestGoldenPath_FullUserJourney(t *testing.T) {
 	homeDir := t.TempDir()
 	xdgDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_RUNTIME_DIR", xdgDir)
 	testutil.ClearLLMSessionEnv(t)
 	// Unset KEYLATCH_MCP_TOKEN for safety.
@@ -299,6 +300,7 @@ func TestGoldenPath_DryRunNoWrites(t *testing.T) {
 	ctx := context.Background()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	testutil.ClearLLMSessionEnv(t)
 
 	store := newGoldenMockStore()

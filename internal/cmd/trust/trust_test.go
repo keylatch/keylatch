@@ -122,6 +122,7 @@ func TestTrustApprove_ExitsNotImplemented(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	if err := os.MkdirAll(dir+"/.keylatch/approvals", 0o700); err != nil {
 		t.Fatalf("mkdir approvals: %v", err)
 	}

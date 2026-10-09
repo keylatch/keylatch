@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -256,8 +257,11 @@ func TestComputeModuleHashAndSaveErrors(t *testing.T) {
 
 	home, _ := os.UserHomeDir()
 	info, err := os.Stat(filepath.Join(home, ".keylatch", "trust-allowlist.json"))
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("allowlist perms = %v, %v", info.Mode().Perm(), err)
+	if err != nil {
+		t.Fatalf("allowlist stat: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("allowlist perms = %v", info.Mode().Perm())
 	}
 
 	blocked := t.TempDir()
