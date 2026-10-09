@@ -46,6 +46,8 @@ func DefaultIdentityStore() IdentityStore {
 			return nil
 		}
 		return &secretServiceIdentityStore{bin: bin, run: execIdentityRunner}
+	case "windows":
+		return platformIdentityStore()
 	}
 	return nil
 }

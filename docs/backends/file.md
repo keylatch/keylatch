@@ -47,10 +47,13 @@ keylatch connect openrouter api_key YOUR_KEY
 |----------|-------|
 | macOS | login keychain, generic password with service `keylatch-vault-kek` |
 | Linux / BSD | Secret Service (GNOME Keyring, KWallet) through `secret-tool`, attributes `application=keylatch`, `purpose=kek` |
-| Windows, containers, headless hosts | none: bootstrap fails unless you opt in with `--insecure-file-kek` |
+| Windows | DPAPI (current user) with a random entropy blob, stored under `%LOCALAPPDATA%\keylatch\kek` |
+| Containers, headless hosts, Linux without a Secret Service session | none: bootstrap fails closed unless you opt in with `--insecure-file-kek` |
 
 The secret reaches `security` and `secret-tool` on stdin, never on the command
-line. A keyring item is readable by other processes running as your user while
+line. Keylatch never falls back to a plaintext file on its own: without a
+reachable store, bootstrap and `keylatch setup --backend file` stop with an
+error that names the opt-in. A keyring item is readable by other processes running as your user while
 the keyring is unlocked, so this keeps the key off disk and out of backups and
 file copies; it is not a boundary against a process running as you.
 
@@ -64,7 +67,8 @@ secret offline. `keylatch doctor` reports it as "plaintext KEK on disk".
 Installs created before the keyring change have a plaintext
 `~/.keylatch/keyring/identity`. The next time the vault is opened (or when you
 re-run `keylatch bootstrap`) keylatch copies the identity into the OS keyring,
-reads it back to verify it, writes `identity.keyring` and deletes the file.
+reads it back to verify it, writes `identity.keyring`, overwrites the file
+with random bytes and deletes it.
 Secrets do not need to be re-encrypted. If no keyring is reachable the file
 keeps working, a warning is printed once per command, and `keylatch doctor`
 fails until you either make a keyring available or acknowledge the risk with

@@ -403,3 +403,19 @@ func TestSessionBusConfigured(t *testing.T) {
 	assert.True(t, sessionBusConfigured(lookup(map[string]string{"XDG_RUNTIME_DIR": dir})))
 	assert.False(t, sessionBusConfigured(lookup(nil)))
 }
+
+func TestShredFileRemovesFileAndToleratesMissing(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "identity")
+	if err := os.WriteFile(p, bytes.Repeat([]byte{1}, identitySize), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := shredFile(p); err != nil {
+		t.Fatalf("shred: %v", err)
+	}
+	if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("file still present: %v", err)
+	}
+	if err := shredFile(p); err != nil {
+		t.Fatalf("shred missing: %v", err)
+	}
+}

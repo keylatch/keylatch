@@ -189,7 +189,7 @@ func (v VaultIdentity) MigrateToKeyring() (bool, error) {
 		return false, err
 	}
 
-	if err := removeIfExists(v.Path); err != nil {
+	if err := shredFile(v.Path); err != nil {
 		return false, err
 	}
 	if err := removeIfExists(v.InsecureMarkerPath()); err != nil {
@@ -214,7 +214,10 @@ func (v VaultIdentity) Remove() error {
 			return fmt.Errorf("delete keyring item: %w", err)
 		}
 	}
-	for _, p := range []string{v.RefPath(), v.Path, v.InsecureMarkerPath()} {
+	if err := shredFile(v.Path); err != nil {
+		return err
+	}
+	for _, p := range []string{v.RefPath(), v.InsecureMarkerPath()} {
 		if err := removeIfExists(p); err != nil {
 			return err
 		}
@@ -332,6 +335,28 @@ func removeIfExists(p string) error {
 		return fmt.Errorf("remove %q: %w", p, err)
 	}
 	return nil
+}
+
+// shredFile overwrites a secret file with random bytes and syncs before
+// unlinking. Journaling and copy-on-write filesystems may keep old blocks, so
+// this narrows rather than closes the window; a missing file is not an error.
+func shredFile(p string) error {
+	f, err := os.OpenFile(p, os.O_WRONLY, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err == nil {
+		if info, statErr := f.Stat(); statErr == nil && info.Mode().IsRegular() {
+			junk := make([]byte, info.Size())
+			if _, randErr := rand.Read(junk); randErr == nil {
+				if _, wErr := f.WriteAt(junk, 0); wErr == nil {
+					_ = f.Sync()
+				}
+			}
+		}
+		_ = f.Close()
+	}
+	return removeIfExists(p)
 }
 
 func zero(b []byte) {
