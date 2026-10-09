@@ -3,6 +3,7 @@ package registry
 import (
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 )
 
@@ -69,6 +70,8 @@ type Adapter struct {
 	Kind  AdapterKind `json:"kind"  yaml:"kind"`
 	Field string      `json:"field" yaml:"field"`
 	Hosts []string    `json:"hosts" yaml:"hosts"`
+	// Username is the account name a credential helper returns beside the placeholder.
+	Username string `json:"username,omitempty" yaml:"username,omitempty"`
 }
 
 // EnvClassSpec derives a credential's environment class from its value prefix.
@@ -100,6 +103,12 @@ func (t ConnectionTemplate) Binding() (Binding, bool) {
 		Adapter:  t.Adapter,
 		EnvClass: t.EnvClass,
 	}, true
+}
+
+// IsMinted reports whether the field is produced by Keylatch at use time
+// instead of being read from the store.
+func (t ConnectionTemplate) IsMinted(field string) bool {
+	return slices.Contains(t.MintedFields, field)
 }
 
 // BindingFor returns the binding contract of a registered provider.
@@ -245,6 +254,12 @@ func ValidateBindings(t ConnectionTemplate) error {
 	fields := map[string]struct{}{}
 	for _, f := range t.SecretFields {
 		fields[f.Name] = struct{}{}
+	}
+	for _, f := range t.MintedFields {
+		if _, dup := fields[f]; dup {
+			return fail("minted field %q is also a secret field", f)
+		}
+		fields[f] = struct{}{}
 	}
 	for i, s := range t.Slots {
 		if _, ok := fields[s.Field]; !ok {

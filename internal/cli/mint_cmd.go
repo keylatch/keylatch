@@ -6,18 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
-	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/broker/strategies"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/mintsession"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy/mint"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -251,71 +250,22 @@ func operatorConfig() (config.Config, error) {
 }
 
 func loadGitHubAppStrategy(ctx context.Context, c *cobra.Command, opts mintOptions, category, repo string) (*strategies.GitHubAppInstallationStrategy, error) {
-	store := mintStore(loadCLIConfig(c))
-	owner, _, _ := strings.Cut(repo, "/")
-	read := func(path, field string) ([]byte, error) {
-		v, _, err := store.Get(ctx, path)
-		if errors.Is(err, backend.ErrNotFound) || (err == nil && len(v) == 0) {
-			return nil, NewSecretNotFound("mint: connection %s (namespace %s) has no %s; add it with keylatch connect", opts.connection, opts.namespace, field)
-		}
-		if err != nil {
-			return nil, NewBackendUnavailable("mint: read %s: %v", field, err)
-		}
-		return v, nil
-	}
-
-	instField := "installation_" + strings.ToLower(owner)
-	inst, err := read(connections.ConfigFieldPath(opts.namespace, category, opts.connection, instField), instField)
-	if err != nil {
-		return nil, err
-	}
-	appID, err := read(connections.ConfigFieldPath(opts.namespace, category, opts.connection, "app_id"), "app_id")
-	if err != nil {
-		return nil, err
-	}
-	keyPEM, err := read(connections.SecretFieldPath(opts.namespace, category, opts.connection, "private_key"), "private_key")
-	if err != nil {
-		return nil, err
-	}
-	key, err := strategies.ParseGitHubAppPrivateKey(keyPEM)
-	clear(keyPEM)
-	if err != nil {
+	strategy, err := mintsession.LoadGitHubApp(ctx, mintStore(loadCLIConfig(c)), opts.namespace, category, opts.connection, repo, mintGitHubAPIBase)
+	var field *mintsession.FieldError
+	switch {
+	case errors.As(err, &field) && field.Missing:
+		return nil, NewSecretNotFound("mint: connection %s (namespace %s) has no %s; add it with keylatch connect", opts.connection, opts.namespace, field.Field)
+	case errors.As(err, &field):
+		return nil, NewBackendUnavailable("mint: read %s: %v", field.Field, field.Err)
+	case err != nil:
 		return nil, newMintFailed("mint: %v", err)
 	}
-	return strategies.NewGitHubAppInstallationStrategy(
-		strings.TrimSpace(string(appID)), strings.TrimSpace(string(inst)), key,
-		strategies.WithGitHubAPIBase(mintGitHubAPIBase),
-	), nil
+	return strategy, nil
 }
 
 func emitMintEvent(ctx context.Context, em audit.Emitter, opts mintOptions, caller mint.CallerKind, req mint.Request, expiresAt time.Time, outcome audit.Outcome, reason string) error {
-	extra := map[string]any{
-		"connection":  opts.connection,
-		"namespace":   opts.namespace,
-		"repository":  req.Repository,
-		"permissions": formatPermissions(req.Permissions),
-		"caller_kind": string(caller),
-	}
-	if !expiresAt.IsZero() {
-		extra["expires_at"] = expiresAt.UTC().Format(time.RFC3339)
-	}
-	if reason != "" {
-		extra["reason"] = reason
-	}
-	return em.Emit(ctx, audit.Event{
-		Timestamp:   time.Now().UTC(),
-		Action:      audit.ActionMint,
-		Outcome:     outcome,
-		RuntimeMode: "cli",
-		Extra:       extra,
-	})
-}
-
-func formatPermissions(p map[string]string) string {
-	keys := slices.Sorted(maps.Keys(p))
-	parts := make([]string, len(keys))
-	for i, k := range keys {
-		parts[i] = k + "=" + p[k]
-	}
-	return strings.Join(parts, ",")
+	return mintsession.AuditEvent{
+		Connection: opts.connection, Namespace: opts.namespace, Repository: req.Repository, Permissions: req.Permissions,
+		Caller: caller, RuntimeMode: "cli", ExpiresAt: expiresAt, Outcome: outcome, Reason: reason,
+	}.Emit(ctx, em)
 }

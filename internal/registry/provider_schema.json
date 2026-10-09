@@ -302,8 +302,14 @@
       "properties": {
         "kind":  { "type": "string", "enum": ["postgres", "mysql", "redis", "ssh_agent", "git_credential", "docker_credential"] },
         "field": { "type": "string" },
-        "hosts": { "type": "array", "items": { "type": "string" } }
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "username": { "type": "string" }
       }
+    },
+    "minted_fields": {
+      "type": "array",
+      "description": "Credential fields Keylatch produces at use time; slots and adapters may bind them, and they are never stored or supplied.",
+      "items": { "type": "string" }
     },
     "env_class": {
       "type": "object",

@@ -337,3 +337,24 @@ func TestSupabaseAdapterHosts(t *testing.T) {
 	assert.False(t, b.AllowsHost("db.abc.supabase.co:6543"))
 	assert.Empty(t, b.SlotsFor("service_role_key", "db.abc.supabase.co:5432"))
 }
+
+func TestGitHubAppTemplateBindsAMintedToken(t *testing.T) {
+	tmpl, err := Get("github-app")
+	require.NoError(t, err)
+	require.NoError(t, ValidateBindings(tmpl))
+	assert.True(t, tmpl.IsMinted("token"))
+	assert.False(t, tmpl.IsMinted("private_key"))
+	b, ok := tmpl.Binding()
+	require.True(t, ok)
+	assert.Len(t, b.SlotsFor("token", "api.github.com:443"), 2)
+	assert.Len(t, b.SlotsFor("token", "github.com:443"), 1)
+	assert.Empty(t, b.SlotsFor("private_key", "api.github.com:443"))
+	assert.Equal(t, "x-access-token", tmpl.Adapter.Username)
+}
+
+func TestMintedFieldCannotAlsoBeStored(t *testing.T) {
+	tmpl, err := Get("github-app")
+	require.NoError(t, err)
+	tmpl.MintedFields = []string{"private_key"}
+	assert.ErrorContains(t, ValidateBindings(tmpl), "also a secret field")
+}

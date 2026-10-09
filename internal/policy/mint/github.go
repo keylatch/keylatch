@@ -84,6 +84,13 @@ func Validate(p *config.GitHubAppMintPolicy) error {
 			return fmt.Errorf("%w: unknown caller kind %q", ErrInvalidPolicy, c)
 		}
 	}
+	for _, c := range p.PlaceholderCallers {
+		switch CallerKind(c) {
+		case CallerService, CallerHost, CallerHuman, CallerAgent:
+		default:
+			return fmt.Errorf("%w: unknown placeholder caller kind %q", ErrInvalidPolicy, c)
+		}
+	}
 	for k, v := range p.PermissionCeiling {
 		if _, _, err := ParsePermission(k + "=" + v); err != nil {
 			return fmt.Errorf("%w: permission_ceiling: %v", ErrInvalidPolicy, err)
@@ -118,18 +125,43 @@ func CheckGitHubApp(p *config.GitHubAppMintPolicy, caller CallerKind, req Reques
 	if err := Validate(p); err != nil {
 		return err
 	}
-
 	allowed := defaultCallers
 	if len(p.Callers) > 0 {
-		allowed = nil
-		for _, c := range p.Callers {
-			allowed = append(allowed, CallerKind(c))
-		}
+		allowed = callerKinds(p.Callers)
 	}
 	if !slices.Contains(allowed, caller) {
 		return fmt.Errorf("%w: caller kind %q is not allowed to mint", ErrDenied, caller)
 	}
+	return checkScope(p, req)
+}
 
+// CheckGitHubAppPlaceholder decides whether a caller may run a command whose
+// GitHub credential is a placeholder backed by a token minted for req. Unlike
+// CheckGitHubApp it admits agent sessions when the policy lists them in
+// placeholder_callers, because the token never reaches the caller. The scope
+// checks are the same.
+func CheckGitHubAppPlaceholder(p *config.GitHubAppMintPolicy, caller CallerKind, req Request) error {
+	if p == nil {
+		return fmt.Errorf("%w: the connection has no mint.github_app policy", ErrDenied)
+	}
+	if err := Validate(p); err != nil {
+		return err
+	}
+	if !slices.Contains(callerKinds(p.PlaceholderCallers), caller) {
+		return fmt.Errorf("%w: caller kind %q is not allowed to use minted tokens through a placeholder", ErrDenied, caller)
+	}
+	return checkScope(p, req)
+}
+
+func callerKinds(names []string) []CallerKind {
+	out := make([]CallerKind, len(names))
+	for i, n := range names {
+		out[i] = CallerKind(n)
+	}
+	return out
+}
+
+func checkScope(p *config.GitHubAppMintPolicy, req Request) error {
 	owner, _, err := ParseRepository(req.Repository)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrDenied, err)
