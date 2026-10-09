@@ -56,7 +56,7 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 		return runThroughDaemon(ctx, client, lookup, rest, streams), true
 	}
 
-	resp, err := client.Exec(global, verb, rest)
+	resp, err := client.ExecStream(global, verb, rest, streams)
 	if err != nil {
 		if errors.Is(err, ErrNoDaemon) {
 			return 0, false
@@ -201,7 +201,7 @@ func callerProxy(lookup llmcontext.Lookup) string {
 	return ""
 }
 
-func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, args []string, streams IO) int {
+func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, args []string, streams IO) (code int) {
 	ra, err := parseRunArgs(args)
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
@@ -231,6 +231,8 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 	}
 
 	sess := resp.Session
+	c.SetRun(sess.RunID)
+	defer func() { _ = c.ReportExit(code) }()
 	placeholder := sess.Tier == TierPlaceholder
 	var addr string
 	var stop func()

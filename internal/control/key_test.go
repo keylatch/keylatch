@@ -83,6 +83,11 @@ func pemOf(t *testing.T, k any) []byte {
 
 func startKeyDaemon(t *testing.T, seed []keyops.Change, keys memoryKeys) *keyDaemon {
 	t.Helper()
+	return startKeyDaemonWith(t, seed, keys, nil)
+}
+
+func startKeyDaemonWith(t *testing.T, seed []keyops.Change, keys memoryKeys, tune func(*Config)) *keyDaemon {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "klk")
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +127,11 @@ func startKeyDaemon(t *testing.T, seed []keyops.Change, keys memoryKeys) *keyDae
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	srv := NewServer(Config{Env: lookupOf(d.env), Binary: "/bin/false", Keys: svc, KeyAdmin: admin})
+	cfg := Config{Env: lookupOf(d.env), Binary: "/bin/false", Keys: svc, KeyAdmin: admin}
+	if tune != nil {
+		tune(&cfg)
+	}
+	srv := NewServer(cfg)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); _ = srv.Serve(ctx, ln) }()

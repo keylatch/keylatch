@@ -23,7 +23,7 @@ import (
 )
 
 type sandboxEnv struct {
-	root, bin, fakeBin, runtimeDir, state, gatewayAddr string
+	root, bin, fakeBin, runtimeDir, state, gatewayAddr, auditFile string
 	auth                                               chan string
 }
 
@@ -90,8 +90,9 @@ func setup(t *testing.T) *sandboxEnv {
 		t.Fatal(err)
 	}
 
-	build(t, e.bin+"/", "../../cmd/keylatch", "../../cmd/keylatchd")
+	build(t, e.bin+"/", "../../cmd/keylatch", "../../cmd/keylatch-relay")
 	build(t, filepath.Join(e.bin, "probe"), "./testdata/probe")
+	build(t, filepath.Join(e.bin, "controld"), "./testdata/controld")
 
 	fake := "#!/bin/sh\nexec " + filepath.Join(e.bin, "probe") + " fake-client \"$XDG_RUNTIME_DIR/keylatch/keylatchd.sock\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(e.fakeBin, "keylatch"), []byte(fake), 0o755); err != nil {
@@ -105,7 +106,8 @@ func setup(t *testing.T) *sandboxEnv {
 	t.Cleanup(gw.Close)
 	e.gatewayAddr = gw.Listener.Addr().String()
 
-	daemon := exec.Command(filepath.Join(e.bin, "keylatchd"), "serve")
+	e.auditFile = filepath.Join(root, "audit.jsonl")
+	daemon := exec.Command(filepath.Join(e.bin, "controld"), "--keylatch-bin", filepath.Join(e.bin, "keylatch"), "--audit", e.auditFile)
 	daemon.Env = cleanEnv(
 		"HOME="+filepath.Join(root, "home"),
 		"XDG_RUNTIME_DIR="+e.runtimeDir,
@@ -244,7 +246,7 @@ func TestPlantedKeylatchObtainsNoValue(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &resp); err != nil {
 		t.Fatalf("daemon answer %q: %v", out, err)
 	}
-	if resp.OK || resp.Stdout != "" || resp.Code != "refused" || resp.Kind != "host" {
-		t.Errorf("a planted client got %+v, want a refusal as a host caller", resp)
+	if resp.OK || resp.Stdout != "" || resp.Code != "refused" || (resp.Kind != "host" && resp.Kind != "agent") {
+		t.Errorf("a planted client got %+v, want a refusal as a host or agent caller", resp)
 	}
 }

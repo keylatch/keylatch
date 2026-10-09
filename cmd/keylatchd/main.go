@@ -254,7 +254,12 @@ any agent sandbox.`,
 			defer func() { _ = os.Remove(socket) }()
 			fmt.Fprintf(cmd.OutOrStdout(), "keylatchd: listening on %s\n", socket)
 
-			cfg := control.Config{Env: env, Binary: binary}
+			emitter, closeAudit, err := cli.OpenAuditEmitter()
+			if err != nil {
+				return fmt.Errorf("keylatchd: the audit log cannot be opened, and Keylatch does not serve without an audit trail: %w", err)
+			}
+			defer closeAudit()
+			cfg := control.Config{Env: env, Binary: binary, Audit: emitter}
 			if mgr, mintCred, release, err := newPlaceholders(env); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: placeholder tier unavailable: %v\n", err)
 			} else {

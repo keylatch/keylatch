@@ -2,23 +2,22 @@ package control
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway/token"
-	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/keyops"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/mintsession"
@@ -54,7 +53,6 @@ func IsServedVerb(verb string) bool {
 }
 
 const (
-	maxOutput      = 8 << 20
 	sessionTTL     = 15 * time.Minute
 	requestTimeout = 30 * time.Second
 	execTimeout    = 5 * time.Minute
@@ -78,12 +76,17 @@ type Config struct {
 	Keys *keyops.Service
 	// KeyAdmin edits the key operation allowlist. Nil disables it.
 	KeyAdmin *keyops.Admin
+	// Audit receives one value-free event per decision. Nil records nothing.
+	Audit audit.Emitter
+	// Callers classifies socket peers. Nil walks the real process tree.
+	Callers *callerkind.Classifier
 }
 
 // Server answers control socket requests.
 type Server struct {
-	cfg Config
-	uid uint32
+	cfg  Config
+	uid  uint32
+	runs runTable
 }
 
 // NewServer returns a Server that accepts peers running as the daemon's user.
@@ -162,17 +165,20 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
-	kind := s.classify(peer, req)
+	res := s.classify(peer, req)
+	kind := res.Kind
 
 	switch req.Op {
 	case OpExec:
-		_ = writeFrame(conn, s.exec(ctx, kind, req))
+		s.exec(ctx, conn, r, res, req)
 	case OpRunSession:
-		_ = writeFrame(conn, s.runSession(ctx, kind, req.Run))
+		_ = writeFrame(conn, s.decideRun(ctx, res, req.Run))
+	case OpRunExit:
+		_ = writeFrame(conn, s.runExited(ctx, req))
 	case OpGateway:
-		s.gateway(conn, r)
+		s.gateway(conn, r, s.runs.get(req.RunID))
 	case OpProxy:
-		s.proxy(conn, r, req.Proxy)
+		s.proxy(conn, r, req.Proxy, s.runs.get(req.RunID))
 	case OpEndSession:
 		_ = writeFrame(conn, s.endSession(kind, req.Proxy))
 	case OpCredential:
@@ -182,20 +188,24 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 	case OpKeyPolicy:
 		_ = writeFrame(conn, s.keyPolicy(ctx, kind, req.KeyPolicy))
 	default:
-		_ = writeFrame(conn, Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError})
+		resp := Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError}
+		if err := s.record(ctx, decision{op: string(req.Op), res: res, reason: "unknown operation"}, audit.OutcomeDenied); err != nil {
+			resp = auditRefusal(resp, err)
+		}
+		_ = writeFrame(conn, resp)
 	}
 }
 
-// classify never grants more than the caller's signals and namespaces allow:
-// a signal or an outside-namespace peer can only move a caller away from human.
-func (s *Server) classify(p Peer, req Request) Kind {
-	if len(req.Signals) > 0 || s.validTicket(req.Ticket) {
-		return KindAgent
-	}
-	if !p.sharesNamespaces() {
-		return KindHost
-	}
-	return KindHuman
+// classify never grants more than the evidence allows: signals the client
+// sends, a ticket, the peer's ancestry and its namespaces can only move a
+// caller away from human.
+func (s *Server) classify(p Peer, req Request) callerkind.Result {
+	return s.cfg.Callers.Peer(callerkind.Evidence{
+		PID:              p.PID,
+		SharesNamespaces: callerkind.SharesNamespaces(p.PID),
+		Signals:          req.Signals,
+		TicketValid:      s.validTicket(req.Ticket),
+	})
 }
 
 func (s *Server) validTicket(raw string) bool {
@@ -209,72 +219,6 @@ func (s *Server) validTicket(raw string) bool {
 	defer clear(key)
 	_, err = llmcontext.VerifyTicket(raw, key)
 	return err == nil
-}
-
-func (s *Server) exec(ctx context.Context, kind Kind, req Request) Response {
-	resp := Response{Kind: kind}
-	switch {
-	case slices.Contains(valueVerbs, req.Verb):
-		if kind.Constrained() {
-			resp.Code = CodeRefused
-			resp.ExitCode = exitcode.SecurityBlock
-			resp.Error = fmt.Sprintf("%q returns secret values and is not available to %s callers", req.Verb, kind)
-			return resp
-		}
-		resp.Code = CodeRunLocally
-		return resp
-	case !slices.Contains(servedVerbs, req.Verb):
-		resp.Code = CodeBadRequest
-		resp.ExitCode = exitcode.UserError
-		resp.Error = fmt.Sprintf("%q is not served by the daemon", req.Verb)
-		return resp
-	case req.Verb == "run" && !slices.Contains(req.Args, "--dry-run"):
-		resp.Code = CodeBadRequest
-		resp.ExitCode = exitcode.UserError
-		resp.Error = "run is served as a session request; only --dry-run is executed by the daemon"
-		return resp
-	}
-	for _, a := range append(slices.Clone(req.Global), req.Args...) {
-		if strings.ContainsRune(a, 0) {
-			resp.Code = CodeBadRequest
-			resp.ExitCode = exitcode.UserError
-			resp.Error = "argument contains a NUL byte"
-			return resp
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, execTimeout)
-	defer cancel()
-	var stdout, stderr limitedBuffer
-	cmd := exec.CommandContext(ctx, s.cfg.Binary, slices.Concat(req.Global, []string{req.Verb}, req.Args)...) //nolint:gosec // G204: the binary is fixed by the daemon and the verb is allowlisted
-	cmd.Env = s.childEnv(kind)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	resp.OK = err == nil
-	resp.Stdout, resp.Stderr = stdout.Bytes(), stderr.Bytes()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			resp.ExitCode = exitErr.ExitCode()
-		} else {
-			resp.Code = CodeUnavailable
-			resp.ExitCode = exitcode.OperationFailed
-			resp.Error = fmt.Sprintf("run %s: %v", req.Verb, err)
-		}
-	}
-	return resp
-}
-
-// childEnv is the daemon's own environment, never the caller's. A constrained
-// caller's verbs run as an agent session so every existing guard applies.
-func (s *Server) childEnv(kind Kind) []string {
-	env := os.Environ()
-	env = append(env, LocalEnv+"=1")
-	if kind.Constrained() {
-		env = append(env, harness.ManualLabel+"=1")
-	}
-	return env
 }
 
 func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Response {
@@ -477,14 +421,25 @@ const placeholderRuntime = "placeholder"
 
 type bufferedConn struct {
 	net.Conn
-	r *bufio.Reader
+	r   *bufio.Reader
+	run *runState
 }
 
-func (c *bufferedConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+func (c *bufferedConn) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.run.relayed(n)
+	return n, err
+}
+
+func (c *bufferedConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	c.run.relayed(n)
+	return n, err
+}
 
 // proxy turns the connection into a client connection of a placeholder
 // session's proxy and serves it until it closes.
-func (s *Server) proxy(conn *net.UnixConn, r *bufio.Reader, id string) {
+func (s *Server) proxy(conn *net.UnixConn, r *bufio.Reader, id string, run *runState) {
 	var sess *placeholder.Session
 	if s.cfg.Placeholders != nil {
 		sess, _ = s.cfg.Placeholders.Get(id)
@@ -496,7 +451,7 @@ func (s *Server) proxy(conn *net.UnixConn, r *bufio.Reader, id string) {
 	if err := writeFrame(conn, Response{OK: true}); err != nil {
 		return
 	}
-	sess.Serve(&bufferedConn{Conn: conn, r: r})
+	sess.Serve(&bufferedConn{Conn: conn, r: r, run: run})
 }
 
 func (s *Server) endSession(kind Kind, id string) Response {
@@ -529,7 +484,7 @@ func probe(addr string) error {
 
 // gateway pipes the connection to the gateway. The gateway authenticates each
 // request itself, so the stream grants nothing without a session token.
-func (s *Server) gateway(conn *net.UnixConn, r *bufio.Reader) {
+func (s *Server) gateway(conn *net.UnixConn, r *bufio.Reader, run *runState) {
 	addr, err := s.gatewayAddr()
 	var up net.Conn
 	if err == nil {
@@ -545,29 +500,19 @@ func (s *Server) gateway(conn *net.UnixConn, r *bufio.Reader) {
 	}
 	done := make(chan struct{}, 2)
 	go func() {
-		_, _ = io.Copy(up, r)
+		n, _ := io.Copy(up, r)
+		run.relayed(int(n))
 		if tc, ok := up.(*net.TCPConn); ok {
 			_ = tc.CloseWrite()
 		}
 		done <- struct{}{}
 	}()
 	go func() {
-		_, _ = io.Copy(conn, up)
+		n, _ := io.Copy(conn, up)
+		run.relayed(int(n))
 		_ = conn.CloseWrite()
 		done <- struct{}{}
 	}()
 	<-done
 	<-done
 }
-
-// limitedBuffer keeps the first maxOutput bytes and discards the rest.
-type limitedBuffer struct{ buf bytes.Buffer }
-
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	if room := maxOutput - b.buf.Len(); room > 0 {
-		b.buf.Write(p[:min(room, len(p))])
-	}
-	return len(p), nil
-}
-
-func (b *limitedBuffer) Bytes() []byte { return b.buf.Bytes() }

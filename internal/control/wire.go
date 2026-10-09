@@ -11,25 +11,18 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // Kind classifies the process on the other end of the socket.
-type Kind string
+type Kind = callerkind.Kind
 
 const (
-	// KindHuman is a same-user process in the daemon's own namespaces that
-	// shows no agent signal.
-	KindHuman Kind = "human"
-	// KindAgent is a caller that presented an agent signal.
-	KindAgent Kind = "agent"
-	// KindHost is a same-user caller outside the daemon's namespaces, such as
-	// a process inside a harness sandbox, that presented no agent signal.
-	KindHost Kind = "host"
+	KindHuman Kind = callerkind.Human
+	KindAgent Kind = callerkind.Agent
+	KindHost  Kind = callerkind.Host
 )
-
-// Constrained reports whether the kind may not receive secret values.
-func (k Kind) Constrained() bool { return k != KindHuman }
 
 // Op names a socket operation.
 type Op string
@@ -48,6 +41,8 @@ const (
 	OpEndSession Op = "end_session"
 	// OpCredential asks for the placeholder a git credential helper returns.
 	OpCredential Op = "credential"
+	// OpRunExit reports how a run the client started ended.
+	OpRunExit Op = "run_exit"
 	// OpKey performs a sign, verify, encrypt or decrypt with a key that stays
 	// in the daemon.
 	OpKey Op = "key"
@@ -86,6 +81,16 @@ type Request struct {
 	Credential *CredentialRequest `json:"credential,omitempty"`
 	Key        *KeyRequest        `json:"key,omitempty"`
 	KeyPolicy  *KeyPolicyRequest  `json:"key_policy,omitempty"`
+	// RunID names the decided run an OpGateway, OpProxy or OpRunExit request
+	// belongs to, and Exit is the status OpRunExit reports.
+	RunID string `json:"run_id,omitempty"`
+	Exit  int    `json:"exit,omitempty"`
+}
+
+// Chunk carries client stdin to an executing verb. EOF closes it.
+type Chunk struct {
+	Data []byte `json:"data,omitempty"`
+	EOF  bool   `json:"eof,omitempty"`
 }
 
 // CredentialRequest is what a git credential helper knows about the request
@@ -153,6 +158,9 @@ type Session struct {
 	// session to relay to, the session CA certificate, and the variables that
 	// must point at a bundle containing it.
 	ProxyID string   `json:"proxy_id,omitempty"`
+	// RunID identifies the decision; the client echoes it on the traffic it
+	// relays and when the child exits.
+	RunID string `json:"run_id,omitempty"`
 	CAPEM   string   `json:"ca_pem,omitempty"`
 	CAVars  []string `json:"ca_vars,omitempty"`
 }
@@ -169,9 +177,17 @@ type Response struct {
 	Session  *Session `json:"session,omitempty"`
 	// Credential answers OpCredential; nil means the daemon has none to offer.
 	Credential *Credential `json:"credential,omitempty"`
+	// More marks an intermediate frame that only carries Stdout or Stderr of a
+	// running verb; the reply ends with the first frame without it.
+	More bool `json:"more,omitempty"`
 }
 
-const maxFrame = 1 << 20
+// maxFrame bounds one frame. Streams are cut into chunkSize pieces, far below
+// it, so a slow reader backpressures the writer instead of growing a buffer.
+const (
+	maxFrame  = 1 << 20
+	chunkSize = 32 << 10
+)
 
 var errFrameTooLarge = errors.New("control: frame too large")
 

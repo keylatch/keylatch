@@ -28,6 +28,7 @@ type Client struct {
 	socket  string
 	signals []string
 	ticket  string
+	runID   string
 }
 
 // NewClient returns a Client for the socket the lookup selects, or ErrNoDaemon
@@ -64,6 +65,9 @@ func (c *Client) dial() (*net.UnixConn, error) {
 
 func (c *Client) stamp(req Request) Request {
 	req.Signals, req.Ticket = c.signals, c.ticket
+	if req.RunID == "" {
+		req.RunID = c.runID
+	}
 	return req
 }
 
@@ -83,14 +87,21 @@ func (c *Client) roundTrip(req Request) (Response, error) {
 	return resp, nil
 }
 
-// Exec asks the daemon to run a served verb.
-func (c *Client) Exec(global []string, verb string, args []string) (Response, error) {
-	return c.roundTrip(Request{Op: OpExec, Global: global, Verb: verb, Args: args})
-}
-
 // RunSession asks the daemon for a scoped session.
 func (c *Client) RunSession(rr RunRequest) (Response, error) {
 	return c.roundTrip(Request{Op: OpRunSession, Run: &rr})
+}
+
+// SetRun ties the traffic this client relays to a decided run.
+func (c *Client) SetRun(id string) { c.runID = id }
+
+// ReportExit tells the daemon how the run set with SetRun ended.
+func (c *Client) ReportExit(code int) error {
+	if c.runID == "" {
+		return nil
+	}
+	_, err := c.roundTrip(Request{Op: OpRunExit, Exit: code})
+	return err
 }
 
 // EndSession revokes a placeholder session.

@@ -3,9 +3,7 @@
 package control
 
 import (
-	"fmt"
 	"net"
-	"os"
 	"syscall"
 )
 
@@ -33,31 +31,4 @@ func peerOf(c *net.UnixConn) (Peer, error) {
 		return Peer{}, sockErr
 	}
 	return Peer{UID: cred.Uid, PID: int(cred.Pid)}, nil
-}
-
-// sharesNamespaces reports whether pid is in the same PID, mount, user and
-// network namespaces as this process. A process that cannot be inspected is
-// treated as outside them.
-func (p Peer) sharesNamespaces() bool {
-	if p.PID <= 0 {
-		return false
-	}
-	for _, ns := range []string{"pid", "mnt", "user", "net"} {
-		if !sameNamespace(ns, p.PID) {
-			return false
-		}
-	}
-	return true
-}
-
-func sameNamespace(ns string, pid int) bool {
-	mine, err := os.Stat("/proc/self/ns/" + ns)
-	if err != nil {
-		return false
-	}
-	theirs, err := os.Stat(fmt.Sprintf("/proc/%d/ns/%s", pid, ns))
-	if err != nil {
-		return false
-	}
-	return os.SameFile(mine, theirs)
 }

@@ -17,5 +17,3 @@ type Peer struct {
 func peerOf(*net.UnixConn) (Peer, error) {
 	return Peer{}, errors.New("control: peer credentials are not available on this platform")
 }
-
-func (p Peer) sharesNamespaces() bool { return false }

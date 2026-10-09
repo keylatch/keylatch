@@ -134,5 +134,5 @@ func (s *Server) serveAgentConn(conn *net.UnixConn) {
 	if err != nil || peer.UID != s.uid || s.cfg.Keys == nil {
 		return
 	}
-	_ = agent.ServeAgent(s.cfg.Keys.NewSSHAgent(callerOf(s.classify(peer, Request{}))), conn)
+	_ = agent.ServeAgent(s.cfg.Keys.NewSSHAgent(callerOf(s.classify(peer, Request{}).Kind)), conn)
 }

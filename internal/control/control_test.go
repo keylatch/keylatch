@@ -30,6 +30,13 @@ func lookupOf(m map[string]string) llmcontext.Lookup {
 
 func startDaemon(t *testing.T, gatewayAddr string) (*testDaemon, map[string]string) {
 	t.Helper()
+	return startDaemonWith(t, gatewayAddr, "", nil)
+}
+
+// startDaemonWith starts a daemon whose served verbs run script (the default
+// echoes its arguments) after tune has adjusted the configuration.
+func startDaemonWith(t *testing.T, gatewayAddr, script string, tune func(*Config)) (*testDaemon, map[string]string) {
+	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "kl")
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +51,9 @@ func startDaemon(t *testing.T, gatewayAddr string) (*testDaemon, map[string]stri
 		t.Fatal(err)
 	}
 	fake := filepath.Join(dir, "keylatch")
-	script := "#!/bin/sh\necho \"args:$*\"\necho \"local:$KEYLATCH_LOCAL agent:$KEYLATCH_AGENT_SESSION\"\nexit ${FAKE_EXIT:-0}\n"
+	if script == "" {
+		script = "#!/bin/sh\necho \"args:$*\"\necho \"local:$KEYLATCH_LOCAL agent:$KEYLATCH_AGENT_SESSION\"\nexit ${FAKE_EXIT:-0}\n"
+	}
 	if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +76,11 @@ func startDaemon(t *testing.T, gatewayAddr string) (*testDaemon, map[string]stri
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = NewServer(Config{Env: lookupOf(env), Binary: fake}).Serve(ctx, ln)
+		cfg := Config{Env: lookupOf(env), Binary: fake}
+		if tune != nil {
+			tune(&cfg)
+		}
+		_ = NewServer(cfg).Serve(ctx, ln)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -304,13 +317,13 @@ func TestRunSessionNeedsRunningGateway(t *testing.T) {
 func TestClassify(t *testing.T) {
 	s := NewServer(Config{Env: lookupOf(nil)})
 	self := Peer{UID: s.uid, PID: os.Getpid()}
-	if got := s.classify(self, Request{}); got != KindHuman {
+	if got := s.classify(self, Request{}).Kind; got != KindHuman {
 		t.Errorf("same-namespace peer without signals = %s, want human", got)
 	}
-	if got := s.classify(self, Request{Signals: []string{"CLAUDECODE"}}); got != KindAgent {
+	if got := s.classify(self, Request{Signals: []string{"CLAUDECODE"}}).Kind; got != KindAgent {
 		t.Errorf("peer with a signal = %s, want agent", got)
 	}
-	if got := s.classify(Peer{UID: s.uid, PID: 0}, Request{}); got != KindHost {
+	if got := s.classify(Peer{UID: s.uid, PID: 0}, Request{}).Kind; got != KindHost {
 		t.Errorf("peer outside the daemon's namespaces = %s, want host", got)
 	}
 }

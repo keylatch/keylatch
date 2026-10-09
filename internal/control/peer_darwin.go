@@ -35,7 +35,3 @@ func peerOf(c *net.UnixConn) (Peer, error) {
 	}
 	return peer, sockErr
 }
-
-// sharesNamespaces is true: macOS has no namespaces to compare, so a caller
-// is told apart from a human only by the signals it presents.
-func (p Peer) sharesNamespaces() bool { return true }
