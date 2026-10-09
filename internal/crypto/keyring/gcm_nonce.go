@@ -28,8 +28,13 @@ func (l *gcmNonceLease) exhausted(term int) bool {
 // with no disk I/O.
 //
 // Cross-process uniqueness is guaranteed via:
-//  1. flock on <keyring-dir>/keyring-gcm-nonce.lock
-//  2. Re-read of keyring.json from disk after acquiring the flock
+//  1. flock on the single keyring lock file shared with RotateTerm/RotateKEK/
+//     DestroyTerm (kr.lockPath == flockPath(kr.path)) — a separate lock file
+//     would let a concurrent term-lifecycle write reload a stale nonce
+//     counter and overwrite a just-flushed high-watermark, rolling it back.
+//  2. Re-read of keyring.json from disk after acquiring the flock, merged
+//     with the in-memory counters via max() so a stale disk read can never
+//     move a counter backward.
 //  3. Atomic flush of the high-watermark BEFORE the lease is used
 //
 // If the flush fails, the in-process counter is rolled back and
@@ -48,8 +53,9 @@ func (kr *Keyring) NextGCMNonce(term int) ([]byte, error) {
 	}
 
 	// Slow path: lease exhausted or uninitialized — allocate a new lease.
-	// Acquire inter-process flock before touching the disk counter.
-	unlock, err := acquireFlock(kr.gcmFlock)
+	// Acquire the inter-process flock shared with all other keyring writes
+	// before touching the disk counter.
+	unlock, err := acquireFlock(kr.lockPath)
 	if err != nil {
 		return nil, fmt.Errorf("NextGCMNonce: flock: %w", err)
 	}
@@ -60,6 +66,9 @@ func (kr *Keyring) NextGCMNonce(term int) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NextGCMNonce: reload keyring: %w", err)
 	}
+	// Defense in depth: merge with the previously known in-memory counters so
+	// a stale disk read can never roll a nonce counter backward.
+	kf.GCMState = mergeGCMCounters(kr.file.GCMState, kf.GCMState)
 	kr.file = kf
 
 	if kr.file.GCMState == nil {
@@ -116,4 +125,33 @@ func (kr *Keyring) NextGCMNonce(term int) ([]byte, error) {
 	}
 
 	return encodeGCMNonce(term, leaseStart), nil
+}
+
+// mergeGCMCounters returns a GCMState whose PerTerm counters are the
+// element-wise maximum of prev (the last counters this Keyring knew about)
+// and disk (a freshly re-read copy). This guarantees a nonce counter can
+// only ever move forward: even if a reload observes a stale/older disk
+// snapshot, the higher watermark already known in memory is preserved, so a
+// subsequent save can never write back a smaller counter than one already
+// flushed. LeaseSize is taken from disk (the durable, authoritative config).
+func mergeGCMCounters(prev, disk *GCMState) *GCMState {
+	if disk == nil {
+		return prev
+	}
+	if prev == nil {
+		return disk
+	}
+	merged := &GCMState{
+		LeaseSize: disk.LeaseSize,
+		PerTerm:   make(map[int]uint64, len(disk.PerTerm)),
+	}
+	for term, c := range disk.PerTerm {
+		merged.PerTerm[term] = c
+	}
+	for term, c := range prev.PerTerm {
+		if c > merged.PerTerm[term] {
+			merged.PerTerm[term] = c
+		}
+	}
+	return merged
 }

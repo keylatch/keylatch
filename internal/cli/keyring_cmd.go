@@ -429,8 +429,10 @@ func openKeyringAt(krPath string, interactive bool) (*keyring.Keyring, filebe.KE
 			return kr, k, krPath, nil
 		}
 	}
+	// Try the bootstrap vault identity (OS keyring or plaintext file).
+	vi := filebe.VaultIdentity{Path: paths.KeyringIdentityPath(os.Getenv), Store: filebe.DefaultIdentityStore()}
 	if len(kf.Salt) > 0 {
-		if k, kekErr := filebe.AgeIdentityKEKFromPath(paths.KeyringIdentityPath(os.Getenv), kf.Salt); kekErr == nil {
+		if k, kekErr := vi.KEK(kf.Salt); kekErr == nil {
 			if kr, openErr := keyring.Open(krPath, k); openErr == nil {
 				return kr, k, krPath, nil
 			}

@@ -247,6 +247,17 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("file backend: parse aad for %q: %w", path, err)
 	}
+	// The on-disk .aad sidecar is untrusted input: without this check, an
+	// attacker who copies ct+nonce+.aad from one path (or a prior key-rotation
+	// generation) to another would get a validly-decrypting response for the
+	// wrong path, since the AEAD tag only proves the AAD bytes are unchanged —
+	// not that they match what was actually requested. Require the stored
+	// binding to match the requested path. The backend ID embeds the vault
+	// directory, so comparing it would break a vault that was moved.
+	if binding.Path != path {
+		return nil, backend.Meta{}, fmt.Errorf(
+			"file backend: aad binding mismatch for %q: stored path=%q", path, binding.Path)
+	}
 	// Re-marshal to get canonical AAD bytes (same as used during encryption).
 	aadBytes, err := aad.Marshal(binding)
 	if err != nil {
