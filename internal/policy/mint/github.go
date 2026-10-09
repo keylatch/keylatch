@@ -10,18 +10,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/config"
 )
 
 // CallerKind classifies who is asking for a mint.
-type CallerKind string
+type CallerKind = callerkind.Kind
 
 // Caller kinds.
 const (
-	CallerAgent   CallerKind = "agent"
-	CallerHuman   CallerKind = "human"
-	CallerHost    CallerKind = "host"
-	CallerService CallerKind = "service"
+	CallerAgent   = callerkind.Agent
+	CallerHuman   = callerkind.Human
+	CallerHost    = callerkind.Host
+	CallerService = callerkind.Service
 )
 
 // MaxTTL is the ceiling for max_ttl and the default when it is unset.

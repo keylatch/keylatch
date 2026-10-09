@@ -12,6 +12,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/broker/strategies"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -205,21 +206,10 @@ func parseMintRequest(opts mintOptions) (mint.Request, error) {
 	return mint.Request{Repository: opts.repo, Permissions: perms}, nil
 }
 
-// mintCallerKind classifies the caller. An agent session is checked first
-// and wins; systemd sets INVOCATION_ID for service units. These signals can
-// be hidden by an agent, which then counts as host: the policy's repository
-// allowlist and permission ceiling bound what such a caller can mint.
+// mintCallerKind classifies the caller with the same rules the daemon applies
+// to socket peers.
 func mintCallerKind(env llmcontext.Lookup) mint.CallerKind {
-	switch {
-	case llmcontext.IsLLMSession(env):
-		return mint.CallerAgent
-	case env("INVOCATION_ID") != "":
-		return mint.CallerService
-	case interactiveStdin():
-		return mint.CallerHuman
-	default:
-		return mint.CallerHost
-	}
+	return callerkind.Local(env, interactiveStdin()).Kind
 }
 
 func githubAppMintPolicy(cfg config.Config, connection string) *config.GitHubAppMintPolicy {
