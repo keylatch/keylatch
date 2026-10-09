@@ -23,3 +23,20 @@ func ExportCheckPlaintextRetention(env llmcontext.Lookup) Check {
 func ExportCheckNoConnections(env llmcontext.Lookup) Check {
 	return checkNoConnections(env)
 }
+
+// ExportCheckHostSandboxKeylatchExcluded exposes checkHostSandboxKeylatchExcluded for unit tests.
+func ExportCheckHostSandboxKeylatchExcluded(lookup llmcontext.Lookup) Check {
+	return checkHostSandboxKeylatchExcluded(lookup)
+}
+
+// ExportMatchKeylatchExclusion exposes matchKeylatchExclusion for unit tests.
+func ExportMatchKeylatchExclusion(pattern string) (bool, bool) {
+	return matchKeylatchExclusion(pattern)
+}
+
+// ExportSetManagedSettingsDir points the managed settings lookup at dir and returns a restore func.
+func ExportSetManagedSettingsDir(dir string) func() {
+	prev := managedSettingsDir
+	managedSettingsDir = func() string { return dir }
+	return func() { managedSettingsDir = prev }
+}
