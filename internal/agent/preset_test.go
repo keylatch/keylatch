@@ -293,3 +293,31 @@ func TestPresetSetupDryRunAllPresets(t *testing.T) {
 	_ = connections.Connect // reference to avoid unused import
 	_ = tmpHome
 }
+
+func TestClaudeSetupPreservesAccountStateAndRejectsMalformedConfig(t *testing.T) {
+	home := withTempHome(t)
+	path := filepath.Join(home, ".claude.json")
+	preset := &ClaudeCodePreset{}
+	require.NoError(t, os.WriteFile(path, []byte(`{"oauthAccount":{"accountUuid":"account-id"},"projects":{"/project":{"hasTrustDialogAccepted":true}},"mcpServers":{"other":{"command":"other"},"keylatch":{"type":"http","url":"https://stale.example","env":{"OLD_TOKEN":"stale-secret"}}}}`), 0600))
+	_, err := preset.Setup(context.Background(), SetupOptions{Mode: agentsnippet.ProfileModeMCP}, newMockStore())
+	require.NoError(t, err)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "account-id")
+	require.NotContains(t, string(data), "stale.example")
+	require.NotContains(t, string(data), "stale-secret")
+	diff, err := preset.Diff(context.Background(), SetupOptions{Mode: agentsnippet.ProfileModeMCP}, newMockStore())
+	require.NoError(t, err)
+	require.NotContains(t, diff.Content, "account-id")
+	require.Contains(t, string(data), "hasTrustDialogAccepted")
+	require.True(t, preset.HealthCheck(context.Background()).Healthy)
+	require.NoError(t, preset.Uninstall(context.Background()))
+	require.False(t, preset.HealthCheck(context.Background()).Healthy)
+	malformed := []byte(`{"oauthAccount":`)
+	require.NoError(t, os.WriteFile(path, malformed, 0600))
+	_, err = preset.Setup(context.Background(), SetupOptions{Mode: agentsnippet.ProfileModeMCP}, newMockStore())
+	require.Error(t, err)
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, malformed, data)
+}
