@@ -770,6 +770,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		// Soft checks.
 		{"providers", checkNoConnections(env)},
 		{"daemon", checkGatewayRunning(env)},
+		{"daemon", checkKeyOperations(env)},
 		// Plaintext retention after run.
 		{"daemon", checkPlaintextRetention(env)},
 		// Integration-marker checks.

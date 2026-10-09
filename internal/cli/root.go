@@ -278,6 +278,7 @@ func Register(root *cobra.Command) {
 	root.AddCommand(newLaunchCmd())
 	root.AddCommand(newMintCmd())
 	root.AddCommand(newGitCredentialCmd())
+	addCmd(root, newKeyCmd(), "advanced")
 	if isExperimentalEnabled() {
 		registerExperimentalAliases(experimentalGroup, root)
 	}

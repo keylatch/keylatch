@@ -48,6 +48,11 @@ const (
 	OpEndSession Op = "end_session"
 	// OpCredential asks for the placeholder a git credential helper returns.
 	OpCredential Op = "credential"
+	// OpKey performs a sign, verify, encrypt or decrypt with a key that stays
+	// in the daemon.
+	OpKey Op = "key"
+	// OpKeyPolicy lists or edits the key operation allowlist.
+	OpKeyPolicy Op = "key_policy"
 )
 
 // Tier names a delivery tier.
@@ -79,6 +84,8 @@ type Request struct {
 	Proxy      string             `json:"proxy,omitempty"`
 	Run        *RunRequest        `json:"run,omitempty"`
 	Credential *CredentialRequest `json:"credential,omitempty"`
+	Key        *KeyRequest        `json:"key,omitempty"`
+	KeyPolicy  *KeyPolicyRequest  `json:"key_policy,omitempty"`
 }
 
 // CredentialRequest is what a git credential helper knows about the request
@@ -92,6 +99,32 @@ type CredentialRequest struct {
 type Credential struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+// KeyPolicyRequest lists, allows or revokes key operations.
+type KeyPolicyRequest struct {
+	Action       string   `json:"action"`
+	Connection   string   `json:"connection,omitempty"`
+	Field        string   `json:"field,omitempty"`
+	Secret       string   `json:"secret,omitempty"`
+	Operations   []string `json:"operations,omitempty"`
+	Algorithms   []string `json:"algorithms,omitempty"`
+	HostKeys     []string `json:"host_keys,omitempty"`
+	AgentDecrypt bool     `json:"agent_decrypt,omitempty"`
+	SSHAgent     bool     `json:"ssh_agent,omitempty"`
+}
+
+// KeyRequest names a key operation. The daemon reads the key; the reply
+// carries only the result.
+type KeyRequest struct {
+	Action     string `json:"action"`
+	Connection string `json:"connection"`
+	Field      string `json:"field,omitempty"`
+	Alg        string `json:"alg,omitempty"`
+	Input      []byte `json:"input,omitempty"`
+	Signature  []byte `json:"signature,omitempty"`
+	AAD        []byte `json:"aad,omitempty"`
+	KeyID      string `json:"kid,omitempty"`
 }
 
 // RunRequest describes a command to run under a connection.

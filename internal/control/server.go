@@ -19,6 +19,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/keyops"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/mintsession"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -36,6 +37,8 @@ const (
 	CodeBadRequest  = "bad_request"
 	CodeUnavailable = "unavailable"
 	CodeNotFound    = "not_found"
+	// CodeInvalidSignature answers a verify whose signature does not match.
+	CodeInvalidSignature = "invalid_signature"
 )
 
 // servedVerbs are the read-only verbs the daemon executes for any caller.
@@ -71,6 +74,10 @@ type Config struct {
 	// Mint opens the credential behind a template whose fields Keylatch mints
 	// at use time. Without it such templates cannot be served.
 	Mint MintFunc
+	// Keys serves key operations and the ssh-agent endpoint. Nil disables them.
+	Keys *keyops.Service
+	// KeyAdmin edits the key operation allowlist. Nil disables it.
+	KeyAdmin *keyops.Admin
 }
 
 // Server answers control socket requests.
@@ -170,6 +177,10 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		_ = writeFrame(conn, s.endSession(kind, req.Proxy))
 	case OpCredential:
 		_ = writeFrame(conn, s.credential(kind, req.Proxy, req.Credential))
+	case OpKey:
+		_ = writeFrame(conn, s.key(ctx, kind, req.Key))
+	case OpKeyPolicy:
+		_ = writeFrame(conn, s.keyPolicy(ctx, kind, req.KeyPolicy))
 	default:
 		_ = writeFrame(conn, Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError})
 	}

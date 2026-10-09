@@ -673,6 +673,52 @@ The harness and every process it starts carry `KEYLATCH_SESSION_TICKET`, a signe
 
 ---
 
+### `keylatch key`
+
+Sign, verify, encrypt or decrypt with a key that never leaves the daemon.
+
+```
+keylatch key sign <connection> [--field <name>] [--alg <alg>] [--in <file|->] [--out <file>] [--encoding raw|hex|base64]
+keylatch key verify <connection> --sig <file> [--field <name>] [--alg <alg>] [--in <file|->]
+keylatch key encrypt <connection> [--field <name>] [--aad <text>] [--in <file|->]
+keylatch key decrypt <connection> [--field <name>] [--aad <text>] [--in <file|->]
+keylatch key jwt-sign <connection> [--field <name>] [--alg HS256|ES256|EdDSA] [--kid <id>] [--in <claims.json|->]
+```
+
+The command goes to `keylatchd serve` over the control socket; without a daemon it fails, because the key is read only inside the daemon. Algorithms are named as in JOSE: `HS256`, `HS384`, `HS512`, `EdDSA` (`Ed25519`), `ES256`, `ES384`, `PS256` (RSA-PSS, SHA-256), `RS256` (RSA PKCS#1 v1.5, SHA-256) and `A256GCM` (`AES-256-GCM`). `sign` and `verify` use ASN.1 DER for ECDSA; `jwt-sign` uses the fixed-width form JWS requires and reads a JSON object from `--in` or stdin. Ciphertext is `nonce || ciphertext || tag`. Input is limited to 256 KiB.
+
+`--field` and `--alg` may be omitted when the connection has one field and the operation has one allowed algorithm. A request outside the connection's allowlist exits 2; an unknown connection exits 3; a `verify` that does not match exits 1.
+
+The allowlist is managed through the daemon:
+
+```
+keylatch key allow <connection> --field <name> [--secret <backend path>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent] [--host-key <SHA256:...>]
+keylatch key revoke <connection> [--field <name>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent]
+keylatch key list [<connection>]
+```
+
+`--secret` is the backend path of the key: a PEM private key (PKCS#8, PKCS#1, SEC1 or OpenSSH) for asymmetric algorithms, the raw bytes for HMAC, and 32 bytes (raw, hex or base64) for AES-256-GCM. `--op` takes `sign`, `verify`, `encrypt`, `decrypt` and `jwt-sign`, comma separated. Decrypt returns plaintext, so agent and host callers are refused unless the field was allowed with `--agent-decrypt`.
+
+`allow` adds or widens an entry and is refused for agent and host callers (exit 2); the refusal is audited. `revoke` narrows or removes an entry and is open to any caller; with no `--op`, `--alg` or flags it removes the field, or every field of the connection when `--field` is omitted. `list` shows the entries; agent and host callers do not see the backend path. Every change is audited as `key.policy_change` with a before and after summary.
+
+The allowlist is stored as `key-operations.json` in the Keylatch state directory, sealed with an HMAC keyed from the installation's audit salt. The daemon refuses a file whose seal does not match, so an edit made outside Keylatch grants nothing: key operations fail with an integrity error, and `keylatch doctor` reports `daemon.key_operations` as failing until the file is restored, or deleted and its entries re-added with `keylatch key allow`.
+
+Keys are read from the backend for one request and parsed per request; nothing is cached. Go cannot zero the parsed key structures of RSA and ECDSA keys or the AES key schedule, so those can remain in daemon memory until the garbage collector reuses them (the byte buffers Keylatch holds are cleared). Go's `runtime/secret` would erase such temporaries, but it requires `GOEXPERIMENT=runtimesecret` and is not part of a default build, so Keylatch does not use it.
+
+`keylatchd serve` also answers the ssh-agent protocol on `ssh-agent.sock` beside the control socket (`--ssh-agent-socket`, `KEYLATCH_SSH_AGENT_SOCKET`; `off` disables it) for fields allowed with `--ssh-agent`. It lists and signs only. With `--host-key`, a key signs only in sessions the client bound to one of those server host key fingerprints with `session-bind@openssh.com`; OpenSSH 8.9 and later sends it. Git commit signing uses this endpoint, so no gpg-agent is needed. Allow an Ed25519, ECDSA or RSA key with `--ssh-agent`, then:
+
+```
+export SSH_AUTH_SOCK=<ssh-agent.sock>
+git config gpg.format ssh
+git config user.signingkey /path/to/signing.pub     # the public key
+git config gpg.ssh.allowedSignersFile /path/to/allowed_signers
+git commit -S -m "message"
+```
+
+Every request is audited as `key.operation` with the operation, algorithm, connection, field, caller kind and the SHA-256 of the input, never the key or the data; an operation that cannot be audited is not returned.
+
+---
+
 ### `keylatch deny`
 
 Deny a pending secret-access request by token. **Blocked in LLM sessions**, requires an interactive terminal and asks for the approver passphrase.
