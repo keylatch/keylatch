@@ -429,7 +429,7 @@ keylatch run openrouter --clean-env --extra DATABASE_URL --extra REDIS_URL -- no
 
 | Deployment | Agent runs in its harness sandbox | Agent has an unrestricted shell as the same user |
 |---|---|---|
-| Same-user install | Strong for gateway and typed-call use: secret values stay out of the agent's and child's environment and output. Requires that Keylatch is not excluded from the sandbox. Remaining risk: misuse of granted capabilities. | Not a boundary: same-user files, the unlocked OS keystore and `ptrace` are reachable. Keylatch makes this a deliberate, detectable attack (detection, canaries, audit). |
+| Same-user install | Partial for gateway and typed-call use: values injected through the gateway or a typed call stay out of the child's environment and output. Keylatch installs no `denyRead` and the Claude Code sandbox reads everywhere by default, so the agent can read Keylatch state unless the harness denies it; `keylatch call` and `keylatch run` read the vault in-process, so denying it breaks them. Requires that Keylatch is not excluded from the sandbox. Remaining risk: misuse of granted capabilities. | Not a boundary: same-user files, the unlocked OS keystore and `ptrace` are reachable. Keylatch makes this a deliberate, detectable attack (detection, canaries, audit). |
 
 See [docs/security/threat-model.md](docs/security/threat-model.md) for the full threat model.
 

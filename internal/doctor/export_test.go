@@ -33,3 +33,10 @@ func ExportCheckHostSandboxKeylatchExcluded(lookup llmcontext.Lookup) Check {
 func ExportMatchKeylatchExclusion(pattern string) (bool, bool) {
 	return matchKeylatchExclusion(pattern)
 }
+
+// ExportSetManagedSettingsDir points the managed settings lookup at dir and returns a restore func.
+func ExportSetManagedSettingsDir(dir string) func() {
+	prev := managedSettingsDir
+	managedSettingsDir = func() string { return dir }
+	return func() { managedSettingsDir = prev }
+}
