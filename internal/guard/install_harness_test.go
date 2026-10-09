@@ -116,8 +116,11 @@ func TestInstall_HarnessHooksBlockWithRealPayload(t *testing.T) {
 			}
 
 			if fx.readPayload != "" {
-				code, stdout, stderr = runHook(t, commands[0], strings.ReplaceAll(fx.readPayload, "{HOME}", jsonString(t, home)))
-				assert.Equal(t, fx.wantExit, code, "read hook must deny")
+				payload := strings.ReplaceAll(fx.readPayload, "{HOME}", jsonString(t, home))
+				code, stdout, stderr = runHook(t, commands[0], payload)
+				if !assert.Equal(t, fx.wantExit, code, "read hook must deny") {
+					logHookEnvironment(t, payload)
+				}
 				assert.NotEmpty(t, stderr)
 				if fx.denyKey != "" {
 					assert.Contains(t, stdout, fx.denyKey)
@@ -243,4 +246,16 @@ func jsonString(t *testing.T, s string) string {
 	b, err := json.Marshal(s)
 	require.NoError(t, err)
 	return string(b[1 : len(b)-1])
+}
+
+// logHookEnvironment records what the hook's shell sees, so a platform-only
+// read-hook failure shows the strings the guard compared.
+func logHookEnvironment(t *testing.T, payload string) {
+	t.Helper()
+	probe := `printf 'uname=%s\nHOME=%s\nrealpath(HOME)=%s\njq=%s\n' "$(uname -s)" "$HOME" "$(realpath -m -- "$HOME" 2>&1)" "$(command -v jq) $(jq --version 2>&1)"; ` +
+		`printf '%s' "$PAYLOAD" | jq -r '[.file_path?, (.attachments[]?.file_path?)] | .[] | select(. != null)' 2>&1 | od -c | head -n 20`
+	cmd := exec.Command("sh", "-c", probe)
+	cmd.Env = append(os.Environ(), "PAYLOAD="+payload)
+	out, err := cmd.CombinedOutput()
+	t.Logf("payload: %s\nhook environment (err=%v):\n%s", payload, err, out)
 }
