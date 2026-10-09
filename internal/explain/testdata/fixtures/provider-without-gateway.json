@@ -1,0 +1,35 @@
+{
+  "description": "provider supports no delivery runtime in this build",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": false,
+    "rules": []
+  },
+  "connection": {
+    "known": true,
+    "provider": "x",
+    "hosts": [
+      "x.example.com"
+    ],
+    "runtimes": [
+      "direct_brokered"
+    ]
+  },
+  "enabled_runtimes": [
+    "gateway_typed",
+    "gateway_sdk"
+  ],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "x",
+    "argv": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": "/work/app",
+    "tier": ""
+  }
+}

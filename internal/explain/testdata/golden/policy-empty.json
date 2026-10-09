@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "kind": "policy",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true,
+    "rule_count": 0
+  },
+  "callers": [
+    {
+      "actor": "human-shell",
+      "caller_kind": "human",
+      "connections": []
+    },
+    {
+      "actor": "llm-session",
+      "caller_kind": "agent",
+      "connections": []
+    }
+  ],
+  "notes": [
+    "no rule names a connection explicitly; pass a connection name"
+  ]
+}
