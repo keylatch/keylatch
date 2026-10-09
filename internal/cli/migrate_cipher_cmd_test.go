@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -62,7 +63,9 @@ func TestMigrateCipherEmptyVaultSwitchesAlgorithm(t *testing.T) {
 	assert.True(t, ok)
 	info, err := os.Stat(f.krPath)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 
 	out, _, err = caRun(t, nil, "migrate", "cipher", "--to", string(envelope.XChaCha20Poly1305))
 	require.NoError(t, err)
@@ -141,7 +144,9 @@ func TestMigrateRollbackRestoresBackups(t *testing.T) {
 	assert.Equal(t, "old-nonce", string(nonce))
 	info, err := os.Stat(p)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 }
 
 func TestMigrateFileHelpersReportErrors(t *testing.T) {

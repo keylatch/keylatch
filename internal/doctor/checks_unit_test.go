@@ -258,6 +258,7 @@ func TestCheckExternalRefs_ScanVaultForSchemes(t *testing.T) {
 func TestCheckHookPreToolUse(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	check := checkHookPreToolUse(func(string) string { return "" })
 
 	st := check(context.Background())

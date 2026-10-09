@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -73,6 +74,7 @@ func cbIsolate(t *testing.T) string {
 	home := t.TempDir()
 	cfgDir := filepath.Join(home, ".config", "keylatch")
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("KEYLATCH_CONFIG_DIR", cfgDir)
 	for _, k := range []string{
@@ -183,13 +185,18 @@ func cbBusyPort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
-func cbMode(t *testing.T, path string) os.FileMode {
+func cbAssertMode(t *testing.T, path string, want os.FileMode) {
 	t.Helper()
 	fi, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat %s: %v", path, err)
 	}
-	return fi.Mode().Perm()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if got := fi.Mode().Perm(); got != want {
+		t.Errorf("mode of %s = %o, want %o", path, got, want)
+	}
 }
 
 func cbWaitFor(t *testing.T, timeout time.Duration, cond func() bool) bool {

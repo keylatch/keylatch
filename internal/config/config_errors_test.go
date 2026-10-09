@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -76,7 +77,9 @@ func TestSave_FailuresLeaveNoTempFiles(t *testing.T) {
 	require.NoError(t, config.Save(nested, config.Default()))
 	info, err := os.Stat(filepath.Dir(nested))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm(), "a missing config directory is created owner-only")
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o700), info.Mode().Perm(), "a missing config directory is created owner-only")
+	}
 
 	blocker := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))

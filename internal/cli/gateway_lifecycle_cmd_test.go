@@ -37,9 +37,9 @@ func TestGatewayInit_WritesKeyAndConfigWithPrivatePerms(t *testing.T) {
 	gwDir := filepath.Join(cfgDir, "gateway")
 	keyPath := filepath.Join(gwDir, "signing.key")
 	cfgPath := filepath.Join(gwDir, "config.json")
-	assert.Equal(t, os.FileMode(0o700), cbMode(t, gwDir))
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, keyPath))
-	assert.Equal(t, os.FileMode(0o600), cbMode(t, cfgPath))
+	cbAssertMode(t, gwDir, 0o700)
+	cbAssertMode(t, keyPath, 0o600)
+	cbAssertMode(t, cfgPath, 0o600)
 
 	key, err := os.ReadFile(keyPath)
 	require.NoError(t, err)

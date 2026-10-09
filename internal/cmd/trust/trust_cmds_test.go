@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -228,12 +229,14 @@ func trReadChallenge(t *testing.T, home, id string) trust.Challenge {
 	if err != nil {
 		t.Fatalf("challenge file: %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("challenge file mode = %v", info.Mode().Perm())
-	}
 	dirInfo, err := os.Stat(filepath.Dir(path))
-	if err != nil || dirInfo.Mode().Perm() != 0o700 {
-		t.Errorf("approvals dir mode = %v (%v)", dirInfo.Mode().Perm(), err)
+	if runtime.GOOS != "windows" {
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("challenge file mode = %v", info.Mode().Perm())
+		}
+		if err != nil || dirInfo.Mode().Perm() != 0o700 {
+			t.Errorf("approvals dir mode = %v (%v)", dirInfo.Mode().Perm(), err)
+		}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -310,8 +313,8 @@ func TestTrustChallengeFilesystemErrors(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permissions are not enforced here")
 	}
 	home = trHome(t)
 	dir := filepath.Join(home, ".keylatch", "approvals")

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -65,7 +66,7 @@ func TestCCDetectGatewayStatus_NotRunning(t *testing.T) {
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
-			p := dir + "/" + strings.ReplaceAll(name, " ", "_") + ".pid"
+			p := filepath.Join(dir, strings.ReplaceAll(name, " ", "_")+".pid")
 			if content != "" {
 				if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
 					t.Fatal(err)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +98,9 @@ func TestAuditLoggerFailsWhenConfigDirIsAFile(t *testing.T) {
 }
 
 func TestAuditSaltWithWrongModeIsRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("private file modes are not enforced on windows")
+	}
 	caNewVault(t, envelope.XChaCha20Poly1305)
 	saltPath := os.Getenv("KEYLATCH_AUDIT_SALT_PATH")
 	require.NoError(t, os.WriteFile(saltPath, make([]byte, 32), 0o644))

@@ -77,7 +77,9 @@ func TestBackendsHandler_AvailabilityFollowsPATH(t *testing.T) {
 
 func TestBootstrapHandler(t *testing.T) {
 	cfgDir := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("KEYLATCH_CONFIG_DIR", cfgDir)
 	h := &api.WizardHandlers{}
@@ -261,6 +263,7 @@ func TestReadiness_AllGreen(t *testing.T) {
 	mxRegisterBackends()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".codex", "config.json"), []byte("{}"), 0o600))
 
@@ -289,7 +292,9 @@ func TestReadiness_AllGreen(t *testing.T) {
 }
 
 func TestReadiness_FailureMessages(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

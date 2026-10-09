@@ -199,7 +199,12 @@ func TestOP_SetEditsExistingItem(t *testing.T) {
 	require.NoError(t, b.Set(context.Background(), "default/github/token", []byte("v"), backend.Meta{}),
 		"an unparseable edit response is not fatal when the item reads back with the value")
 	require.Len(t, r.calls, 3, "existence check, edit, read back")
-	assert.Equal(t, []string{"item", "edit", "github", "--template=/dev/stdin", "--vault=Keylatch", "--format=json"}, r.calls[1])
+	want := []string{"item", "edit", "github"}
+	if op.StdinTemplatePath != "" {
+		want = append(want, "--template="+op.StdinTemplatePath)
+	}
+	want = append(want, "--vault=Keylatch", "--format=json")
+	assert.Equal(t, want, r.calls[1])
 }
 
 func TestOP_SetFailsWhenItemDoesNotHoldWrittenValue(t *testing.T) {

@@ -69,7 +69,9 @@ func bkVaultHermetic(t *testing.T) {
 		require.NoError(t, os.Unsetenv(k))
 	}
 	t.Setenv("VAULT_MAX_RETRIES", "0")
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 }
 
 func bkVaultStart(t *testing.T, replies map[string]bkVaultReply) (*bkVaultServer, *httptest.Server) {

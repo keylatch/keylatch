@@ -52,8 +52,8 @@ func TestInstallGuard_ClaudeCodeGlobalMergesSettingsIdempotently(t *testing.T) {
 	assert.Contains(t, out, "To verify: keylatch doctor")
 
 	script := filepath.Join(home, ".keylatch", "hooks", "block-keylatch-exfiltration.sh")
-	assert.Equal(t, os.FileMode(0o700), cbMode(t, script))
-	assert.Equal(t, os.FileMode(0o700), cbMode(t, filepath.Dir(script)))
+	cbAssertMode(t, script, 0o700)
+	cbAssertMode(t, filepath.Dir(script), 0o700)
 
 	data, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)

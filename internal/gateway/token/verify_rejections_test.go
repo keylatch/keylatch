@@ -469,12 +469,15 @@ func TestStoreFile_Permissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o600 {
-		t.Fatalf("store mode = %v, want 0600", st.Mode().Perm())
-	}
 	dst, err := os.Stat(filepath.Dir(storePath))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("store mode = %v, want 0600", st.Mode().Perm())
 	}
 	if dst.Mode().Perm() != 0o700 {
 		t.Fatalf("store dir mode = %v, want 0700", dst.Mode().Perm())

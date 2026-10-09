@@ -42,6 +42,7 @@ func TestLoadManifest_ValidProfile_ViaTempHome(t *testing.T) {
 
 	// Override HOME so LoadManifest resolves ~/.keylatch inside tempHome.
 	t.Setenv("HOME", tempHome)
+	t.Setenv("USERPROFILE", tempHome)
 
 	m, err := sandbox.LoadManifest("myprofile")
 	require.NoError(t, err)
@@ -59,6 +60,8 @@ func TestLoadManifest_MalformedYAML(t *testing.T) {
 	require.NoError(t, os.WriteFile(manifestPath, []byte("{{{invalid yaml"), 0o600))
 
 	t.Setenv("HOME", tempHome)
+
+	t.Setenv("USERPROFILE", tempHome)
 
 	_, err := sandbox.LoadManifest("badprofile")
 	require.Error(t, err)

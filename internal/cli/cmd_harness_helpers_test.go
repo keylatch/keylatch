@@ -16,6 +16,7 @@ func cdIsolate(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 	for _, k := range []string{
