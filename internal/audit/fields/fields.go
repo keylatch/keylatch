@@ -92,6 +92,19 @@ var safeLogFields = map[string][]string{
 	"key.operation":     {"operation", "alg", "connection", "field", "caller_kind", "input_sha256", "reason"},
 	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason"},
 
+	// socket decisions: digests, names and counters only. argv_sha256 and
+	// cwd_sha256 are SHA-256 hex digests; hosts is a list of host names.
+	"run.decided": {
+		"op", "verb", "connection", "tier", "child_location", "caller_kind",
+		"harness", "argv_sha256", "cwd_sha256", "hosts", "approval_id", "run_id", "reason",
+	},
+	"run.exited": {
+		"run_id", "op", "verb", "exit", "duration_ms", "bytes_relayed", "redactions", "reason",
+	},
+	"approval.requested": {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+	"approval.granted":   {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+	"approval.denied":    {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+
 	// operating-mode actions.
 	// ActionCanaryInjected — provider slug and session_id_hmac (no canary token value).
 	"canary.injected": {"provider", "session_id_hmac"},
@@ -180,6 +193,8 @@ func AllActions() []string {
 		// placeholder proxy actions.
 		"placeholder.misuse", "proxy.substituted", "egress.denied", "proxy.session",
 		"mint",
+		"run.decided", "run.exited",
+		"approval.requested", "approval.granted", "approval.denied",
 	}
 }
 

@@ -151,6 +151,21 @@ const (
 	// allowlist, including refused attempts. Extra holds a digest-free summary
 	// of the entry before and after; never a key or a secret path.
 	ActionKeyPolicyChange Action = "key.policy_change"
+
+	// ActionRunDecided records the daemon's decision on a socket request that
+	// runs something: tier, where the child runs, caller kind and harness,
+	// digests of argv and cwd, and the hosts involved. Allows and refusals
+	// both produce one event.
+	ActionRunDecided Action = "run.decided"
+	// ActionRunExited records the end of a decided run: exit status, duration
+	// and bytes relayed.
+	ActionRunExited Action = "run.exited"
+	// ActionApprovalRequested, ActionApprovalGranted and ActionApprovalDenied
+	// record the life of an approval a decision waited on. Extra carries the
+	// approval id and the run it belongs to, never the approval's proof.
+	ActionApprovalRequested Action = "approval.requested"
+	ActionApprovalGranted   Action = "approval.granted"
+	ActionApprovalDenied    Action = "approval.denied"
 )
 
 // Emitter is a minimal interface for components that need to emit audit events
