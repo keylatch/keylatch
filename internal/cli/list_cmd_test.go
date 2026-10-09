@@ -25,6 +25,7 @@ func TestList_JSON_Parseable(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("KEYLATCH_BACKEND", "file")
 	t.Setenv("HOME", tmp) // redirect ~/.keylatch to temp dir
+	t.Setenv("USERPROFILE", tmp)
 
 	root := cli.NewRootCommand()
 	var stdout, stderr bytes.Buffer
@@ -69,6 +70,7 @@ func TestList_USABLEColumn_LLMSession(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("KEYLATCH_BACKEND", "file")
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	// Simulate LLM session context.
 	t.Setenv("KEYLATCH_LLM_SESSION", "1")
 

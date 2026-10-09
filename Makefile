@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci coverage test-integration-examples docker-build govulncheck
 
 ## build: compile all packages
 build:
@@ -13,6 +13,11 @@ test:
 ## lint: vet all packages
 lint:
 	go vet ./...
+
+## coverage: run the tests with the CI profile and check the coverage floors
+coverage:
+	go test -race -count=1 -coverprofile=coverage.out ./...
+	bash release-checks/coverage-threshold.sh --report coverage.out
 
 ## security-grep: no session token format-string interpolation
 security-grep:
