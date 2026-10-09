@@ -73,8 +73,11 @@ func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 }
 
 func TestE2E_Bootstrap_NoKeyringRequiresInsecureOptIn(t *testing.T) {
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		t.Skip("the macOS login keychain is always present")
+	case "windows":
+		t.Skip("DPAPI is always available for the current user")
 	}
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir, "KEYLATCH_INSECURE_FILE_KEK": ""}
