@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	"net"
 	"sync"
 	"time"
 )
@@ -67,6 +68,12 @@ func (ca *tlsCA) CertForHost(host string) (*tls.Certificate, error) {
 		NotAfter:    time.Now().Add(24 * time.Hour),
 		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	// TLS clients match an IP-literal host against IP SANs only.
+	if ip := net.ParseIP(host); ip != nil {
+		tmpl.DNSNames = nil
+		tmpl.IPAddresses = []net.IP{ip}
 	}
 
 	ecKey, ok := ca.key.(*ecdsa.PrivateKey)
