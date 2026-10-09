@@ -76,6 +76,15 @@ In gateway modes, the child process receives `KEYLATCH_GATEWAY_TOKEN` and `KEYLA
 | `KEYLATCH_GATEWAY_TOKEN` | **Child-env only** — session token for the gateway (re-injected, not inherited) | Yes | gateway_typed/gateway_sdk only |
 | `KEYLATCH_GATEWAY_URL` | **Child-env only** — gateway base URL (re-injected, not inherited). In `gateway_proxy` mode this is re-injected to point at the local MITM proxy address instead of the gateway, alongside `KEYLATCH_SESSION_TOKEN` and `KEYLATCH_CA_CERT` — see [Proxy Variables](#proxy-variables). | No | all gateway-family modes (value differs per mode) |
 
+### Control socket
+
+`keylatchd serve` listens on a Unix socket only the current user can open. The `keylatch` client holds no key material: `status`, `list`, `doctor`, `describe`, `explain`, `call` and `run` are answered by the daemon when it is reachable, so they work by bare name inside an agent sandbox that hides Keylatch state and exposes only the socket. `get`, `export`, `backup` and `mint` are refused for agent and host callers.
+
+| Variable | Purpose | Security-sensitive | Child-env |
+|----------|---------|-------------------|-----------|
+| `KEYLATCH_SOCKET` | Control socket path. Default: `$XDG_RUNTIME_DIR/keylatch/keylatchd.sock`, else `<tmp>/keylatch-<uid>/keylatchd.sock` | No | Never |
+| `KEYLATCH_LOCAL` | `1` makes the client act on local state instead of asking the daemon. The daemon sets it for the verbs it runs for a caller; it never widens what a caller may do | No | Never |
+
 ---
 
 ## Proxy Variables

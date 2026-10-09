@@ -121,41 +121,8 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	}
 
 	// Step 2: Build child env: base URL + session token. No provider key.
-	// Rules:
-	//   1. Strip provider API key vars declared in InjectionRules.
-	//   2. Strip all KEYLATCH_* configuration vars (FilterChildEnv).
-	//   3. Re-inject only gateway vars + KEYLATCH_RUNTIME.
-	denyVars := make(map[string]struct{}, len(tmpl.InjectionRules))
-	for _, rule := range tmpl.InjectionRules {
-		denyVars[rule.EnvVar] = struct{}{}
-	}
-	raw := os.Environ()
-	stripped := make([]string, 0, len(raw))
-	for _, e := range raw {
-		idx := strings.IndexByte(e, '=')
-		if idx < 0 {
-			stripped = append(stripped, e)
-			continue
-		}
-		if _, skip := denyVars[e[:idx]]; !skip {
-			stripped = append(stripped, e)
-		}
-	}
-	// Strip remaining KEYLATCH_* vars; re-inject only gateway token + runtime.
-	// When CleanEnv is requested, use CleanBaseEnv for a minimal start.
-	var childEnv []string
-	if req.CleanEnv {
-		childEnv = runtime.CleanBaseEnv(stripped, req.ExtraEnvVars...)
-	} else {
-		childEnv = runtime.FilterChildEnv(stripped,
-			"KEYLATCH_GATEWAY_TOKEN",
-			"KEYLATCH_RUNTIME",
-		)
-	}
-	baseURL := "http://" + d.server.Addr()
-	childEnv = appendOrReplace(childEnv, sdkBaseURLVar(tmpl), baseURL)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewaySdkMode)
+	childEnv := GatewaySessionEnv(runtime.RuntimeGatewaySDK, tmpl, "http://"+d.server.Addr(), jwtStr).
+		Apply(os.Environ(), req.CleanEnv, req.ExtraEnvVars)
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.

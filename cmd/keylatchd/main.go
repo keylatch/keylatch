@@ -24,15 +24,18 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/control"
 	"github.com/keylatch/keylatch/internal/daemon"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/sidecar/ipc"
 	_ "github.com/keylatch/keylatch/internal/trust/all"
 	"github.com/keylatch/keylatch/internal/ui"
@@ -206,9 +209,65 @@ When run without --from-desktop-shell, behaviour is identical to
 		"Unix socket path for IPC (required with --from-desktop-shell)")
 	cmd.Flags().IntVar(&port, "port", 7890, "Port for the UI HTTP server")
 	cmd.Flags().BoolVar(&demo, "demo", false, "Run in demo mode with stub data")
+	cmd.AddCommand(newServeCmd())
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "log verbosity: debug|info|warn|error")
 
 	return cmd
+}
+
+func newServeCmd() *cobra.Command {
+	var socket, binary string
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve the control socket used by the keylatch thin client",
+		Long: `serve listens on a Unix socket that only the current user can open.
+The keylatch client holds no key material; it sends requests here and the
+daemon, which owns the vault, signing keys and policy, decides what the
+caller may have. Run it from your own terminal or a user service, outside
+any agent sandbox.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			env := llmcontext.DefaultLookup
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
+			defer stop()
+
+			if err := registry.InitFromConfig(ctx, env); err != nil {
+				return fmt.Errorf("keylatchd: registry: %w", err)
+			}
+			if binary == "" {
+				resolved, err := siblingKeylatch()
+				if err != nil {
+					return err
+				}
+				binary = resolved
+			}
+			if socket == "" {
+				socket = paths.ControlSocket(env)
+			}
+			ln, err := control.Listen(socket)
+			if err != nil {
+				return fmt.Errorf("keylatchd: %w", err)
+			}
+			defer func() { _ = os.Remove(socket) }()
+			fmt.Fprintf(cmd.OutOrStdout(), "keylatchd: listening on %s\n", socket)
+			return control.NewServer(control.Config{Env: env, Binary: binary}).Serve(ctx, ln)
+		},
+	}
+	cmd.Flags().StringVar(&socket, "socket", "", "control socket path (default: $KEYLATCH_SOCKET or $XDG_RUNTIME_DIR/keylatch/keylatchd.sock)")
+	cmd.Flags().StringVar(&binary, "keylatch-bin", "", "keylatch executable the daemon runs for served verbs (default: next to keylatchd)")
+	return cmd
+}
+
+func siblingKeylatch() (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("keylatchd: locate keylatch executable: %w; pass --keylatch-bin", err)
+	}
+	sibling := filepath.Join(filepath.Dir(self), "keylatch")
+	if info, err := os.Stat(sibling); err != nil || info.IsDir() {
+		return "", fmt.Errorf("keylatchd: no keylatch executable next to %s; pass --keylatch-bin", self)
+	}
+	return sibling, nil
 }
 
 // readHMACKeyFromFD reads exactly 32 bytes from the file descriptor

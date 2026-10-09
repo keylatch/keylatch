@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-containment test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
 
 ## build: compile all packages
 build:
@@ -43,6 +43,10 @@ test-core-packages:
 ## test-canary: run canary leak-detection tests with race detection
 test-canary:
 	go test -race -count=1 -run TestCanary ./...
+
+## test-containment: run the thin client inside a bubblewrap sandbox (skips when bwrap is unavailable)
+test-containment:
+	go test -tags containment -count=1 ./tests/containment/...
 
 ## test-canary-meta: run meta coverage check for canary AssertNoLeak usage
 test-canary-meta:
