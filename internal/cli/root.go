@@ -296,6 +296,9 @@ func Register(root *cobra.Command) {
 
 	// `scope` — prints the support manifest (internal/manifest).
 	addCmd(root, newScopeCmd(), "advanced")
+
+	// `explain` reports whether a run is allowed and how, for humans and host guards.
+	addCmd(root, newExplainCmd(), "advanced")
 }
 
 // newRegistryCmd returns the `registry` subcommand group.
