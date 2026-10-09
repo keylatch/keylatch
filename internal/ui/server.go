@@ -103,6 +103,10 @@ func New(opts ServerOptions) (*Server, error) {
 		return nil, fmt.Errorf("ui: signing key must be 32 bytes, got %d", len(opts.SigningKey))
 	}
 
+	if !opts.Demo && opts.Store == nil && !isLLM {
+		opts.Store = &configuredStore{env: opts.Env}
+	}
+
 	sess, err := session.New(opts.SigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("ui: create session: %w", err)

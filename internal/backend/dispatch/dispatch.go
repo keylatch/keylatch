@@ -66,6 +66,12 @@ func ClearCached() {
 	initErr = nil
 }
 
+// Open creates an uncached backend. The caller must close it after use.
+// Long-running services use this to recover after configuration or unlock changes.
+func Open(ctx context.Context, cfg config.Config, env llmcontext.Lookup) (backend.Backend, error) {
+	return selectBackend(ctx, cfg, env)
+}
+
 // selectBackend performs the actual backend resolution (called once via Once).
 func selectBackend(ctx context.Context, cfg config.Config, env llmcontext.Lookup) (backend.Backend, error) {
 	// Resolution order: cfg.Backend → env("KEYLATCH_BACKEND") → "file"
