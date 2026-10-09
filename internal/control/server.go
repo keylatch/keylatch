@@ -21,6 +21,7 @@ import (
 	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/placeholder"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -59,6 +60,8 @@ type Config struct {
 	Env llmcontext.Lookup
 	// Binary is the keylatch executable the daemon runs for served verbs.
 	Binary string
+	// Placeholders serves tier D3. Without it D3 is unavailable.
+	Placeholders *placeholder.Manager
 }
 
 // Server answers control socket requests.
@@ -152,6 +155,10 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		_ = writeFrame(conn, s.runSession(kind, req.Run))
 	case OpGateway:
 		s.gateway(conn, r)
+	case OpProxy:
+		s.proxy(conn, r, req.Proxy)
+	case OpEndSession:
+		_ = writeFrame(conn, s.endSession(kind, req.Proxy))
 	default:
 		_ = writeFrame(conn, Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError})
 	}
@@ -257,17 +264,19 @@ func (s *Server) runSession(kind Kind, rr *RunRequest) Response {
 
 	tier := rr.Tier
 	if tier == "" {
-		tier = TierGateway
+		tier = s.preferredTier(rr)
 	}
 	switch tier {
 	case TierGateway:
+	case TierPlaceholder:
+		return s.placeholderSession(kind, rr)
 	case TierRaw:
 		resp.Code, resp.ExitCode = CodeRefused, exitcode.SecurityBlock
 		resp.Error = "tier D6 injects an uncontained secret and is never served over the socket"
 		return resp
 	default:
 		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.RuntimeNotAvailable
-		resp.Error = fmt.Sprintf("tier %s is not available; supported tier: %s", tier, TierGateway)
+		resp.Error = fmt.Sprintf("tier %s is not available; supported tiers: %s, %s", tier, TierGateway, TierPlaceholder)
 		return resp
 	}
 
@@ -324,6 +333,97 @@ func (s *Server) runSession(kind Kind, rr *RunRequest) Response {
 		Env:        runner.GatewaySessionEnv(mode, tmpl, "http://"+runner.GatewayAddrPlaceholder, jwtStr),
 		TTLSeconds: int(sessionTTL.Seconds()),
 	}}
+}
+
+// preferredTier is the strongest tier the daemon can serve for the request:
+// placeholder substitution when the template binds its credentials to hosts,
+// the gateway otherwise.
+func (s *Server) preferredTier(rr *RunRequest) Tier {
+	if s.cfg.Placeholders == nil || rr.Runtime != "" {
+		return TierGateway
+	}
+	tmpl, err := registry.Get(rr.Connection)
+	if err != nil {
+		return TierGateway
+	}
+	if b, ok := tmpl.Binding(); ok && len(b.Slots) > 0 {
+		return TierPlaceholder
+	}
+	return TierGateway
+}
+
+func (s *Server) placeholderSession(kind Kind, rr *RunRequest) Response {
+	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
+	if s.cfg.Placeholders == nil {
+		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.RuntimeNotAvailable
+		resp.Error = "tier D3 is not available: the daemon has no credential store or audit log for placeholder substitution"
+		return resp
+	}
+	if rr.Runtime != "" && rr.Runtime != placeholderRuntime {
+		resp.Error = fmt.Sprintf("tier D3 does not take the %s runtime", rr.Runtime)
+		return resp
+	}
+	tmpl, err := registry.Get(rr.Connection)
+	if err != nil {
+		resp.Code, resp.ExitCode = CodeNotFound, exitcode.Missing
+		resp.Error = fmt.Sprintf("unknown connection %q", rr.Connection)
+		return resp
+	}
+	sess, err := s.cfg.Placeholders.Open(placeholder.OpenRequest{Template: tmpl, UpstreamProxy: rr.UpstreamProxy})
+	if err != nil {
+		if errors.Is(err, placeholder.ErrNoBinding) {
+			resp.Error = fmt.Sprintf("connection %q declares no host bindings, so tier D3 cannot serve it", rr.Connection)
+			return resp
+		}
+		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.OperationFailed
+		resp.Error = fmt.Sprintf("could not open a placeholder session: %v", err)
+		return resp
+	}
+	return Response{OK: true, Kind: kind, Session: &Session{
+		Tier:       TierPlaceholder,
+		Runtime:    placeholderRuntime,
+		Env:        runner.PlaceholderSessionEnv(tmpl, sess.Placeholders(), "http://"+runner.GatewayAddrPlaceholder),
+		TTLSeconds: int(sess.TTL().Seconds()),
+		ProxyID:    sess.ID(),
+		CAPEM:      string(sess.CAPEM()),
+		CAVars:     runner.CABundleVars,
+	}}
+}
+
+// placeholderRuntime is the runtime name reported for tier D3.
+const placeholderRuntime = "placeholder"
+
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+
+// proxy turns the connection into a client connection of a placeholder
+// session's proxy and serves it until it closes.
+func (s *Server) proxy(conn *net.UnixConn, r *bufio.Reader, id string) {
+	var sess *placeholder.Session
+	if s.cfg.Placeholders != nil {
+		sess, _ = s.cfg.Placeholders.Get(id)
+	}
+	if sess == nil {
+		_ = writeFrame(conn, Response{Code: CodeNotFound, ExitCode: exitcode.Missing, Error: "no such placeholder session"})
+		return
+	}
+	if err := writeFrame(conn, Response{OK: true}); err != nil {
+		return
+	}
+	sess.Serve(&bufferedConn{Conn: conn, r: r})
+}
+
+func (s *Server) endSession(kind Kind, id string) Response {
+	if s.cfg.Placeholders != nil {
+		if sess, ok := s.cfg.Placeholders.Get(id); ok {
+			sess.Close("run_ended")
+		}
+	}
+	return Response{OK: true, Kind: kind}
 }
 
 func (s *Server) gatewayAddr() (string, error) {

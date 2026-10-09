@@ -93,10 +93,26 @@ func (c *Client) RunSession(rr RunRequest) (Response, error) {
 	return c.roundTrip(Request{Op: OpRunSession, Run: &rr})
 }
 
+// EndSession revokes a placeholder session.
+func (c *Client) EndSession(id string) error {
+	_, err := c.roundTrip(Request{Op: OpEndSession, Proxy: id})
+	return err
+}
+
 // Forward listens on a loopback port in the caller's own network namespace and
 // relays each connection to the gateway through the daemon. The returned
 // address is where a sandboxed child reaches the gateway.
 func (c *Client) Forward() (addr string, stop func(), err error) {
+	return c.forward(Request{Op: OpGateway})
+}
+
+// ForwardProxy is Forward for a placeholder session: each connection becomes a
+// client connection of the session's proxy.
+func (c *Client) ForwardProxy(id string) (addr string, stop func(), err error) {
+	return c.forward(Request{Op: OpProxy, Proxy: id})
+}
+
+func (c *Client) forward(req Request) (addr string, stop func(), err error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return "", nil, fmt.Errorf("control: forwarder: %w", err)
@@ -130,7 +146,7 @@ func (c *Client) Forward() (addr string, stop func(), err error) {
 					mu.Unlock()
 					_ = conn.Close()
 				}()
-				c.relay(conn)
+				c.relay(conn, req)
 			}()
 		}
 	}()
@@ -146,13 +162,13 @@ func (c *Client) Forward() (addr string, stop func(), err error) {
 	}, nil
 }
 
-func (c *Client) relay(local net.Conn) {
+func (c *Client) relay(local net.Conn, req Request) {
 	up, err := c.dial()
 	if err != nil {
 		return
 	}
 	defer func() { _ = up.Close() }()
-	if err := writeFrame(up, c.stamp(Request{Op: OpGateway})); err != nil {
+	if err := writeFrame(up, c.stamp(req)); err != nil {
 		return
 	}
 	r := bufio.NewReader(up)

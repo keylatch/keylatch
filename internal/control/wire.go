@@ -41,6 +41,11 @@ const (
 	OpRunSession Op = "run_session"
 	// OpGateway turns the connection into a byte stream to the gateway.
 	OpGateway Op = "gateway"
+	// OpProxy turns the connection into a client connection of a placeholder
+	// session's proxy.
+	OpProxy Op = "proxy"
+	// OpEndSession revokes a placeholder session.
+	OpEndSession Op = "end_session"
 )
 
 // Tier names a delivery tier.
@@ -66,8 +71,11 @@ type Request struct {
 	// They can only make the daemon stricter.
 	Signals []string `json:"signals,omitempty"`
 	// Ticket is the raw session ticket from the client's environment.
-	Ticket string      `json:"ticket,omitempty"`
-	Run    *RunRequest `json:"run,omitempty"`
+	Ticket string `json:"ticket,omitempty"`
+	// Proxy names the placeholder session an OpProxy or OpEndSession request
+	// addresses.
+	Proxy string      `json:"proxy,omitempty"`
+	Run   *RunRequest `json:"run,omitempty"`
 }
 
 // RunRequest describes a command to run under a connection.
@@ -77,6 +85,9 @@ type RunRequest struct {
 	Tier       Tier     `json:"tier,omitempty"`
 	Command    []string `json:"command"`
 	CWD        string   `json:"cwd,omitempty"`
+	// UpstreamProxy is the proxy the caller's own environment names. A
+	// placeholder session sends its upstream traffic through it.
+	UpstreamProxy string `json:"upstream_proxy,omitempty"`
 }
 
 // Session is what the daemon returns for an accepted run request.
@@ -85,6 +96,12 @@ type Session struct {
 	Runtime    string            `json:"runtime"`
 	Env        runner.SessionEnv `json:"env"`
 	TTLSeconds int               `json:"ttl_seconds"`
+	// ProxyID, CAPEM and CAVars are set for placeholder sessions: the proxy
+	// session to relay to, the session CA certificate, and the variables that
+	// must point at a bundle containing it.
+	ProxyID string   `json:"proxy_id,omitempty"`
+	CAPEM   string   `json:"ca_pem,omitempty"`
+	CAVars  []string `json:"ca_vars,omitempty"`
 }
 
 // Response is one daemon message.

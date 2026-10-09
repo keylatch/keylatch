@@ -129,6 +129,13 @@ const (
 	// sandbox run. Extra.denied_paths lists the paths (no values).
 	ActionSandboxDenyApplied Action = "sandbox.deny_applied"
 
+	// placeholder proxy actions. Extra carries provider, field, host and a
+	// short reason; never a placeholder or a credential value.
+	ActionPlaceholderMisuse Action = "placeholder.misuse"
+	ActionProxySubstituted  Action = "proxy.substituted"
+	ActionEgressDenied      Action = "egress.denied"
+	ActionProxySession      Action = "proxy.session"
+
 	// ActionMint records one scoped credential mint. Extra holds the
 	// connection, repository, permissions, expires_at and caller kind;
 	// the minted credential is never recorded.

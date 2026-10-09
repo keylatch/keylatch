@@ -65,9 +65,10 @@ func newAuditCmd() *cobra.Command {
 	return cmd
 }
 
-// openAuditLogger opens the audit logger using the environment config.
-// auditDEK is loaded from the keyring via TTY or stdin pipe (not env var).
-func openAuditLogger() (*audit.Logger, func(), error) {
+// OpenAuditLogger opens the audit logger using the environment config.
+// auditDEK is loaded from the keyring via TTY or stdin pipe (not env var). The
+// returned function closes the log and zeroes the key.
+func OpenAuditLogger() (*audit.Logger, func(), error) {
 	auditPath := paths.Audit(os.Getenv)
 	saltPath := paths.AuditSalt(os.Getenv)
 
@@ -106,7 +107,7 @@ func openAuditLogger() (*audit.Logger, func(), error) {
 
 // openAuditLoggerFn opens the audit log for commands that serve or change
 // secrets; replaced in tests.
-var openAuditLoggerFn = openAuditLogger
+var openAuditLoggerFn = OpenAuditLogger
 
 // requireAuditLogger opens the audit log for a command that serves or
 // changes secrets. Such commands refuse to run without an audit trail.
@@ -165,7 +166,7 @@ func retiredDEKs(kr *keyring.Keyring, activeTerm int) [][]byte {
 
 // runAuditSummary implements `keylatch audit [--summary]`.
 func runAuditSummary(cmd *cobra.Command) error {
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		return err
 	}
@@ -269,7 +270,7 @@ func runAuditRaw(cmd *cobra.Command) error {
 
 // runAuditRotate implements `keylatch audit --rotate`.
 func runAuditRotate(cmd *cobra.Command) error {
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		return err
 	}

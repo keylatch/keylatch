@@ -44,7 +44,7 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 	}
 
 	if verb == "run" && !slices.Contains(rest, "--dry-run") {
-		return runThroughDaemon(ctx, client, rest, streams), true
+		return runThroughDaemon(ctx, client, lookup, rest, streams), true
 	}
 
 	resp, err := client.Exec(global, verb, rest)
@@ -163,7 +163,17 @@ func parseRunArgs(args []string) (runArgs, error) {
 	return ra, errRunUsage
 }
 
-func runThroughDaemon(ctx context.Context, c *Client, args []string, streams IO) int {
+// callerProxy is the proxy the caller's own environment names for HTTPS.
+func callerProxy(lookup llmcontext.Lookup) string {
+	for _, name := range []string{"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
+		if v := lookup(name); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, args []string, streams IO) int {
 	ra, err := parseRunArgs(args)
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
@@ -171,11 +181,12 @@ func runThroughDaemon(ctx context.Context, c *Client, args []string, streams IO)
 	}
 	cwd, _ := os.Getwd()
 	resp, err := c.RunSession(RunRequest{
-		Connection: ra.connection,
-		Runtime:    ra.runtime,
-		Tier:       ra.tier,
-		Command:    ra.command,
-		CWD:        cwd,
+		Connection:    ra.connection,
+		Runtime:       ra.runtime,
+		Tier:          ra.tier,
+		Command:       ra.command,
+		CWD:           cwd,
+		UpstreamProxy: callerProxy(lookup),
 	})
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: daemon: %v\n", err)
@@ -189,16 +200,39 @@ func runThroughDaemon(ctx context.Context, c *Client, args []string, streams IO)
 		return resp.ExitCode
 	}
 
-	addr, stop, err := c.Forward()
+	sess := resp.Session
+	placeholder := sess.Tier == TierPlaceholder
+	var addr string
+	var stop func()
+	if placeholder {
+		defer func() { _ = c.EndSession(sess.ProxyID) }()
+		addr, stop, err = c.ForwardProxy(sess.ProxyID)
+	} else {
+		addr, stop, err = c.Forward()
+	}
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
 		return exitcode.OperationFailed
 	}
 	defer stop()
 
-	session := resp.Session.Env
+	session := sess.Env
 	for i := range session.Set {
 		session.Set[i].Value = strings.ReplaceAll(session.Set[i].Value, runner.GatewayAddrPlaceholder, addr)
+	}
+	if placeholder {
+		bundle, cleanup, warn, err := writeCABundle(lookup, sess.CAPEM)
+		if err != nil {
+			fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
+			return exitcode.OperationFailed
+		}
+		defer cleanup()
+		if warn != nil {
+			fmt.Fprintf(streams.ErrOut, "keylatch run: %v; only the session CA is trusted\n", warn)
+		}
+		for _, name := range sess.CAVars {
+			session.Set = append(session.Set, runner.EnvAssign{Name: name, Value: bundle})
+		}
 	}
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)

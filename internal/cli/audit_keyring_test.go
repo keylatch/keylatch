@@ -61,8 +61,8 @@ func verifyAuditLog(t *testing.T) audit.ChainReport {
 func TestAuditWorksRightAfterBootstrap(t *testing.T) {
 	dir := bootstrapForAudit(t)
 
-	// gateway up opens its audit logger through openAuditLogger.
-	l, cleanup, err := openAuditLogger()
+	// gateway up opens its audit logger through OpenAuditLogger.
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		t.Fatalf("audit logger unavailable right after bootstrap: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestAuditReadsEventsSealedWithLegacyKeyring(t *testing.T) {
 	}
 	lkr.Zero()
 
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		t.Fatal(err)
 	}

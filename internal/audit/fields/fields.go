@@ -92,6 +92,12 @@ var safeLogFields = map[string][]string{
 	// ActionCanaryInjected — provider slug and session_id_hmac (no canary token value).
 	"canary.injected": {"provider", "session_id_hmac"},
 
+	// placeholder proxy actions: identifiers and counters only.
+	"placeholder.misuse": {"provider", "field", "host", "where", "reason", "session_id_hmac"},
+	"proxy.substituted":  {"provider", "field", "host", "count"},
+	"egress.denied":      {"provider", "host", "reason"},
+	"proxy.session":      {"provider", "reason", "hosts", "substitutions", "session_id_hmac"},
+
 	// broker dry-run action.
 	// command: the binary/subcommand name requested (no credential content).
 	// policy_decision: "allow" or "deny" string — no secret content.
@@ -166,6 +172,8 @@ func AllActions() []string {
 		"canary.injected",
 		// broker dry-run and token revocation actions.
 		"broker.dry_run_requested", "broker.token_revoked",
+		// placeholder proxy actions.
+		"placeholder.misuse", "proxy.substituted", "egress.denied", "proxy.session",
 		"mint",
 	}
 }
