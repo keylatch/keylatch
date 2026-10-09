@@ -100,7 +100,7 @@ func (d *classicSandboxedDriver) Run(ctx context.Context, req ExecRequest, tmpl 
 
 	// Step 5: delegate to platform sandbox primitive. Pass d.audit so the
 	// sandbox package can emit ActionSandboxDenyApplied after deny-list validation (W1+W2).
-	if err := sandbox.RunSandboxed(ctx, manifest, true, req.ExtraEnvVars, d.audit); err != nil {
+	if err := sandbox.RunSandboxed(ctx, manifest, true, append(append([]string(nil), req.ExtraEnvVars...), req.LocalEnv...), d.audit); err != nil {
 		return receipt, fmt.Errorf("direct_classic_sandboxed: %w", err)
 	}
 

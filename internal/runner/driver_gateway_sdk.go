@@ -156,6 +156,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	childEnv = appendOrReplace(childEnv, sdkBaseURLVar(tmpl), baseURL)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewaySdkMode)
+	childEnv = mergeEnvPairs(childEnv, req.LocalEnv)
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.

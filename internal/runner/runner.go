@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/keylatch/keylatch/internal/localonly"
 )
 
 // ErrCommandNotAllowed is returned by Runner.Run when the command does not
@@ -32,6 +34,7 @@ var ErrModeNotAvailable = errors.New("runner: runtime mode not available in this
 type Connection struct {
 	Name                   string
 	AllowedCommandPrefixes []string // Per-template allowlist; empty = run REJECTED
+	LocalOnly              LocalOnly
 }
 
 // RunOptions carries per-invocation options.
@@ -78,6 +81,13 @@ type ExecRequest struct {
 	// ExtraEnvVars lists additional env var names to preserve when CleanEnv is true.
 	// Ignored when CleanEnv is false.
 	ExtraEnvVars []string
+	// LocalOnly holds the connection's class and local-only field modes.
+	LocalOnly LocalOnly
+	// LocalSession supplies ephemeral values; nil gives each Run its own.
+	LocalSession *localonly.Session
+	// LocalEnv is filled by DispatchRunner with the KEY=VALUE pairs generated
+	// for ephemeral fields. Drivers add them to the child environment.
+	LocalEnv []string
 }
 
 // RuntimeReceipt is the value-free record emitted for every execution path

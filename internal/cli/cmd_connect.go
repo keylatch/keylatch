@@ -13,6 +13,7 @@ import (
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/store"
 	"github.com/spf13/cobra"
@@ -218,11 +219,24 @@ func newConnectCmd() *cobra.Command {
 				}
 			}
 
-			// Interactive prompting when stdin is a TTY and --json is not set.
 			tty := stdinIsTTY()
+
+			class, modes, lerr := parseLocalOnlyFlags(c)
+			if lerr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", lerr)
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+			var confirm func(string) bool
+			if !nonInteractive && !useJSON && tty && !llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
+				confirm = confirmEphemeral(c)
+			}
+			suggestLocalOnly(c, tmpl, class, modes, confirm)
+
+			// Interactive prompting when stdin is a TTY and --json is not set.
 			if !nonInteractive && !useJSON && tty {
 				for _, sf := range tmpl.SecretFields {
-					if _, alreadySet := fields[sf.Name]; alreadySet {
+					if _, alreadySet := fields[sf.Name]; alreadySet || modes[sf.Name] == localonly.Ephemeral {
 						continue
 					}
 					label := sf.Label
@@ -257,7 +271,7 @@ func newConnectCmd() *cobra.Command {
 			// Non-interactive with no TTY and no values provided → actionable error.
 			if !tty || nonInteractive {
 				for _, sf := range tmpl.SecretFields {
-					if sf.Required {
+					if sf.Required && modes[sf.Name] != localonly.Ephemeral {
 						if _, ok := fields[sf.Name]; !ok {
 							printConnectActionableError(c, provider, sf, tmpl)
 							os.Exit(exitcode.UserError)
@@ -272,6 +286,8 @@ func newConnectCmd() *cobra.Command {
 				Account:        account,
 				NonInteractive: nonInteractive || !tty,
 				Fields:         fields,
+				Class:          class,
+				LocalOnly:      modes,
 			}, store)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
@@ -279,8 +295,16 @@ func newConnectCmd() *cobra.Command {
 				return nil
 			}
 
+			// A connection whose secret fields are all ephemeral has nothing stored to test.
+			allEphemeral := len(tmpl.SecretFields) > 0
+			for _, sf := range tmpl.SecretFields {
+				if modes[sf.Name] != localonly.Ephemeral {
+					allEphemeral = false
+				}
+			}
+
 			// Automatically test the connection after writing (skip if --no-test is set).
-			if noTest {
+			if noTest || allEphemeral {
 				if useJSON {
 					data, _ := json.Marshal(map[string]interface{}{"connection": conn})
 					fmt.Fprintln(c.OutOrStdout(), string(data))
@@ -357,6 +381,9 @@ func newConnectCmd() *cobra.Command {
 	connectCmd.Flags().StringArrayP("field", "f", nil, "supply a field value: -f name=value (repeatable; use @- for stdin)")
 	connectCmd.Flags().String("stdin-field", "", "read this named field from stdin")
 	connectCmd.Flags().Bool("json", false, "output as JSON")
+	connectCmd.Flags().String("class", "", "connection class: dev, test or prod")
+	connectCmd.Flags().StringArray("local-only", nil,
+		"deliver a field without a stored value: --local-only FIELD=ephemeral|operation|contained (repeatable)")
 	connectCmd.Flags().StringArray("provider-ref", nil,
 		"resolve a field from an external store URI: --provider-ref field=op://vault/item/field\n"+
 			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]")

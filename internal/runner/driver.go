@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -115,6 +116,18 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		empty.PolicyDecision = "mode_not_supported"
 		return empty, err
 	}
+
+	// Step 3b: ephemeral values for local-only fields; unsupported modes stop here.
+	if req.LocalSession == nil {
+		req.LocalSession = localonly.NewSession()
+	}
+	localEnv, _, err := localOnlyEnv(tmpl, req.LocalOnly, req.LocalSession)
+	if err != nil {
+		empty.Runtime = string(decision.Mode)
+		empty.PolicyDecision = "local_only_refused"
+		return empty, err
+	}
+	req.LocalEnv = localEnv
 
 	// Step 4: driver lookup.
 	driver, ok := d.Drivers[string(decision.Mode)]

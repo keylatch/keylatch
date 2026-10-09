@@ -14,6 +14,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	internalexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/store"
 )
@@ -67,6 +68,8 @@ type ProcessRunner struct {
 	Stderr     io.Writer
 	ExecRunner internalexec.CommandRunner
 	Resolver   URIResolver
+	// Session supplies ephemeral values; nil gives each Run its own.
+	Session *localonly.Session
 }
 
 // Compile-time assertion: ProcessRunner must satisfy the Runner interface.
@@ -135,7 +138,19 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 		return Receipt{}, fmt.Errorf("runner: provider %q not registered: %w", conn.Name, err)
 	}
 
+	session := p.Session
+	if session == nil {
+		session = localonly.NewSession()
+	}
+	localEnv, skip, err := localOnlyEnv(tmpl, conn.LocalOnly, session)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("runner: %w", err)
+	}
+
 	for _, rule := range tmpl.InjectionRules {
+		if skip[rule.Source] {
+			continue
+		}
 		// Build the canonical storage path: namespace/category/provider/field.
 		category := tmpl.Category
 		if category == "" {
@@ -169,6 +184,7 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 	for _, c := range creds {
 		env = append(env, c.envVar+"="+string(c.value))
 	}
+	env = mergeEnvPairs(env, localEnv)
 	// Merge any extra env from opts.
 	for k, v := range opts.Env {
 		env = append(env, k+"="+v)

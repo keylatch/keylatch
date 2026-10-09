@@ -195,14 +195,15 @@ func printStatusDashboard(c *cobra.Command, backend string, statuses []connectio
 	} else {
 		// Connections table.
 		fmt.Fprintf(w, "Connections\t\t\t\n")
-		fmt.Fprintf(w, "  PROVIDER\tACCOUNT\tSTATUS\tLAST USED\n")
+		fmt.Fprintf(w, "  PROVIDER\tACCOUNT\tSTATUS\tLAST USED\tLOCAL-ONLY\n")
 		for _, s := range statuses {
 			lastUsed := relativeTime(s.Connection.LastTested)
-			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
 				s.Connection.Provider,
 				s.Connection.Account,
 				s.Connection.Status,
 				lastUsed,
+				formatLocalOnly(s.Connection.LocalOnly),
 			)
 		}
 	}
@@ -229,12 +230,22 @@ func newDescribeCmd() *cobra.Command {
 				os.Exit(exitcode.OperationFailed)
 			}
 
+			var conn *connections.Connection
+			if lc, lcErr := connections.Load(ctx, "default", tmpl.Provider, store); lcErr == nil {
+				conn = lc
+			}
+
 			useJSON, _ := c.Flags().GetBool("json")
 			if useJSON {
-				data, _ := json.Marshal(map[string]interface{}{
+				out := map[string]interface{}{
 					"template":      tmpl,
 					"masked_fields": masked,
-				})
+				}
+				if conn != nil {
+					out["class"] = conn.Class
+					out["local_only"] = conn.LocalOnly
+				}
+				data, _ := json.Marshal(out)
 				fmt.Fprintln(c.OutOrStdout(), string(data))
 				return nil
 			}
@@ -244,8 +255,15 @@ func newDescribeCmd() *cobra.Command {
 			fmt.Fprintf(c.OutOrStdout(), "Category:     %s\n", tmpl.Category)
 			fmt.Fprintf(c.OutOrStdout(), "Auth Flow:    %s\n", tmpl.AuthFlow)
 			fmt.Fprintf(c.OutOrStdout(), "Runtime:      %s\n", tmpl.RuntimeSupport.Preferred)
+			if conn != nil && conn.Class != "" {
+				fmt.Fprintf(c.OutOrStdout(), "Class:        %s\n", conn.Class)
+			}
 			fmt.Fprintln(c.OutOrStdout(), "\nSecret Fields (masked):")
 			for name, val := range masked {
+				if conn != nil && conn.LocalOnly[name] != "" {
+					fmt.Fprintf(c.OutOrStdout(), "  %s: %s (local-only: %s)\n", name, val, conn.LocalOnly[name])
+					continue
+				}
 				fmt.Fprintf(c.OutOrStdout(), "  %s: %s\n", name, val)
 			}
 			fmt.Fprintln(c.OutOrStdout(), "\nCapabilities:")

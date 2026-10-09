@@ -93,6 +93,9 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 	if len(tmpl.InjectionRules) == 0 {
 		return receipt, fmt.Errorf("direct_brokered: template has no injection rules")
 	}
+	if req.LocalOnly.Fields[tmpl.InjectionRules[0].Source] != "" {
+		return receipt, fmt.Errorf("direct_brokered: field %q is local-only and cannot be the broker root credential", tmpl.InjectionRules[0].Source)
+	}
 	vaultPath := canonicalSecretPath("default", tmpl.Category, req.ConnectionSlug, tmpl.InjectionRules[0].Source)
 	// Inject audit emitter so vault.Get can emit ActionRead events.
 	if d.audit != nil {
@@ -164,6 +167,7 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 		env = runtime.FilterChildEnv(parentEnv)
 		env = append(env, "KEYLATCH_RUNTIME="+directBrokeredMode)
 	}
+	env = mergeEnvPairs(env, req.LocalEnv)
 
 	// Step 5: launch subprocess.
 	stdout := req.Stdout
