@@ -14,6 +14,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	internalexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/store"
 )
@@ -196,18 +197,25 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 		stdout = &redactingWriter{w: stdout, patterns: redactPatterns}
 		stderr = &redactingWriter{w: stderr, patterns: redactPatterns}
 	}
+	secrets := make([][]byte, 0, len(creds))
+	for _, c := range creds {
+		secrets = append(secrets, c.value)
+	}
+	guard := newOutputGuard(stdout, stderr, "", redactor.ScanReport, secrets...)
 	//nolint:gosec // G204: command is user-supplied and allowlist-checked above.
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Env = env
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if opts.Stdin != nil {
 		cmd.Stdin = opts.Stdin
 	} else {
 		cmd.Stdin = os.Stdin
 	}
 
-	if err := cmd.Run(); err != nil {
+	runErr := cmd.Run()
+	guard.Finish()
+	if err := runErr; err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return Receipt{ExitCode: exitErr.ExitCode()}, nil

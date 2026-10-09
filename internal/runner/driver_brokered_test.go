@@ -115,7 +115,7 @@ func TestBrokeredDriver_ChildEnvInjection(t *testing.T) {
 
 	req := runner.ExecRequest{
 		ConnectionSlug: "myapi",
-		Command:        []string{"sh", "-c", "echo $TEST_API_KEY"},
+		Command:        []string{"sh", "-c", "echo $TEST_API_KEY | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
@@ -123,7 +123,7 @@ func TestBrokeredDriver_ChildEnvInjection(t *testing.T) {
 	receipt, err := d.Run(context.Background(), req, brokeredTmpl("myapi"))
 	require.NoError(t, err)
 	assert.Equal(t, 0, receipt.ExitCode)
-	assert.Contains(t, outBuf.String(), ephemeralToken,
+	assert.Contains(t, outBuf.String(), strings.ToUpper(ephemeralToken),
 		"ephemeral token must be visible to child via injected env var")
 }
 
@@ -146,7 +146,7 @@ func TestBrokeredDriver_RootCredentialNotInChildEnv(t *testing.T) {
 
 	req := runner.ExecRequest{
 		ConnectionSlug: "myapi",
-		Command:        []string{"sh", "-c", "printenv TEST_API_KEY"},
+		Command:        []string{"sh", "-c", "printenv TEST_API_KEY | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
@@ -157,7 +157,7 @@ func TestBrokeredDriver_RootCredentialNotInChildEnv(t *testing.T) {
 	// Child must receive the ephemeral token, NOT the root credential.
 	assert.NotContains(t, outBuf.String(), rootCred,
 		"root credential must not be injected into child env")
-	assert.Contains(t, outBuf.String(), ephemeralToken,
+	assert.Contains(t, outBuf.String(), strings.ToUpper(ephemeralToken),
 		"child must receive ephemeral token")
 }
 

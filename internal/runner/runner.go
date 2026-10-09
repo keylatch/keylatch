@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/keylatch/keylatch/internal/redactor"
 )
 
 // ErrCommandNotAllowed is returned by Runner.Run when the command does not
@@ -78,6 +80,9 @@ type ExecRequest struct {
 	// ExtraEnvVars lists additional env var names to preserve when CleanEnv is true.
 	// Ignored when CleanEnv is false.
 	ExtraEnvVars []string
+	// FileScan selects what happens to files the child wrote that contain a
+	// secret value or encoding. The zero value reports them.
+	FileScan redactor.ScanPolicy
 }
 
 // RuntimeReceipt is the value-free record emitted for every execution path
@@ -90,6 +95,8 @@ type RuntimeReceipt struct {
 	CredentialShape string        `json:"credential_shape"`
 	ExitCode        int           `json:"exit_code,omitempty"`
 	TTL             time.Duration `json:"ttl,omitempty"`
+	// LeakedFiles counts files written by the child that held a secret.
+	LeakedFiles int `json:"leaked_files,omitempty"`
 }
 
 // Runner executes commands under a named connection's allowed prefix list.

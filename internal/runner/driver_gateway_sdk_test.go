@@ -79,7 +79,7 @@ func TestGatewaySDKDriver_SessionTokenPresent(t *testing.T) {
 	req := runner.ExecRequest{
 		ConnectionSlug: "openai",
 		Capability:     "chat_completion",
-		Command:        []string{"sh", "-c", "printenv KEYLATCH_GATEWAY_TOKEN"},
+		Command:        []string{"sh", "-c", "printenv KEYLATCH_GATEWAY_TOKEN | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}

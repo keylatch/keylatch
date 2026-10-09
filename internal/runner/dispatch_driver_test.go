@@ -205,7 +205,7 @@ func TestDispatch_GatewayTyped_StaleTokenReplaced(t *testing.T) {
 	var outBuf strings.Builder
 	req := runner.ExecRequest{
 		ConnectionSlug: "anthropic",
-		Command:        []string{"sh", "-c", "printenv KEYLATCH_GATEWAY_TOKEN"},
+		Command:        []string{"sh", "-c", "printenv KEYLATCH_GATEWAY_TOKEN | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
@@ -360,7 +360,7 @@ func TestDispatch_DirectBrokered(t *testing.T) {
 	var outBuf strings.Builder
 	req := runner.ExecRequest{
 		ConnectionSlug: "myapi",
-		Command:        []string{"sh", "-c", "printenv TEST_API_KEY"},
+		Command:        []string{"sh", "-c", "printenv TEST_API_KEY | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
@@ -370,7 +370,7 @@ func TestDispatch_DirectBrokered(t *testing.T) {
 	assert.Equal(t, "direct_brokered", receipt.Runtime)
 
 	output := outBuf.String()
-	assert.Contains(t, output, ephemeralToken,
+	assert.Contains(t, output, strings.ToUpper(ephemeralToken),
 		"child must receive ephemeral scoped token")
 	assert.NotContains(t, output, rootCred,
 		"root credential must not leak into child env")

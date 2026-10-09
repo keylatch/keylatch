@@ -159,9 +159,11 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.
+	secrets := [][]byte{[]byte(jwtStr)}
 	if d.settings.CanaryInjectionEnabled {
 		canaryToken, canaryErr := canary.BuildCanary(tmpl.Provider)
 		if canaryErr == nil {
+			secrets = append(secrets, []byte(canaryToken))
 			envVar := canary.EnvVarName(tmpl.Provider)
 			childEnv = appendOrReplace(childEnv, envVar, canaryToken)
 			if d.auditEmitter != nil {
@@ -191,8 +193,9 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	//nolint:gosec // G204: command allowlist enforcement is caller-side (DispatchRunner.Run).
 	cmd := exec.CommandContext(ctx, req.Command[0], req.Command[1:]...)
 	cmd.Env = childEnv
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	guard := newOutputGuard(stdout, stderr, req.WorkingDir, req.FileScan, secrets...)
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if req.Stdin != nil {
 		cmd.Stdin = req.Stdin
 	} else {
@@ -205,6 +208,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	start := time.Now()
 	runErr := cmd.Run()
 	receipt.TTL = time.Since(start) // stores actual execution duration (not a cap)
+	receipt.LeakedFiles = guard.Finish()
 
 	if runErr != nil {
 		var exitErr *exec.ExitError

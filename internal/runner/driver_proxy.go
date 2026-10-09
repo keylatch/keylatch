@@ -173,8 +173,9 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	//nolint:gosec // G204: command allowlist enforcement is caller-side (DispatchRunner.Run).
 	cmd := exec.CommandContext(ctx, req.Command[0], req.Command[1:]...)
 	cmd.Env = childEnv
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	guard := newOutputGuard(stdout, stderr, req.WorkingDir, req.FileScan, []byte(authToken))
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if req.Stdin != nil {
 		cmd.Stdin = req.Stdin
 	} else {
@@ -185,6 +186,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	}
 
 	runErr := cmd.Run()
+	receipt.LeakedFiles = guard.Finish()
 
 	if runErr != nil {
 		var exitErr *exec.ExitError

@@ -178,8 +178,9 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 	//nolint:gosec // G204: command allowlist enforcement is caller-side (DispatchRunner.Run).
 	cmd := exec.CommandContext(ctx, req.Command[0], req.Command[1:]...)
 	cmd.Env = env
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	guard := newOutputGuard(stdout, stderr, req.WorkingDir, req.FileScan, tokenBytes)
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if req.Stdin != nil {
 		cmd.Stdin = req.Stdin
 	} else {
@@ -190,6 +191,7 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 	}
 
 	runErr := cmd.Run()
+	receipt.LeakedFiles = guard.Finish()
 
 	// Step 6: emit audit event.
 	d.emitAudit(ctx, req, tmpl, &exchangeResult)
