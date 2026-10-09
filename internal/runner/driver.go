@@ -63,7 +63,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 	}
 	empty := RuntimeReceipt{Provider: req.ConnectionSlug, Capability: cap}
 
-	// Step 1: LLM session guard before any credential read.
+	// LLM session guard before any credential read.
 	mode := runtime.RuntimeMode(req.Runtime)
 	if d.Guard != nil {
 		if blocked := d.Guard(mode, req.ApprovalJWT); blocked {
@@ -72,14 +72,14 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		}
 	}
 
-	// Step 2: provider template lookup.
+	// Provider template lookup.
 	tmpl, err := registry.Get(req.ConnectionSlug)
 	if err != nil {
 		empty.PolicyDecision = "provider_not_found"
 		return empty, err
 	}
 
-	// Step 2b: allowlist enforcement. Mirrors ProcessRunner matching rules:
+	// Allowlist enforcement. Mirrors ProcessRunner matching rules:
 	//   - Exact match:   exe == allowed
 	//   - Dot-suffix:    exe starts with allowed+"." (e.g. "python3.12" matches "python3")
 	//   - Path-suffix:   exe starts with allowed+"/" (e.g. "python3/bin" matches "python3")
@@ -106,7 +106,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, ErrCommandNotAllowed
 	}
 
-	// Step 3: resolve runtime mode.
+	// Resolve runtime mode.
 	resolveReq := runtime.ResolveRequest{
 		RequestedMode:  mode,
 		ConnectionSlug: req.ConnectionSlug,
@@ -117,7 +117,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, err
 	}
 
-	// Step 3b: ephemeral values for local-only fields; unsupported modes stop here.
+	// Ephemeral values for local-only fields; unsupported modes stop here.
 	if req.LocalSession == nil {
 		req.LocalSession = localonly.NewSession()
 	}
@@ -129,7 +129,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 	}
 	req.LocalEnv = localEnv
 
-	// Step 4: driver lookup.
+	// Driver lookup.
 	driver, ok := d.Drivers[string(decision.Mode)]
 	if !ok {
 		empty.Runtime = string(decision.Mode)
@@ -137,7 +137,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, ErrUnknownRuntime
 	}
 
-	// Step 5: delegate to driver.
+	// Delegate to driver.
 	receipt, runErr := driver.Run(ctx, req, tmpl)
 	receipt.Provider = req.ConnectionSlug
 	receipt.Runtime = string(decision.Mode)
