@@ -112,7 +112,9 @@ func TestStub_RegisteredFactoryUnavailable(t *testing.T) {
 
 func TestDefaultDBPath(t *testing.T) {
 	home := t.TempDir()
+	// os.UserHomeDir reads USERPROFILE on Windows and HOME elsewhere.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	p, err := DefaultDBPath()
 	if err != nil {
 		t.Fatalf("DefaultDBPath: %v", err)
@@ -122,6 +124,7 @@ func TestDefaultDBPath(t *testing.T) {
 	}
 
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	if _, err := DefaultDBPath(); err == nil || !strings.Contains(err.Error(), "resolve home") {
 		t.Errorf("empty HOME err = %v", err)
 	}
