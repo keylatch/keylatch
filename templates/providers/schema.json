@@ -89,7 +89,8 @@
           "description": { "type": "string" },
           "required":    { "type": "boolean" },
           "default":     { "type": "string" },
-          "env_var":     { "type": "string" }
+          "env_var":     { "type": "string" },
+          "prefix":      { "type": "boolean", "description": "name is a prefix; any field named <name><suffix> is stored as config" }
         }
       }
     },
@@ -240,7 +241,7 @@
       "required": ["kind", "endpoint"],
       "additionalProperties": false,
       "properties": {
-        "kind":     { "type": "string", "enum": ["http_get", "http_post", "sdk_call"] },
+        "kind":     { "type": "string", "enum": ["http_get", "http_post", "sdk_call", "github_app"] },
         "endpoint": { "type": "string" },
         "expect": {
           "type": "object",

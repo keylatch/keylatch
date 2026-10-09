@@ -1,0 +1,52 @@
+provider: github-app
+display_name: GitHub App
+category: code-hosting
+description: "GitHub App identity. keylatch mint issues installation tokens scoped to one repository; the private key never leaves Keylatch."
+docs_url: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app
+docs:
+  credentials_url: https://github.com/settings/apps
+
+secret_fields:
+  - name: private_key
+    label: App private key (PEM)
+    description: "Supply with -f private_key=@- < app.pem; never on the command line."
+    required: true
+    sensitive: true
+
+config_fields:
+  - name: app_id
+    label: App ID
+    required: true
+  - name: installation_
+    label: Installation ID per owner
+    description: "One field per account the App is installed on: -f installation_<owner>=<installation id>."
+    required: false
+    prefix: true
+
+auth_flow: certificate
+
+storage_path_tpl: "{{.Namespace}}/code-hosting/github-app/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: direct_brokered
+  supported:
+    - direct_brokered
+  runtime_reason: "The private key is never injected into a process; tokens are issued by keylatch mint."
+  gateway_supported: false
+
+capabilities:
+  - name: tokens.mint
+    description: Mint an installation token for one repository with a permission set
+
+redaction:
+  - pattern: 'ghs_[A-Za-z0-9]{36,}'
+    replacement: "****"
+  - pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    replacement: "****"
+
+test_strategy:
+  kind: github_app
+  endpoint: https://api.github.com/app
+  expect:
+    status_code: 200

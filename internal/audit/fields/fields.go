@@ -106,6 +106,11 @@ var safeLogFields = map[string][]string{
 		"provider", "actor_hmac", "token_id", "timestamp",
 		"provider_revocation_attempted", "provider_revocation_succeeded",
 	},
+	// permissions: sorted "name=level" pairs joined by commas.
+	"mint": {
+		"connection", "namespace", "repository", "permissions",
+		"expires_at", "caller_kind", "reason",
+	},
 }
 
 // Redact filters extra map keys against the SafeLogFields allowlist for action.
@@ -161,6 +166,7 @@ func AllActions() []string {
 		"canary.injected",
 		// broker dry-run and token revocation actions.
 		"broker.dry_run_requested", "broker.token_revoked",
+		"mint",
 	}
 }
 

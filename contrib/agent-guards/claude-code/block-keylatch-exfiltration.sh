@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# keylatch-hook-version: 4
+# keylatch-hook-version: 5
 # Layer 2 agent guard — blocks credential-access patterns before the agent's
 # Bash/Read tool calls execute. Layer 1 (CLI-internal GuardLLMSession) still
 # applies even when this hook is not installed.
@@ -164,6 +164,30 @@ function positional_default_literal(w,    p) {
 	return substr(w, p + 1, length(w) - p - 1)
 }
 
+# env followed by a command only runs that command; env with no command
+# prints the environment. Options are accepted only when they can neither
+# print the environment nor re-parse a string as a command (-S does), and
+# -C/--chdir must name an absolute directory. Anything else is blocked.
+function env_segment(tt, tv, tf, j, end, depth,    w) {
+	while (j <= end) {
+		w = tv[j]
+		if (w == "--") { j++; break }
+		if (w == "-" || w == "-i" || w == "--ignore-environment") { j++; continue }
+		if (w == "-u" || w == "--unset") { if (j + 1 > end) return 1; j += 2; continue }
+		if (w ~ /^--unset=[A-Za-z_][A-Za-z0-9_]*$/) { j++; continue }
+		if (w == "-C" || w == "--chdir") {
+			if (j + 1 > end || tv[j + 1] !~ /^\//) return 1
+			j += 2; continue
+		}
+		if (w ~ /^--chdir=\//) { j++; continue }
+		if (w ~ /^-/) return 1
+		break
+	}
+	while (j <= end && tv[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) j++
+	if (j > end) return 1
+	return resolve_segment(tt, tv, tf, j, end, depth)
+}
+
 function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p, payload) {
 	i = start
 	while (i <= end && tt[i] == "WORD" && is_in(RESERVED, tv[i])) i++
@@ -183,7 +207,8 @@ function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p,
 	# depth > 0 (inside a -c/eval payload); allowed bare at top level.
 	if (tf[i] == "A") return 1
 	if (depth > 0 && tf[i] == "D") return 1
-	if (base == "env" || base == "printenv") return 1
+	if (base == "printenv") return 1
+	if (base == "env") return env_segment(tt, tv, tf, i + 1, end, depth)
 	if (is_in(SHELLS, base)) {
 		for (j = i + 1; j <= end; j++) {
 			if (tt[j] == "WORD" && tv[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) {
@@ -304,6 +329,12 @@ Bash)
 	# when env/printenv resolves to command-word position in any segment --
 	# directly, behind an interpreter -c payload, behind eval/exec/command/a
 	# wrapper (sudo, xargs, timeout, ...), or nested up to depth 8.
+	#
+	# `env [-C /abs/dir] [-i] [-u NAME] [NAME=value ...] cmd ...` is allowed:
+	# env only prints the environment when no command follows. The command
+	# after env is analyzed like any other command word, so `env -C /x env`
+	# and `env FOO=1 bash -c env` stay blocked, as do env with no command,
+	# any other env option (-0, -S, -v, ...) and a relative -C directory.
 	#
 	# Why not a regex: command-word position is a property of shell grammar
 	# after quote removal, not of the surrounding characters. A single '

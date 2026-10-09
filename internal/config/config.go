@@ -39,6 +39,34 @@ type Config struct {
 	// raw-credential runtime modes expose a raw provider credential. Gateway
 	// and proxy modes never do. Default: false (fail closed).
 	AllowUnverifiedSession bool `json:"allow_unverified_session,omitempty"`
+
+	// Connections holds per-connection policy keyed by connection name.
+	// Only the operator's default config file is consulted for it.
+	Connections map[string]ConnectionPolicy `json:"connections,omitempty"`
+}
+
+// ConnectionPolicy is the policy attached to one connection.
+type ConnectionPolicy struct {
+	Mint *MintPolicy `json:"mint,omitempty"`
+}
+
+// MintPolicy governs `keylatch mint` for a connection.
+type MintPolicy struct {
+	GitHubApp *GitHubAppMintPolicy `json:"github_app,omitempty"`
+}
+
+// GitHubAppMintPolicy limits the installation tokens a GitHub App
+// connection may mint. internal/policy/mint validates and applies it.
+type GitHubAppMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint ("service", "host",
+	// "human"). Empty means service and host. Agent sessions are never allowed.
+	Callers           []string          `json:"callers,omitempty"`
+	DenyOwners        []string          `json:"deny_owners,omitempty"`
+	AllowOwners       []string          `json:"allow_owners,omitempty"`
+	AllowRepos        []string          `json:"allow_repos,omitempty"`
+	PermissionCeiling map[string]string `json:"permission_ceiling,omitempty"`
+	// MaxTTL is the longest token lifetime in seconds, 1–3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
 }
 
 // CustomModeConfig holds per-feature flags for operating mode "custom".

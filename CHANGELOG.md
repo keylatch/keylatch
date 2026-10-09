@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `keylatch mint <connection> --repo <owner/name> --permission <name>=<level> … --format json` mints a GitHub App installation token for exactly one repository and the listed permissions, and prints `{"token","expires_at","repository","permissions"}`. The App JWT is signed inside Keylatch; the private key never leaves it. Exit codes: 1 usage, 2 agent session or no audit log, 3 policy, 4 store unavailable, 5 GitHub refused or the token was revoked, 6 connection field missing.
+- `github-app` provider template: `private_key` (secret), `app_id` and one `installation_<owner>` field per account the App is installed on. `keylatch connect github-app` tests the connection with a signed App JWT against `GET /app`.
+- Per-connection policy `connections.<name>.mint.github_app` in `config.json`: `callers` (default `service` and `host`), `deny_owners`, `allow_owners`, `allow_repos`, `permission_ceiling` and `max_ttl` (1–3600 seconds, default 3600). A connection without the policy cannot mint.
+- Audit action `mint` with connection, namespace, repository, permissions, `expires_at`, caller kind and, on failure, the reason. The token is never recorded.
+
+### Security
+
+- `keylatch mint` refuses agent sessions, and the mint policy is read only from the operator's default config file (owner-only, not writable by group or others), never from `KEYLATCH_CONFIG` or other overrides. Caller, owner, repository, permission and lifetime checks all run before the key is read, and minting refuses to start without a working audit log.
+- GitHub's reply must name only the requested repository, grant exactly the requested permissions and expire within `max_ttl`; otherwise the token is revoked with `DELETE /installation/token` and mint fails. A token whose audit line cannot be written is revoked too.
+
+### Fixed
+
+- The Claude Code exfiltration guard allows `env` when it runs a command (`env -C /abs/dir cmd`, `env NAME=value cmd`, `env -i`, `env -u NAME`). Bare `env`, `env` with no command, other `env` options (`-0`, `-S`, …), a relative `-C` directory and `printenv` stay blocked, and the command after `env` is checked like any other.
+
 ## [0.9.9] - 2026-10-05
 
 ### Added

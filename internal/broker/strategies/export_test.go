@@ -8,12 +8,13 @@ import (
 	"time"
 )
 
-// NewGitHubAppInstallationStrategyWithURL creates a GitHubAppInstallationStrategy
-// with a custom endpoint URL pattern for testing. urlPattern must be a
-// fmt.Sprintf-compatible string with one %s placeholder for the installation ID.
-func NewGitHubAppInstallationStrategyWithURL(appID, installationID string, key *rsa.PrivateKey, urlPattern string) *GitHubAppInstallationStrategy {
-	s := NewGitHubAppInstallationStrategy(appID, installationID, key)
-	s.endpointFmt = urlPattern
+// NewGitHubAppInstallationStrategyWithAPI creates a GitHubAppInstallationStrategy
+// that talks to apiBase (e.g. an httptest.Server URL) with a fixed clock.
+func NewGitHubAppInstallationStrategyWithAPI(appID, installationID string, key *rsa.PrivateKey, apiBase string, now func() time.Time) *GitHubAppInstallationStrategy {
+	s := NewGitHubAppInstallationStrategy(appID, installationID, key, WithGitHubAPIBase(apiBase))
+	if now != nil {
+		s.now = now
+	}
 	return s
 }
 

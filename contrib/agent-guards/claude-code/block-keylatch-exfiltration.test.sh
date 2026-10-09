@@ -168,7 +168,6 @@ run_case "p9 B: find . | env blocked"                       Bash  "find . | env"
 run_case "p9 B: FOO=bar env blocked"                        Bash  "FOO=bar env"                          2
 run_case "p9 B: FOO=bar BAZ=qux printenv blocked"           Bash  "FOO=bar BAZ=qux printenv"              2
 run_case "p9 B: /usr/bin/env blocked"                       Bash  "/usr/bin/env"                         2
-run_case "p9 B: env NODE_ENV=production npm start blocked"  Bash  "env NODE_ENV=production npm start"    2
 
 # Group C — regressions from the first reviews.
 run_case "p9 C: bash -c 'env' blocked"                       Bash  "bash -c 'env'"                        2
@@ -343,6 +342,39 @@ run_case "p9 L: \${SOME_VAR:-env} (named var default) allowed" Bash '${SOME_VAR:
 # must stay byte-identical to this contrib copy, so the two can never
 # silently drift apart again. PASS-neutral if
 # the internal copy is absent (the contrib directory may be vendored
+# Group M — env running a command does not print the environment, so
+# `env -C <abs dir> cmd` and `env NAME=value cmd` are allowed; env with no
+# command, unknown options and relative directories stay blocked.
+run_case "p9 M: env NODE_ENV=production npm start allowed"      Bash "env NODE_ENV=production npm start"        0
+run_case "p9 M: env -C /abs go test allowed"                    Bash "env -C /home/u/repo go test ./..."         0
+run_case "p9 M: env -C /abs with assignment allowed"            Bash "env -C /home/u/repo GOFLAGS=-race go test" 0
+run_case "p9 M: env --chdir=/abs make allowed"                  Bash "env --chdir=/home/u/repo make check"       0
+run_case "p9 M: env -i PATH=/usr/bin ls allowed"                Bash "env -i PATH=/usr/bin ls"                   0
+run_case "p9 M: env -u HOME -- ls allowed"                      Bash "env -u HOME -- ls"                         0
+run_case "p9 M: VAR=val cmd allowed"                            Bash "GOFLAGS=-count=1 go test ./..."            0
+run_case "p9 M: timeout wrapping env -C allowed"                Bash "timeout 60 env -C /home/u/repo make test"  0
+run_case "p9 M: env -C /abs (no command) blocked"               Bash "env -C /home/u/repo"                       2
+run_case "p9 M: env FOO=bar (no command) blocked"               Bash "env FOO=bar"                               2
+run_case "p9 M: env -i (no command) blocked"                    Bash "env -i"                                    2
+run_case "p9 M: env -u HOME (no command) blocked"               Bash "env -u HOME"                               2
+run_case "p9 M: env -C relative dir blocked"                    Bash "env -C repo ls"                            2
+run_case "p9 M: env -C ~ dir blocked"                           Bash "env -C ~/repo ls"                          2
+run_case "p9 M: env -0 blocked"                                 Bash "env -0"                                    2
+run_case "p9 M: env -S string blocked"                          Bash "env -S 'printenv'"                         2
+run_case "p9 M: env -v cmd blocked (unknown option)"            Bash "env -v ls"                                 2
+run_case "p9 M: env -C /abs env blocked"                        Bash "env -C /home/u/repo env"                   2
+run_case "p9 M: env -C /abs printenv blocked"                   Bash "env -C /home/u/repo printenv HOME"         2
+run_case "p9 M: env FOO=1 bash -c env blocked"                  Bash "env FOO=1 bash -c env"                     2
+run_case "p9 M: env -C /abs sh -c printenv blocked"             Bash "env -C /tmp sh -c 'printenv'"              2
+run_case "p9 M: env env blocked"                                Bash "env env"                                   2
+run_case "p9 M: xargs env -C /abs (no command) blocked"         Bash "find . | xargs env -C /tmp"                2
+run_case "p9 M: ls; env -C /abs blocked"                        Bash "ls; env -C /tmp"                           2
+run_case "p9 M: bash -c 'env -C /abs' blocked"                  Bash "bash -c 'env -C /tmp'"                     2
+run_case "p9 M: bash -c 'env -C /abs ls' allowed"               Bash "bash -c 'env -C /tmp ls'"                  0
+run_case "p9 M: env \$'-S' blocked"                            Bash "env \$'-S' printenv"                      2
+run_case_stdin "stdin p9 M: env -C /abs cmd allowed"            '{"tool_name":"Bash","tool_input":{"command":"env -C /home/u/repo go test ./..."}}' 0
+run_case_stdin "stdin p9 M: env -C /abs blocked"                '{"tool_name":"Bash","tool_input":{"command":"env -C /home/u/repo"}}' 2
+
 # standalone).
 INTERNAL_HOOK="$SCRIPT_DIR/../../../internal/guard/scripts/block-keylatch-exfiltration.sh"
 if [ -f "$INTERNAL_HOOK" ]; then
