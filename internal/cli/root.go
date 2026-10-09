@@ -277,6 +277,7 @@ func Register(root *cobra.Command) {
 	root.AddCommand(newDenyCmd())
 	root.AddCommand(newLaunchCmd())
 	root.AddCommand(newMintCmd())
+	root.AddCommand(newGitCredentialCmd())
 	if isExperimentalEnabled() {
 		registerExperimentalAliases(experimentalGroup, root)
 	}
@@ -713,6 +714,11 @@ func newRunCmd() *cobra.Command {
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", err)
 				os.Exit(exitcode.OperationFailed)
+			}
+
+			if len(tmpl.MintedFields) > 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "keylatch run: connection %q mints its credential; run it through the daemon with 'keylatchd serve' so the child receives a placeholder\n", connectionName)
+				os.Exit(exitcode.UserError)
 			}
 
 			// Track start time for summary.

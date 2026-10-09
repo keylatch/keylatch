@@ -251,11 +251,12 @@ any agent sandbox.`,
 			defer func() { _ = os.Remove(socket) }()
 			fmt.Fprintf(cmd.OutOrStdout(), "keylatchd: listening on %s\n", socket)
 			cfg := control.Config{Env: env, Binary: binary}
-			if mgr, release, err := newPlaceholders(env); err != nil {
+			if mgr, mintCred, release, err := newPlaceholders(env); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: placeholder tier unavailable: %v\n", err)
 			} else {
 				defer release()
 				cfg.Placeholders = mgr
+				cfg.Mint = mintCred
 			}
 			return control.NewServer(cfg).Serve(ctx, ln)
 		},

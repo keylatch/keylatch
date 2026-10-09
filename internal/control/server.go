@@ -20,8 +20,10 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/mintsession"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/placeholder"
+	"github.com/keylatch/keylatch/internal/policy/mint"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -55,6 +57,10 @@ const (
 	execTimeout    = 5 * time.Minute
 )
 
+// MintFunc opens the credential behind a template whose fields Keylatch mints
+// at use time, after checking the request against the connection's policy.
+type MintFunc func(ctx context.Context, kind Kind, rr *RunRequest) (placeholder.Credential, error)
+
 // Config configures a Server.
 type Config struct {
 	Env llmcontext.Lookup
@@ -62,6 +68,9 @@ type Config struct {
 	Binary string
 	// Placeholders serves tier D3. Without it D3 is unavailable.
 	Placeholders *placeholder.Manager
+	// Mint opens the credential behind a template whose fields Keylatch mints
+	// at use time. Without it such templates cannot be served.
+	Mint MintFunc
 }
 
 // Server answers control socket requests.
@@ -152,13 +161,15 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 	case OpExec:
 		_ = writeFrame(conn, s.exec(ctx, kind, req))
 	case OpRunSession:
-		_ = writeFrame(conn, s.runSession(kind, req.Run))
+		_ = writeFrame(conn, s.runSession(ctx, kind, req.Run))
 	case OpGateway:
 		s.gateway(conn, r)
 	case OpProxy:
 		s.proxy(conn, r, req.Proxy)
 	case OpEndSession:
 		_ = writeFrame(conn, s.endSession(kind, req.Proxy))
+	case OpCredential:
+		_ = writeFrame(conn, s.credential(kind, req.Proxy, req.Credential))
 	default:
 		_ = writeFrame(conn, Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError})
 	}
@@ -255,7 +266,7 @@ func (s *Server) childEnv(kind Kind) []string {
 	return env
 }
 
-func (s *Server) runSession(kind Kind, rr *RunRequest) Response {
+func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Response {
 	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
 	if rr == nil || rr.Connection == "" || len(rr.Command) == 0 {
 		resp.Error = "a connection and a command are required"
@@ -269,7 +280,7 @@ func (s *Server) runSession(kind Kind, rr *RunRequest) Response {
 	switch tier {
 	case TierGateway:
 	case TierPlaceholder:
-		return s.placeholderSession(kind, rr)
+		return s.placeholderSession(ctx, kind, rr)
 	case TierRaw:
 		resp.Code, resp.ExitCode = CodeRefused, exitcode.SecurityBlock
 		resp.Error = "tier D6 injects an uncontained secret and is never served over the socket"
@@ -352,7 +363,7 @@ func (s *Server) preferredTier(rr *RunRequest) Tier {
 	return TierGateway
 }
 
-func (s *Server) placeholderSession(kind Kind, rr *RunRequest) Response {
+func (s *Server) placeholderSession(ctx context.Context, kind Kind, rr *RunRequest) Response {
 	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
 	if s.cfg.Placeholders == nil {
 		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.RuntimeNotAvailable
@@ -369,8 +380,23 @@ func (s *Server) placeholderSession(kind Kind, rr *RunRequest) Response {
 		resp.Error = fmt.Sprintf("unknown connection %q", rr.Connection)
 		return resp
 	}
-	sess, err := s.cfg.Placeholders.Open(placeholder.OpenRequest{Template: tmpl, UpstreamProxy: rr.UpstreamProxy})
+	var cred placeholder.Credential
+	if len(tmpl.MintedFields) > 0 {
+		if s.cfg.Mint == nil {
+			resp.Code, resp.ExitCode = CodeUnavailable, exitcode.RuntimeNotAvailable
+			resp.Error = fmt.Sprintf("connection %q mints its credential and the daemon has no minting configured", rr.Connection)
+			return resp
+		}
+		cred, err = s.cfg.Mint(ctx, kind, rr)
+		if err != nil {
+			return mintRefusal(resp, err)
+		}
+	}
+	sess, err := s.cfg.Placeholders.Open(placeholder.OpenRequest{Template: tmpl, UpstreamProxy: rr.UpstreamProxy, Credential: cred})
 	if err != nil {
+		if cred != nil {
+			cred.Close()
+		}
 		if errors.Is(err, placeholder.ErrNoBinding) {
 			resp.Error = fmt.Sprintf("connection %q declares no host bindings, so tier D3 cannot serve it", rr.Connection)
 			return resp
@@ -379,15 +405,60 @@ func (s *Server) placeholderSession(kind Kind, rr *RunRequest) Response {
 		resp.Error = fmt.Sprintf("could not open a placeholder session: %v", err)
 		return resp
 	}
+	env := runner.PlaceholderSessionEnv(tmpl, sess.Placeholders(), "http://"+runner.GatewayAddrPlaceholder)
+	env.Set = append(env.Set, runner.GitCredentialEnv(tmpl, sess.ID())...)
 	return Response{OK: true, Kind: kind, Session: &Session{
 		Tier:       TierPlaceholder,
 		Runtime:    placeholderRuntime,
-		Env:        runner.PlaceholderSessionEnv(tmpl, sess.Placeholders(), "http://"+runner.GatewayAddrPlaceholder),
+		Env:        env,
 		TTLSeconds: int(sess.TTL().Seconds()),
 		ProxyID:    sess.ID(),
 		CAPEM:      string(sess.CAPEM()),
 		CAVars:     runner.CABundleVars,
 	}}
+}
+
+// mintRefusal maps a failure to open a minted credential to a response. The
+// messages name policy and request problems only, never key material.
+func mintRefusal(resp Response, err error) Response {
+	switch {
+	case errors.Is(err, mint.ErrDenied), errors.Is(err, mint.ErrInvalidPolicy):
+		resp.Code, resp.ExitCode = CodeRefused, exitcode.PolicyDeny
+	case errors.Is(err, mintsession.ErrUsage):
+		resp.Code, resp.ExitCode = CodeBadRequest, exitcode.UserError
+	default:
+		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.OperationFailed
+	}
+	resp.Error = err.Error()
+	return resp
+}
+
+// credential answers a git credential helper with the placeholder bound to the
+// session, for hosts the template's git adapter names and nothing else.
+func (s *Server) credential(kind Kind, id string, req *CredentialRequest) Response {
+	resp := Response{OK: true, Kind: kind}
+	if s.cfg.Placeholders == nil || req == nil || req.Protocol != "https" {
+		return resp
+	}
+	sess, ok := s.cfg.Placeholders.Get(id)
+	if !ok || sess.Suspended() {
+		return resp
+	}
+	tmpl, err := registry.Get(sess.Connection())
+	if err != nil || tmpl.Adapter.Kind != registry.AdapterGitCredential {
+		return resp
+	}
+	host := strings.ToLower(req.Host)
+	if !strings.Contains(host, ":") {
+		host += ":443"
+	}
+	if !slices.ContainsFunc(tmpl.Adapter.Hosts, func(h string) bool { return registry.MatchAuthority(h, host) }) {
+		return resp
+	}
+	if pw, ok := sess.Placeholders()[tmpl.Adapter.Field]; ok {
+		resp.Credential = &Credential{Username: tmpl.Adapter.Username, Password: pw}
+	}
+	return resp
 }
 
 // placeholderRuntime is the runtime name reported for tier D3.

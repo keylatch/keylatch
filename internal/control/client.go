@@ -99,6 +99,19 @@ func (c *Client) EndSession(id string) error {
 	return err
 }
 
+// Credential asks the daemon for the placeholder a git credential helper
+// returns for a host. A nil result means the daemon has none to offer.
+func (c *Client) Credential(session string, req CredentialRequest) (*Credential, error) {
+	resp, err := c.roundTrip(Request{Op: OpCredential, Proxy: session, Credential: &req})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Credential, nil
+}
+
+// Socket is the control socket path the client talks to.
+func (c *Client) Socket() string { return c.socket }
+
 // Forward listens on a loopback port in the caller's own network namespace and
 // relays each connection to the gateway through the daemon. The returned
 // address is where a sandboxed child reaches the gateway.

@@ -1,8 +1,18 @@
 package runner
 
 import (
+	"strconv"
+
 	"github.com/keylatch/keylatch/internal/registry"
 )
+
+// BinaryPlaceholder stands for the path of the keylatch executable in a
+// SessionEnv until the process that starts the child fills it in.
+const BinaryPlaceholder = "{keylatch}"
+
+// ProxySessionVar names the placeholder session a credential helper asks the
+// daemon about.
+const ProxySessionVar = "KEYLATCH_PROXY_SESSION"
 
 // CABundleVars name the variables TLS clients read to find extra trusted
 // certificate authorities. A placeholder session points all of them at a
@@ -47,4 +57,29 @@ func PlaceholderSessionEnv(tmpl registry.ConnectionTemplate, placeholders map[st
 			EnvAssign{"KEYLATCH_RUNTIME", "placeholder"},
 		),
 	}
+}
+
+// GitCredentialEnv returns the child environment changes that make git ask
+// keylatch for credentials toward the hosts the template's git adapter names.
+// Helpers configured elsewhere are reset first, so git never falls back to a
+// stored credential, and prompting is disabled.
+func GitCredentialEnv(tmpl registry.ConnectionTemplate, sessionID string) []EnvAssign {
+	if tmpl.Adapter.Kind != registry.AdapterGitCredential {
+		return nil
+	}
+	set := []EnvAssign{
+		{"GIT_CONFIG_COUNT", strconv.Itoa(1 + len(tmpl.Adapter.Hosts))},
+		{"GIT_CONFIG_KEY_0", "credential.helper"},
+		{"GIT_CONFIG_VALUE_0", ""},
+		{"GIT_TERMINAL_PROMPT", "0"},
+		{ProxySessionVar, sessionID},
+	}
+	for i, host := range tmpl.Adapter.Hosts {
+		n := strconv.Itoa(i + 1)
+		set = append(set,
+			EnvAssign{"GIT_CONFIG_KEY_" + n, "credential.https://" + host + ".helper"},
+			EnvAssign{"GIT_CONFIG_VALUE_" + n, "!" + BinaryPlaceholder + " git-credential"},
+		)
+	}
+	return set
 }

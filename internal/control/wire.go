@@ -46,6 +46,8 @@ const (
 	OpProxy Op = "proxy"
 	// OpEndSession revokes a placeholder session.
 	OpEndSession Op = "end_session"
+	// OpCredential asks for the placeholder a git credential helper returns.
+	OpCredential Op = "credential"
 )
 
 // Tier names a delivery tier.
@@ -74,8 +76,22 @@ type Request struct {
 	Ticket string `json:"ticket,omitempty"`
 	// Proxy names the placeholder session an OpProxy or OpEndSession request
 	// addresses.
-	Proxy string      `json:"proxy,omitempty"`
-	Run   *RunRequest `json:"run,omitempty"`
+	Proxy      string             `json:"proxy,omitempty"`
+	Run        *RunRequest        `json:"run,omitempty"`
+	Credential *CredentialRequest `json:"credential,omitempty"`
+}
+
+// CredentialRequest is what a git credential helper knows about the request
+// git is making.
+type CredentialRequest struct {
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+}
+
+// Credential is a username and the placeholder that stands for its password.
+type Credential struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // RunRequest describes a command to run under a connection.
@@ -88,6 +104,10 @@ type RunRequest struct {
 	// UpstreamProxy is the proxy the caller's own environment names. A
 	// placeholder session sends its upstream traffic through it.
 	UpstreamProxy string `json:"upstream_proxy,omitempty"`
+	// Repository and Permissions scope a minted credential: owner/name and
+	// name=level pairs. Empty values select what the connection's policy allows.
+	Repository  string   `json:"repository,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // Session is what the daemon returns for an accepted run request.
@@ -114,6 +134,8 @@ type Response struct {
 	Code     string   `json:"code,omitempty"`
 	Error    string   `json:"error,omitempty"`
 	Session  *Session `json:"session,omitempty"`
+	// Credential answers OpCredential; nil means the daemon has none to offer.
+	Credential *Credential `json:"credential,omitempty"`
 }
 
 const maxFrame = 1 << 20

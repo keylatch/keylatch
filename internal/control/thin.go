@@ -35,7 +35,13 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 		return 0, false
 	}
 	global, verb, rest, ok := splitVerb(args)
-	if !ok || !IsServedVerb(verb) {
+	if !ok {
+		return 0, false
+	}
+	if verb == gitCredentialVerb {
+		return runGitCredential(lookup, rest, streams), true
+	}
+	if !IsServedVerb(verb) {
 		return 0, false
 	}
 	client, err := NewClient(lookup)
@@ -97,9 +103,11 @@ type runArgs struct {
 	tier       Tier
 	clean      bool
 	extra      []string
+	repository string
+	perms      []string
 }
 
-var errRunUsage = errors.New("usage: keylatch run [--runtime <mode>] [--tier <tier>] <connection> -- <command> [args...]")
+var errRunUsage = errors.New("usage: keylatch run [--runtime <mode>] [--tier <tier>] [--repo <owner/name>] [--permission <name>=<level>]... <connection> -- <command> [args...]")
 
 func parseRunArgs(args []string) (runArgs, error) {
 	var ra runArgs
@@ -135,6 +143,18 @@ func parseRunArgs(args []string) (runArgs, error) {
 				return ra, err
 			}
 			ra.tier = Tier(strings.ToUpper(v))
+		case name == "--repo":
+			v, err := valueOf(&i, name, a)
+			if err != nil {
+				return ra, err
+			}
+			ra.repository = v
+		case name == "--permission":
+			v, err := valueOf(&i, name, a)
+			if err != nil {
+				return ra, err
+			}
+			ra.perms = append(ra.perms, v)
 		case name == "--extra":
 			v, err := valueOf(&i, name, a)
 			if err != nil {
@@ -187,6 +207,8 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 		Command:       ra.command,
 		CWD:           cwd,
 		UpstreamProxy: callerProxy(lookup),
+		Repository:    ra.repository,
+		Permissions:   ra.perms,
 	})
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: daemon: %v\n", err)
@@ -217,6 +239,18 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 	defer stop()
 
 	session := sess.Env
+	if helper := self(); helper != "" {
+		usesHelper := false
+		for i := range session.Set {
+			if strings.Contains(session.Set[i].Value, runner.BinaryPlaceholder) {
+				session.Set[i].Value = strings.ReplaceAll(session.Set[i].Value, runner.BinaryPlaceholder, shellQuote(helper))
+				usesHelper = true
+			}
+		}
+		if usesHelper {
+			session.Set = append(session.Set, runner.EnvAssign{Name: "KEYLATCH_SOCKET", Value: c.Socket()})
+		}
+	}
 	for i := range session.Set {
 		session.Set[i].Value = strings.ReplaceAll(session.Set[i].Value, runner.GatewayAddrPlaceholder, addr)
 	}
@@ -252,4 +286,17 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 		return 127
 	}
 	return 0
+}
+
+// self is the path of the running keylatch executable.
+func self() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return exe
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

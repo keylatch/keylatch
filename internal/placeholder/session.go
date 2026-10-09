@@ -22,6 +22,17 @@ type OpenRequest struct {
 	// session sends its upstream connections through it, so the host sandbox's
 	// network policy stays authoritative for where traffic may go.
 	UpstreamProxy string
+	// Credential supplies the session's values instead of the Manager's
+	// Resolver, for fields Keylatch produces at use time. The session closes it
+	// when it ends.
+	Credential Credential
+}
+
+// Credential supplies and later wipes the values of one session.
+type Credential interface {
+	// Value returns a fresh copy of the field's current value; the caller wipes it.
+	Value(ctx context.Context, field string) ([]byte, error)
+	Close()
 }
 
 // entry is one placeholder and what it is bound to.
@@ -38,6 +49,7 @@ type Session struct {
 	connection string
 	binding    registry.Binding
 	cfg        Config
+	credential Credential
 	ca         *sessionCA
 	entries    []*entry
 	finder     *finder
@@ -125,6 +137,7 @@ func (m *Manager) Open(req OpenRequest) (*Session, error) {
 		connection: req.Template.Provider,
 		binding:    b,
 		cfg:        m.cfg,
+		credential: req.Credential,
 		ca:         ca,
 		entries:    entries,
 		finder:     newFinder(values),
@@ -178,6 +191,9 @@ func (m *Manager) Close() {
 	}
 }
 
+// Connection is the provider the session substitutes credentials for.
+func (s *Session) Connection() string { return s.connection }
+
 // ID identifies the session on the control socket.
 func (s *Session) ID() string { return s.id }
 
@@ -226,6 +242,9 @@ func (s *Session) Close(reason string) {
 	}
 	s.transport.CloseIdleConnections()
 	s.ca.wipe()
+	if s.credential != nil {
+		s.credential.Close()
+	}
 	if s.onClose != nil {
 		s.onClose(s)
 	}

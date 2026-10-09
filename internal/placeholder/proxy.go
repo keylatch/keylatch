@@ -573,7 +573,13 @@ func (s *Session) checkBody(w http.ResponseWriter, r *http.Request, host string)
 }
 
 func (s *Session) resolve(ctx context.Context, field string) (string, error) {
-	val, err := s.cfg.Resolver.Resolve(ctx, s.connection, field)
+	var val []byte
+	var err error
+	if s.credential != nil {
+		val, err = s.credential.Value(ctx, field)
+	} else {
+		val, err = s.cfg.Resolver.Resolve(ctx, s.connection, field)
+	}
 	if err != nil {
 		return "", err
 	}
