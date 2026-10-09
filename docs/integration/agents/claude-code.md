@@ -65,6 +65,26 @@ After installation, the settings file contains:
 
 The hook script exits non-zero when it detects credential exfiltration patterns (e.g. `keylatch get`, `security find-generic-password`, `op read`, `cat .env`), causing Claude Code to block the tool call before it executes.
 
+## Never exclude keylatch from the sandbox
+
+Claude Code's sandbox can exempt commands through `sandbox.excludedCommands`. Do not list `keylatch` there, in user, project or local settings.
+
+A command in `excludedCommands` runs outside the sandbox, and so does everything it launches. With `keylatch run:*` excluded, `keylatch run <connection> -- pnpm test` starts `pnpm test`, and every test, build script and `postinstall` hook it triggers, as your user with no filesystem or network limits. That process can read `~/.keylatch`, `~/.ssh`, browser profiles and every other credential store. The injected credential is the smallest part of what is exposed, and the exfiltration guard does not help because it judges the inner command as if it were sandboxed.
+
+Remove the entries:
+
+```json
+{
+  "sandbox": {
+    "excludedCommands": []
+  }
+}
+```
+
+Delete every `keylatch ...` pattern from the list and keep unrelated entries. Agents use `keylatch call`, which has no child process. Run `keylatch run` yourself in a terminal (or with `! keylatch run <connection> -- <command>` from the Claude Code prompt).
+
+`keylatch doctor` reads the user (`~/.claude/settings.json`, or `$CLAUDE_CONFIG_DIR/settings.json`), project (`.claude/settings.json`) and local (`.claude/settings.local.json`) settings. The `host.sandbox.keylatch_excluded` check fails when an entry covers `keylatch run` (`keylatch`, `keylatch:*`, `keylatch run:*`, with or without an absolute path) and prints the file and entries to remove. Entries that exclude only other subcommands produce a warning.
+
 ## `CREDENTIALS_LLM_SESSION` signal
 
 `CREDENTIALS_LLM_SESSION` is the generic LLM session signal. Setting it to any non-empty value activates all Keylatch LLM-session guards, regardless of which agent is running.

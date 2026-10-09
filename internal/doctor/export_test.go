@@ -23,3 +23,13 @@ func ExportCheckPlaintextRetention(env llmcontext.Lookup) Check {
 func ExportCheckNoConnections(env llmcontext.Lookup) Check {
 	return checkNoConnections(env)
 }
+
+// ExportCheckHostSandboxKeylatchExcluded exposes checkHostSandboxKeylatchExcluded for unit tests.
+func ExportCheckHostSandboxKeylatchExcluded(lookup llmcontext.Lookup) Check {
+	return checkHostSandboxKeylatchExcluded(lookup)
+}
+
+// ExportMatchKeylatchExclusion exposes matchKeylatchExclusion for unit tests.
+func ExportMatchKeylatchExclusion(pattern string) (bool, bool) {
+	return matchKeylatchExclusion(pattern)
+}
