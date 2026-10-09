@@ -84,6 +84,12 @@ if [ -z "$TOOL_NAME" ] && [ ! -t 0 ]; then
 		fi
 	fi
 fi
+# jq.exe on Windows ends lines with CRLF; a trailing CR would keep every
+# extracted path from matching.
+TOOL_NAME="${TOOL_NAME//$'\r'/}"
+TOOL_COMMAND="${TOOL_COMMAND//$'\r'/}"
+TOOL_FILES="${TOOL_FILES//$'\r'/}"
+TOOL_INPUT="${TOOL_INPUT//$'\r'/}"
 [ -n "$TOOL_COMMAND" ] || TOOL_COMMAND="$TOOL_INPUT"
 
 case "$TOOL_NAME" in
@@ -166,6 +172,17 @@ norm_path() {
 	printf '%s' "$p"
 }
 
+# resolve_path normalizes a path and, where realpath exists, resolves
+# symlinks and Windows short names, so both sides of a comparison agree.
+resolve_path() {
+	local p
+	p="$(norm_path "$1")"
+	if command -v realpath >/dev/null 2>&1; then
+		p="$(norm_path "$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")")"
+	fi
+	printf '%s' "${p%/}"
+}
+
 path_denied() {
 	local p="$1" d prot home
 	# shellcheck disable=SC2088
@@ -173,14 +190,8 @@ path_denied() {
 	"~") p="$HOME" ;;
 	"~/"*) p="$HOME/${p#"~/"}" ;;
 	esac
-	p="$(norm_path "$p")"
-	if command -v realpath >/dev/null 2>&1; then
-		p="$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")"
-		p="$(norm_path "$p")"
-	fi
-	p="${p%/}"
-	home="$(norm_path "$HOME")"
-	home="${home%/}"
+	p="$(resolve_path "$p")"
+	home="$(resolve_path "$HOME")"
 	for d in $PROTECTED_PATHS; do
 		prot="$home/$d"
 		case "$p/" in "$prot"/*) return 0 ;; esac
