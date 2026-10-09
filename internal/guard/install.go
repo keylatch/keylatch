@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -256,12 +257,19 @@ func harnessConfigPath(agent Agent, home string) string {
 }
 
 // hookCommand is the command line a harness runs for the guard. Claude Code
-// is the script's default harness and takes the bare path.
+// is the script's default harness and takes the bare path. On Windows the
+// harness hands the line to a shell that drops backslashes and cannot run a
+// .sh file directly, so the script runs through bash with a quoted
+// forward-slash path.
 func hookCommand(agent Agent, scriptPath string) string {
-	if agent == AgentClaudeCode {
-		return scriptPath
+	command := scriptPath
+	if runtime.GOOS == "windows" {
+		command = `bash "` + filepath.ToSlash(scriptPath) + `"`
 	}
-	return scriptPath + " --harness " + string(agent)
+	if agent == AgentClaudeCode {
+		return command
+	}
+	return command + " --harness " + string(agent)
 }
 
 // addHarnessHook registers the guard in the harness's own hooks schema and
