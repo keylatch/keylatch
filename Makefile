@@ -51,10 +51,8 @@ test-canary-meta:
 ## test-hook: run agent-guard hook tests
 test-hook:
 	bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh --verbose
-	bash contrib/agent-guards/aider/block-keylatch-exfiltration.test.sh
-	bash contrib/agent-guards/copilot/block-keylatch-exfiltration.test.sh
-	bash contrib/agent-guards/cursor/block-keylatch-exfiltration.test.sh
-	bash contrib/agent-guards/windsurf/block-keylatch-exfiltration.test.sh
+	bash contrib/agent-guards/harness-contract.test.sh
+	bash contrib/agent-guards/deny-corpus.test.sh
 
 ## test-prop: run property-based tests in internal/vault
 test-prop:

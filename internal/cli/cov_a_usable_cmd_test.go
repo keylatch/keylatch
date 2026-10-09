@@ -52,7 +52,7 @@ func TestUsableReason_UnknownProvider_InLLMSession(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// install_guard_cmd.go — runInstallGuardList, runInstallGuard (windsurf/antigravity paths)
+// install_guard_cmd.go — runInstallGuardList, runInstallGuard
 // ---------------------------------------------------------------------------
 
 func TestRunInstallGuardList(t *testing.T) {
@@ -79,40 +79,6 @@ func TestRunInstallGuardList(t *testing.T) {
 	}
 }
 
-func TestRunInstallGuard_Windsurf_PrintsInstructions(t *testing.T) {
-	t.Parallel()
-	cmd := newInstallGuardCmd()
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	if err := runInstallGuard(cmd, "windsurf", false); err != nil {
-		t.Fatalf("runInstallGuard windsurf error: %v", err)
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "CREDENTIALS_LLM_SESSION=windsurf") {
-		t.Errorf("windsurf instructions must contain CREDENTIALS_LLM_SESSION=windsurf, got: %q", out)
-	}
-}
-
-func TestRunInstallGuard_Antigravity_PrintsInstructions(t *testing.T) {
-	t.Parallel()
-	cmd := newInstallGuardCmd()
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	if err := runInstallGuard(cmd, "antigravity", false); err != nil {
-		t.Fatalf("runInstallGuard antigravity error: %v", err)
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "CREDENTIALS_LLM_SESSION=antigravity") {
-		t.Errorf("antigravity instructions must contain CREDENTIALS_LLM_SESSION=antigravity, got: %q", out)
-	}
-}
-
 func TestRunInstallGuard_UnknownAgent_Error(t *testing.T) {
 	t.Parallel()
 	cmd := newInstallGuardCmd()
@@ -130,7 +96,9 @@ func TestRunInstallGuard_UnknownAgent_Error(t *testing.T) {
 }
 
 func TestRunInstallGuard_AliasNormalisation_ClaudeCode(t *testing.T) {
-	t.Parallel()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	// "claude_code" should be normalised to "claude-code".
 	// We only verify the error doesn't say "unknown agent" — actual install
 	// may fail in test env but must not be rejected as unknown.

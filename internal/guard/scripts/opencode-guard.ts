@@ -12,6 +12,11 @@ export default async () => ({
       /bw\s+get/,
       /\.keylatch\/keylatch\.keychain-db/,
       /cat\s+.*\.keylatch\/config\.yaml/,
+      /(^|[\s'"])direnv\s+(export|dump)\b/,
+      /(^|[\s'"])direnv\s+exec\s+\S+\s+(env|printenv)\b/,
+      /(^|[\s'"])mise\s+(env|e)\b/,
+      /(^|[\s'"])mise\s+(exec|x)\b.*--\s+(env|printenv)\b/,
+      /(^|[\s'"])atuin\s+(search|history)\b/,
     ];
     if (blocked.some((p) => p.test(cmd))) {
       throw new Error(

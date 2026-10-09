@@ -1,51 +1,118 @@
 #!/usr/bin/env bash
 # keylatch-hook-version: 5
-# Layer 2 agent guard — blocks credential-access patterns before the agent's
-# Bash/Read tool calls execute. Layer 1 (CLI-internal GuardLLMSession) still
-# applies even when this hook is not installed.
+# Layer 2 agent guard: blocks credential-access patterns before an agent's
+# shell or file-read tool call executes. One script serves every supported
+# harness; `--harness <id>` selects the stdin payload shape and the deny
+# contract. Layer 1 (CLI-internal GuardLLMSession) still applies when this
+# hook is not installed.
 #
-# v4 note: patterns 2, 3, 4, 5, 7, 8 retain their v3 quote-awareness (a
-# `bash -c '...'` / `sh -c "..."` wrapper cannot evade the whitespace
-# command-boundary check). Pattern 9 (env/printenv) is replaced by a
-# structural tokenizing analyzer (awk, see P9_AWK below) instead of a regex
-# -- see the comment above pattern 9 for the design and the accepted gaps.
+# Deny contract: exit 2 (exit 1 fails open in most harnesses) with the reason
+# on stderr, plus the harness's deny JSON on stdout where one is documented.
 #
-# Claude Code delivers the tool call as JSON on stdin:
-#   {"tool_name": "Bash", "tool_input": {"command": "..."}}
-# The CLAUDE_TOOL_NAME / CLAUDE_TOOL_INPUT environment variables are honoured
-# as a legacy fallback for older harnesses and the test suite.
+#   claude-code, codex  hookSpecificOutput.permissionDecision = deny
+#   copilot             permissionDecision = deny
+#   gemini, antigravity decision = deny
+#   cursor              permission = deny
+#   windsurf            exit 2 only
+#
+# Payloads (JSON on stdin):
+#   claude-code, codex  {"tool_name":"Bash","tool_input":{"command":"..."}}
+#   gemini              {"tool_name":"run_shell_command","tool_input":{"command":"..."}}
+#   cursor              {"command":"..."} (beforeShellExecution) or
+#                       {"tool_name":"Shell","tool_input":{"command":"..."}}
+#   windsurf            {"tool_info":{"command_line":"..."}}
+#   antigravity         {"toolCall":{"name":"run_command","args":{"CommandLine":"..."}}}
+#   copilot             {"tool_name":"Bash","tool_input":{...}} or
+#                       {"toolName":"bash","toolArgs":"{\"command\":\"...\"}"}
+# CLAUDE_TOOL_NAME / CLAUDE_TOOL_INPUT are honoured as a legacy fallback for
+# older harnesses and the test suite.
 set -euo pipefail
+
+HARNESS="claude-code"
+if [ "${1:-}" = "--harness" ]; then
+	HARNESS="${2:-}"
+fi
+case "$HARNESS" in
+claude-code | codex | gemini | cursor | windsurf | copilot | antigravity) ;;
+*)
+	echo "[hook/keylatch] unknown harness: ${HARNESS}" >&2
+	exit 2
+	;;
+esac
 
 TOOL_NAME="${CLAUDE_TOOL_NAME:-}"
 TOOL_INPUT="${CLAUDE_TOOL_INPUT:-}"
-# TOOL_COMMAND: a dedicated command string for pattern 9's structural
-# analyzer. TOOL_INPUT above may be the raw JSON blob (no-jq fallback) or a
-# file_path (Read tool) -- neither is a safe thing to feed to a shell-word
-# tokenizer. TOOL_COMMAND is always either the real command string or empty.
+# TOOL_COMMAND: a dedicated command string for the structural analyzer.
+# TOOL_INPUT may be the raw JSON blob (no-jq fallback) or a file path -- neither
+# is a safe thing to feed to a shell-word tokenizer.
 TOOL_COMMAND=""
+
+# shellcheck disable=SC2016
+JQ_COMMAND='def args: ((.toolArgs // empty) | if type == "string" then (try fromjson catch {}) else . end);
+	(.tool_input.command // .tool_input.cmd // .command // .tool_info.command_line // .toolCall.args.CommandLine // args.command // empty)
+	| if type == "string" then . else empty end'
+# shellcheck disable=SC2016
+JQ_FILE='def args: ((.toolArgs // empty) | if type == "string" then (try fromjson catch {}) else . end);
+	(.tool_input.file_path // .tool_input.absolute_path // .tool_input.path // .file_path // .tool_info.file_path // args.path // .toolCall.args.AbsolutePath // empty)
+	| if type == "string" then . else empty end'
 
 if [ -z "$TOOL_NAME" ] && [ ! -t 0 ]; then
 	STDIN_JSON="$(cat 2>/dev/null || true)"
 	if [ -n "$STDIN_JSON" ]; then
 		if command -v jq >/dev/null 2>&1; then
-			TOOL_NAME="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_name // empty' 2>/dev/null || true)"
-			TOOL_INPUT="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_input | if type == "object" then (.command // .file_path // tojson) else tostring end' 2>/dev/null || true)"
-			TOOL_COMMAND="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
+			TOOL_NAME="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_name // .toolName // .toolCall.name // empty' 2>/dev/null || true)"
+			TOOL_COMMAND="$(printf '%s' "$STDIN_JSON" | jq -r "$JQ_COMMAND" 2>/dev/null || true)"
+			TOOL_FILE="$(printf '%s' "$STDIN_JSON" | jq -r "$JQ_FILE" 2>/dev/null || true)"
+			TOOL_INPUT="${TOOL_COMMAND:-$TOOL_FILE}"
+			[ -n "$TOOL_INPUT" ] || TOOL_INPUT="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_input // empty | tojson' 2>/dev/null || true)"
 		else
-			# No jq: extract tool_name crudely and match patterns against the
-			# raw JSON. May over-block; never under-blocks.
-			TOOL_NAME="$(printf '%s' "$STDIN_JSON" | sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+			# No jq: extract crudely and match patterns against the raw JSON.
+			# May over-block; never under-blocks.
+			TOOL_NAME="$(printf '%s' "$STDIN_JSON" | sed -n 's/.*"\(tool_name\|toolName\|name\)"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\2/p' | head -n 1)"
 			TOOL_INPUT="$STDIN_JSON"
 			# Greedy capture is deliberate: over-capture keeps the "may
 			# over-block, never under-block" property of this branch.
-			TOOL_COMMAND="$(printf '%s' "$STDIN_JSON" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g')"
+			TOOL_COMMAND="$(printf '%s' "$STDIN_JSON" | sed -n 's/.*"\(command\|command_line\|CommandLine\)"[[:space:]]*:[[:space:]]*"\(.*\)".*/\2/p' | sed 's/\\"/"/g; s/\\\\/\\/g')"
+			if [ -n "$TOOL_COMMAND" ] && [ -z "$TOOL_NAME" ]; then TOOL_NAME="Bash"; fi
 		fi
 	fi
 fi
 [ -n "$TOOL_COMMAND" ] || TOOL_COMMAND="$TOOL_INPUT"
 
+case "$TOOL_NAME" in
+Bash | bash | Shell | shell | run_shell_command | run_command) TOOL_KIND="Bash" ;;
+Read | read_file | read_many_files | view_file | ReadFile) TOOL_KIND="Read" ;;
+"") if [ -n "$TOOL_COMMAND" ]; then TOOL_KIND="Bash"; else TOOL_KIND=""; fi ;;
+*) TOOL_KIND="" ;;
+esac
+
+deny_json() {
+	case "$HARNESS" in
+	claude-code | codex)
+		printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$1"
+		;;
+	copilot)
+		printf '{"permissionDecision":"deny","permissionDecisionReason":"%s"}\n' "$1"
+		;;
+	gemini | antigravity)
+		printf '{"decision":"deny","reason":"%s"}\n' "$1"
+		;;
+	cursor)
+		printf '{"permission":"deny","user_message":"%s","agent_message":"%s"}\n' "$1" "$1"
+		;;
+	esac
+}
+
+allow_json() {
+	case "$HARNESS" in
+	gemini | antigravity) printf '{"decision":"allow"}\n' ;;
+	cursor) printf '{"permission":"allow"}\n' ;;
+	esac
+}
+
 block() {
 	echo "[hook/keylatch] Blocked: $1" >&2
+	deny_json "[hook/keylatch] Blocked: $1"
 	exit 2
 }
 
@@ -209,6 +276,36 @@ function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p,
 	if (depth > 0 && tf[i] == "D") return 1
 	if (base == "printenv") return 1
 	if (base == "env") return env_segment(tt, tv, tf, i + 1, end, depth)
+	if (base == "direnv") {
+		j = i + 1
+		while (j <= end && tv[j] ~ /^-/) j++
+		if (j > end) return 0
+		if (tv[j] == "export" || tv[j] == "dump") return 1
+		if (tv[j] == "exec" && j + 2 <= end) return resolve_segment(tt, tv, tf, j + 2, end, depth)
+		return 0
+	}
+	if (base == "mise") {
+		j = i + 1
+		while (j <= end && tv[j] ~ /^-/) j++
+		if (j > end) return 0
+		if (tv[j] == "env" || tv[j] == "e") return 1
+		if (tv[j] == "set" && j == end) return 1
+		if (tv[j] == "exec" || tv[j] == "x") {
+			for (k = j + 1; k <= end; k++) {
+				if (tv[k] == "--") {
+					if (k + 1 <= end) return resolve_segment(tt, tv, tf, k + 1, end, depth)
+					return 0
+				}
+			}
+		}
+		return 0
+	}
+	if (base == "atuin") {
+		j = i + 1
+		while (j <= end && tv[j] ~ /^-/) j++
+		if (j <= end && (tv[j] == "search" || tv[j] == "history")) return 1
+		return 0
+	}
 	if (is_in(SHELLS, base)) {
 		for (j = i + 1; j <= end; j++) {
 			if (tt[j] == "WORD" && tv[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) {
@@ -280,7 +377,9 @@ END {
 }
 '
 
-case "$TOOL_NAME" in
+HISTORY_PATHS="(\.local/share/atuin|(^|[/[:space:]'\"])\.[A-Za-z0-9_]*_history([[:space:]'\"]|$))"
+
+case "$TOOL_KIND" in
 Bash)
 	# pattern 1: keylatch get without --masked
 	# Allow quotes around command (SEC3 quoting variants).
@@ -388,7 +487,12 @@ Bash)
 	#   - Unbalanced quotes are allowed, not blocked: the real shell would
 	#     reject the command too, so nothing executes.
 	if printf '%s' "$TOOL_COMMAND" | awk "$P9_AWK" | grep -q '^BLOCK$'; then
-		block "env/printenv is disabled in LLM sessions to prevent token exfiltration"
+		block "env/printenv and env/history managers (direnv, mise, atuin) are disabled in LLM sessions to prevent token exfiltration"
+	fi
+
+	# pattern 10: shell history files and atuin's database
+	if echo "$TOOL_INPUT" | grep -qE "$HISTORY_PATHS"; then
+		block "shell history and atuin data are disabled in LLM sessions"
 	fi
 	;;
 
@@ -398,7 +502,11 @@ Read)
 	if echo "$TOOL_INPUT" | grep -qE '(^|/)\.keylatch/'; then
 		block "direct Read of ~/.keylatch/ is disabled in LLM sessions"
 	fi
+	if echo "$TOOL_INPUT" | grep -qE "$HISTORY_PATHS"; then
+		block "shell history and atuin data are disabled in LLM sessions"
+	fi
 	;;
 esac
 
+allow_json
 exit 0
