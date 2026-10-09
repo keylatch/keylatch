@@ -29,22 +29,32 @@ func runManagerCLI(name string, args []string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), subprocessTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: name is always a literal manager-CLI name ("op", "bw", "security"), not user input
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &limitedWriter{buf: &stdout, max: maxSubprocessOutput}
-	cmd.Stderr = &limitedWriter{buf: &stderr, max: maxSubprocessOutput}
-
-	err := cmd.Run()
+	stdout, stderr, err := runBounded(ctx, nil, name, args...)
 	if ctx.Err() == context.DeadlineExceeded {
 		return nil, fmt.Errorf("%s: timed out after %s", name, subprocessTimeout)
 	}
 	if err != nil {
-		if stderr.Len() > 0 {
-			return nil, fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(stderr.String()))
+		if len(stderr) > 0 {
+			return nil, fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(string(stderr)))
 		}
 		return nil, err
 	}
-	return stdout.Bytes(), nil
+	return stdout, nil
+}
+
+// runBounded runs name with args under ctx, feeding stdin when non-nil, and
+// captures stdout and stderr up to maxSubprocessOutput each. It never invokes
+// a shell.
+func runBounded(ctx context.Context, stdin []byte, name string, args ...string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: name is a resolved manager or keyring binary, never user input
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &limitedWriter{buf: &stdout, max: maxSubprocessOutput}
+	cmd.Stderr = &limitedWriter{buf: &stderr, max: maxSubprocessOutput}
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 // limitedWriter caps total bytes written before returning an error, bounding

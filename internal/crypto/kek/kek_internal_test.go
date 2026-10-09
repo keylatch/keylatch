@@ -591,6 +591,31 @@ func TestRunManagerCLI_BoundsOutput(t *testing.T) {
 	}
 }
 
+func TestExecIdentityRunner_BoundsOutput(t *testing.T) {
+	// Not t.Parallel(): mutates the package-level maxSubprocessOutput var.
+	orig := maxSubprocessOutput
+	maxSubprocessOutput = 1024
+	defer func() { maxSubprocessOutput = orig }()
+
+	bin := writeFakeManagerCLI(t, "secret-tool", "head -c 4096 /dev/zero\n")
+	_, _, err := execIdentityRunner(context.Background(), nil, bin)
+	if err == nil || !strings.Contains(err.Error(), "byte limit") {
+		t.Fatalf("expected an output-limit error for a 4KiB payload against a 1KiB bound, got %v", err)
+	}
+}
+
+func TestExecIdentityRunner_PassesStdin(t *testing.T) {
+	t.Parallel()
+	bin := writeFakeManagerCLI(t, "secret-tool", "cat\n")
+	out, _, err := execIdentityRunner(context.Background(), []byte("identity-bytes"), bin)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(out) != "identity-bytes" {
+		t.Errorf("stdout = %q, want the stdin bytes echoed back", out)
+	}
+}
+
 func TestRunManagerCLI_SuccessWithinBounds(t *testing.T) {
 	t.Parallel()
 	bin := writeFakeManagerCLI(t, "op", "printf hello\n")

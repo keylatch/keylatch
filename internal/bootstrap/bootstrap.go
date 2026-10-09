@@ -12,6 +12,7 @@ package bootstrap
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -37,11 +38,17 @@ type Options struct {
 	// Confirm is set to true (for tests).
 	Force   bool
 	Confirm bool // skip the [y/N] prompt when Force=true
+	// InsecureFileKEK keeps the vault identity in a plaintext file next to
+	// the vault instead of an OS keyring. KEYLATCH_INSECURE_FILE_KEK=1 is
+	// equivalent.
+	InsecureFileKEK bool
+	// IdentityStore overrides the OS keyring; nil selects the platform default.
+	IdentityStore kek.IdentityStore
 }
 
 // PlanStep describes a single action that bootstrap will take (or skipped as noop).
 type PlanStep struct {
-	Action string      // "mkdir" | "writeFile" | "chmod" | "noop"
+	Action string      // "mkdir" | "writeFile" | "keyringStore" | "acknowledge" | "noop"
 	Path   string      // absolute path
 	Mode   os.FileMode // target permission
 	Reason string      // human-readable description
@@ -166,22 +173,20 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 	if backendName == "file" {
 		krDir := paths.KeyringDir(env)
 		krPath := paths.KeyringPath(env)
-		identityPath := paths.KeyringIdentityPath(env)
+		store := opts.IdentityStore
+		if store == nil {
+			store = kek.DefaultIdentityStore()
+		}
+		vi := kek.VaultIdentity{Path: paths.KeyringIdentityPath(env), Store: store}
+		insecure := opts.InsecureFileKEK || kek.InsecureFileKEKRequested(env)
 
-		// Step 5: create keyring directory.
 		if err := planMkdir(&plan, krDir, opts.DryRun); err != nil {
 			return plan, fmt.Errorf("keyring dir: %w", err)
 		}
-
-		// Step 6: create the age-env identity file if it does not exist.
-		// If --force is set, the existing identity file is removed before recreating.
-		if err := planWriteIdentity(&plan, identityPath, opts.DryRun, opts.Force); err != nil {
-			return plan, fmt.Errorf("keyring identity: %w", err)
+		if err := planIdentity(&plan, vi, insecure, opts.DryRun, opts.Force); err != nil {
+			return plan, fmt.Errorf("vault identity: %w", err)
 		}
-
-		// Step 7: create keyring.json if it does not exist.
-		// If --force is set, the existing keyring is removed before recreating.
-		if err := planWriteKeyring(&plan, krPath, identityPath, opts.DryRun, opts.Force); err != nil {
+		if err := planWriteKeyring(&plan, krPath, vi, opts.DryRun, opts.Force); err != nil {
 			return plan, fmt.Errorf("keyring: %w", err)
 		}
 	}
@@ -189,61 +194,122 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 	return plan, nil
 }
 
-// planWriteIdentity creates a random age-env identity file at path.
-// On macOS the keychain is the preferred KEK source; the identity file is the
-// portable fallback for environments without a platform keystore.
-// When force is true, an existing identity file is removed before recreating.
-func planWriteIdentity(plan *Plan, path string, dryRun, force bool) error {
-	exists, err := fileExists(path)
+const insecureFileKEKWarning = "INSECURE: the vault key is stored in plaintext at %s. Any process running as your user can copy it and decrypt the vault offline. Use an OS keyring (macOS Keychain or a Secret Service such as GNOME Keyring/KWallet) and rerun `keylatch bootstrap` without --insecure-file-kek to move it there."
+
+const noKeyringHint = "rerun with --insecure-file-kek (or KEYLATCH_INSECURE_FILE_KEK=1) to keep the vault key in a plaintext file next to the vault; any process running as your user can then decrypt the vault"
+
+// planIdentity provisions the vault identity, preferring the OS keyring, and
+// moves a plaintext identity from an older install into the keyring.
+func planIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, force bool) error {
+	loc, onDisk, err := vi.Location()
 	if err != nil {
 		return err
 	}
-	if exists && !force {
-		plan.Steps = append(plan.Steps, PlanStep{
-			Action: "noop",
-			Path:   path,
-			Mode:   0o600,
-			Reason: "keyring identity file already exists",
-			Done:   true,
-		})
+	removed := false
+	if force && loc != kek.IdentityMissing {
+		if !dryRun {
+			if err := vi.Remove(); err != nil {
+				return fmt.Errorf("remove existing identity: %w", err)
+			}
+		}
+		loc, onDisk, removed = kek.IdentityMissing, false, true
+	}
+
+	switch loc {
+	case kek.IdentityMissing:
+		return planProvisionIdentity(plan, vi, insecure, dryRun, removed)
+
+	case kek.IdentityInKeyring:
+		if onDisk && !dryRun {
+			if _, err := vi.MigrateToKeyring(); err != nil {
+				plan.Warnings = append(plan.Warnings, fmt.Sprintf("a plaintext vault identity remains at %s: %v", vi.Path, err))
+			}
+		}
+		plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.RefPath(), Mode: 0o600, Reason: "vault identity is held in the OS keyring", Done: true})
+		return nil
+
+	case kek.IdentityInFileAcknowledged:
+		if insecure {
+			plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.Path, Mode: 0o600, Reason: "plaintext vault identity (--insecure-file-kek)", Done: true})
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
+			return nil
+		}
+		return planMigrateIdentity(plan, vi, dryRun)
+
+	default: // kek.IdentityInFileUnacknowledged
+		if insecure {
+			if !dryRun {
+				if err := vi.Acknowledge(); err != nil {
+					return fmt.Errorf("record --insecure-file-kek: %w", err)
+				}
+			}
+			plan.Steps = append(plan.Steps, PlanStep{Action: "acknowledge", Path: vi.InsecureMarkerPath(), Mode: 0o600, Reason: "record opt-in to the plaintext vault identity", Done: !dryRun})
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
+			return nil
+		}
+		return planMigrateIdentity(plan, vi, dryRun)
+	}
+}
+
+func planProvisionIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, replaced bool) error {
+	if insecure {
+		if !dryRun {
+			if err := vi.Provision(true); err != nil {
+				return err
+			}
+		}
+		reason := "create plaintext vault identity (--insecure-file-kek)"
+		if replaced {
+			reason = "force re-create plaintext vault identity (--insecure-file-kek)"
+		}
+		plan.Steps = append(plan.Steps, PlanStep{Action: "writeFile", Path: vi.Path, Mode: 0o600, Reason: reason, Done: !dryRun})
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
 		return nil
 	}
 
+	storeName := "OS keyring"
+	if vi.Store != nil {
+		storeName = vi.Store.Name()
+	}
 	if !dryRun {
-		// Remove existing identity file when force is set.
-		if exists && force {
-			if err := os.Remove(path); err != nil {
-				return fmt.Errorf("remove existing identity %q: %w", path, err)
+		if err := vi.Provision(false); err != nil {
+			if errors.Is(err, kek.ErrNoOSKeyring) {
+				return fmt.Errorf("%w; %s", err, noKeyringHint)
 			}
+			return err
 		}
-		// Generate 32 random bytes as the identity material.
-		identity := make([]byte, 32)
-		if _, err := rand.Read(identity); err != nil {
-			return fmt.Errorf("generate identity: %w", err)
-		}
-		if err := os.WriteFile(path, identity, 0o600); err != nil {
-			return fmt.Errorf("write identity %q: %w", path, err)
-		}
+	} else if vi.Store == nil {
+		plan.Warnings = append(plan.Warnings, "no OS keyring detected; "+noKeyringHint)
 	}
-	reason := "create age-env keyring identity (fallback KEK source)"
-	if force && exists {
-		reason = "force re-create age-env keyring identity"
+	reason := "store vault identity in " + storeName
+	if replaced {
+		reason = "force re-create vault identity in " + storeName
 	}
-	plan.Steps = append(plan.Steps, PlanStep{
-		Action: "writeFile",
-		Path:   path,
-		Mode:   0o600,
-		Reason: reason,
-		Done:   !dryRun,
-	})
+	plan.Steps = append(plan.Steps, PlanStep{Action: "keyringStore", Path: vi.RefPath(), Mode: 0o600, Reason: reason, Done: !dryRun})
 	return nil
 }
 
-// planWriteKeyring creates a keyring.json at krPath using identityPath as the KEK source.
-// On macOS the keychain KEK is tried first; on failure or on non-darwin platforms,
-// the age-env identity file is used.
-// When force is true, an existing keyring is removed and recreated.
-func planWriteKeyring(plan *Plan, krPath, identityPath string, dryRun, force bool) error {
+func planMigrateIdentity(plan *Plan, vi kek.VaultIdentity, dryRun bool) error {
+	if dryRun {
+		if vi.Store == nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("plaintext vault identity at %s and no OS keyring detected; %s", vi.Path, noKeyringHint))
+		}
+		plan.Steps = append(plan.Steps, PlanStep{Action: "keyringStore", Path: vi.RefPath(), Mode: 0o600, Reason: "move plaintext vault identity into the OS keyring", Done: false})
+		return nil
+	}
+	if _, err := vi.MigrateToKeyring(); err != nil {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("vault identity is still stored in plaintext at %s (%v); %s", vi.Path, err, noKeyringHint))
+		plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.Path, Mode: 0o600, Reason: "plaintext vault identity could not be moved into the OS keyring", Done: true})
+		return nil
+	}
+	plan.Steps = append(plan.Steps, PlanStep{Action: "keyringStore", Path: vi.RefPath(), Mode: 0o600, Reason: "moved plaintext vault identity into " + vi.Store.Name() + " and removed the file", Done: true})
+	return nil
+}
+
+// planWriteKeyring creates keyring.json at krPath, wrapped by the KEK derived
+// from the vault identity. When force is true, an existing keyring is removed
+// and recreated.
+func planWriteKeyring(plan *Plan, krPath string, vi kek.VaultIdentity, dryRun, force bool) error {
 	exists, err := fileExists(krPath)
 	if err != nil {
 		return err
@@ -273,17 +339,9 @@ func planWriteKeyring(plan *Plan, krPath, identityPath string, dryRun, force boo
 			return fmt.Errorf("generate keyring salt: %w", err)
 		}
 
-		// Select KEK: try keychain on macOS first; fall back to age-env identity.
-		var k kek.KEK
-		if runtime.GOOS == "darwin" {
-			k, err = kek.KeychainKEK("keylatch-vault-kek")
-		}
-		if err != nil || k == nil {
-			// macOS keychain unavailable or non-darwin platform — use age-env identity.
-			k, err = kek.AgeIdentityKEKFromPath(identityPath, salt)
-			if err != nil {
-				return fmt.Errorf("derive age-env KEK: %w", err)
-			}
+		k, err := vi.KEK(salt)
+		if err != nil {
+			return fmt.Errorf("derive KEK: %w", err)
 		}
 
 		if err := keyring.NewWithSalt(krPath, k, envelope.XChaCha20Poly1305, 0, salt); err != nil {

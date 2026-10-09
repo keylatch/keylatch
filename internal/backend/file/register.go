@@ -5,7 +5,9 @@ package file
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"sync"
 
 	"github.com/mitchellh/mapstructure"
 
@@ -112,16 +114,41 @@ func LoadKeyringKEK(krPath string) (kek.KEK, error) {
 		// a non-interactive path. Return a clear error.
 		return nil, fmt.Errorf("passphrase KEK requires interactive input: run 'keylatch bootstrap' to configure a platform keystore KEK")
 	case "age-env":
-		// age-env KEK uses KEYLATCH_AGE_IDENTITY env var; salt from keyring file.
-		// If KEYLATCH_AGE_IDENTITY is not set, fall back to the well-known bootstrap
-		// identity path (~/.keylatch/keyring/identity) so the factory works without
-		// requiring the user to set an env var when bootstrap created the identity.
-		identityPath := llmcontext.DefaultLookup("KEYLATCH_AGE_IDENTITY")
-		if identityPath == "" {
-			identityPath = paths.KeyringIdentityPath(llmcontext.DefaultLookup)
+		// An operator-supplied identity file is used as-is and never migrated.
+		if identityPath := llmcontext.DefaultLookup("KEYLATCH_AGE_IDENTITY"); identityPath != "" {
+			return kek.AgeIdentityKEKFromPath(identityPath, kf.Salt)
 		}
-		return kek.AgeIdentityKEKFromPath(identityPath, kf.Salt)
+		vi := kek.VaultIdentity{
+			Path:  paths.KeyringIdentityPath(llmcontext.DefaultLookup),
+			Store: kek.DefaultIdentityStore(),
+		}
+		secureVaultIdentity(vi, llmcontext.DefaultLookup, os.Stderr)
+		return vi.KEK(kf.Salt)
 	default:
 		return nil, fmt.Errorf("unsupported KEK type %q: run 'keylatch bootstrap' to re-initialize", kekType)
+	}
+}
+
+var plaintextIdentityWarned sync.Once
+
+// secureVaultIdentity moves a plaintext identity left by an older install into
+// the OS keyring. When that is impossible and the user has not opted into
+// --insecure-file-kek, it warns once per process.
+func secureVaultIdentity(vi kek.VaultIdentity, env llmcontext.Lookup, warn io.Writer) {
+	loc, onDisk, err := vi.Location()
+	if err != nil || !onDisk {
+		return
+	}
+	if loc != kek.IdentityInKeyring && (loc == kek.IdentityInFileAcknowledged || kek.InsecureFileKEKRequested(env)) {
+		return
+	}
+	moved, err := vi.MigrateToKeyring()
+	if moved {
+		fmt.Fprintf(warn, "keylatch: moved the vault key into %s and removed the plaintext file %s\n", vi.Store.Name(), vi.Path)
+	}
+	if err != nil {
+		plaintextIdentityWarned.Do(func() {
+			fmt.Fprintf(warn, "keylatch: WARNING: the vault key is stored in plaintext at %s and could not be moved into an OS keyring (%v). Any process running as your user can decrypt the vault offline. Run `keylatch doctor` for details, or `keylatch bootstrap --insecure-file-kek` to accept this.\n", vi.Path, err)
+		})
 	}
 }

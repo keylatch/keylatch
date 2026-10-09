@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Policy commands work without a policy file.
 - `setup` in reference mode works on a fresh install.
 - `keylatch gateway up` now reads credentials from the configured backend. It used to start without a vault and forward credentialed requests upstream with no credential; it now fails at startup when the backend is unusable, and the gateway answers 503 `vault_not_configured` for a credentialed route without a vault.
+- The file backend refuses to decrypt a secret whose stored binding names a different path, so ciphertext copied between secrets no longer decrypts. AES-GCM nonce allocation now shares the keyring's single lock with KEK rotation, and a reload can no longer move the nonce counter backwards.
 - The sidecar IPC socket is created owner-only without changing the process umask, which could leave files created concurrently by other goroutines unreadable.
 
 ## [0.9.7] - 2026-08-11

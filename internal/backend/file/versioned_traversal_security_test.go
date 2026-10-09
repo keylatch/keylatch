@@ -1,7 +1,3 @@
-//go:build securitysuite
-
-// Requires the securitysuite build tag; excluded from the ordinary
-// go test ./... run. Run with: go test -tags securitysuite ./...
 // Uses the synthetic buildKeyring helper from crypto_test.go — no real KEK
 // subprocess or password manager is invoked.
 package file_test
@@ -16,10 +12,8 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 )
 
-// KNOWN-FAILING: decryption binds only to the ciphertext, nonce, and
-// version sidecar files, not to the path they're stored under, so a
-// ciphertext copied to a different secret's path decrypts successfully
-// there.
+// A versioned ciphertext copied to another secret's path must not decrypt
+// there: the stored AAD binding has to name the requested path.
 func TestSecurityRegression_VersionedRecordRelocation(t *testing.T) {
 	d := t.TempDir()
 	kr, _ := buildKeyring(t, d, envelope.XChaCha20Poly1305)

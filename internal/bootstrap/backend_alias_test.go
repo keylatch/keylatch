@@ -8,6 +8,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 func TestRun_CanonicalizesBackendAlias(t *testing.T) {
@@ -20,8 +21,9 @@ func TestRun_CanonicalizesBackendAlias(t *testing.T) {
 	}
 
 	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
-		Backend: "awssm",
-		Env:     env,
+		IdentityStore: testutil.NewMemoryIdentityStore(),
+		Backend:       "awssm",
+		Env:           env,
 	})
 	if err != nil {
 		t.Fatalf("bootstrap awssm alias: %v", err)

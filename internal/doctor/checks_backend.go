@@ -12,6 +12,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/crypto/kek"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -546,5 +547,53 @@ func checkBackendFile(env llmcontext.Lookup) Check {
 			Detail:  fmt.Sprintf("vault_dir=%s exists mode=%04o", vaultDir, info.Mode().Perm()),
 			Tags:    []string{"backend", "file"},
 		}
+	}
+}
+
+// checkPlaintextKEK reports a file-backend vault identity stored in plaintext
+// next to the vault, from which any same-user process can derive the KEK.
+func checkPlaintextKEK(env llmcontext.Lookup) Check {
+	return func(_ context.Context) Status {
+		st := Status{Name: "backend.kek", Section: "backends", OK: true, Tags: []string{"backend", "file", "kek"}}
+		if cfg, err := config.Load(paths.Config(env)); err == nil {
+			if canonical, ok := backend.CanonicalName(cfg.Backend); ok && canonical != "file" {
+				st.Detail = fmt.Sprintf("not applicable: backend=%s", canonical)
+				return st
+			}
+		}
+		if p := env("KEYLATCH_AGE_IDENTITY"); p != "" {
+			st.Warn = true
+			st.Detail = fmt.Sprintf("plaintext KEK on disk: operator-supplied identity file %s (KEYLATCH_AGE_IDENTITY)", p)
+			st.Fix = "Keep that file off this machine's disk (hardware token or tmpfs), or unset KEYLATCH_AGE_IDENTITY and use an OS keyring."
+			return st
+		}
+
+		vi := kek.VaultIdentity{Path: paths.KeyringIdentityPath(env)}
+		loc, onDisk, err := vi.Location()
+		if err != nil {
+			st.OK = false
+			st.Detail = fmt.Sprintf("cannot inspect vault identity: %v", err)
+			return st
+		}
+		const migrateFix = "Run `keylatch bootstrap` in a session with an unlocked OS keyring (macOS Keychain or a Secret Service such as GNOME Keyring/KWallet) to move the key there and delete the file."
+		switch {
+		case loc == kek.IdentityInKeyring && onDisk:
+			st.OK = false
+			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s remains although the KEK is in the OS keyring", vi.Path)
+			st.Fix = migrateFix
+		case loc == kek.IdentityInKeyring:
+			st.Detail = "KEK held in the OS keyring"
+		case loc == kek.IdentityInFileAcknowledged:
+			st.Warn = true
+			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s (--insecure-file-kek); any process running as this user can decrypt the vault offline", vi.Path)
+			st.Fix = migrateFix
+		case loc == kek.IdentityInFileUnacknowledged:
+			st.OK = false
+			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s; any process running as this user can decrypt the vault offline", vi.Path)
+			st.Fix = migrateFix + " Without a keyring, run `keylatch bootstrap --insecure-file-kek` to accept the risk."
+		default:
+			st.Detail = "no vault identity found"
+		}
+		return st
 	}
 }

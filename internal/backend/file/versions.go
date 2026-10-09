@@ -66,6 +66,15 @@ func (fb *FileBackend) GetVersioned(ctx context.Context, path string, version in
 		if err != nil {
 			return nil, fmt.Errorf("file: GetVersioned read sidecar: %w", err)
 		}
+		// The .versionmeta sidecar is untrusted input: without this check a
+		// ciphertext (and its sidecar) copied from another path or backend
+		// instance would decrypt successfully but serve the wrong secret for
+		// this request. Require it to match what was actually requested.
+		if aadBinding.Path != path {
+			return nil, fmt.Errorf(
+				"file: GetVersioned aad binding mismatch for %q: stored path=%q",
+				path, aadBinding.Path)
+		}
 		vm := vmeta.VersionMeta{
 			Version: version,
 			AAD:     aadBinding,
