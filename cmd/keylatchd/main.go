@@ -250,7 +250,14 @@ any agent sandbox.`,
 			}
 			defer func() { _ = os.Remove(socket) }()
 			fmt.Fprintf(cmd.OutOrStdout(), "keylatchd: listening on %s\n", socket)
-			return control.NewServer(control.Config{Env: env, Binary: binary}).Serve(ctx, ln)
+			cfg := control.Config{Env: env, Binary: binary}
+			if mgr, release, err := newPlaceholders(env); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: placeholder tier unavailable: %v\n", err)
+			} else {
+				defer release()
+				cfg.Placeholders = mgr
+			}
+			return control.NewServer(cfg).Serve(ctx, ln)
 		},
 	}
 	cmd.Flags().StringVar(&socket, "socket", "", "control socket path (default: $KEYLATCH_SOCKET or $XDG_RUNTIME_DIR/keylatch/keylatchd.sock)")

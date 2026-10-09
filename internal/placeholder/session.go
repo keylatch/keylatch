@@ -145,7 +145,9 @@ func (m *Manager) Open(req OpenRequest) (*Session, error) {
 	m.mu.Lock()
 	m.sessions[id] = s
 	m.mu.Unlock()
+	s.mu.Lock()
 	s.timer = time.AfterFunc(m.cfg.TTL, func() { s.Close("expired") })
+	s.mu.Unlock()
 	return s, nil
 }
 
@@ -213,9 +215,12 @@ func (s *Session) Close(reason string) {
 	subs := s.subs
 	conns := s.conns
 	s.conns = map[net.Conn]struct{}{}
+	timer := s.timer
 	s.mu.Unlock()
 
-	s.timer.Stop()
+	if timer != nil {
+		timer.Stop()
+	}
 	for c := range conns {
 		_ = c.Close()
 	}

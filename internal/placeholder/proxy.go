@@ -636,10 +636,8 @@ func (s *Session) outbound(r *http.Request, authority string, p *plan, real map[
 		Header:        h,
 		ContentLength: r.ContentLength,
 	}
-	switch {
-	case body == nil:
-		out.Body = http.NoBody
-	default:
+	out.Body = http.NoBody
+	if body != nil {
 		out.Body = io.NopCloser(body)
 	}
 	return out.WithContext(r.Context())
