@@ -349,6 +349,23 @@ func ControlSocket(env Lookup) string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("keylatch-%d", os.Getuid()), "keylatchd.sock")
 }
 
+// KeyOperations returns the path of the key operation allowlist. It lives in
+// Keylatch state, which host sandboxes deny, and is changed only through the
+// daemon.
+func KeyOperations(env Lookup) string {
+	return filepath.Join(ConfigDir(env), "key-operations.json")
+}
+
+// SSHAgentSocket returns the path of the ssh-agent endpoint served by keylatchd.
+// Override: KEYLATCH_SSH_AGENT_SOCKET
+// Default: ssh-agent.sock next to the control socket.
+func SSHAgentSocket(env Lookup) string {
+	if v := env("KEYLATCH_SSH_AGENT_SOCKET"); v != "" {
+		return v
+	}
+	return filepath.Join(filepath.Dir(ControlSocket(env)), "ssh-agent.sock")
+}
+
 // UnsafeMode is returned by AssertSafeModes when the file or directory has
 // insecure permissions.
 type UnsafeMode struct {

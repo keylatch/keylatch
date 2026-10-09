@@ -88,6 +88,10 @@ var safeLogFields = map[string][]string{
 	// denied_paths: list of filesystem paths denied in the sandbox (no values).
 	"sandbox.deny_applied": {"provider", "runtime", "denied_paths"},
 
+	// key operations: names and the digest of the input, never key or data.
+	"key.operation":     {"operation", "alg", "connection", "field", "caller_kind", "input_sha256", "reason"},
+	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason"},
+
 	// operating-mode actions.
 	// ActionCanaryInjected — provider slug and session_id_hmac (no canary token value).
 	"canary.injected": {"provider", "session_id_hmac"},
@@ -162,6 +166,7 @@ func AllActions() []string {
 		"child_env.filter", "child_env.clean",
 		// sandbox actions.
 		"sandbox.launched", "sandbox.launch_refused", "sandbox.deny_applied",
+		"key.operation", "key.policy_change",
 		// canary actions.
 		"canary.injected",
 		// broker dry-run and token revocation actions.

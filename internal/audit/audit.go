@@ -133,6 +133,17 @@ const (
 	// connection, repository, permissions, expires_at and caller kind;
 	// the minted credential is never recorded.
 	ActionMint Action = "mint"
+
+	// ActionKeyOperation records a sign, verify, encrypt, decrypt or ssh
+	// signing request served from a key that never leaves the daemon.
+	// Extra holds the operation, algorithm, connection, field, caller kind and
+	// the SHA-256 of the input; never the key or the data.
+	ActionKeyOperation Action = "key.operation"
+
+	// ActionKeyPolicyChange records an allow or revoke on the key operation
+	// allowlist, including refused attempts. Extra holds a digest-free summary
+	// of the entry before and after; never a key or a secret path.
+	ActionKeyPolicyChange Action = "key.policy_change"
 )
 
 // Emitter is a minimal interface for components that need to emit audit events

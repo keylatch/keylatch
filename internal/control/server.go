@@ -19,6 +19,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/keyops"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -33,6 +34,8 @@ const (
 	CodeBadRequest  = "bad_request"
 	CodeUnavailable = "unavailable"
 	CodeNotFound    = "not_found"
+	// CodeInvalidSignature answers a verify whose signature does not match.
+	CodeInvalidSignature = "invalid_signature"
 )
 
 // servedVerbs are the read-only verbs the daemon executes for any caller.
@@ -59,6 +62,10 @@ type Config struct {
 	Env llmcontext.Lookup
 	// Binary is the keylatch executable the daemon runs for served verbs.
 	Binary string
+	// Keys serves key operations and the ssh-agent endpoint. Nil disables them.
+	Keys *keyops.Service
+	// KeyAdmin edits the key operation allowlist. Nil disables it.
+	KeyAdmin *keyops.Admin
 }
 
 // Server answers control socket requests.
@@ -152,6 +159,10 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		_ = writeFrame(conn, s.runSession(kind, req.Run))
 	case OpGateway:
 		s.gateway(conn, r)
+	case OpKey:
+		_ = writeFrame(conn, s.key(ctx, kind, req.Key))
+	case OpKeyPolicy:
+		_ = writeFrame(conn, s.keyPolicy(ctx, kind, req.KeyPolicy))
 	default:
 		_ = writeFrame(conn, Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError})
 	}

@@ -93,6 +93,16 @@ func (c *Client) RunSession(rr RunRequest) (Response, error) {
 	return c.roundTrip(Request{Op: OpRunSession, Run: &rr})
 }
 
+// Key asks the daemon to perform a key operation.
+func (c *Client) Key(kr KeyRequest) (Response, error) {
+	return c.roundTrip(Request{Op: OpKey, Key: &kr})
+}
+
+// KeyPolicy lists or edits the key operation allowlist.
+func (c *Client) KeyPolicy(kp KeyPolicyRequest) (Response, error) {
+	return c.roundTrip(Request{Op: OpKeyPolicy, KeyPolicy: &kp})
+}
+
 // Forward listens on a loopback port in the caller's own network namespace and
 // relays each connection to the gateway through the daemon. The returned
 // address is where a sandboxed child reaches the gateway.

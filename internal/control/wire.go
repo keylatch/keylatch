@@ -41,6 +41,11 @@ const (
 	OpRunSession Op = "run_session"
 	// OpGateway turns the connection into a byte stream to the gateway.
 	OpGateway Op = "gateway"
+	// OpKey performs a sign, verify, encrypt or decrypt with a key that stays
+	// in the daemon.
+	OpKey Op = "key"
+	// OpKeyPolicy lists or edits the key operation allowlist.
+	OpKeyPolicy Op = "key_policy"
 )
 
 // Tier names a delivery tier.
@@ -68,6 +73,35 @@ type Request struct {
 	// Ticket is the raw session ticket from the client's environment.
 	Ticket string      `json:"ticket,omitempty"`
 	Run    *RunRequest `json:"run,omitempty"`
+	Key    *KeyRequest `json:"key,omitempty"`
+
+	KeyPolicy *KeyPolicyRequest `json:"key_policy,omitempty"`
+}
+
+// KeyPolicyRequest lists, allows or revokes key operations.
+type KeyPolicyRequest struct {
+	Action       string   `json:"action"`
+	Connection   string   `json:"connection,omitempty"`
+	Field        string   `json:"field,omitempty"`
+	Secret       string   `json:"secret,omitempty"`
+	Operations   []string `json:"operations,omitempty"`
+	Algorithms   []string `json:"algorithms,omitempty"`
+	HostKeys     []string `json:"host_keys,omitempty"`
+	AgentDecrypt bool     `json:"agent_decrypt,omitempty"`
+	SSHAgent     bool     `json:"ssh_agent,omitempty"`
+}
+
+// KeyRequest names a key operation. The daemon reads the key; the reply
+// carries only the result.
+type KeyRequest struct {
+	Action     string `json:"action"`
+	Connection string `json:"connection"`
+	Field      string `json:"field,omitempty"`
+	Alg        string `json:"alg,omitempty"`
+	Input      []byte `json:"input,omitempty"`
+	Signature  []byte `json:"signature,omitempty"`
+	AAD        []byte `json:"aad,omitempty"`
+	KeyID      string `json:"kid,omitempty"`
 }
 
 // RunRequest describes a command to run under a connection.

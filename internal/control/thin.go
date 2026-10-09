@@ -35,7 +35,7 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 		return 0, false
 	}
 	global, verb, rest, ok := splitVerb(args)
-	if !ok || !IsServedVerb(verb) {
+	if !ok || (!IsServedVerb(verb) && verb != KeyVerb) {
 		return 0, false
 	}
 	client, err := NewClient(lookup)
@@ -43,6 +43,9 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 		return 0, false
 	}
 
+	if verb == KeyVerb {
+		return runKey(client, rest, streams), true
+	}
 	if verb == "run" && !slices.Contains(rest, "--dry-run") {
 		return runThroughDaemon(ctx, client, rest, streams), true
 	}
@@ -58,15 +61,20 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 	if resp.Code == CodeRunLocally {
 		return 0, false
 	}
+	return report(resp, streams), true
+}
+
+// report writes a daemon reply to the caller's streams and returns the exit code.
+func report(resp Response, streams IO) int {
 	_, _ = streams.Out.Write(resp.Stdout)
 	_, _ = streams.ErrOut.Write(resp.Stderr)
 	if resp.Error != "" {
 		fmt.Fprintf(streams.ErrOut, "keylatch: %s\n", resp.Error)
 	}
 	if !resp.OK && resp.ExitCode == 0 {
-		return exitcode.OperationFailed, true
+		return exitcode.OperationFailed
 	}
-	return resp.ExitCode, true
+	return resp.ExitCode
 }
 
 // splitVerb separates the global flags that lead the command line from the
