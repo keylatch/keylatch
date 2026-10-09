@@ -46,4 +46,6 @@ The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh
 keylatch doctor
 ```
 
+Status: the hook schemas and deny contracts above follow the vendors' published documentation and are exercised by fixture tests with real payload shapes. None of it has been run inside the real applications.
+
 See also: `contrib/agent-guards/codex/README.md`

@@ -36,14 +36,18 @@ var SupportedAgents = []Agent{
 // AgentHookMechanism describes the hook mechanism used by each agent.
 var AgentHookMechanism = map[Agent]string{
 	AgentClaudeCode:  "PreToolUse (~/.claude/settings.json)",
-	AgentCursor:      "beforeShellExecution (~/.cursor/hooks.json)",
-	AgentWindsurf:    "pre_run_command (~/.codeium/windsurf/hooks.json)",
+	AgentCursor:      "beforeShellExecution + beforeReadFile (~/.cursor/hooks.json)",
+	AgentWindsurf:    "pre_run_command + pre_read_code (~/.codeium/windsurf/hooks.json)",
 	AgentCodex:       "PreToolUse (~/.codex/hooks.json)",
 	AgentCopilot:     "PreToolUse (~/.copilot/hooks/keylatch-guard.json)",
 	AgentGemini:      "BeforeTool (~/.gemini/settings.json)",
 	AgentOpenCode:    "tool.execute.before (TypeScript plugin)",
 	AgentAntigravity: "PreToolUse (~/.gemini/config/hooks.json)",
 }
+
+// CursorIgnorePatterns are the .cursorignore entries that keep agent file
+// access away from Keylatch state and common credential stores.
+var CursorIgnorePatterns = []string{".keylatch/", ".ssh/", ".aws/", ".gnupg/", ".env", ".env.*"}
 
 // InstallOpts controls where the hook is installed.
 type InstallOpts struct {
@@ -194,18 +198,14 @@ func installHarness(agent Agent) (string, error) {
 	if agent == AgentCodex || agent == AgentGemini {
 		settings, migrated = migrateLegacyHooks(settings)
 	}
-	if hookAlreadyInstalled(settings, command) {
-		if migrated {
-			return path, saveSettings(path, settings)
-		}
-		return path, nil
-	}
-	settings, err = addHarnessHook(agent, settings, command)
+	settings, changed, err := addHarnessHook(agent, settings, command)
 	if err != nil {
 		return "", fmt.Errorf("install-guard: %s: %w", path, err)
 	}
-	if err := saveSettings(path, settings); err != nil {
-		return "", err
+	if changed || migrated {
+		if err := saveSettings(path, settings); err != nil {
+			return "", err
+		}
 	}
 	return path, nil
 }
@@ -247,57 +247,83 @@ func hookCommand(agent Agent, scriptPath string) string {
 	return scriptPath + " --harness " + string(agent)
 }
 
-// addHarnessHook appends the guard entry in the harness's own hooks schema.
-func addHarnessHook(agent Agent, settings map[string]any, command string) (map[string]any, error) {
+// addHarnessHook registers the guard in the harness's own hooks schema and
+// reports whether the settings changed. Re-running it is a no-op.
+func addHarnessHook(agent Agent, settings map[string]any, command string) (map[string]any, bool, error) {
 	cmdEntry := map[string]any{"type": "command", "command": command}
 	switch agent {
 	case AgentCodex:
 		cmdEntry["timeout"] = 30
-		return addHookEntry(settings, "PreToolUse", map[string]any{"matcher": "Bash", "hooks": []any{cmdEntry}})
+		return addHookEntry(settings, "PreToolUse", command, map[string]any{"matcher": "Bash", "hooks": []any{cmdEntry}})
 	case AgentGemini:
 		cmdEntry["name"] = "keylatch-guard"
 		cmdEntry["timeout"] = 10000
-		return addHookEntry(settings, "BeforeTool", map[string]any{"matcher": "run_shell_command|read_file|read_many_files", "hooks": []any{cmdEntry}})
+		return addHookEntry(settings, "BeforeTool", command, map[string]any{"matcher": "run_shell_command|read_file|read_many_files", "hooks": []any{cmdEntry}})
 	case AgentCursor:
 		if _, ok := settings["version"]; !ok {
 			settings["version"] = 1
 		}
-		return addHookEntry(settings, "beforeShellExecution", map[string]any{"command": command, "timeout": 10, "failClosed": true})
+		return addHookEntries(settings, command, []string{"beforeShellExecution", "beforeReadFile"}, func() map[string]any {
+			return map[string]any{"command": command, "timeout": 10, "failClosed": true}
+		})
 	case AgentWindsurf:
-		return addHookEntry(settings, "pre_run_command", map[string]any{"command": command, "show_output": false})
+		return addHookEntries(settings, command, []string{"pre_run_command", "pre_read_code"}, func() map[string]any {
+			return map[string]any{"command": command, "show_output": false}
+		})
 	case AgentCopilot:
 		if _, ok := settings["version"]; !ok {
 			settings["version"] = 1
 		}
-		return addHookEntry(settings, "PreToolUse", map[string]any{"type": "command", "bash": command, "timeoutSec": 10})
+		return addHookEntry(settings, "PreToolUse", command, map[string]any{"type": "command", "bash": command, "timeoutSec": 10})
 	case AgentAntigravity:
+		before, _ := json.Marshal(settings["keylatch-guard"])
+		cmdEntry["timeout"] = 10
 		settings["keylatch-guard"] = map[string]any{
 			"enabled": true,
 			"PreToolUse": []any{
-				map[string]any{"matcher": "run_command", "hooks": []any{map[string]any{"type": "command", "command": command, "timeout": 10}}},
+				map[string]any{"matcher": "run_command|view_file", "hooks": []any{cmdEntry}},
 			},
 		}
-		return settings, nil
+		after, _ := json.Marshal(settings["keylatch-guard"])
+		return settings, string(before) != string(after), nil
 	default:
-		return nil, fmt.Errorf("no hook schema for agent %q", agent)
+		return nil, false, fmt.Errorf("no hook schema for agent %q", agent)
 	}
 }
 
-// addHookEntry appends entry under hooks.<event>, refusing to overwrite a
-// "hooks" value that is not an object.
-func addHookEntry(settings map[string]any, event string, entry map[string]any) (map[string]any, error) {
+// addHookEntries registers one entry under each event.
+func addHookEntries(settings map[string]any, command string, events []string, entry func() map[string]any) (map[string]any, bool, error) {
+	changed := false
+	for _, event := range events {
+		var added bool
+		var err error
+		settings, added, err = addHookEntry(settings, event, command, entry())
+		if err != nil {
+			return nil, false, err
+		}
+		changed = changed || added
+	}
+	return settings, changed, nil
+}
+
+// addHookEntry appends entry under hooks.<event> unless command is already
+// registered there, refusing to overwrite a "hooks" value that is not an object.
+func addHookEntry(settings map[string]any, event, command string, entry map[string]any) (map[string]any, bool, error) {
 	hooksObj := map[string]any{}
 	if existing, present := settings["hooks"]; present {
 		obj, ok := existing.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("existing \"hooks\" value is not an object")
+			return nil, false, fmt.Errorf("existing \"hooks\" value is not an object")
 		}
 		hooksObj = obj
 	}
 	arr, _ := hooksObj[event].([]any)
+	if containsString(arr, command) {
+		return settings, false, nil
+	}
 	hooksObj[event] = append(arr, entry)
 	settings["hooks"] = hooksObj
-	return settings, nil
+	return settings, true, nil
 }
 
 func installOpenCode(opts InstallOpts) (string, error) {

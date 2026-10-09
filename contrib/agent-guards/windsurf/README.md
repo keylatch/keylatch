@@ -11,12 +11,17 @@ Cascade reads hooks from `~/.codeium/windsurf/hooks.json` (user), `.devin/hooks.
   "hooks": {
     "pre_run_command": [
       { "command": "~/.keylatch/hooks/block-keylatch-exfiltration.sh --harness windsurf", "show_output": false }
+    ],
+    "pre_read_code": [
+      { "command": "~/.keylatch/hooks/block-keylatch-exfiltration.sh --harness windsurf", "show_output": false }
     ]
   }
 }
 ```
 
-The hook receives `{"agent_action_name": "pre_run_command", "tool_info": {"command_line": "...", "cwd": "..."}}` on stdin. Cascade documents blocking by exit code only: exit 2 blocks the action and shows stderr to the agent; any other code lets it proceed. The guard prints the reason on stderr and exits 2; it prints no JSON.
+The system and workspace locations were renamed for Devin (`/etc/devin/hooks.json`, `.devin/hooks.json`) with the legacy Windsurf names as a fallback; the user path above is unchanged and is the only one the installer writes. The command hook receives `{"agent_action_name": "pre_run_command", "tool_info": {"command_line": "...", "cwd": "..."}}` on stdin. Cascade documents blocking by exit code only: exit 2 blocks the action and shows stderr to the agent; any other code lets it proceed. The guard prints the reason on stderr and exits 2; it prints no JSON.
+
+`pre_read_code` receives `{"agent_action_name": "pre_read_code", "tool_info": {"file_path": "..."}}`. The path may be a directory when Cascade reads recursively, so the guard denies a path that is, is inside, or contains (is an ancestor of) a protected location: `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.local/share/atuin`. Reading your whole home directory is therefore denied. Source: [Cascade hooks](https://docs.devin.ai/desktop/cascade/hooks.md).
 
 ## Install
 
@@ -40,3 +45,5 @@ The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh
 ```bash
 keylatch doctor
 ```
+
+Status: the hook schemas and deny contracts above follow the vendors' published documentation and are exercised by fixture tests with real payload shapes. None of it has been run inside the real applications.

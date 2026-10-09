@@ -23,8 +23,8 @@ func newInstallGuardCmd() *cobra.Command {
 from an LLM agent. Supported agents:
 
   claude-code   PreToolUse hook in ~/.claude/settings.json
-  cursor        beforeShellExecution hook in ~/.cursor/hooks.json
-  windsurf      pre_run_command hook in ~/.codeium/windsurf/hooks.json
+  cursor        beforeShellExecution and beforeReadFile hooks in ~/.cursor/hooks.json
+  windsurf      pre_run_command and pre_read_code hooks in ~/.codeium/windsurf/hooks.json
   codex         PreToolUse hook in ~/.codex/hooks.json (review it with /hooks in Codex)
   copilot       PreToolUse hook in ~/.copilot/hooks/keylatch-guard.json
   gemini        BeforeTool hook in ~/.gemini/settings.json
@@ -135,6 +135,14 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 	case guard.AgentCursor:
 		fmt.Fprintln(w, "Guard installed for Cursor.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
+		fmt.Fprintln(w, "\nCursor does not currently enforce a beforeReadFile deny for agent reads, so the")
+		fmt.Fprintln(w, "read hook is defence in depth only. Cursor's ignore files apply per project;")
+		fmt.Fprintln(w, "add these patterns to each project's .cursorignore, or to the global ignore")
+		fmt.Fprintln(w, "list in Cursor's user settings (the docs name no file path for it):")
+		fmt.Fprintln(w)
+		for _, pattern := range guard.CursorIgnorePatterns {
+			fmt.Fprintf(w, "  %s\n", pattern)
+		}
 	case guard.AgentWindsurf:
 		fmt.Fprintln(w, "Guard installed for Windsurf.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)

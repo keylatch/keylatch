@@ -8,7 +8,7 @@ description: Using Keylatch with Cursor — auto-detection, PreToolUse hook, .cu
 Keylatch integrates with Cursor at two levels:
 
 1. **Auto-detection** — Keylatch detects active Cursor sessions via the `CURSOR_AGENT` and `CURSOR_TRACE_ID` environment variables.
-2. **PreToolUse hook** — `keylatch install-guard cursor` writes a `beforeShellExecution` hook to `~/.cursor/hooks.json`.
+2. **PreToolUse hook** — `keylatch install-guard cursor` writes `beforeShellExecution` and `beforeReadFile` hooks to `~/.cursor/hooks.json`.
 
 ## Quick start
 
@@ -63,7 +63,7 @@ keylatch install-guard cursor
 # Hook written to: ~/.cursor/hooks.json
 ```
 
-The hook blocks credential exfiltration patterns before they execute in Cursor's tool-use pipeline.
+The shell hook blocks credential exfiltration patterns before they execute. Cursor does not currently enforce a `beforeReadFile` deny for agent reads, so add the `.cursorignore` entries listed in [docs/integrations/cursor.md](../../integrations/cursor.md) to each project.
 
 ## Verifying the guard
 

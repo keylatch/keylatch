@@ -25,12 +25,26 @@ copilot_camel_payload() {
 	jq -nc --arg c "$1" '{toolName:"bash",toolArgs:({command:$c}|tojson)}'
 }
 
-# read_payload <harness> <path>; prints nothing for harnesses without a read hook.
+# read_payload <harness> <path>: the harness's file-read hook payload.
 read_payload() {
 	case "$1" in
 	claude-code | codex | copilot) jq -nc --arg p "$2" '{tool_name:"Read",tool_input:{file_path:$p}}' ;;
 	gemini) jq -nc --arg p "$2" '{tool_name:"read_file",tool_input:{file_path:$p}}' ;;
+	cursor) jq -nc --arg p "$2" '{hook_event_name:"beforeReadFile",file_path:$p,content:"",attachments:[]}' ;;
+	windsurf) jq -nc --arg p "$2" '{agent_action_name:"pre_read_code",tool_info:{file_path:$p}}' ;;
+	antigravity) jq -nc --arg p "$2" '{toolCall:{name:"view_file",args:{AbsolutePath:$p}},stepIdx:2}' ;;
 	esac
+}
+
+# cursor_attachment_payload <file> <attached path>
+cursor_attachment_payload() {
+	jq -nc --arg f "$1" --arg a "$2" '{hook_event_name:"beforeReadFile",file_path:$f,content:"",attachments:[{type:"file",file_path:$a}]}'
+}
+
+# deny_code <harness>: the exit status a deny produces. Antigravity reads
+# decisions from stdout JSON only.
+deny_code() {
+	if [ "$1" = antigravity ]; then echo 0; else echo 2; fi
 }
 
 # run_guard <harness> <payload>: sets GUARD_CODE, GUARD_OUT, GUARD_ERR.

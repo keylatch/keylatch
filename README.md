@@ -148,8 +148,8 @@ In any detected LLM session (Claude Code, Codex, Cursor, Aider, Gemini CLI, Open
 | [Aider](docs/integrations/aider.md) | No | No | No hook API; start with `keylatch launch -- aider` |
 | [Gemini](docs/integrations/gemini.md) | Yes | Yes | Detected via `GEMINI_CLI` |
 | [OpenCode](docs/integrations/opencode.md) | Yes | Yes | Detected via `OPENCODE` |
-| [Windsurf](docs/integrations/windsurf.md) | No | Yes | `pre_run_command` hook in `~/.codeium/windsurf/hooks.json` |
-| [Antigravity](docs/integrations/antigravity.md) | No | Yes | `PreToolUse` hook in `~/.gemini/config/hooks.json` |
+| [Windsurf](docs/integrations/windsurf.md) | No | Yes | `pre_run_command` and `pre_read_code` hooks in `~/.codeium/windsurf/hooks.json` ([docs](https://docs.devin.ai/desktop/cascade/hooks.md); not yet exercised in the real app) |
+| [Antigravity](docs/integrations/antigravity.md) | No | Yes | `PreToolUse` hook in `~/.gemini/config/hooks.json` ([docs](https://antigravity.google/docs/hooks/); not yet exercised in the real app) |
 | [GitHub Copilot](docs/integrations/copilot.md) | No | No | Set `CREDENTIALS_LLM_SESSION=copilot` in shell rc |
 | Generic | Yes | N/A | Any tool that sets `CREDENTIALS_LLM_SESSION` to a non-empty value |
 

@@ -12,7 +12,7 @@ Antigravity reads `hooks.json` from `.agents/hooks.json` in the workspace and `~
     "enabled": true,
     "PreToolUse": [
       {
-        "matcher": "run_command",
+        "matcher": "run_command|view_file",
         "hooks": [
           { "type": "command", "command": "~/.keylatch/hooks/block-keylatch-exfiltration.sh --harness antigravity", "timeout": 10 }
         ]
@@ -22,9 +22,9 @@ Antigravity reads `hooks.json` from `.agents/hooks.json` in the workspace and `~
 }
 ```
 
-The hook receives `{"toolCall": {"name": "run_command", "args": {"CommandLine": "..."}}}` on stdin. To block, the guard prints `{"decision":"deny","reason":"..."}` and exits 2, so it denies whether the harness reads the JSON or the exit code.
+The hook receives `{"toolCall": {"name": "run_command", "args": {"CommandLine": "..."}}}` for shell commands and `{"toolCall": {"name": "view_file", "args": {"AbsolutePath": "..."}}}` for file reads on stdin. Antigravity documents decisions as JSON on stdout only and documents no exit codes, so the guard denies with **exit 0** and `{"decision":"deny","reason":"..."}`, and prints `{"decision":"allow"}` otherwise (an empty response is reportedly treated as a deny). Third-party reports say any crash or non-zero exit also blocks the tool (fail-closed, reason lost); that is not documented. File reads are denied for paths that are, are inside, or contain `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg` or `~/.local/share/atuin`.
 
-Reports differ on whether the IDE (as opposed to the CLI) runs `PreToolUse` hooks; check that a denied command is actually blocked in your build.
+Reports differ on whether the IDE (as opposed to the CLI) runs `PreToolUse` hooks. Source: [Antigravity hooks](https://antigravity.google/docs/hooks/).
 
 ## Install
 
@@ -48,3 +48,5 @@ The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh
 ```bash
 keylatch doctor
 ```
+
+Status: the hook schemas and deny contracts above follow the vendors' published documentation and are exercised by fixture tests with real payload shapes. None of it has been run inside the real applications.

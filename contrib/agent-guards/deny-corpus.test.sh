@@ -69,7 +69,9 @@ check() {
 	local want="$1" cmd="$2" h
 	for h in $HARNESSES; do
 		run_guard "$h" "$(shell_payload "$h" "$cmd")"
-		if [ "$GUARD_CODE" -eq "$want" ]; then
+		want_code="$want"
+		[ "$want" -eq 2 ] && want_code="$(deny_code "$h")"
+		if [ "$GUARD_CODE" -eq "$want_code" ] && { [ "$want" -ne 2 ] || [ "$h" != antigravity ] || printf '%s' "$GUARD_OUT" | grep -q '"deny"'; }; then
 			PASS=$((PASS + 1))
 		else
 			echo "FAIL: [$h] expected=$want got=$GUARD_CODE: $cmd"
@@ -81,13 +83,13 @@ check() {
 for cmd in "${DENY[@]}"; do check 2 "$cmd"; done
 for cmd in "${ALLOW[@]}"; do check 0 "$cmd"; done
 
-for h in claude-code codex gemini copilot; do
-	for path in "/home/dev/.bash_history" "/home/dev/.local/share/atuin/history.db" "/home/dev/.keylatch/config.yaml"; do
+for h in $HARNESSES; do
+	for path in "$HOME/.bash_history" "$HOME/.local/share/atuin/history.db" "$HOME/.keylatch/config.yaml" "$HOME/.ssh" "$HOME"; do
 		run_guard "$h" "$(read_payload "$h" "$path")"
-		if [ "$GUARD_CODE" -eq 2 ]; then
+		if [ "$GUARD_CODE" -eq "$(deny_code "$h")" ]; then
 			PASS=$((PASS + 1))
 		else
-			echo "FAIL: [$h] read of $path expected=2 got=$GUARD_CODE"
+			echo "FAIL: [$h] read of $path expected=$(deny_code "$h") got=$GUARD_CODE"
 			FAIL=$((FAIL + 1))
 		fi
 	done

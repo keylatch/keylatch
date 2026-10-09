@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every shipped agent guard now denies with exit 2 plus the harness's deny JSON (exit 1 does not block in most harnesses). One guard script serves Claude Code, Codex, Gemini CLI, Cursor, Windsurf, Copilot and Antigravity; the hook command selects the stdin payload and deny contract with `--harness <id>`. Re-run `keylatch install-guard <agent>` to pick it up.
 - The Cursor installer writes `~/.cursor/hooks.json` (`beforeShellExecution`, fail-closed) instead of `settings.json`; the Codex and Gemini installers write the nested matcher-group schema their harnesses read; Copilot gets a native `PreToolUse` hook in `~/.copilot/hooks/` instead of a shell wrapper.
 - Windsurf and Antigravity have hook APIs: `keylatch install-guard windsurf|antigravity` now installs a hook.
+- Antigravity denies with exit 0 plus `{"decision":"deny","reason":...}` because its hooks are documented as stdout JSON only; the matcher also covers `view_file`. Windsurf registers `pre_read_code` and Cursor registers `beforeReadFile` (fail-closed). Read hooks deny paths that are, are inside, or contain `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg` or `~/.local/share/atuin`. Cursor does not currently enforce a `beforeReadFile` deny for agent reads, so add the `.cursorignore` entries that `install-guard cursor` prints.
+- Contracts follow [Claude Code](https://code.claude.com/docs/en/hooks), [Cursor](https://cursor.com/docs/hooks), [Windsurf/Devin](https://docs.devin.ai/desktop/cascade/hooks.md), [Antigravity](https://antigravity.google/docs/hooks/) and [Gemini CLI](https://geminicli.com/docs/hooks/reference/) docs; none of it has been exercised in the real applications.
 
 ### Removed
 

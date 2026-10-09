@@ -8,20 +8,26 @@
 #
 # Deny contract: exit 2 (exit 1 fails open in most harnesses) with the reason
 # on stderr, plus the harness's deny JSON on stdout where one is documented.
+# Antigravity documents decisions as stdout JSON only, so it denies with
+# exit 0 plus the JSON; a crash or other non-zero exit is reported to block too.
 #
 #   claude-code, codex  hookSpecificOutput.permissionDecision = deny
 #   copilot             permissionDecision = deny
-#   gemini, antigravity decision = deny
+#   gemini              decision = deny
+#   antigravity         decision = deny (exit 0)
 #   cursor              permission = deny
-#   windsurf            exit 2 only
+#   windsurf            exit 2 only (stderr reaches the agent)
 #
 # Payloads (JSON on stdin):
 #   claude-code, codex  {"tool_name":"Bash","tool_input":{"command":"..."}}
 #   gemini              {"tool_name":"run_shell_command","tool_input":{"command":"..."}}
 #   cursor              {"command":"..."} (beforeShellExecution) or
 #                       {"tool_name":"Shell","tool_input":{"command":"..."}}
+#   cursor read         {"file_path":"...","attachments":[{"type":"file","file_path":"..."}]}
 #   windsurf            {"tool_info":{"command_line":"..."}}
+#   windsurf read       {"tool_info":{"file_path":"..."}} (may be a directory)
 #   antigravity         {"toolCall":{"name":"run_command","args":{"CommandLine":"..."}}}
+#   antigravity read    {"toolCall":{"name":"view_file","args":{"AbsolutePath":"..."}}}
 #   copilot             {"tool_name":"Bash","tool_input":{...}} or
 #                       {"toolName":"bash","toolArgs":"{\"command\":\"...\"}"}
 # CLAUDE_TOOL_NAME / CLAUDE_TOOL_INPUT are honoured as a legacy fallback for
@@ -46,15 +52,16 @@ TOOL_INPUT="${CLAUDE_TOOL_INPUT:-}"
 # TOOL_INPUT may be the raw JSON blob (no-jq fallback) or a file path -- neither
 # is a safe thing to feed to a shell-word tokenizer.
 TOOL_COMMAND=""
+TOOL_FILES=""
 
 # shellcheck disable=SC2016
 JQ_COMMAND='def args: ((.toolArgs // empty) | if type == "string" then (try fromjson catch {}) else . end);
 	(.tool_input.command // .tool_input.cmd // .command // .tool_info.command_line // .toolCall.args.CommandLine // args.command // empty)
 	| if type == "string" then . else empty end'
 # shellcheck disable=SC2016
-JQ_FILE='def args: ((.toolArgs // empty) | if type == "string" then (try fromjson catch {}) else . end);
-	(.tool_input.file_path // .tool_input.absolute_path // .tool_input.path // .file_path // .tool_info.file_path // args.path // .toolCall.args.AbsolutePath // empty)
-	| if type == "string" then . else empty end'
+JQ_FILES='def args: ((.toolArgs // empty) | if type == "string" then (try fromjson catch {}) else . end);
+	[.tool_input.file_path?, .tool_input.absolute_path?, .tool_input.path?, .file_path?, .tool_info.file_path?, args.path?, .toolCall.args.AbsolutePath?, (.attachments[]?.file_path?)]
+	| .[] | select(type == "string" and . != "")'
 
 if [ -z "$TOOL_NAME" ] && [ ! -t 0 ]; then
 	STDIN_JSON="$(cat 2>/dev/null || true)"
@@ -62,8 +69,8 @@ if [ -z "$TOOL_NAME" ] && [ ! -t 0 ]; then
 		if command -v jq >/dev/null 2>&1; then
 			TOOL_NAME="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_name // .toolName // .toolCall.name // empty' 2>/dev/null || true)"
 			TOOL_COMMAND="$(printf '%s' "$STDIN_JSON" | jq -r "$JQ_COMMAND" 2>/dev/null || true)"
-			TOOL_FILE="$(printf '%s' "$STDIN_JSON" | jq -r "$JQ_FILE" 2>/dev/null || true)"
-			TOOL_INPUT="${TOOL_COMMAND:-$TOOL_FILE}"
+			TOOL_FILES="$(printf '%s' "$STDIN_JSON" | jq -r "$JQ_FILES" 2>/dev/null || true)"
+			TOOL_INPUT="${TOOL_COMMAND:-$TOOL_FILES}"
 			[ -n "$TOOL_INPUT" ] || TOOL_INPUT="$(printf '%s' "$STDIN_JSON" | jq -r '.tool_input // empty | tojson' 2>/dev/null || true)"
 		else
 			# No jq: extract crudely and match patterns against the raw JSON.
@@ -82,7 +89,15 @@ fi
 case "$TOOL_NAME" in
 Bash | bash | Shell | shell | run_shell_command | run_command) TOOL_KIND="Bash" ;;
 Read | read_file | read_many_files | view_file | ReadFile) TOOL_KIND="Read" ;;
-"") if [ -n "$TOOL_COMMAND" ]; then TOOL_KIND="Bash"; else TOOL_KIND=""; fi ;;
+"")
+	if [ -n "$TOOL_COMMAND" ] && [ -z "$TOOL_FILES" ]; then
+		TOOL_KIND="Bash"
+	elif [ -n "$TOOL_INPUT" ]; then
+		TOOL_KIND="Read"
+	else
+		TOOL_KIND=""
+	fi
+	;;
 *) TOOL_KIND="" ;;
 esac
 
@@ -113,7 +128,32 @@ allow_json() {
 block() {
 	echo "[hook/keylatch] Blocked: $1" >&2
 	deny_json "[hook/keylatch] Blocked: $1"
+	if [ "$HARNESS" = "antigravity" ]; then exit 0; fi
 	exit 2
+}
+
+# Home-relative locations a file read must never touch. A read of one of them,
+# of anything inside, or of a directory that contains one (a recursive
+# directory read) is denied.
+PROTECTED_DIRS=".keylatch .ssh .aws .gnupg .local/share/atuin"
+
+path_denied() {
+	local p="$1" d prot
+	# shellcheck disable=SC2088
+	case "$p" in
+	"~") p="$HOME" ;;
+	"~/"*) p="$HOME/${p#"~/"}" ;;
+	esac
+	if command -v realpath >/dev/null 2>&1; then
+		p="$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")"
+	fi
+	p="${p%/}"
+	for d in $PROTECTED_DIRS; do
+		prot="$HOME/$d"
+		case "$p/" in "$prot"/*) return 0 ;; esac
+		case "$prot/" in "$p"/*) return 0 ;; esac
+	done
+	return 1
 }
 
 # P9_AWK: structural analyzer for pattern 9 (see the comment above pattern 9
@@ -505,6 +545,15 @@ Read)
 	if echo "$TOOL_INPUT" | grep -qE "$HISTORY_PATHS"; then
 		block "shell history and atuin data are disabled in LLM sessions"
 	fi
+	[ -n "$TOOL_FILES" ] || TOOL_FILES="$TOOL_INPUT"
+	while IFS= read -r read_path; do
+		[ -n "$read_path" ] || continue
+		if path_denied "$read_path"; then
+			block "reads of Keylatch state, SSH, cloud and GPG credentials are disabled in LLM sessions"
+		fi
+	done <<KL_PATHS
+$TOOL_FILES
+KL_PATHS
 	;;
 esac
 

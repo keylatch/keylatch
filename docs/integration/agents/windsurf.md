@@ -51,7 +51,7 @@ This guard is active whenever `CREDENTIALS_LLM_SESSION` is non-empty, so it prot
 
 ## Layer 2 hook
 
-Cascade reads `hooks.json` from `~/.codeium/windsurf/hooks.json`, `.devin/hooks.json` in the workspace and the system file. Hooks do not run in Restricted Mode. See [docs/integrations/windsurf.md](../../integrations/windsurf.md) for the entry the installer writes.
+The installer registers `pre_run_command` and `pre_read_code`; a denied read or command exits 2. The read hook also denies a directory that contains a protected location. Cascade reads `hooks.json` from `~/.codeium/windsurf/hooks.json`, `.devin/hooks.json` in the workspace and the system file. Hooks do not run in Restricted Mode. See [docs/integrations/windsurf.md](../../integrations/windsurf.md) for the entry the installer writes.
 
 ## Using Keylatch inside Windsurf
 

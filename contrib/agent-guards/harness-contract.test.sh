@@ -26,8 +26,8 @@ ALLOWED="echo hello"
 
 for h in $HARNESSES; do
 	run_guard "$h" "$(shell_payload "$h" "$DENIED")"
-	if [ "$GUARD_CODE" -eq 2 ] && [ -n "$GUARD_ERR" ] && deny_json_ok "$h" "$GUARD_OUT"; then
-		ok "$h: denied command exits 2 with deny contract"
+	if [ "$GUARD_CODE" -eq "$(deny_code "$h")" ] && [ -n "$GUARD_ERR" ] && deny_json_ok "$h" "$GUARD_OUT"; then
+		ok "$h: denied command follows the deny contract"
 	else
 		bad "$h: denied command (code=$GUARD_CODE out=$GUARD_OUT err=$GUARD_ERR)"
 	fi
@@ -40,21 +40,52 @@ for h in $HARNESSES; do
 	fi
 done
 
-# Read-tool payloads for harnesses that hook file reads.
-for h in claude-code codex gemini copilot; do
-	run_guard "$h" "$(read_payload "$h" "/home/dev/.keylatch/vault/imports/plaintext.env")"
-	if [ "$GUARD_CODE" -eq 2 ] && deny_json_ok "$h" "$GUARD_OUT"; then
-		ok "$h: read of keylatch state exits 2 with deny contract"
-	else
-		bad "$h: read of keylatch state (code=$GUARD_CODE out=$GUARD_OUT)"
-	fi
+# File-read payloads: protected paths, a directory that contains one, and an
+# unrelated path.
+for h in $HARNESSES; do
+	for path in "$HOME/.keylatch/vault/imports/plaintext.env" "$HOME/.keylatch" "$HOME/.ssh/id_ed25519" "$HOME" "$HOME/.local/share/atuin/history.db"; do
+		run_guard "$h" "$(read_payload "$h" "$path")"
+		if [ "$GUARD_CODE" -eq "$(deny_code "$h")" ] && deny_json_ok "$h" "$GUARD_OUT"; then
+			ok "$h: read of $path denied"
+		else
+			bad "$h: read of $path (code=$GUARD_CODE out=$GUARD_OUT)"
+		fi
+	done
 	run_guard "$h" "$(read_payload "$h" "/work/src/main.go")"
-	if [ "$GUARD_CODE" -eq 0 ]; then
-		ok "$h: read of a project file exits 0"
+	if [ "$GUARD_CODE" -eq 0 ] && ! printf '%s' "$GUARD_OUT" | grep -q 'deny'; then
+		ok "$h: read of a project file allowed"
 	else
-		bad "$h: read of a project file (code=$GUARD_CODE)"
+		bad "$h: read of a project file (code=$GUARD_CODE out=$GUARD_OUT)"
+	fi
+	run_guard "$h" "$(read_payload "$h" "$HOME/code/project")"
+	if [ "$GUARD_CODE" -eq 0 ]; then
+		ok "$h: read of a sibling directory allowed"
+	else
+		bad "$h: read of a sibling directory (code=$GUARD_CODE)"
 	fi
 done
+
+# Cursor checks every attachment path, not just the file being read.
+run_guard cursor "$(cursor_attachment_payload "/work/a.go" "$HOME/.aws/credentials")"
+if [ "$GUARD_CODE" -eq 2 ] && deny_json_ok cursor "$GUARD_OUT"; then
+	ok "cursor: protected attachment denied"
+else
+	bad "cursor: protected attachment (code=$GUARD_CODE out=$GUARD_OUT)"
+fi
+run_guard cursor "$(cursor_attachment_payload "/work/a.go" "/work/b.go")"
+if [ "$GUARD_CODE" -eq 0 ]; then
+	ok "cursor: unrelated attachment allowed"
+else
+	bad "cursor: unrelated attachment (code=$GUARD_CODE)"
+fi
+
+# Antigravity denies with exit 0 and JSON; the exit status must not be 2.
+run_guard antigravity "$(shell_payload antigravity "$DENIED")"
+if [ "$GUARD_CODE" -eq 0 ] && printf '%s' "$GUARD_OUT" | jq -e '.decision == "deny"' >/dev/null 2>&1; then
+	ok "antigravity: deny is exit 0 plus JSON"
+else
+	bad "antigravity: deny status (code=$GUARD_CODE out=$GUARD_OUT)"
+fi
 
 # Copilot's camelCase event carries toolArgs as a JSON string.
 run_guard copilot "$(copilot_camel_payload "$DENIED")"
