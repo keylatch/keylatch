@@ -43,7 +43,7 @@ done
 # File-read payloads: protected paths, a directory that contains one, and an
 # unrelated path.
 for h in $HARNESSES; do
-	for path in "$HOME/.keylatch/vault/imports/plaintext.env" "$HOME/.keylatch" "$HOME/.ssh/id_ed25519" "$HOME" "$HOME/.local/share/atuin/history.db"; do
+	for path in "$HOME/.keylatch/vault/imports/plaintext.env" "$HOME/.keylatch" "$HOME/.ssh/id_ed25519" "$HOME" "$HOME/.local/share/atuin/history.db" "$HOME/.kube/config" "$HOME/.netrc" "$HOME/.config/gh/hosts.yml"; do
 		run_guard "$h" "$(read_payload "$h" "$path")"
 		if [ "$GUARD_CODE" -eq "$(deny_code "$h")" ] && deny_json_ok "$h" "$GUARD_OUT"; then
 			ok "$h: read of $path denied"

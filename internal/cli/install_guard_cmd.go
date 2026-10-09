@@ -140,7 +140,7 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 		fmt.Fprintln(w, "add these patterns to each project's .cursorignore, or to the global ignore")
 		fmt.Fprintln(w, "list in Cursor's user settings (the docs name no file path for it):")
 		fmt.Fprintln(w)
-		for _, pattern := range guard.CursorIgnorePatterns {
+		for _, pattern := range guard.CursorIgnorePatterns() {
 			fmt.Fprintf(w, "  %s\n", pattern)
 		}
 	case guard.AgentWindsurf:

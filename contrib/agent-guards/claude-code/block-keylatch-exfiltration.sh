@@ -132,10 +132,20 @@ block() {
 	exit 2
 }
 
-# Home-relative locations a file read must never touch. A read of one of them,
-# of anything inside, or of a directory that contains one (a recursive
-# directory read) is denied.
-PROTECTED_DIRS=".keylatch .ssh .aws .gnupg .local/share/atuin"
+# Home-relative credential locations the agent must never read directly. A read
+# of one of them, of anything inside, or of a directory that contains one (a
+# recursive directory read) is denied, and so is a shell reader (cat, head, cp,
+# ...) pointed at one. Tools reading their own config as child processes
+# (kubectl, gh, docker) are unaffected. Keep this the only list.
+PROTECTED_PATHS=".keylatch .ssh .aws .gnupg .local/share/atuin .kube .config/gcloud .docker/config.json .netrc .config/gh/hosts.yml .git-credentials .npmrc .pypirc .azure .terraform.d/credentials.tfrc.json"
+
+PROTECTED_RE=""
+for d in $PROTECTED_PATHS; do
+	PROTECTED_RE="${PROTECTED_RE:+$PROTECTED_RE|}${d//./\\.}"
+done
+HOME_RE="${HOME//./\\.}"
+READ_CMDS="cat|less|more|head|tail|bat|nl|tac|strings|xxd|od|base64|cp|mv|grep|egrep|rg|awk|sed|sort|cut|tee|scp|rsync"
+SHELL_READ_RE="(^|[[:space:];&|(\"'])($READ_CMDS)[[:space:]]+[^;&|]*(~|\\\$HOME|\\\$\{HOME\}|$HOME_RE)/($PROTECTED_RE)([/[:space:]\"']|\$)"
 
 path_denied() {
 	local p="$1" d prot
@@ -148,7 +158,7 @@ path_denied() {
 		p="$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")"
 	fi
 	p="${p%/}"
-	for d in $PROTECTED_DIRS; do
+	for d in $PROTECTED_PATHS; do
 		prot="$HOME/$d"
 		case "$p/" in "$prot"/*) return 0 ;; esac
 		case "$prot/" in "$p"/*) return 0 ;; esac
@@ -533,6 +543,11 @@ Bash)
 	# pattern 10: shell history files and atuin's database
 	if echo "$TOOL_INPUT" | grep -qE "$HISTORY_PATHS"; then
 		block "shell history and atuin data are disabled in LLM sessions"
+	fi
+
+	# pattern 11: shell readers pointed at credential stores
+	if printf '%s' "$TOOL_COMMAND" | grep -qE "$SHELL_READ_RE"; then
+		block "direct reads of credential files (kube, cloud, docker, netrc, git, npm, pypi, ssh, gpg) are disabled in LLM sessions"
 	fi
 	;;
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 )
 
 // Agent identifies a supported agent integration.
@@ -45,9 +47,24 @@ var AgentHookMechanism = map[Agent]string{
 	AgentAntigravity: "PreToolUse (~/.gemini/config/hooks.json)",
 }
 
+// ProtectedPaths are the home-relative credential locations the guard script
+// denies for direct agent reads. They are parsed from the script so the script
+// holds the only list.
+func ProtectedPaths() []string {
+	m := protectedPathsRe.FindSubmatch(GuardScript)
+	if m == nil {
+		return nil
+	}
+	return strings.Fields(string(m[1]))
+}
+
+var protectedPathsRe = regexp.MustCompile(`(?m)^PROTECTED_PATHS="([^"]*)"`)
+
 // CursorIgnorePatterns are the .cursorignore entries that keep agent file
-// access away from Keylatch state and common credential stores.
-var CursorIgnorePatterns = []string{".keylatch/", ".ssh/", ".aws/", ".gnupg/", ".env", ".env.*"}
+// access away from the protected credential locations and .env files.
+func CursorIgnorePatterns() []string {
+	return append(ProtectedPaths(), ".env", ".env.*")
+}
 
 // InstallOpts controls where the hook is installed.
 type InstallOpts struct {

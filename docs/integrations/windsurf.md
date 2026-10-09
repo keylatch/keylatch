@@ -21,7 +21,7 @@ Cascade reads hooks from `~/.codeium/windsurf/hooks.json` (user), `.devin/hooks.
 
 The system and workspace locations were renamed for Devin (`/etc/devin/hooks.json`, `.devin/hooks.json`) with the legacy Windsurf names as a fallback; the user path above is unchanged and is the only one the installer writes. The command hook receives `{"agent_action_name": "pre_run_command", "tool_info": {"command_line": "...", "cwd": "..."}}` on stdin. Cascade documents blocking by exit code only: exit 2 blocks the action and shows stderr to the agent; any other code lets it proceed. The guard prints the reason on stderr and exits 2; it prints no JSON.
 
-`pre_read_code` receives `{"agent_action_name": "pre_read_code", "tool_info": {"file_path": "..."}}`. The path may be a directory when Cascade reads recursively, so the guard denies a path that is, is inside, or contains (is an ancestor of) a protected location: `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.local/share/atuin`. Reading your whole home directory is therefore denied. Source: [Cascade hooks](https://docs.devin.ai/desktop/cascade/hooks.md).
+`pre_read_code` receives `{"agent_action_name": "pre_read_code", "tool_info": {"file_path": "..."}}`. The path may be a directory when Cascade reads recursively, so the guard denies a path that is, is inside, or contains (is an ancestor of) a protected location: the credential locations listed under "What It Blocks". Reading your whole home directory is therefore denied. Source: [Cascade hooks](https://docs.devin.ai/desktop/cascade/hooks.md).
 
 ## Install
 
@@ -39,6 +39,8 @@ The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh
 - Environment dumps: `env`, `printenv`, including behind `bash -c`, `eval`, `sudo`, `xargs` and similar wrappers
 - Environment managers: `direnv export`, `direnv dump`, `direnv exec <dir> env`, `mise env`, `mise exec -- env`, a bare `mise set`
 - Shell history: `atuin search`, `atuin history ...`, and any access to `~/.*_history` or `~/.local/share/atuin`
+- Direct reads of credential stores, by the agent's file-read tool or a shell reader (`cat`, `head`, `less`, `cp`, `grep`, ...): `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.local/share/atuin`, `~/.kube`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.netrc`, `~/.config/gh/hosts.yml`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.azure`, `~/.terraform.d/credentials.tfrc.json`. A path that is, is inside, or contains one of these is denied. Tools that read their own config as child processes (`kubectl`, `gh`, `docker`, `npm`, ...) are unaffected; only direct reads by the agent are denied.
+- Direct reads of credential stores, by the agent's file-read tool or a shell reader (`cat`, `head`, `less`, `cp`, `grep`, ...): the credential locations listed under "What It Blocks", `~/.kube`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.netrc`, `~/.config/gh/hosts.yml`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.azure`, `~/.terraform.d/credentials.tfrc.json`. A path that is, is inside, or contains one of these is denied. Tools that read their own config as child processes (`kubectl`, `gh`, `docker`, `npm`, ...) are unaffected; only direct reads by the agent are denied.
 
 ## Verify
 

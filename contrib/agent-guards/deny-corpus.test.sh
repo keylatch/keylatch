@@ -42,9 +42,25 @@ DENY=(
 	"tail -n 200 ~/.zsh_history"
 	"ls ~/.local/share/atuin"
 	"sqlite3 ~/.local/share/atuin/history.db .dump"
+	"cat ~/.kube/config"
+	"head -n 5 \$HOME/.netrc"
+	"less $HOME/.config/gh/hosts.yml"
+	"cp ~/.docker/config.json /tmp/x"
+	"grep -r token \${HOME}/.azure/"
+	"bash -c 'tail ~/.npmrc'"
+	"cat ~/.git-credentials"
+	"base64 ~/.terraform.d/credentials.tfrc.json"
+	"sed -n 1p ~/.pypirc"
 )
 
 ALLOW=(
+	"kubectl config view"
+	"gh auth status"
+	"docker ps"
+	"cat .npmrc"
+	"cat ./.netrc.example"
+	"ls ~/.kube"
+	"git config --get user.name"
 	"echo hello"
 	"keylatch get --masked clockify api_key"
 	"keylatch list"
@@ -84,7 +100,7 @@ for cmd in "${DENY[@]}"; do check 2 "$cmd"; done
 for cmd in "${ALLOW[@]}"; do check 0 "$cmd"; done
 
 for h in $HARNESSES; do
-	for path in "$HOME/.bash_history" "$HOME/.local/share/atuin/history.db" "$HOME/.keylatch/config.yaml" "$HOME/.ssh" "$HOME"; do
+	for path in "$HOME/.bash_history" "$HOME/.local/share/atuin/history.db" "$HOME/.keylatch/config.yaml" "$HOME/.ssh" "$HOME" "$HOME/.kube/config" "$HOME/.kube" "$HOME/.netrc" "$HOME/.config/gcloud/credentials.db" "$HOME/.docker" "$HOME/.git-credentials" "$HOME/.terraform.d/credentials.tfrc.json"; do
 		run_guard "$h" "$(read_payload "$h" "$path")"
 		if [ "$GUARD_CODE" -eq "$(deny_code "$h")" ]; then
 			PASS=$((PASS + 1))
