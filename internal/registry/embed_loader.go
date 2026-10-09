@@ -99,7 +99,12 @@ func validateTemplateBytes(yamlBytes []byte) error {
 	if err := schema.Validate(jsonVal); err != nil {
 		return fmt.Errorf("schema validation: %w", err)
 	}
-	return nil
+
+	tmpl, err := parseTemplate(yamlBytes)
+	if err != nil {
+		return err
+	}
+	return ValidateBindings(tmpl)
 }
 
 // normalizeYAML converts yaml.v3 decoded values (which can have map[string]any)

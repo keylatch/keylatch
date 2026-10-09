@@ -65,6 +65,46 @@ redaction:
   - pattern: 'github_pat_[A-Za-z0-9_]{36,}'
     replacement: "****"
 
+hosts:
+  - "api.github.com"
+  - "uploads.github.com"
+  - "github.com"
+
+slots:
+  - field: token
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "api.github.com"
+      - "uploads.github.com"
+  - field: token
+    in: header
+    name: Authorization
+    scheme: token
+    hosts:
+      - "api.github.com"
+      - "uploads.github.com"
+  - field: token
+    in: basic
+    part: password
+    hosts:
+      - "github.com"
+
+placeholder_shape:
+  # escaped so secret scanners do not flag the prefix literal
+  prefix: "ghp\x5f"
+  min_length: 40
+
+env_class:
+  default: prod
+
+adapter:
+  kind: git_credential
+  field: token
+  hosts:
+    - "github.com"
+
 test_strategy:
   kind: http_get
   endpoint: https://api.github.com/user

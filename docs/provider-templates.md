@@ -68,6 +68,20 @@ validate:
 | `description` | yes | Human-readable description shown in connect wizard |
 | `env_var` | yes | Environment variable injected into the subprocess by `keylatch run` |
 
+### Host bindings
+
+Templates can declare where a secret may be substituted into outgoing requests.
+
+| Field | Description |
+|-------|-------------|
+| `hosts` | Authorities (`host[:port]`, port defaults to 443) the secret may be sent to. A leading `*.` matches one or more labels below the suffix, never the suffix itself. |
+| `slots` | Request positions per secret `field`: `in: header` (with `name`, optional `scheme`), `in: query` (with `name`) or `in: basic` (with `part: user` or `password`), each with its own `hosts` subset of the template `hosts`. |
+| `placeholder_shape` | `prefix` and `min_length` so a placeholder passes client-library format checks. |
+| `adapter` | Protocol adapter (`postgres`, `mysql`, `redis`, `ssh_agent`, `git_credential`, `docker_credential`) with the secret `field` and `hosts` it authenticates to. |
+| `env_class` | `default` (`test`, `dev`, `prod`) and optional `by_prefix` overrides keyed on the secret value prefix. |
+
+`keylatch registry validate` rejects the core providers (GitHub, Vercel, Supabase, Stripe, OpenAI, Anthropic) when they omit `hosts`, `slots`, `placeholder_shape` or `env_class`. Go callers read the contract with `registry.BindingFor(provider)`.
+
 ### `trust_level` values
 
 | Level | Meaning |
