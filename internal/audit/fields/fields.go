@@ -111,6 +111,12 @@ var safeLogFields = map[string][]string{
 		"connection", "namespace", "repository", "permissions",
 		"expires_at", "caller_kind", "reason",
 	},
+	// binding changes: host sets are authorities (no credential content).
+	// attempted is the change an agent caller was refused.
+	"binding.created":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.widened":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.narrowed": {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.refused":  {"connection", "caller_kind", "attempted", "hosts_before", "hosts_after"},
 }
 
 // Redact filters extra map keys against the SafeLogFields allowlist for action.
@@ -167,6 +173,8 @@ func AllActions() []string {
 		// broker dry-run and token revocation actions.
 		"broker.dry_run_requested", "broker.token_revoked",
 		"mint",
+		// binding change actions.
+		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
 	}
 }
 

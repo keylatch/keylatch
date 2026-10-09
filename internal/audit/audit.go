@@ -116,6 +116,13 @@ const (
 	// the actor identity. The canary token value is never logged.
 	ActionCanaryInjected Action = "canary.injected"
 
+	// binding change actions. Extra holds the connection, caller kind and the
+	// before/after host sets.
+	ActionBindingCreated  Action = "binding.created"
+	ActionBindingWidened  Action = "binding.widened"
+	ActionBindingNarrowed Action = "binding.narrowed"
+	ActionBindingRefused  Action = "binding.refused"
+
 	// sandbox actions.
 	// ActionSandboxLaunched records a successful sandbox launch via
 	// direct_classic_sandboxed mode. Extra.executable_sha256 holds the verified

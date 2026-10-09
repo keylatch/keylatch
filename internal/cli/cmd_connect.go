@@ -98,6 +98,9 @@ func newConnectCmd() *cobra.Command {
 			store := newDispatchedStore(cfg, llmcontext.DefaultLookup)
 
 			provider := args[0]
+			if kind, _ := c.Flags().GetString("provider"); kind == customProvider {
+				return connectCustomFromFlags(c, provider)
+			}
 			namespace, _ := c.Flags().GetString("namespace")
 			account, _ := c.Flags().GetString("account")
 			nonInteractive, _ := c.Flags().GetBool("non-interactive")
@@ -360,6 +363,8 @@ func newConnectCmd() *cobra.Command {
 	connectCmd.Flags().StringArray("provider-ref", nil,
 		"resolve a field from an external store URI: --provider-ref field=op://vault/item/field\n"+
 			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]")
+
+	addCustomConnectFlags(connectCmd)
 
 	// Subcommand: connect custom — interactive flow for non-registry providers.
 	customCmd := &cobra.Command{
