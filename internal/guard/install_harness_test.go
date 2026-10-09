@@ -116,7 +116,7 @@ func TestInstall_HarnessHooksBlockWithRealPayload(t *testing.T) {
 			}
 
 			if fx.readPayload != "" {
-				code, stdout, stderr = runHook(t, commands[0], strings.ReplaceAll(fx.readPayload, "{HOME}", home))
+				code, stdout, stderr = runHook(t, commands[0], strings.ReplaceAll(fx.readPayload, "{HOME}", jsonString(t, home)))
 				assert.Equal(t, fx.wantExit, code, "read hook must deny")
 				assert.NotEmpty(t, stderr)
 				if fx.denyKey != "" {
@@ -234,4 +234,13 @@ func TestInstall_CursorUpgradeAddsReadHook(t *testing.T) {
 	hooks := cfg["hooks"].(map[string]any)
 	assert.Len(t, hooks["beforeReadFile"], 1)
 	assert.Len(t, hooks["beforeShellExecution"], 1)
+}
+
+// jsonString returns s escaped for use inside a JSON string literal, so a
+// Windows path's backslashes survive the payload.
+func jsonString(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	require.NoError(t, err)
+	return string(b[1 : len(b)-1])
 }

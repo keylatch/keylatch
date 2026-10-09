@@ -147,19 +147,42 @@ HOME_RE="${HOME//./\\.}"
 READ_CMDS="cat|less|more|head|tail|bat|nl|tac|strings|xxd|od|base64|cp|mv|grep|egrep|rg|awk|sed|sort|cut|tee|scp|rsync"
 SHELL_READ_RE="(^|[[:space:];&|(\"'])($READ_CMDS)[[:space:]]+[^;&|]*(~|\\\$HOME|\\\$\{HOME\}|$HOME_RE)/($PROTECTED_RE)([/[:space:]\"']|\$)"
 
+# Windows harnesses send C:\Users\... paths while Git Bash spells HOME as
+# /c/Users/..., and Windows paths are case-insensitive: map both sides to the
+# /c/... form and compare them in lower case there.
+case "$(uname -s 2>/dev/null)" in
+MINGW* | MSYS* | CYGWIN*) FOLD_CASE=1 ;;
+*) FOLD_CASE=0 ;;
+esac
+
+norm_path() {
+	local p="${1//\\//}"
+	case "$p" in
+	[A-Za-z]:/* | [A-Za-z]:) p="/$(printf '%s' "${p:0:1}" | tr '[:upper:]' '[:lower:]')${p:2}" ;;
+	esac
+	if [ "$FOLD_CASE" = 1 ]; then
+		p="$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')"
+	fi
+	printf '%s' "$p"
+}
+
 path_denied() {
-	local p="$1" d prot
+	local p="$1" d prot home
 	# shellcheck disable=SC2088
 	case "$p" in
 	"~") p="$HOME" ;;
 	"~/"*) p="$HOME/${p#"~/"}" ;;
 	esac
+	p="$(norm_path "$p")"
 	if command -v realpath >/dev/null 2>&1; then
 		p="$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")"
+		p="$(norm_path "$p")"
 	fi
 	p="${p%/}"
+	home="$(norm_path "$HOME")"
+	home="${home%/}"
 	for d in $PROTECTED_PATHS; do
-		prot="$HOME/$d"
+		prot="$home/$d"
 		case "$p/" in "$prot"/*) return 0 ;; esac
 		case "$prot/" in "$p"/*) return 0 ;; esac
 	done
