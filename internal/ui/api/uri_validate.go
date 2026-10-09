@@ -11,12 +11,12 @@ import (
 // string via the /api/provider-templates endpoint.
 //
 // Pattern breakdown:
-// - Scheme: op | aws-sm | hashivault
+// - Scheme: op | aws-sm | hashivault | bw
 // - Must have :// followed by at least two non-slash characters (vault segment)
 // - Then a literal '/' separator
 // - Then at least one more non-slash character (item segment)
 // - Minimum valid form: op://vault/item
-const RefURIPattern = `^(op|aws-sm|hashivault)://[^/][^/]*/[^/].*`
+const RefURIPattern = `^(op|aws-sm|hashivault|bw)://[^/][^/]*/[^/].*`
 
 var refURIRe = regexp.MustCompile(RefURIPattern)
 
@@ -41,7 +41,7 @@ func ValidateRefURI(fieldName, rawURI string) *FieldValidationError {
 	if !refURIRe.MatchString(uri) {
 		return &FieldValidationError{
 			Field:   fieldName,
-			Message: "invalid reference URI — expected op://vault/item/field, aws-sm://region/secret-id, or hashivault://mount/path#field",
+			Message: "invalid reference URI — expected op://vault/item/field, aws-sm://region/secret-id, hashivault://mount/path#field, or bw://org/collection/item/field",
 		}
 	}
 	return nil

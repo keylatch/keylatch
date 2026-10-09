@@ -1105,7 +1105,7 @@ func printSetupSuccess(c *cobra.Command) {
 func setupPromptStorageBranch(c *cobra.Command) (string, error) {
 	fmt.Fprintln(c.OutOrStdout(), "How would you like to store credentials?")
 	fmt.Fprintln(c.OutOrStdout(), "  local     — encrypt and store the secret locally (AEAD)")
-	fmt.Fprintln(c.OutOrStdout(), "  reference — reference a secret from a password manager (op://, aws-sm://, hashivault://)")
+	fmt.Fprintln(c.OutOrStdout(), "  reference — reference a secret from a password manager (op://, aws-sm://, hashivault://, bw://)")
 	fmt.Fprintln(c.OutOrStdout())
 	fmt.Fprintf(c.OutOrStdout(), "  Store credentials locally (AEAD) or reference from a password manager? [local/reference/q]: ")
 
@@ -1139,7 +1139,7 @@ func setupPromptStorageBranch(c *cobra.Command) (string, error) {
 // Reference branch: store a provider URI and resolve it at runtime.
 func setupRunReferenceBranch(c *cobra.Command, ctx context.Context) error {
 	fmt.Fprintln(c.OutOrStdout(), "Reference mode: Keylatch will store a URI and resolve it at runtime.")
-	fmt.Fprintln(c.OutOrStdout(), "Supported URI schemes: op://, aws-sm://, hashivault://")
+	fmt.Fprintln(c.OutOrStdout(), "Supported URI schemes: op://, aws-sm://, hashivault://, bw://")
 	fmt.Fprintln(c.OutOrStdout())
 	fmt.Fprintln(c.OutOrStdout(), "Example URIs:")
 	fmt.Fprintln(c.OutOrStdout(), "  op://Private/Anthropic/api_key")
@@ -1235,6 +1235,9 @@ func validateURISegments(uri string) error {
 		return fmt.Errorf("no scheme separator in URI")
 	}
 	rest := uri[idx+3:]
+	if uri[:idx] == "bw" {
+		return nil
+	}
 
 	// Separate fragment (#field) if present.
 	fragment := ""

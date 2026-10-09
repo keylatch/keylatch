@@ -15,6 +15,7 @@ Supported URI schemes:
 | `op://` | 1Password | `op` v2+ |
 | `aws-sm://` | AWS Secrets Manager | `aws` CLI v2+ |
 | `hashivault://` | HashiCorp Vault | `vault` CLI v1.17+ |
+| `bw://` | Bitwarden (personal vault or any organization collection) | `bw` CLI |
 
 ---
 
@@ -233,6 +234,49 @@ If `vault` is not authenticated:
   [warn] external.hashivault: vault binary found but authentication status unknown — run: vault token lookup
          fix: vault login
 ```
+
+---
+
+## Bitwarden — `bw://`
+
+Reference any existing Bitwarden item, in the personal vault or in any organization collection, under any name. This is independent of the `bw` storage backend, which only works inside one configured collection with Keylatch's own item naming.
+
+### URI format
+
+```
+bw://<org-or-personal>/<collection>/<item>/<field>
+```
+
+| Segment | Meaning |
+|---------|---------|
+| `<org-or-personal>` | `personal` for the personal vault, otherwise an organization name or ID |
+| `<collection>` | Collection name or ID (organization), folder name or ID (personal), or `-` for any |
+| `<item>` | Item name or item ID |
+| `<field>` | `username`, `password`, `notes`, or the name of a custom field |
+
+- Every segment is percent-encoded: a space is `%20` and a slash inside a name is `%2F` (for example a nested collection `Team/Prod` is `Team%2FProd`). A literal `-` name is written `%2D`.
+- A custom field that shares a name with a built-in field is selected with a `field:` prefix, e.g. `field:password`.
+- TOTP fields are not supported.
+- Names match exactly (case-sensitive). More than one match is an error that lists the candidate IDs.
+
+### Connect
+
+```bash
+keylatch connect stripe \
+  --provider-ref api_key="bw://Acme%20Corp/Team%20Keys%2FProd/Stripe/api%20key"
+```
+
+At connect time Keylatch looks the item up, fails if the name is ambiguous or the field is missing, and stores the ID-based form instead of the name:
+
+```
+bw://<organization-id>/-/<item-id>/api%20key
+```
+
+The personal vault form is `bw://personal/-/<item-id>/<field>`. No value is stored in Keylatch. At runtime the item is read again, so renames and rotation in Bitwarden are picked up.
+
+### Session
+
+Resolution uses the same `BW_SESSION` handling as the `bw` backend: the ambient `BW_SESSION` first, then the session cached by `keylatch bw unlock`. The session is passed in the subprocess environment, never on the command line. A locked vault returns guidance to run `keylatch bw unlock`.
 
 ---
 

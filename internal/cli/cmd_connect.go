@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/connections"
+	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -209,7 +211,7 @@ func newConnectCmd() *cobra.Command {
 
 			// --provider-ref: resolve external store URI for a field.
 			// Format: --provider-ref <field>=<uri>
-			// Supported URIs: op://vault/item/field, aws-sm://region/secret, hashivault://mount/path#field
+			// Supported URIs: op://vault/item/field, aws-sm://region/secret, hashivault://mount/path#field, bw://org/collection/item/field
 			if len(providerRefFlags) > 0 {
 				if err := resolveProviderRefs(ctx, providerRefFlags, fields); err != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: --provider-ref: %v\n", err)
@@ -359,7 +361,7 @@ func newConnectCmd() *cobra.Command {
 	connectCmd.Flags().Bool("json", false, "output as JSON")
 	connectCmd.Flags().StringArray("provider-ref", nil,
 		"resolve a field from an external store URI: --provider-ref field=op://vault/item/field\n"+
-			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]")
+			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]  bw://<org-or-personal>/<collection>/<item>/<field>")
 
 	// Subcommand: connect custom — interactive flow for non-registry providers.
 	customCmd := &cobra.Command{
@@ -531,6 +533,12 @@ func newListCmd() *cobra.Command {
 	}
 }
 
+// bwCanonicalizeRef rewrites a bw:// reference to its ID-based form by looking
+// the item up in Bitwarden. Tests replace it.
+var bwCanonicalizeRef = func(ctx context.Context, ref store.BWRef) (store.BWRef, error) {
+	return bw.CanonicalizeRef(ctx, kexec.DefaultRunner, "", ref)
+}
+
 // resolveProviderRefs validates --provider-ref field=URI flags and stores the
 // URI (not the resolved plaintext) in fields.
 //
@@ -544,10 +552,12 @@ func newListCmd() *cobra.Command {
 //   - op://vault/item/field
 //   - aws-sm://region/secret-id[#key]
 //   - hashivault://mount/path[#field]
+//   - bw://<org-or-personal>/<collection>/<item>/<field>; the item is resolved
+//     to its ID here and the ID-based reference is stored
 //
 // Dry-run validation: the URI is parsed and scheme-checked before any write
 // occurs. An invalid URI returns a UsageError (exit UserError) before persistence.
-func resolveProviderRefs(_ context.Context, flags []string, fields map[string][]byte) error {
+func resolveProviderRefs(ctx context.Context, flags []string, fields map[string][]byte) error {
 	for i, kv := range flags {
 		idx := strings.Index(kv, "=")
 		if idx < 0 {
@@ -569,6 +579,15 @@ func resolveProviderRefs(_ context.Context, flags []string, fields map[string][]
 		// Dry-run validation: confirm scheme is supported before any write.
 		if err := store.ValidateProviderRefURI(uri); err != nil {
 			return NewUsageError("--provider-ref field %q: %v", fieldName, err)
+		}
+
+		if rest, ok := strings.CutPrefix(uri, "bw://"); ok {
+			ref, _ := store.ParseBWRef(rest)
+			canon, err := bwCanonicalizeRef(ctx, ref)
+			if err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			uri = canon.String()
 		}
 
 		// Store the URI verbatim. Resolution is deferred to runtime via
