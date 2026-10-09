@@ -1,21 +1,22 @@
 # Keylatch Guard — Windsurf
 
-Windsurf does not currently expose a hook API for tool interception.
+Blocks credential-exfiltration patterns in Windsurf (Devin Desktop) Cascade sessions through a `pre_run_command` hook.
 
-## Recommended Alternative
+## Hook Mechanism
 
-Use Keylatch in gateway mode, which intercepts all outbound credential requests at the network level regardless of agent:
+Cascade reads hooks from `~/.codeium/windsurf/hooks.json` (user), `.devin/hooks.json` in the workspace (legacy `.windsurf/hooks.json` is read when it is absent) and the system file (`/etc/devin/hooks.json` on Linux). Hooks do not run in Restricted Mode. The installer merges a `pre_run_command` entry into the user file:
 
-```bash
-keylatch proxy start --port 8080
-# Point Windsurf's network proxy setting to http://localhost:8080
+```json
+{
+  "hooks": {
+    "pre_run_command": [
+      { "command": "~/.keylatch/hooks/block-keylatch-exfiltration.sh --harness windsurf", "show_output": false }
+    ]
+  }
+}
 ```
 
-See: https://keylatch.dev/integrations/windsurf
-
-## Manual Guard (Future)
-
-`block-keylatch-exfiltration.sh` is provided for future hook API integration when Windsurf exposes a PreToolUse hook mechanism. For manual guard instructions see keylatch.dev/integrations/windsurf.
+The hook receives `{"agent_action_name": "pre_run_command", "tool_info": {"command_line": "...", "cwd": "..."}}` on stdin. Cascade documents blocking by exit code only: exit 2 blocks the action and shows stderr to the agent; any other code lets it proceed. The guard prints the reason on stderr and exits 2; it prints no JSON.
 
 ## Install
 
@@ -23,4 +24,19 @@ See: https://keylatch.dev/integrations/windsurf
 keylatch install-guard windsurf
 ```
 
-This prints the above guidance and recommends gateway mode.
+The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh`; one script serves every harness and `--harness <id>` selects the payload and deny contract.
+
+## What It Blocks
+
+- `keylatch get` without `--masked`
+- Secret-manager reads: `op read`, `op item get`, `bw get`, `bw list`, macOS `security find-generic-password` / `find-internet-password`
+- `cat` of `.env` files and of `~/.keylatch/` state
+- Environment dumps: `env`, `printenv`, including behind `bash -c`, `eval`, `sudo`, `xargs` and similar wrappers
+- Environment managers: `direnv export`, `direnv dump`, `direnv exec <dir> env`, `mise env`, `mise exec -- env`, a bare `mise set`
+- Shell history: `atuin search`, `atuin history ...`, and any access to `~/.*_history` or `~/.local/share/atuin`
+
+## Verify
+
+```bash
+keylatch doctor
+```

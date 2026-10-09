@@ -1,20 +1,21 @@
 ---
 title: Windsurf Integration
-description: Using Keylatch with Windsurf — CREDENTIALS_LLM_SESSION shell rc pattern.
+description: Using Keylatch with Windsurf — pre_run_command hook and CREDENTIALS_LLM_SESSION shell rc pattern.
 ---
 
 # Windsurf Integration
 
-Windsurf does not set a unique environment variable when its integrated terminal is active, and does not have a hook API for pre-tool-use guards. Keylatch integrates with Windsurf using the generic `CREDENTIALS_LLM_SESSION` signal set in your shell rc file.
+Windsurf does not set a unique environment variable when its integrated terminal is active, so Keylatch uses the generic `CREDENTIALS_LLM_SESSION` signal set in your shell rc file. Cascade also has a `pre_run_command` hook, which `keylatch install-guard windsurf` uses to block credential-exfiltration commands before they run.
 
 ## Quick start
 
 ```bash
-# Get setup instructions
+# Install the pre_run_command hook
 keylatch install-guard windsurf
+# Hook written to: ~/.codeium/windsurf/hooks.json
 ```
 
-This command prints shell-rc instructions — it does not write any files. Follow the printed instructions to set `CREDENTIALS_LLM_SESSION=windsurf` in your shell configuration.
+The hook blocks a denied command with exit 2 (the only blocking signal Cascade documents). Then set `CREDENTIALS_LLM_SESSION=windsurf` in your shell configuration so the Layer 1 guard applies too.
 
 ## Shell rc configuration
 
@@ -48,11 +49,9 @@ Setting `CREDENTIALS_LLM_SESSION=windsurf` activates Keylatch's Layer 1 LLM-sess
 
 This guard is active whenever `CREDENTIALS_LLM_SESSION` is non-empty, so it protects the Windsurf integrated terminal from credential exfiltration by any script or tool running in that context.
 
-## Limitation: no Layer 2 hook
+## Layer 2 hook
 
-Windsurf does not currently expose a hook API for pre-tool-use guards. Layer 1 (the `CREDENTIALS_LLM_SESSION` guard in the Keylatch binary) is the only automated protection available.
-
-If Windsurf adds hook support in the future, Keylatch will add `keylatch install-guard windsurf` support. Track the issue at [keylatch.dev/integrations/windsurf](https://keylatch.dev/integrations/windsurf).
+Cascade reads `hooks.json` from `~/.codeium/windsurf/hooks.json`, `.devin/hooks.json` in the workspace and the system file. Hooks do not run in Restricted Mode. See [docs/integrations/windsurf.md](../../integrations/windsurf.md) for the entry the installer writes.
 
 ## Using Keylatch inside Windsurf
 

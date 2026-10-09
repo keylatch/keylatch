@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `github-app` provider template: `private_key` (secret), `app_id` and one `installation_<owner>` field per account the App is installed on. `keylatch connect github-app` tests the connection with a signed App JWT against `GET /app`.
 - Per-connection policy `connections.<name>.mint.github_app` in `config.json`: `callers` (default `service` and `host`), `deny_owners`, `allow_owners`, `allow_repos`, `permission_ceiling` and `max_ttl` (1–3600 seconds, default 3600). A connection without the policy cannot mint.
 - Audit action `mint` with connection, namespace, repository, permissions, `expires_at`, caller kind and, on failure, the reason. The token is never recorded.
+- The deny corpus covers environment and history managers: `direnv exec <dir> env`, `direnv export`, `direnv dump`, `mise env`, `mise exec -- env`, a bare `mise set`, `atuin search`, `atuin history`, and reads of `~/.*_history` and `~/.local/share/atuin`.
 
 ### Security
 
@@ -29,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The Claude Code exfiltration guard allows `env` when it runs a command (`env -C /abs/dir cmd`, `env NAME=value cmd`, `env -i`, `env -u NAME`). Bare `env`, `env` with no command, other `env` options (`-0`, `-S`, …), a relative `-C` directory and `printenv` stay blocked, and the command after `env` is checked like any other.
+- Every shipped agent guard now denies with exit 2 plus the harness's deny JSON (exit 1 does not block in most harnesses). One guard script serves Claude Code, Codex, Gemini CLI, Cursor, Windsurf, Copilot and Antigravity; the hook command selects the stdin payload and deny contract with `--harness <id>`. Re-run `keylatch install-guard <agent>` to pick it up.
+- The Cursor installer writes `~/.cursor/hooks.json` (`beforeShellExecution`, fail-closed) instead of `settings.json`; the Codex and Gemini installers write the nested matcher-group schema their harnesses read; Copilot gets a native `PreToolUse` hook in `~/.copilot/hooks/` instead of a shell wrapper.
+- Windsurf and Antigravity have hook APIs: `keylatch install-guard windsurf|antigravity` now installs a hook.
+
+### Removed
+
+- The Aider guard installer: Aider has no hook API. Use `keylatch launch -- aider`.
 
 ## [0.9.9] - 2026-10-05
 

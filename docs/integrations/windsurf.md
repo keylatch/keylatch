@@ -1,61 +1,44 @@
 # Keylatch Integration — Windsurf
 
-## Setup
+Blocks credential-exfiltration patterns in Windsurf (Devin Desktop) Cascade sessions through a `pre_run_command` hook.
 
-Windsurf does not expose a hook API for tool interception. Use the `CREDENTIALS_LLM_SESSION` environment variable to trigger Keylatch's LLM-session guard (Layer 1) whenever Windsurf's integrated terminal is active.
+## Hook Mechanism
 
-Add the following to your shell startup file — once set, every Windsurf terminal session will block direct credential access via `keylatch get`.
+Cascade reads hooks from `~/.codeium/windsurf/hooks.json` (user), `.devin/hooks.json` in the workspace (legacy `.windsurf/hooks.json` is read when it is absent) and the system file (`/etc/devin/hooks.json` on Linux). Hooks do not run in Restricted Mode. The installer merges a `pre_run_command` entry into the user file:
 
-**zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
-
-```bash
-echo 'export CREDENTIALS_LLM_SESSION=windsurf' >> ~/.zshrc
+```json
+{
+  "hooks": {
+    "pre_run_command": [
+      { "command": "~/.keylatch/hooks/block-keylatch-exfiltration.sh --harness windsurf", "show_output": false }
+    ]
+  }
+}
 ```
 
-**fish** — set as a universal variable (persists across sessions):
+The hook receives `{"agent_action_name": "pre_run_command", "tool_info": {"command_line": "...", "cwd": "..."}}` on stdin. Cascade documents blocking by exit code only: exit 2 blocks the action and shows stderr to the agent; any other code lets it proceed. The guard prints the reason on stderr and exits 2; it prints no JSON.
 
-```fish
-set -Ux CREDENTIALS_LLM_SESSION windsurf
-```
-
-**PowerShell** — set as a user-level environment variable:
-
-```powershell
-[Environment]::SetEnvironmentVariable('CREDENTIALS_LLM_SESSION','windsurf','User')
-```
-
-After setting the variable, **restart your terminal or reload your shell rc** (e.g. `source ~/.zshrc`).
-
-### What this does
-
-When `CREDENTIALS_LLM_SESSION` is set to any non-empty value, Keylatch treats the current terminal session as an active LLM session and applies the session guard:
-
-- `keylatch get` — blocked, exit code 2 (SecurityBlock)
-- `keylatch run` — allowed for all v1.0.0 runtime modes
-- `keylatch ui` — scope locked to `status-only` (read-only)
-- `keylatch gateway token create` — `--max-uses=0` tokens are rejected
-
-Setting it to `windsurf` (rather than `1`) makes the guard reason traceable in audit logs and diagnostics.
-
-See also: [docs/integrations/antigravity.md](antigravity.md) for the equivalent setup for Antigravity.
-
----
-
-## Install command
+## Install
 
 ```bash
 keylatch install-guard windsurf
 ```
 
-This prints the shell-rc snippets above and exits cleanly. No files are written — configuration is manual.
+The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh`; one script serves every harness and `--harness <id>` selects the payload and deny contract.
 
-## Gateway mode (optional, strongest protection)
+## What It Blocks
 
-For the strongest protection, run Keylatch in gateway mode. Credentials never leave the gateway process:
+- `keylatch get` without `--masked`
+- Secret-manager reads: `op read`, `op item get`, `bw get`, `bw list`, macOS `security find-generic-password` / `find-internet-password`
+- `cat` of `.env` files and of `~/.keylatch/` state
+- Environment dumps: `env`, `printenv`, including behind `bash -c`, `eval`, `sudo`, `xargs` and similar wrappers
+- Environment managers: `direnv export`, `direnv dump`, `direnv exec <dir> env`, `mise env`, `mise exec -- env`, a bare `mise set`
+- Shell history: `atuin search`, `atuin history ...`, and any access to `~/.*_history` or `~/.local/share/atuin`
+
+## Verify
 
 ```bash
-keylatch proxy start --port 8080
-# Point Windsurf's network proxy setting to http://localhost:8080
+keylatch doctor
 ```
 
 See also: `contrib/agent-guards/windsurf/README.md`

@@ -1,61 +1,52 @@
 # Keylatch Integration — Antigravity
 
-## Setup
+Blocks credential-exfiltration patterns in Antigravity agent sessions through a `PreToolUse` hook.
 
-Antigravity does not expose a hook API for tool interception. Use the `CREDENTIALS_LLM_SESSION` environment variable to trigger Keylatch's LLM-session guard (Layer 1) whenever Antigravity's integrated terminal is active.
+## Hook Mechanism
 
-Add the following to your shell startup file — once set, every Antigravity terminal session will block direct credential access via `keylatch get`.
+Antigravity reads `hooks.json` from `.agents/hooks.json` in the workspace and `~/.gemini/config/hooks.json` globally (the CLI also accepts hooks in `~/.gemini/antigravity-cli/settings.json`). The installer adds a named hook to the global file:
 
-**zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
-
-```bash
-echo 'export CREDENTIALS_LLM_SESSION=antigravity' >> ~/.zshrc
+```json
+{
+  "keylatch-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          { "type": "command", "command": "~/.keylatch/hooks/block-keylatch-exfiltration.sh --harness antigravity", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-**fish** — set as a universal variable (persists across sessions):
+The hook receives `{"toolCall": {"name": "run_command", "args": {"CommandLine": "..."}}}` on stdin. To block, the guard prints `{"decision":"deny","reason":"..."}` and exits 2, so it denies whether the harness reads the JSON or the exit code.
 
-```fish
-set -Ux CREDENTIALS_LLM_SESSION antigravity
-```
+Reports differ on whether the IDE (as opposed to the CLI) runs `PreToolUse` hooks; check that a denied command is actually blocked in your build.
 
-**PowerShell** — set as a user-level environment variable:
-
-```powershell
-[Environment]::SetEnvironmentVariable('CREDENTIALS_LLM_SESSION','antigravity','User')
-```
-
-After setting the variable, **restart your terminal or reload your shell rc** (e.g. `source ~/.zshrc`).
-
-### What this does
-
-When `CREDENTIALS_LLM_SESSION` is set to any non-empty value, Keylatch treats the current terminal session as an active LLM session and applies the session guard:
-
-- `keylatch get` — blocked, exit code 2 (SecurityBlock)
-- `keylatch run` — allowed for all v1.0.0 runtime modes
-- `keylatch ui` — scope locked to `status-only` (read-only)
-- `keylatch gateway token create` — `--max-uses=0` tokens are rejected
-
-Setting it to `antigravity` (rather than `1`) makes the guard reason traceable in audit logs and diagnostics.
-
-See also: [docs/integrations/windsurf.md](windsurf.md) for the equivalent setup for Windsurf.
-
----
-
-## Install command
+## Install
 
 ```bash
 keylatch install-guard antigravity
 ```
 
-This prints the shell-rc snippets above and exits cleanly. No files are written — configuration is manual.
+The guard script is written to `~/.keylatch/hooks/block-keylatch-exfiltration.sh`; one script serves every harness and `--harness <id>` selects the payload and deny contract.
 
-## Gateway mode (optional, strongest protection)
+## What It Blocks
 
-For the strongest protection, run Keylatch in gateway mode. Credentials never leave the gateway process:
+- `keylatch get` without `--masked`
+- Secret-manager reads: `op read`, `op item get`, `bw get`, `bw list`, macOS `security find-generic-password` / `find-internet-password`
+- `cat` of `.env` files and of `~/.keylatch/` state
+- Environment dumps: `env`, `printenv`, including behind `bash -c`, `eval`, `sudo`, `xargs` and similar wrappers
+- Environment managers: `direnv export`, `direnv dump`, `direnv exec <dir> env`, `mise env`, `mise exec -- env`, a bare `mise set`
+- Shell history: `atuin search`, `atuin history ...`, and any access to `~/.*_history` or `~/.local/share/atuin`
+
+## Verify
 
 ```bash
-keylatch proxy start --port 8080
-# Point Antigravity's network proxy setting to http://localhost:8080
+keylatch doctor
 ```
 
 See also: `contrib/agent-guards/antigravity/README.md`

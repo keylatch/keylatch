@@ -145,11 +145,11 @@ In any detected LLM session (Claude Code, Codex, Cursor, Aider, Gemini CLI, Open
 | [Claude Code](docs/integrations/claude-code.md) | Yes | Yes | Detected via `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` |
 | [Codex](docs/integrations/codex.md) | Yes | Yes | Detected via `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED` |
 | [Cursor](docs/integrations/cursor.md) | Yes | Yes | Detected via `CURSOR_AGENT` / `CURSOR_TRACE_ID` |
-| [Aider](docs/integrations/aider.md) | No | Yes | Aider sets no variable; set `CREDENTIALS_LLM_SESSION=aider` in shell rc |
+| [Aider](docs/integrations/aider.md) | No | No | No hook API; start with `keylatch launch -- aider` |
 | [Gemini](docs/integrations/gemini.md) | Yes | Yes | Detected via `GEMINI_CLI` |
 | [OpenCode](docs/integrations/opencode.md) | Yes | Yes | Detected via `OPENCODE` |
-| [Windsurf](docs/integrations/windsurf.md) | No | No | Set `CREDENTIALS_LLM_SESSION=windsurf` in shell rc |
-| [Antigravity](docs/integrations/antigravity.md) | No | No | Set `CREDENTIALS_LLM_SESSION=antigravity` in shell rc |
+| [Windsurf](docs/integrations/windsurf.md) | No | Yes | `pre_run_command` hook in `~/.codeium/windsurf/hooks.json` |
+| [Antigravity](docs/integrations/antigravity.md) | No | Yes | `PreToolUse` hook in `~/.gemini/config/hooks.json` |
 | [GitHub Copilot](docs/integrations/copilot.md) | No | No | Set `CREDENTIALS_LLM_SESSION=copilot` in shell rc |
 | Generic | Yes | N/A | Any tool that sets `CREDENTIALS_LLM_SESSION` to a non-empty value |
 
