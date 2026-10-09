@@ -56,7 +56,7 @@ func TestAllPresets_HealthCheck_Lifecycle(t *testing.T) {
 
 	// Config file locations per preset (mirrors each preset's HealthCheck).
 	configFor := map[string]string{
-		"claude-code": filepath.Join(home, ".claude", "settings.json"),
+		"claude-code": filepath.Join(home, ".claude.json"),
 		"codex":       filepath.Join(home, ".codex", "config.json"),
 		"cursor":      filepath.Join(home, ".cursor", "settings.json"),
 		"opencode":    filepath.Join(home, ".opencode", "config.json"),
@@ -93,7 +93,7 @@ func TestAllPresets_HealthCheck_Lifecycle(t *testing.T) {
 		if !st.Healthy {
 			t.Errorf("%s: HealthCheck unhealthy with config present: %s", name, st.Detail)
 		}
-		if err := os.RemoveAll(filepath.Dir(cfgPath)); err != nil {
+		if err := os.Remove(cfgPath); err != nil {
 			t.Fatal(err)
 		}
 	}

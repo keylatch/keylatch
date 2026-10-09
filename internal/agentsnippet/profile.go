@@ -19,7 +19,7 @@ var agentPresets = map[string]agentPreset{
 		name: "Claude Code",
 		files: []ProfileFile{
 			{
-				Path:           "${HOME}/.claude/settings.json",
+				Path:           "${HOME}/.claude.json",
 				Mode:           0o600,
 				Content:        `{"mcpServers":{"keylatch":{"command":"keylatch","args":["mcp","--stdio"]}}}`,
 				ConflictPolicy: "merge",

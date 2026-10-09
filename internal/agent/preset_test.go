@@ -93,7 +93,7 @@ func TestClaudeCodeSetupIsIdempotent(t *testing.T) {
 	_, err := preset.Setup(ctx, opts, store)
 	require.NoError(t, err)
 
-	settingsPath := filepath.Join(tmpHome, ".claude", "settings.json")
+	settingsPath := filepath.Join(tmpHome, ".claude.json")
 	data1, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
 
@@ -118,10 +118,10 @@ func TestDiffShowsExactChanges(t *testing.T) {
 	store := newMockStore()
 
 	// Write a different config first.
-	settingsDir := filepath.Join(tmpHome, ".claude")
+	settingsDir := tmpHome
 	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
 	require.NoError(t, os.WriteFile(
-		filepath.Join(settingsDir, "settings.json"),
+		filepath.Join(settingsDir, ".claude.json"),
 		[]byte(`{"mcpServers":{}}`),
 		0o600,
 	))
@@ -152,7 +152,7 @@ func TestDryRunProducesNoWrites(t *testing.T) {
 	assert.Empty(t, receipt.FilesWritten, "DryRun must produce no written files")
 
 	// Verify the file does not exist in the temp home.
-	settingsPath := filepath.Join(tmpHome, ".claude", "settings.json")
+	settingsPath := filepath.Join(tmpHome, ".claude.json")
 	_, err = os.Stat(settingsPath)
 	assert.True(t, os.IsNotExist(err), "settings.json must not exist after dry-run")
 }
@@ -165,10 +165,10 @@ func TestUninstallRestoresPriorState(t *testing.T) {
 	store := newMockStore()
 
 	// First, set up with an existing mcpServers config.
-	settingsDir := filepath.Join(tmpHome, ".claude")
+	settingsDir := tmpHome
 	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
 	original := `{"mcpServers":{"other-server":{"command":"other"}},"theme":"dark"}`
-	settingsPath := filepath.Join(settingsDir, "settings.json")
+	settingsPath := filepath.Join(settingsDir, ".claude.json")
 	require.NoError(t, os.WriteFile(settingsPath, []byte(original), 0o600))
 
 	// Install keylatch.
