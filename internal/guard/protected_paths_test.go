@@ -36,7 +36,7 @@ func TestProtectedPaths_DocsAgreeWithScript(t *testing.T) {
 
 	cursor, err := os.ReadFile("../../docs/integrations/cursor.md")
 	require.NoError(t, err)
-	lines := strings.Split(string(cursor), "\n")
+	lines := strings.Split(strings.ReplaceAll(string(cursor), "\r\n", "\n"), "\n")
 	for _, pattern := range guard.CursorIgnorePatterns() {
 		assert.Contains(t, lines, pattern, "cursor.md ignore block must list %s", pattern)
 	}
