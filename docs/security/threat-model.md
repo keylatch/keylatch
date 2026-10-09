@@ -107,9 +107,7 @@ The guarantee depends on what contains the agent.
 
 | Deployment | The agent runs in its harness sandbox | The agent has an unrestricted shell as the same user |
 |---|---|---|
-| **Same-user install** (current) | **Strong for gateway and typed-call use.** Secret values do not enter the agent's or the child's environment or output, and Keylatch state sits outside the sandbox's readable paths. Remaining risk: misuse of capabilities the agent was granted. This holds only while Keylatch is not excluded from the sandbox. | **Not a boundary.** A same-user process can read same-user files and the unlocked OS keystore, can attach to processes where `ptrace` is permitted, and can replace the `keylatch` binary or edit hooks. Keylatch makes this a deliberate, detectable attack: detection tightens decisions, canaries flag exfiltration and the audit log records use. |
-| **Separate-user broker** (planned) | Strong, as above. | Strong for confidentiality: no key material is readable by the user's account and the agent holds capabilities only. |
-| **Workspace VM** (planned) | The VM is the sandbox. | Strong, including against root inside the guest. |
+| **Same-user install** | **Strong for gateway and typed-call use.** Secret values do not enter the agent's or the child's environment or output, and Keylatch state sits outside the sandbox's readable paths. Remaining risk: misuse of capabilities the agent was granted. This holds only while Keylatch is not excluded from the sandbox. | **Not a boundary.** A same-user process can read same-user files and the unlocked OS keystore, can attach to processes where `ptrace` is permitted, and can replace the `keylatch` binary or edit hooks. Keylatch makes this a deliberate, detectable attack: detection tightens decisions, canaries flag exfiltration and the audit log records use. |
 
 Recommended setup today: keep the harness sandbox on, do not exclude `keylatch` from it (`keylatch doctor` checks this for Claude Code), use `keylatch call` and gateway runtimes for agents, install the exfiltration guard and enable canaries.
 
