@@ -108,8 +108,9 @@ mkdir -p "$KEYLATCH_DATA_DIR"
 # ─── bootstrap vault ──────────────────────────────────────────────────────────
 # `gateway up` refuses to start without a usable vault backend.
 
+# Throwaway vault on a runner without an OS keyring: keep the KEK in a file.
 log "Running: keylatch bootstrap --backend file"
-"$KEYLATCH_BIN" bootstrap --backend file >/dev/null || fail "bootstrap failed"
+KEYLATCH_INSECURE_FILE_KEK=1 "$KEYLATCH_BIN" bootstrap --backend file >/dev/null || fail "bootstrap failed"
 pass "bootstrap"
 
 # ─── gateway init ─────────────────────────────────────────────────────────────

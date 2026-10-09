@@ -3,7 +3,6 @@ package keyring
 import (
 	"encoding/binary"
 	"fmt"
-	"path/filepath"
 	"sync"
 
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
@@ -13,13 +12,19 @@ import (
 // Keyring is the in-memory state for an open keyring file.
 //
 // All exported methods are safe for concurrent use (they hold mu).
-// AES-GCM nonce allocation additionally holds gcmFlock.
+// Every method that mutates the on-disk keyring — including AES-GCM nonce
+// allocation — additionally holds lockPath, the single cross-process flock
+// guarding keyring.json. A single lock file is required: two separate lock
+// files (one for nonce allocation, one for term lifecycle) would let a
+// concurrent RotateTerm/RotateKEK/DestroyTerm reload a stale GCM nonce
+// counter and overwrite a just-flushed, higher high-watermark, allowing
+// nonce reuse across processes.
 type Keyring struct {
 	mu       sync.Mutex
 	path     string
 	file     KeyringFile
 	deks     map[int][]byte // term → plaintext DEK
-	gcmFlock string         // path to flock file for nonce counter
+	lockPath string         // path to the single flock file for all keyring writes
 
 	// lease is the in-process nonce lease for AES-GCM nonce allocation.
 	// Disk writes happen only once per leaseSize calls rather than every call.
@@ -28,6 +33,12 @@ type Keyring struct {
 	// fsyncFailHook, if non-nil, replaces the atomicWrite call in NextGCMNonce.
 	// Used in fault-injection tests only.
 	fsyncFailHook func() error
+
+	// postReloadHook, if non-nil, is invoked by RotateKEK immediately after
+	// reloading+merging the on-disk keyring and before saving it back. Used
+	// only by concurrency regression tests to deterministically interleave
+	// RotateKEK with a concurrent NextGCMNonce.
+	postReloadHook func()
 }
 
 // Open loads and validates the keyring file at path and returns a live Keyring.
@@ -60,7 +71,7 @@ func Open(path string, k kek.KEK) (*Keyring, error) {
 		path:     path,
 		file:     kf,
 		deks:     make(map[int][]byte),
-		gcmFlock: filepath.Join(filepath.Dir(path), "keyring-gcm-nonce.lock"),
+		lockPath: flockPath(path),
 	}
 
 	// Unwrap DEKs for all active/retired terms.

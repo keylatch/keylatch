@@ -49,6 +49,26 @@ func EnvAgeIdentityKEK(salt []byte) (KEK, error) {
 //
 // Build tag: !fips (age is excluded from FIPS builds).
 func AgeIdentityKEKFromPath(identityPath string, salt []byte) (KEK, error) {
+	identity, err := readIdentityFile(identityPath)
+	if err != nil {
+		return nil, err
+	}
+	defer zero(identity)
+	return IdentityKEK(identity, salt)
+}
+
+// IdentityKEK derives the wrapping key from raw identity material via
+// HKDF-SHA256 bound to salt. The caller keeps ownership of identity.
+func IdentityKEK(identity, salt []byte) (KEK, error) {
+	hkdfReader := hkdf.New(sha256.New, identity, salt, []byte("keylatch/kek/v1"))
+	wrappingKey := make([]byte, 32)
+	if _, err := io.ReadFull(hkdfReader, wrappingKey); err != nil {
+		return nil, fmt.Errorf("kek: age-env HKDF: %w", err)
+	}
+	return &ageEnvKEK{wrappingKey: wrappingKey, salt: salt}, nil
+}
+
+func readIdentityFile(identityPath string) ([]byte, error) {
 	if identityPath == "" {
 		return nil, fmt.Errorf("%w: identity path is empty", ErrKEKUnavailable)
 	}
@@ -62,20 +82,11 @@ func AgeIdentityKEKFromPath(identityPath string, salt []byte) (KEK, error) {
 		return nil, fmt.Errorf("%w: %q has mode %04o, want 0600", ErrKEKUnavailable, identityPath, info.Mode().Perm())
 	}
 
-	identityBytes, err := os.ReadFile(identityPath) //nolint:gosec // G703: path comes from operator-controlled source; path validation above confirms it exists and has 0600 permissions
+	identity, err := os.ReadFile(identityPath) //nolint:gosec // G703: path comes from operator-controlled source; path validation above confirms it exists and has 0600 permissions
 	if err != nil {
 		return nil, fmt.Errorf("%w: read %q: %v", ErrKEKUnavailable, identityPath, err)
 	}
-
-	// Derive 32 bytes via HKDF-SHA256.
-	// info string: "keylatch/kek/v1"
-	hkdfReader := hkdf.New(sha256.New, identityBytes, salt, []byte("keylatch/kek/v1"))
-	wrappingKey := make([]byte, 32)
-	if _, err := io.ReadFull(hkdfReader, wrappingKey); err != nil {
-		return nil, fmt.Errorf("kek: age-env HKDF: %w", err)
-	}
-
-	return &ageEnvKEK{wrappingKey: wrappingKey, salt: salt}, nil
+	return identity, nil
 }
 
 // Wrap encrypts dek using XChaCha20-Poly1305 keyed by the HKDF-derived key.

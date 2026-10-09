@@ -25,6 +25,10 @@ concurrency:
 permissions:
   contents: read
 
+# CI runners have no OS keyring; vaults created here keep a plaintext KEK.
+env:
+  KEYLATCH_INSECURE_FILE_KEK: "1"
+
 jobs:
   sandbox-linux:
     name: Sandbox tests (bwrap)

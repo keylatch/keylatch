@@ -96,7 +96,8 @@ mkdir -p "$KEYLATCH_DATA_DIR"
 # ─── bootstrap keyring for file backend ───────────────────────────────────────
 
 log "Bootstrapping keyring..."
-"$KEYLATCH_BIN" bootstrap --backend file 2>/dev/null || true
+# Throwaway vault on a runner without an OS keyring: keep the KEK in a file.
+KEYLATCH_INSECURE_FILE_KEK=1 "$KEYLATCH_BIN" bootstrap --backend file 2>/dev/null || true
 
 # ─── enroll credential with canary value ──────────────────────────────────────
 
