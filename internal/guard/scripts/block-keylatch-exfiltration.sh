@@ -172,15 +172,36 @@ norm_path() {
 	printf '%s' "$p"
 }
 
-# resolve_path normalizes a path and, where realpath exists, resolves
-# symlinks and Windows short names, so both sides of a comparison agree.
+# resolve_path brings a path to one comparable form. On Windows, Git Bash
+# mounts parts of the disk elsewhere (the temp folder is /tmp), so cygpath
+# turns every path back into its Windows form first; elsewhere realpath
+# resolves symlinks.
 resolve_path() {
-	local p
-	p="$(norm_path "$1")"
-	if command -v realpath >/dev/null 2>&1; then
-		p="$(norm_path "$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")")"
+	local p="$1"
+	if [ "$FOLD_CASE" = 1 ]; then
+		if command -v cygpath >/dev/null 2>&1; then
+			p="$(cygpath -w -- "$p" 2>/dev/null || printf '%s' "$p")"
+		fi
+		p="$(norm_path "$p")"
+	elif command -v realpath >/dev/null 2>&1; then
+		p="$(realpath -m -- "$p" 2>/dev/null || printf '%s' "$p")"
 	fi
 	printf '%s' "${p%/}"
+}
+
+# home_forms prints every form HOME may take in a harness payload: on Windows
+# both its long and its 8.3 short name.
+home_forms() {
+	resolve_path "$HOME"
+	echo
+	if [ "$FOLD_CASE" = 1 ] && command -v cygpath >/dev/null 2>&1; then
+		local f
+		for f in -l -s; do
+			f="$(cygpath -w "$f" -- "$HOME" 2>/dev/null)" || continue
+			f="$(norm_path "$f")"
+			printf '%s\n' "${f%/}"
+		done
+	fi
 }
 
 path_denied() {
@@ -191,12 +212,16 @@ path_denied() {
 	"~/"*) p="$HOME/${p#"~/"}" ;;
 	esac
 	p="$(resolve_path "$p")"
-	home="$(resolve_path "$HOME")"
-	for d in $PROTECTED_PATHS; do
-		prot="$home/$d"
-		case "$p/" in "$prot"/*) return 0 ;; esac
-		case "$prot/" in "$p"/*) return 0 ;; esac
-	done
+	while IFS= read -r home; do
+		[ -n "$home" ] || continue
+		for d in $PROTECTED_PATHS; do
+			prot="$home/$d"
+			case "$p/" in "$prot"/*) return 0 ;; esac
+			case "$prot/" in "$p"/*) return 0 ;; esac
+		done
+	done <<EOF_HOMES
+$(home_forms)
+EOF_HOMES
 	return 1
 }
 
