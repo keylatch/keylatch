@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `github-app` provider template: `private_key` (secret), `app_id` and one `installation_<owner>` field per account the App is installed on. `keylatch connect github-app` tests the connection with a signed App JWT against `GET /app`.
 - Per-connection policy `connections.<name>.mint.github_app` in `config.json`: `callers` (default `service` and `host`), `deny_owners`, `allow_owners`, `allow_repos`, `permission_ceiling` and `max_ttl` (1–3600 seconds, default 3600). A connection without the policy cannot mint.
 - Audit action `mint` with connection, namespace, repository, permissions, `expires_at`, caller kind and, on failure, the reason. The token is never recorded.
+- The deny corpus covers environment and history managers: `direnv exec <dir> env`, `direnv export`, `direnv dump`, `mise env`, `mise exec -- env`, a bare `mise set`, `atuin search`, `atuin history`, and reads of `~/.*_history` and `~/.local/share/atuin`.
 
 ### Security
 
@@ -29,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The Claude Code exfiltration guard allows `env` when it runs a command (`env -C /abs/dir cmd`, `env NAME=value cmd`, `env -i`, `env -u NAME`). Bare `env`, `env` with no command, other `env` options (`-0`, `-S`, …), a relative `-C` directory and `printenv` stay blocked, and the command after `env` is checked like any other.
+- Every shipped agent guard now denies with exit 2 plus the harness's deny JSON (exit 1 does not block in most harnesses). One guard script serves Claude Code, Codex, Gemini CLI, Cursor, Windsurf, Copilot and Antigravity; the hook command selects the stdin payload and deny contract with `--harness <id>`. Re-run `keylatch install-guard <agent>` to pick it up.
+- The Cursor installer writes `~/.cursor/hooks.json` (`beforeShellExecution`, fail-closed) instead of `settings.json`; the Codex and Gemini installers write the nested matcher-group schema their harnesses read; Copilot gets a native `PreToolUse` hook in `~/.copilot/hooks/` instead of a shell wrapper.
+- Windsurf and Antigravity have hook APIs: `keylatch install-guard windsurf|antigravity` now installs a hook.
+- Antigravity denies with exit 0 plus `{"decision":"deny","reason":...}` because its hooks are documented as stdout JSON only; the matcher also covers `view_file`. Windsurf registers `pre_read_code` and Cursor registers `beforeReadFile` (fail-closed). Read hooks and shell readers (`cat`, `head`, `cp`, ...) deny direct reads of paths that are, are inside, or contain `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.local/share/atuin`, `~/.kube`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.netrc`, `~/.config/gh/hosts.yml`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.azure` and `~/.terraform.d/credentials.tfrc.json`; tools reading their own config as child processes (`kubectl`, `gh`, `docker`) are unaffected. Cursor does not currently enforce a `beforeReadFile` deny for agent reads, so add the `.cursorignore` entries that `install-guard cursor` prints.
+- The guard fails closed: an unset `HOME` or any other unexpected error inside it now denies (exit 2 plus the deny JSON; exit 0 plus `{"decision":"deny"}` for Antigravity) instead of exiting 1. Without `jq` it extracts file paths and scans the raw payload for protected paths, and it no longer uses the GNU-only `\|` in `sed`, which broke the env-dump check on macOS.
+- Path comparison works on macOS: `.`, `..`, repeated slashes and symlinks are resolved without `realpath -m`, and the comparison is case-insensitive on macOS and Windows.
+- Any shell command that names a protected path through `~`, `$HOME`, `${HOME}` or the absolute home is denied (except `ls`, `kubectl`, `gh`, `docker`, `stat`), covering `/bin/cat`, quoted and `//` spellings, `cd ~ && cat .ssh/...`, `tar`, `dd`, `diff`, redirections and `python3 -c` with a literal path. Claude Code `Grep` and `Glob`, Gemini `read_many_files`, `glob` and `search_file_content`, and Copilot `view` and `grep` are guarded as file reads. `mise set` with only flags is denied. Known gaps are listed in the guard README.
+- Claude Code on Windows installs the `bash "<path>"` hook command, every installer quotes the script path (a home directory with a space works), the contrib Cursor installer registers `beforeReadFile`, and installs replace entries and scripts left by older versions (`*-guard.sh`, the Cursor `settings.json` entry, a bare script path). `keylatch-hook-version` is now `6`.
+- Contracts follow [Claude Code](https://code.claude.com/docs/en/hooks), [Cursor](https://cursor.com/docs/hooks), [Windsurf/Devin](https://docs.devin.ai/desktop/cascade/hooks.md), [Antigravity](https://antigravity.google/docs/hooks/) and [Gemini CLI](https://geminicli.com/docs/hooks/reference/) docs; none of it has been exercised in the real applications.
+
+### Removed
+
+- The Aider guard installer: Aider has no hook API. Use `keylatch launch -- aider`.
 
 ## [0.9.9] - 2026-10-05
 

@@ -70,6 +70,7 @@ The hook runs a guard script before every Gemini tool call. It blocks patterns l
 - `security find-generic-password` — macOS Keychain access
 - `op read` / `bw get` — password manager CLI access
 - `cat .env` or reads of `~/.keylatch/` — config file access
+- `env`, `direnv export`, `mise env`, `atuin search` — environment and history dumps
 
 ## Verifying detection
 
