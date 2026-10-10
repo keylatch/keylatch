@@ -111,7 +111,7 @@ func IsInstalled(agent Agent, opts InstallOpts) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		return configReferences(settingsPath, scriptPath)
+		return configReferences(settingsPath, hookCommand(agent, scriptPath))
 
 	case AgentOpenCode:
 		home, err := os.UserHomeDir()
@@ -173,24 +173,26 @@ func installClaudeCode(opts InstallOpts) (string, error) {
 	// already-present-but-broken hook gets fixed instead of skipped.
 	settings, migrated := migrateLegacyHooks(settings)
 
-	// Check for idempotency before mutating further.
-	if hookAlreadyInstalled(settings, scriptPath) {
-		if migrated {
+	// Replace entries written by earlier versions (a bare script path, the old
+	// per-agent scripts) with the current command.
+	command := hookCommand(AgentClaudeCode, scriptPath)
+	pruned := pruneStaleHooks(settings, command)
+
+	if hookAlreadyInstalled(settings, command) {
+		if migrated || pruned {
 			if err := saveSettings(settingsPath, settings); err != nil {
 				return "", err
 			}
 		}
+		removeLegacyScripts(AgentClaudeCode, opts)
 		return settingsPath, nil
 	}
 
-	// Append the PreToolUse hook.
-	settings = appendClaudeCodePreToolUseHook(settings, scriptPath)
-
-	// Persist the modified settings.
+	settings = appendClaudeCodePreToolUseHook(settings, command)
 	if err := saveSettings(settingsPath, settings); err != nil {
 		return "", err
 	}
-
+	removeLegacyScripts(AgentClaudeCode, opts)
 	return settingsPath, nil
 }
 
@@ -216,15 +218,22 @@ func installHarness(agent Agent) (string, error) {
 	if agent == AgentCodex || agent == AgentGemini {
 		settings, migrated = migrateLegacyHooks(settings)
 	}
+	pruned := pruneStaleHooks(settings, command)
 	settings, changed, err := addHarnessHook(agent, settings, command)
 	if err != nil {
 		return "", fmt.Errorf("install-guard: %s: %w", path, err)
 	}
-	if changed || migrated {
+	if changed || migrated || pruned {
 		if err := saveSettings(path, settings); err != nil {
 			return "", err
 		}
 	}
+	if agent == AgentCursor {
+		if err := removeLegacyCursorSettingsHook(home); err != nil {
+			return "", err
+		}
+	}
+	removeLegacyScripts(agent, InstallOpts{})
 	return path, nil
 }
 
@@ -257,19 +266,26 @@ func harnessConfigPath(agent Agent, home string) string {
 }
 
 // hookCommand is the command line a harness runs for the guard. Claude Code
-// is the script's default harness and takes the bare path. On Windows the
-// harness hands the line to a shell that drops backslashes and cannot run a
-// .sh file directly, so the script runs through bash with a quoted
+// is the script's default harness and takes no flag. The script path is always
+// quoted so a home directory with a space survives the harness's shell. On
+// Windows the harness hands the line to a shell that drops backslashes and
+// cannot run a .sh file directly, so the script runs through bash with a
 // forward-slash path.
 func hookCommand(agent Agent, scriptPath string) string {
-	command := scriptPath
+	command := quoteArg(scriptPath)
 	if runtime.GOOS == "windows" {
-		command = `bash "` + filepath.ToSlash(scriptPath) + `"`
+		command = `bash ` + quoteArg(filepath.ToSlash(scriptPath))
 	}
 	if agent == AgentClaudeCode {
 		return command
 	}
 	return command + " --harness " + string(agent)
+}
+
+// quoteArg wraps s in double quotes for a POSIX shell, escaping the characters
+// that stay special inside them.
+func quoteArg(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "`", "\\`").Replace(s) + `"`
 }
 
 // addHarnessHook registers the guard in the harness's own hooks schema and
@@ -283,7 +299,11 @@ func addHarnessHook(agent Agent, settings map[string]any, command string) (map[s
 	case AgentGemini:
 		cmdEntry["name"] = "keylatch-guard"
 		cmdEntry["timeout"] = 10000
-		return addHookEntry(settings, "BeforeTool", command, map[string]any{"matcher": "run_shell_command|read_file|read_many_files", "hooks": []any{cmdEntry}})
+		settings, added, err := addHookEntry(settings, "BeforeTool", command, map[string]any{"matcher": geminiMatcher, "hooks": []any{cmdEntry}})
+		if err != nil {
+			return nil, false, err
+		}
+		return settings, setGroupMatcher(settings, "BeforeTool", command, geminiMatcher) || added, nil
 	case AgentCursor:
 		if _, ok := settings["version"]; !ok {
 			settings["version"] = 1
@@ -314,6 +334,27 @@ func addHarnessHook(agent Agent, settings map[string]any, command string) (map[s
 	default:
 		return nil, false, fmt.Errorf("no hook schema for agent %q", agent)
 	}
+}
+
+// geminiMatcher selects the Gemini tools the guard sees: the shell and every
+// tool that reads file content.
+const geminiMatcher = "run_shell_command|read_file|read_many_files|glob|search_file_content|grep_search"
+
+// setGroupMatcher points the matcher group that runs command at matcher, so an
+// install over an older version picks up newly guarded tools.
+func setGroupMatcher(settings map[string]any, event, command, matcher string) bool {
+	hooksObj, _ := settings["hooks"].(map[string]any)
+	groups, _ := hooksObj[event].([]any)
+	changed := false
+	for _, g := range groups {
+		group, ok := g.(map[string]any)
+		if !ok || !containsString(group, command) || group["matcher"] == matcher {
+			continue
+		}
+		group["matcher"] = matcher
+		changed = true
+	}
+	return changed
 }
 
 // addHookEntries registers one entry under each event.
@@ -588,12 +629,12 @@ func migrateLegacyHooks(settings map[string]any) (map[string]any, bool) {
 	return settings, true
 }
 
-// appendClaudeCodePreToolUseHook adds a PreToolUse hook entry for scriptPath
+// appendClaudeCodePreToolUseHook adds a PreToolUse hook entry running command
 // using the Claude Code settings schema, where "hooks" is an object mapping
 // event names to matcher groups:
 //
-//	"hooks": { "PreToolUse": [{ "hooks": [{ "type": "command", "command": "<script>" }] }] }
-func appendClaudeCodePreToolUseHook(settings map[string]any, scriptPath string) map[string]any {
+//	"hooks": { "PreToolUse": [{ "hooks": [{ "type": "command", "command": "<command>" }] }] }
+func appendClaudeCodePreToolUseHook(settings map[string]any, command string) map[string]any {
 	hooksObj, ok := settings["hooks"].(map[string]any)
 	if !ok {
 		hooksObj = map[string]any{}
@@ -604,10 +645,118 @@ func appendClaudeCodePreToolUseHook(settings map[string]any, scriptPath string) 
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
-				"command": scriptPath,
+				"command": command,
 			},
 		},
 	})
 	settings["hooks"] = hooksObj
 	return settings
+}
+
+// legacyGuardRe matches the per-agent scripts older versions installed under
+// ~/.keylatch/hooks or ~/.keylatch/guards.
+var legacyGuardRe = regexp.MustCompile(`\.keylatch[/\\](hooks|guards)[/\\][a-z-]+-guard\.sh`)
+
+const sharedGuardScript = "block-keylatch-exfiltration.sh"
+
+// pruneStaleHooks removes hook entries that run a guard script other than
+// command: an earlier spelling of the current script path, or one of the old
+// per-agent scripts. Containers the removal empties are removed with it. It
+// reports whether anything changed.
+func pruneStaleHooks(settings map[string]any, command string) bool {
+	_, changed := pruneHooks(settings, func(cmd string) bool {
+		return cmd != command && (strings.Contains(cmd, sharedGuardScript) || legacyGuardRe.MatchString(cmd))
+	})
+	return changed
+}
+
+func pruneHooks(v any, stale func(string) bool) (any, bool) {
+	switch t := v.(type) {
+	case []any:
+		out := make([]any, 0, len(t))
+		changed := false
+		for _, e := range t {
+			em, isMap := e.(map[string]any)
+			if isMap && entryIsStale(em, stale) {
+				changed = true
+				continue
+			}
+			_, hadHooks := em["hooks"]
+			ne, c := pruneHooks(e, stale)
+			if c {
+				changed = true
+				nm, _ := ne.(map[string]any)
+				if _, hasHooks := nm["hooks"]; isMap && hadHooks && !hasHooks {
+					continue
+				}
+			}
+			out = append(out, ne)
+		}
+		return out, changed
+	case map[string]any:
+		changed := false
+		for k, e := range t {
+			ne, c := pruneHooks(e, stale)
+			if !c {
+				continue
+			}
+			changed = true
+			if isEmptyContainer(ne) {
+				delete(t, k)
+			} else {
+				t[k] = ne
+			}
+		}
+		return t, changed
+	}
+	return v, false
+}
+
+func entryIsStale(m map[string]any, stale func(string) bool) bool {
+	for _, key := range []string{"command", "bash"} {
+		if cmd, ok := m[key].(string); ok && stale(cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEmptyContainer(v any) bool {
+	switch t := v.(type) {
+	case []any:
+		return len(t) == 0
+	case map[string]any:
+		return len(t) == 0
+	}
+	return false
+}
+
+// removeLegacyScripts deletes the per-agent script older versions wrote for
+// agent, next to the current one and in the older guards directory.
+func removeLegacyScripts(agent Agent, opts InstallOpts) {
+	name := string(agent) + "-guard.sh"
+	var dirs []string
+	if dir, err := guardScriptDir(agent, opts); err == nil {
+		dirs = append(dirs, dir, filepath.Join(filepath.Dir(dir), "guards"))
+	}
+	for _, dir := range dirs {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+}
+
+// removeLegacyCursorSettingsHook drops the guard entry an older version put in
+// ~/.cursor/settings.json, which Cursor does not read for hooks.
+func removeLegacyCursorSettingsHook(home string) error {
+	path := filepath.Join(home, ".cursor", "settings.json")
+	if _, err := os.Stat(path); err != nil {
+		return nil
+	}
+	settings, err := loadSettings(path)
+	if err != nil {
+		return err
+	}
+	if !pruneStaleHooks(settings, "") {
+		return nil
+	}
+	return saveSettings(path, settings)
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -31,6 +32,8 @@ type harnessFixture struct {
 }
 
 var harnessFixtures = []harnessFixture{
+	{guard.AgentClaudeCode, ".claude/settings.json", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"direnv exec . env"}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"{HOME}/.ssh/id_rsa"}}`, `"permissionDecision":"deny"`, 2, 1},
 	{guard.AgentCursor, ".cursor/hooks.json", `{"hook_event_name":"beforeShellExecution","command":"direnv export bash","cwd":"/work"}`,
 		`{"hook_event_name":"beforeReadFile","file_path":"/work/a.go","content":"","attachments":[{"type":"file","file_path":"{HOME}/.aws/credentials"}]}`, `"permission":"deny"`, 2, 2},
 	{guard.AgentWindsurf, ".codeium/windsurf/hooks.json", `{"agent_action_name":"pre_run_command","tool_info":{"command_line":"mise env","cwd":"/work"}}`,
@@ -104,7 +107,12 @@ func TestInstall_HarnessHooksBlockWithRealPayload(t *testing.T) {
 			var commands []string
 			hookCommands(cfg, &commands)
 			require.Len(t, commands, fx.registrations)
-			assert.Contains(t, commands[0], "--harness "+string(fx.agent))
+			if fx.agent != guard.AgentClaudeCode {
+				assert.Contains(t, commands[0], "--harness "+string(fx.agent))
+			}
+			if runtime.GOOS == "windows" {
+				assert.True(t, strings.HasPrefix(commands[0], "bash \""), "Windows hooks run through bash: %s", commands[0])
+			}
 
 			code, stdout, stderr := runHook(t, commands[0], fx.payload)
 			assert.Equal(t, fx.wantExit, code)
