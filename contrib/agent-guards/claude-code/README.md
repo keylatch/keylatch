@@ -20,6 +20,13 @@ Hook version is tracked via the comment `# keylatch-hook-version: N` at the top 
 | `~/.keylatch/` path | Read | Direct vault file read blocked |
 | `keylatch run ... -- env` | Bash | Environment dump via run blocked |
 | `cat ... keylatch` / `cat ... .env` | Bash | Direct file read of env/vault files blocked |
+| any command naming `~`, `$HOME`, `${HOME}` or the absolute home followed by a protected path | Bash | `cat`, `tar`, `dd`, `diff`, redirections, `python3 -c 'open(...)'` and every other command except `ls`, `kubectl`, `gh`, `docker` and `stat` |
+| a protected path (or a glob or directory that reaches one) | Read, Grep, Glob, `read_many_files`, `search_file_content`, `view` | File and search tools are checked on their `path`, `paths`, `file_path` and path-like `pattern` arguments |
+| `mise set` with only flags | Bash | Prints the resolved environment |
+
+Protected paths are `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.local/share/atuin`, `~/.kube`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.netrc`, `~/.config/gh/hosts.yml`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.azure` and `~/.terraform.d/credentials.tfrc.json`.
+
+Before matching, the command text is normalised: quotes and backslashes are removed, repeated slashes, `/./` and `seg/..` are folded. Tool paths are resolved without GNU `realpath -m` (symlinks and `..` through `cd -P`), and on macOS and Windows the comparison is case-insensitive. Without `jq` the payload is parsed with `sed`, `grep` and `awk`, and the raw JSON is scanned for protected paths, so that mode may over-block but does not miss a protected path. Any unexpected failure inside the guard (an unset `HOME`, a missing tool) is a deny.
 
 ## Allowed patterns
 
@@ -41,7 +48,7 @@ Add to `~/.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "/absolute/path/to/block-keylatch-exfiltration.sh"
+            "command": "\"/absolute/path/to/block-keylatch-exfiltration.sh\""
           }
         ]
       }
@@ -56,13 +63,23 @@ Event names are case-sensitive (`PreToolUse`, not `preToolUse`). Omitting `match
 
 Add to `.claude/settings.json` in your project root (same structure as above).
 
+## Known gaps
+
+The guard reads the tool-call text; it does not run or expand anything. These are accepted:
+
+- Paths computed at run time: variables other than `HOME`, command substitution, string concatenation, and globs that expand to a protected name (`~/.ss?/id_rsa` in a shell command).
+- Relative paths, except after a `cd` to the home directory in the same command.
+- The safe commands (`ls`, `kubectl`, `gh`, `docker`, `stat`) may name a protected path, so `docker run -v ~/.ssh:/k ...` is allowed.
+- Interpreters that build the path from the environment (`python3 -c 'open(os.environ["HOME"] + "/.ssh/id_rsa")'`).
+- Environment dumps through `export -p`, `declare -x`, `set` and `/proc/self/environ`.
+
 ## Verifying the hook is active
 
 Run `keylatch doctor` — it checks for the hook version comment and validates the hook file is executable.
 
 ## Hook version
 
-The comment `# keylatch-hook-version: 4` at the top of the script is read by `keylatch doctor` to verify you have a compatible version. If a new hook version is released with additional block patterns, `keylatch doctor` will warn you to update.
+The comment `# keylatch-hook-version: 6` at the top of the script is read by `keylatch doctor` to verify you have a compatible version. If a new hook version is released with additional block patterns, `keylatch doctor` will warn you to update.
 
 ## Note
 
