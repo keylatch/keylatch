@@ -33,7 +33,7 @@ for h in $HARNESSES; do
 	fi
 
 	run_guard "$h" "$(shell_payload "$h" "$ALLOWED")"
-	if [ "$GUARD_CODE" -eq 0 ] && ! printf '%s' "$GUARD_OUT" | grep -q 'deny'; then
+	if verdict_ok "$h" allow; then
 		ok "$h: allowed command exits 0"
 	else
 		bad "$h: allowed command (code=$GUARD_CODE out=$GUARD_OUT)"
@@ -52,13 +52,13 @@ for h in $HARNESSES; do
 		fi
 	done
 	run_guard "$h" "$(read_payload "$h" "/work/src/main.go")"
-	if [ "$GUARD_CODE" -eq 0 ] && ! printf '%s' "$GUARD_OUT" | grep -q 'deny'; then
+	if verdict_ok "$h" allow; then
 		ok "$h: read of a project file allowed"
 	else
 		bad "$h: read of a project file (code=$GUARD_CODE out=$GUARD_OUT)"
 	fi
 	run_guard "$h" "$(read_payload "$h" "$HOME/code/project")"
-	if [ "$GUARD_CODE" -eq 0 ]; then
+	if verdict_ok "$h" allow; then
 		ok "$h: read of a sibling directory allowed"
 	else
 		bad "$h: read of a sibling directory (code=$GUARD_CODE)"
@@ -81,7 +81,7 @@ fi
 
 # Antigravity denies with exit 0 and JSON; the exit status must not be 2.
 run_guard antigravity "$(shell_payload antigravity "$DENIED")"
-if [ "$GUARD_CODE" -eq 0 ] && printf '%s' "$GUARD_OUT" | jq -e '.decision == "deny"' >/dev/null 2>&1; then
+if verdict_ok antigravity deny && printf '%s' "$GUARD_OUT" | jq -e '.decision == "deny"' >/dev/null 2>&1; then
 	ok "antigravity: deny is exit 0 plus JSON"
 else
 	bad "antigravity: deny status (code=$GUARD_CODE out=$GUARD_OUT)"

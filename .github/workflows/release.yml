@@ -66,6 +66,9 @@ jobs:
       - run: bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh
       - run: bash contrib/agent-guards/harness-contract.test.sh
       - run: bash contrib/agent-guards/deny-corpus.test.sh
+      - run: bash contrib/agent-guards/guard-edge.test.sh
+      - run: bash contrib/agent-guards/install-scripts.test.sh
+      - run: KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/deny-corpus.test.sh
 
   build-cli:
     needs: test

@@ -48,11 +48,15 @@ test-canary:
 test-canary-meta:
 	go test -tags meta -race -count=1 ./internal/canary/...
 
-## test-hook: run agent-guard hook tests
+## test-hook: run agent-guard hook tests (the last two run the guard without jq)
 test-hook:
 	bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh --verbose
 	bash contrib/agent-guards/harness-contract.test.sh
 	bash contrib/agent-guards/deny-corpus.test.sh
+	bash contrib/agent-guards/guard-edge.test.sh
+	bash contrib/agent-guards/install-scripts.test.sh
+	KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/harness-contract.test.sh
+	KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/deny-corpus.test.sh
 
 ## test-prop: run property-based tests in internal/vault
 test-prop:

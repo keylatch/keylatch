@@ -316,6 +316,10 @@ jobs:
         run: |
           bash contrib/agent-guards/harness-contract.test.sh
           bash contrib/agent-guards/deny-corpus.test.sh
+          bash contrib/agent-guards/guard-edge.test.sh
+          bash contrib/agent-guards/install-scripts.test.sh
+          KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/harness-contract.test.sh
+          KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/deny-corpus.test.sh
 
   smoke:
     needs: lint
