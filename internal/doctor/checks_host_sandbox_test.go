@@ -49,7 +49,7 @@ func TestHostSandboxKeylatchExcluded_ProjectAndLocalSettings_Fail(t *testing.T) 
 			st := doctor.ExportCheckHostSandboxKeylatchExcluded(sandboxLookup(t, home, project))(context.Background())
 
 			assert.False(t, st.OK)
-			assert.Contains(t, st.Fix, ".claude/"+name)
+			assert.Contains(t, st.Fix, filepath.Join(".claude", name))
 		})
 	}
 }
