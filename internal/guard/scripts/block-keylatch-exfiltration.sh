@@ -48,14 +48,24 @@
 #   - Relative paths are only caught after a `cd` to the home directory in the
 #     same command; a relative read from a working directory that is already
 #     inside a protected location is not.
-#   - Commands on the safe list (ls, kubectl, gh, docker, stat) may name a
-#     protected path, so `docker run -v ~/.ssh:/k ...` is not blocked.
+#   - Recursive reads of the whole home directory (`grep -r KEY ~`,
+#     `find ~ -exec cat {} +`, `tar cf - ~`, `cp -r ~ /tmp/h`): only paths
+#     that name a protected location are matched, not their ancestors.
+#   - Commands that use a protected file without printing it (ls, stat, ssh,
+#     ssh-add, ssh-keygen, scp -i, git clone/fetch/push, chmod, chown, mkdir,
+#     touch, and kubectl/helm/gh with --kubeconfig or --config) are allowed
+#     when they are the whole command, so a flag the guard does not model can
+#     still make them print (`ssh-keygen -y` prints a public key). Writes
+#     through a redirection (`echo x >> ~/.npmrc`) stay denied: a write into
+#     authorized_keys or an npm/pip config is a persistence risk.
 #   - Interpreters that read a protected path through a variable or an
 #     expression (`python3 -c 'open(os.environ["HOME"] + "/.ssh/id_rsa")'`).
 #   - env dumps via `export -p`, `declare -x`, `set` and `/proc/self/environ`.
 set -euo pipefail
 
 HOME="${HOME:-}"
+# With HOME unset bash still expands ~ through the account database.
+if [ -z "$HOME" ]; then HOME="$(cd ~ 2>/dev/null && pwd -P)" || HOME=""; fi
 HARNESS="claude-code"
 if [ "${1:-}" = "--harness" ]; then
 	HARNESS="${2:-}"
@@ -124,10 +134,9 @@ esac
 # one (except the safe list below). Tools reading their own config as child
 # processes (kubectl, gh, docker) are unaffected. Keep this the only list.
 PROTECTED_PATHS=".keylatch .ssh .aws .gnupg .local/share/atuin .kube .config/gcloud .docker/config.json .netrc .config/gh/hosts.yml .git-credentials .npmrc .pypirc .azure .terraform.d/credentials.tfrc.json"
-SAFE_PATH_CMDS="ls kubectl gh docker stat"
 
 re_escape() {
-	printf '%s' "$1" | sed -E 's/[][\.*^$+?(){}|/]/\\&/g'
+	printf '%s' "$1" | sed -E 's/[][\.*^$+?(){}|]/\\&/g'
 }
 
 PROTECTED_RE=""
@@ -313,6 +322,12 @@ load_home_forms() {
 	fi
 }
 
+# looks_like_home_credential matches /home/<user>/.ssh and the like for a user
+# whose home directory the guard does not know.
+looks_like_home_credential() {
+	matches "^(/home/[^/]+|/Users/[^/]+|/root|/[a-z]/users/[^/]+)/($PROTECTED_RE)(/|\$)" "$(lexical_path "$1")"
+}
+
 path_denied() {
 	local p="$1" d prot home
 	[ -n "$p" ] || return 1
@@ -322,6 +337,7 @@ path_denied() {
 	"~/"*) p="$HOME/${p#"~/"}" ;;
 	esac
 	[ -n "$p" ] || return 1
+	if looks_like_home_credential "$p"; then return 0; fi
 	p="$(resolve_path "$p")"
 	load_home_forms
 	while IFS= read -r home; do
@@ -360,17 +376,9 @@ path_arg_denied() {
 # raw_json_denied scans an unparsed payload for any protected path spelled with
 # ~, $HOME or an absolute home, whatever key it sits under.
 raw_json_denied() {
-	local text homes="" home alt
+	local text
 	text="$(printf '%s' "$1" | sed -E 's#\\\\#/#g; s#\\/#/#g; s#([A-Za-z]):/#/\1/#g')"
-	load_home_forms
-	while IFS= read -r home; do
-		[ -n "$home" ] || continue
-		homes="$homes|$(re_escape "$home")"
-	done <<EOF_RAW_HOMES
-$HOME_FORMS_TEXT
-EOF_RAW_HOMES
-	alt="~|\\\$HOME|\\\$\\{HOME\\}$homes"
-	matches "($alt)/+($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)" "$text"
+	matches "($(home_alternatives))/+($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)" "$text"
 }
 
 # --- payload parsing ---
@@ -394,11 +402,11 @@ json_unescape() {
 	}'
 }
 
-# json_string_values <keys-ERE>: every string value under a matching key, in the
-# payload and in the JSON that a toolArgs string carries.
+# json_string_values <keys-ERE> [text]: every string value under a matching key
+# in text, by default the payload and the JSON that a toolArgs string carries.
 json_string_values() {
 	{
-		printf '%s\n%s\n' "$STDIN_JSON" "$STDIN_UNESCAPED" |
+		{ if [ $# -ge 2 ]; then printf '%s\n' "$2"; else printf '%s\n%s\n' "$STDIN_JSON" "$STDIN_UNESCAPED"; fi; } |
 			grep -oE "\"($1)\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" |
 			sed -E 's/^"[^"]*"[[:space:]]*:[[:space:]]*"(.*)"$/\1/' || true
 	} | json_unescape
@@ -430,9 +438,10 @@ JQ_COMMAND='def args: ((.toolArgs // empty) | if type == "string" then (try from
 	| if type == "string" then . else empty end'
 # shellcheck disable=SC2016
 JQ_FILES='def args: ((.toolArgs // empty) | if type == "string" then (try fromjson catch {}) else . end);
+	def globtool: ((.tool_name // .toolName // "") | test("^(Glob|glob)$"));
 	[.tool_input.file_path?, .tool_input.absolute_path?, .tool_input.path?, .tool_input.dir_path?, (.tool_input.paths[]?),
-	 (.tool_input.pattern? | select(type == "string" and test("/"))), (.tool_input.glob? | select(type == "string" and test("/"))),
-	 .file_path?, .tool_info.file_path?, args.path?, (args.paths[]?), (args.pattern? | select(type == "string" and test("/"))),
+	 (if globtool then .tool_input.pattern? else empty end | select(type == "string" and test("/"))), (.tool_input.glob? | select(type == "string" and test("/"))),
+	 .file_path?, .tool_info.file_path?, args.path?, (args.paths[]?), (if globtool then args.pattern? else empty end | select(type == "string" and test("/"))),
 	 .toolCall.args.AbsolutePath?, (.attachments[]?.file_path?)]
 	| .[] | select(type == "string" and . != "")'
 
@@ -453,13 +462,14 @@ if [ -z "$TOOL_NAME" ] && [ ! -t 0 ]; then
 				TOOL_NAME="$({ printf '%s' "$STDIN_JSON" | sed -En 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' | head -n 1; } || true)"
 			fi
 			TOOL_INPUT="$STDIN_JSON"
-			# Every string under a command key is analysed, so an extra
-			# occurrence can only add to what is checked.
-			TOOL_COMMAND="$(json_string_values 'command|command_line|CommandLine|cmd')"
+			TOOL_COMMAND="$(json_string_values 'command|command_line|CommandLine|cmd' "$STDIN_JSON")"
+			if [ -z "$TOOL_COMMAND" ]; then TOOL_COMMAND="$(json_string_values 'command|cmd' "$STDIN_UNESCAPED")"; fi
 			TOOL_FILES="$({
 				json_string_values 'file_path|AbsolutePath|absolute_path|path|dir_path'
 				json_array_values 'paths'
-				{ json_string_values 'pattern|glob' | grep '/' || true; }
+				glob_keys='glob'
+				case "$TOOL_NAME" in Glob | glob) glob_keys='pattern|glob' ;; esac
+				{ json_string_values "$glob_keys" | grep '/' || true; }
 			})"
 			if [ -n "$TOOL_COMMAND" ] && [ -z "$TOOL_NAME" ]; then TOOL_NAME="Bash"; fi
 		fi
@@ -754,41 +764,162 @@ END {
 
 HISTORY_PATHS="(\.local/share/atuin|(^|[/[:space:]'\"])\.[A-Za-z0-9_]*_history([[:space:]'\"]|$))"
 
-# shell_names_protected_path reports whether a shell command text refers to a
-# protected credential location. The text is normalised first (quotes and
-# backslashes dropped, repeated slashes, `/./` and `seg/..` folded) so spelling
-# tricks do not hide the path, then every command segment that names a
-# protected path is denied unless its command word is on the safe list. After a
-# `cd` to the home directory, relative protected names count too.
+# --- shell command check ---
+#
+# A shell command is denied when it names a protected credential location,
+# unless the one command that names it is known to use the file without
+# printing it. The command text is normalised first, so quoting, repeated
+# slashes, `/./` and `seg/..` do not hide a path.
+
+SHELL_REF_RE=""
+SHELL_REL_RE=""
+SHELL_HOME_ALT=""
+
+# normalize_command_text drops quotes and backslashes and folds the path
+# spellings. On Windows, backslashes become slashes and C:/ becomes /c/ first.
+# shellcheck disable=SC1003
+normalize_command_text() {
+	local text="$1"
+	if [ "$WINDOWS" = 1 ]; then
+		text="$(printf '%s' "$text" | tr '\\' '/' | sed -E 's#(^|[^A-Za-z0-9])([A-Za-z]):/#\1/\2/#g')"
+	fi
+	printf '%s' "$text" | tr -d "\"'\\\\" | sed -E -e 's#/+#/#g' -e ':a' -e 's#/\./#/#g' -e 's#/[^/[:space:].][^/[:space:]]*/\.\./#/#' -e 's#/\.[^/[:space:].][^/[:space:]]*/\.\./#/#' -e 'ta'
+}
+
+# home_alternatives prints an ERE matching every way a command can spell the
+# home directory: ~ and ~user, the HOME and USERPROFILE variables, and the
+# literal home paths.
+# shellcheck disable=SC2016
+home_alternatives() {
+	local alt='~[A-Za-z0-9._-]*|\$HOME|\$\{HOME\}|\$USERPROFILE|\$env:USERPROFILE|%USERPROFILE%' home
+	load_home_forms
+	while IFS= read -r home; do
+		[ -n "$home" ] || continue
+		alt="$alt|$(re_escape "$home")"
+	done <<EOF_ALT_HOMES
+$HOME_FORMS_TEXT
+$HOME
+EOF_ALT_HOMES
+	printf '%s' "$alt"
+}
+
+build_shell_patterns() {
+	SHELL_HOME_ALT="$(home_alternatives)"
+	SHELL_REF_RE="($SHELL_HOME_ALT)/+($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)"
+	SHELL_REL_RE="(^|[[:space:]=<>])($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)"
+}
+
+# is_single_command is true for text with no command separator, pipe, command
+# substitution or backtick: nothing else can consume what the command prints.
+is_single_command() {
+	case "$1" in
+	*[\;\&\|\(\)\`]* | *$'\n'*) return 1 ;;
+	esac
+	return 0
+}
+
+is_home_cd() {
+	matches "^[[:space:]]*(cd|pushd)([[:space:]]+($SHELL_HOME_ALT)?/*)?[[:space:]]*\$" "$1"
+}
+
+# trim_command strips leading blanks and NAME=value assignments from a segment.
+trim_command() {
+	local w="${1#"${1%%[![:space:]]*}"}"
+	while [[ $w =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
+		w="${w#"${BASH_REMATCH[0]}"}"
+	done
+	printf '%s' "$w"
+}
+
+command_word() {
+	local w
+	w="$(trim_command "$1")"
+	w="${w%%[[:space:]]*}"
+	printf '%s' "${w##*/}"
+}
+
+# redirects_into_protected is true when a protected path is a redirection
+# target; writes into credential files stay denied.
+redirects_into_protected() {
+	local text="$1" home_cd="$2"
+	if matches "[<>][[:space:]]*$SHELL_REF_RE" "$text"; then return 0; fi
+	[ "$home_cd" = 1 ] && matches "[<>][[:space:]]*($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)" "$text"
+}
+
+# without_flag_values removes the protected-path values of the given flags and of
+# KUBECONFIG= assignments from a segment.
+without_flag_values() {
+	local seg="$1" flags="$2"
+	printf '%s' "$seg" | sed -E -e "s#($flags)(=|[[:space:]]+)($SHELL_HOME_ALT)/+($PROTECTED_RE)[^[:space:]]*##g" -e "s#KUBECONFIG=($SHELL_HOME_ALT)/+($PROTECTED_RE)[^[:space:]]*##g"
+}
+
+# only_flag_values_name_protected: after the flag values are removed, no
+# protected path is left in the segment.
+only_flag_values_name_protected() {
+	! matches "$SHELL_REF_RE" "$(without_flag_values "$1" "$2")"
+}
+
+# cluster_cli_may_name_protected allows kubectl, helm and gh (and exporting
+# KUBECONFIG) to name a protected file only as their kubeconfig or config.
+cluster_cli_may_name_protected() {
+	if matches '(^|[[:space:]])--(raw|flatten)([[:space:]=]|$)' "$1"; then return 1; fi
+	only_flag_values_name_protected "$1" '--kubeconfig|--config'
+}
+
+git_subcommand_is_transport() {
+	matches '^git([[:space:]]+(-c[[:space:]]+[^[:space:]]+|-C[[:space:]]+[^[:space:]]+|--[a-z-]+))*[[:space:]]+(clone|fetch|pull|push|ls-remote|init|remote|submodule|lfs)([[:space:]]|$)' "$(trim_command "$1")"
+}
+
+# segment_may_name_protected decides whether a segment that names a protected
+# path is one of the commands that only use the file. Commands that touch the
+# file without printing it must be the whole command; a pipeline or command
+# substitution could hand the path on to a reader.
+segment_may_name_protected() {
+	local seg="$1" whole="$2" word
+	word="$(command_word "$seg")"
+	case "$word" in
+	"" | kubectl | helm | gh | export)
+		cluster_cli_may_name_protected "$seg" && return 0
+		;;
+	esac
+	[ "$whole" = 1 ] || return 1
+	case "$word" in
+	ls | stat | ssh-add | ssh-keygen | chmod | chown | mkdir | touch) return 0 ;;
+	ssh | scp) only_flag_values_name_protected "$seg" '-i|-F|-o[[:space:]]*IdentityFile' ;;
+	git) git_subcommand_is_transport "$seg" ;;
+	*) return 1 ;;
+	esac
+}
+
+# segment_names_relative is true for a relative protected name after a cd to the
+# home directory, unless the command only prints it.
+segment_names_relative() {
+	local word
+	matches "$SHELL_REL_RE" "$1" || return 1
+	word="$(command_word "$1")"
+	[ "$word" != echo ] && [ "$word" != printf ]
+}
+
 shell_names_protected_path() {
-	local norm seg w ref_re rel_re cd_re home_cd=0 homes="" alt safe
-	norm="$(printf '%s' "$1" | tr -d "\"'\\\\" | sed -E -e 's#/+#/#g' -e ':a' -e 's#/\./#/#g' -e 's#/[^/[:space:].][^/[:space:]]*/\.\./#/#' -e 's#/\.[^/[:space:].][^/[:space:]]*/\.\./#/#' -e 'ta')"
-	if [ -n "$HOME" ]; then homes="|$(re_escape "$HOME")"; fi
-	alt="~|\\\$HOME|\\\$\\{HOME\\}$homes"
-	ref_re="($alt)/+($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)"
-	rel_re="(^|[[:space:]=<>])($PROTECTED_RE)([^A-Za-z0-9_.-]|\$)"
-	cd_re="^[[:space:]]*(cd|pushd)([[:space:]]+($alt)?/*)?[[:space:]]*\$"
+	local text seg whole=0 home_cd=0
+	text="$(normalize_command_text "$1")"
+	build_shell_patterns
+	if is_single_command "$text"; then whole=1; fi
+	if redirects_into_protected "$text" 0; then return 0; fi
 	while IFS= read -r seg; do
-		if matches "$cd_re" "$seg"; then
+		if is_home_cd "$seg"; then
 			home_cd=1
 			continue
 		fi
-		if ! matches "$ref_re" "$seg"; then
-			if [ "$home_cd" = 0 ] || ! matches "$rel_re" "$seg"; then continue; fi
+		if matches "$SHELL_REF_RE" "$seg"; then
+			segment_may_name_protected "$seg" "$whole" || return 0
+		elif [ "$home_cd" = 1 ] && segment_names_relative "$seg"; then
+			segment_may_name_protected "$seg" "$whole" || return 0
 		fi
-		w="${seg#"${seg%%[![:space:]]*}"}"
-		while [[ $w =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
-			w="${w#"${BASH_REMATCH[0]}"}"
-		done
-		w="${w%%[[:space:]]*}"
-		w="${w##*/}"
-		for safe in $SAFE_PATH_CMDS; do
-			if [ "$w" = "$safe" ]; then continue 2; fi
-		done
-		return 0
 	done <<EOF_SEGMENTS
-$(printf '%s\n' "$norm" | tr ';&|()' '\n')
+$(printf '%s\n' "$text" | tr ';&|()`' '\n')
 EOF_SEGMENTS
+	if [ "$home_cd" = 1 ] && redirects_into_protected "$text" 1; then return 0; fi
 	return 1
 }
 
@@ -797,7 +928,7 @@ Bash)
 	# pattern 1: keylatch get without --masked
 	# Allow quotes around command (SEC3 quoting variants).
 	if echo "$TOOL_INPUT" | grep -qE "(^|[[:space:]'\"])keylatch[[:space:]]+get([[:space:]]|$|'|\")" && \
-	   ! echo "$TOOL_INPUT" | grep -qE '\-\-masked'; then
+	   ! echo "$TOOL_INPUT" | grep -qE -- '--masked'; then
 		block "keylatch get is disabled in LLM sessions; use keylatch get --masked or keylatch run"
 	fi
 

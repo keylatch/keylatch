@@ -2,7 +2,7 @@
 # Edge-case tests for the guard: environments that differ from a developer
 # Linux shell (no jq, a BSD-like sed, a realpath without -m, macOS case folding,
 # a HOME with a space, an unset HOME) and internal failures, which must deny.
-# shellcheck disable=SC2034,SC2088
+# shellcheck disable=SC2016,SC2034,SC2088
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -135,6 +135,60 @@ expect "no-jq Copilot view of a project file" copilot allow "$(copilot_view_payl
 expect "no-jq newline-separated commands" claude-code deny "$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x\nprintenv"}}')"
 expect "no-jq command key before cwd" cursor deny '{"command":"printenv","cwd":"/work","sandbox":false}'
 expect "no-jq command with escaped quotes" claude-code allow '{"tool_name":"Bash","tool_input":{"command":"echo \"hello\""}}'
+GUARD_PATH_DIR=""
+
+# --- stderr stays quiet for allowed calls -------------------------------
+for h in $HARNESSES; do
+	for payload in "$(shell_payload "$h" "echo hello")" "$(shell_payload "$h" "ls ~/.ssh")" "$(read_payload "$h" /work/a.go)"; do
+		run_guard "$h" "$payload"
+		if [ -z "$GUARD_ERR" ]; then
+			PASS=$((PASS + 1))
+		else
+			echo "FAIL: [$h] an allowed call wrote to stderr: $GUARD_ERR"
+			FAIL=$((FAIL + 1))
+		fi
+	done
+done
+
+# --- HOME unset: the account database or the path shape finds the home -----
+ACCOUNT_HOME="$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6)"
+for h in claude-code cursor antigravity; do
+	GUARD_ENV_OPTS="-u HOME" expect "unset HOME, home-shaped credential path" "$h" deny "$(read_payload "$h" /home/someone/.ssh/id_rsa)"
+	GUARD_ENV_OPTS="-u HOME" expect "unset HOME, macOS-shaped credential path" "$h" deny "$(read_payload "$h" /Users/someone/.aws/credentials)"
+	GUARD_ENV_OPTS="-u HOME" expect "unset HOME, project path" "$h" allow "$(read_payload "$h" /work/src/main.go)"
+	if [ -n "$ACCOUNT_HOME" ]; then
+		GUARD_ENV_OPTS="-u HOME" expect "unset HOME, account home" "$h" deny "$(read_payload "$h" "$ACCOUNT_HOME/.kube/config")"
+	fi
+done
+
+# --- Windows spellings in shell commands -----------------------------------
+STUB="$TMP_ROOT/stub-windows"
+mkdir -p "$STUB"
+printf '#!/bin/sh\necho MINGW64_NT-10.0\n' >"$STUB/uname"
+chmod +x "$STUB/uname"
+export HOME="/c/Users/x"
+GUARD_STUB_DIR="$STUB"
+for h in claude-code cursor antigravity; do
+	expect "windows forward-slash drive path" "$h" deny "$(shell_payload "$h" 'cat C:/Users/x/.ssh/id_rsa')"
+	expect "windows backslash path" "$h" deny "$(shell_payload "$h" 'cat C:\Users\x\.ssh\id_rsa')"
+	expect "windows quoted backslash path" "$h" deny "$(shell_payload "$h" "cat 'C:\\Users\\x\\.ssh\\id_rsa'")"
+	expect "windows upper-case path" "$h" deny "$(shell_payload "$h" 'cat C:\USERS\X\.SSH\id_rsa')"
+	expect "windows USERPROFILE variable" "$h" deny "$(shell_payload "$h" 'type $env:USERPROFILE\.ssh\id_rsa')"
+	expect "windows percent variable" "$h" deny "$(shell_payload "$h" 'type %USERPROFILE%\.aws\credentials')"
+	expect "windows Git Bash spelling" "$h" deny "$(shell_payload "$h" 'cat /c/Users/x/.ssh/id_rsa')"
+	expect "windows project path" "$h" allow "$(shell_payload "$h" 'cat C:\work\src\main.go')"
+done
+GUARD_STUB_DIR=""
+export HOME="$FAKE_HOME"
+
+# --- Grep regexes are not paths ---------------------------------------------
+for mode in jq nojq; do
+	GUARD_PATH_DIR=""
+	[ "$mode" = nojq ] && GUARD_PATH_DIR="$TMP_ROOT/nojq-bin"
+	expect "$mode: regex starting with a slash" claude-code allow '{"tool_name":"Grep","tool_input":{"pattern":"/\\*","path":"/work"}}'
+	expect "$mode: regex with a double slash" claude-code allow '{"tool_name":"Grep","tool_input":{"pattern":"//.*TODO"}}'
+	expect "$mode: Glob pattern is a path" claude-code deny "$(jq -nc --arg p "$HOME/.ssh/*" '{tool_name:"Glob",tool_input:{pattern:$p}}')"
+done
 GUARD_PATH_DIR=""
 
 echo
