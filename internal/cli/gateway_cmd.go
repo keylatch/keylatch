@@ -196,7 +196,7 @@ func newGatewayInitCmd() *cobra.Command {
 
 			// Optionally write Docker Compose.
 			if useDocker {
-				composePath := paths.GatewayDir(env) + "/docker-compose.yml"
+				composePath := filepath.Join(paths.GatewayDir(env), "docker-compose.yml")
 				if err := docker.WriteAt(composePath, docker.ComposeOptions{
 					Port:    7878,
 					Version: version.Version,
