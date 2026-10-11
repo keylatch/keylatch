@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `keylatch launch [--harness <name>] -- <command>` starts an agent harness with a signed session ticket bound to the launcher process; every process below it is treated as an agent session.
 - `keylatch doctor --json` reports `agent_session.detected`, `agent_session.signals` and `agent_session.harness`.
+- `keylatch doctor` check `host.sandbox.keylatch_excluded` fails when a Claude Code user, project or local settings file lists `keylatch run` in `sandbox.excludedCommands`, and prints the entries to remove. Docs and the README now state that Keylatch must never be excluded from an agent sandbox and what Keylatch can and cannot guarantee per deployment.
 
 ### Security
 
