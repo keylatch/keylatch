@@ -182,7 +182,7 @@ func TestRun_FilesystemConflicts(t *testing.T) {
 		}, "audit file"},
 		"config under a file": {func(t *testing.T, _ string) map[string]string {
 			return map[string]string{"KEYLATCH_CONFIG": filepath.Join(mxFile(t), "config.json")}
-		}, "config file"},
+		}, "config"},
 		"keyring dir is a file": {func(t *testing.T, _ string) map[string]string {
 			return map[string]string{"KEYLATCH_KEYRING_DIR": mxFile(t)}
 		}, "keyring dir"},
