@@ -464,11 +464,11 @@ if [ -z "$TOOL_NAME" ] && [ ! -t 0 ]; then
 			TOOL_INPUT="$STDIN_JSON"
 			TOOL_COMMAND="$(json_string_values 'command|command_line|CommandLine|cmd' "$STDIN_JSON")"
 			if [ -z "$TOOL_COMMAND" ]; then TOOL_COMMAND="$(json_string_values 'command|cmd' "$STDIN_UNESCAPED")"; fi
+			glob_keys='glob'
+			if [ "$TOOL_NAME" = Glob ] || [ "$TOOL_NAME" = glob ]; then glob_keys='pattern|glob'; fi
 			TOOL_FILES="$({
 				json_string_values 'file_path|AbsolutePath|absolute_path|path|dir_path'
 				json_array_values 'paths'
-				glob_keys='glob'
-				case "$TOOL_NAME" in Glob | glob) glob_keys='pattern|glob' ;; esac
 				{ json_string_values "$glob_keys" | grep '/' || true; }
 			})"
 			if [ -n "$TOOL_COMMAND" ] && [ -z "$TOOL_NAME" ]; then TOOL_NAME="Bash"; fi
@@ -901,9 +901,10 @@ segment_names_relative() {
 }
 
 shell_names_protected_path() {
-	local text seg whole=0 home_cd=0
+	local text seg segments whole=0 home_cd=0
 	text="$(normalize_command_text "$1")"
 	build_shell_patterns
+	segments="$(printf '%s\n' "$text" | tr ';&|()\140' '\n')"
 	if is_single_command "$text"; then whole=1; fi
 	if redirects_into_protected "$text" 0; then return 0; fi
 	while IFS= read -r seg; do
@@ -917,7 +918,7 @@ shell_names_protected_path() {
 			segment_may_name_protected "$seg" "$whole" || return 0
 		fi
 	done <<EOF_SEGMENTS
-$(printf '%s\n' "$text" | tr ';&|()`' '\n')
+$segments
 EOF_SEGMENTS
 	if [ "$home_cd" = 1 ] && redirects_into_protected "$text" 1; then return 0; fi
 	return 1
