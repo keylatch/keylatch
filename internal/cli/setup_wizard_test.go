@@ -94,19 +94,15 @@ func TestSetupFromEnv_UsesKeylatchBackend(t *testing.T) {
 }
 
 func TestSetupInteractive_BasicMenuChoices(t *testing.T) {
-	cases := []struct {
+	type menuCase struct {
 		choice string
 		want   string
-	}{
-		{"1", "file"},
-		{"7", "file"},
-		{"", "file"},
 	}
+	cases := []menuCase{{"1", "file"}}
+	// On macOS the invalid and default choices resolve to the Keychain
+	// backend, which prompts for GUI authorisation.
 	if runtime.GOOS != "darwin" {
-		cases = append(cases, struct {
-			choice string
-			want   string
-		}{"2", "file"})
+		cases = append(cases, menuCase{"7", "file"}, menuCase{"", "file"}, menuCase{"2", "file"})
 	}
 	for _, tc := range cases {
 		t.Run("choice_"+tc.choice, func(t *testing.T) {

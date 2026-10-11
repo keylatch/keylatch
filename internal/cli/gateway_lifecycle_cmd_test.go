@@ -424,9 +424,14 @@ func TestIsGoRunArtifact(t *testing.T) {
 	exe, err := os.Executable()
 	require.NoError(t, err)
 
-	t.Setenv("TMPDIR", filepath.Dir(exe))
-	assert.True(t, isGoRunArtifact(), "binary under TMPDIR looks like a go run artifact")
+	setTemp := func(dir string) {
+		for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
+			t.Setenv(k, dir)
+		}
+	}
+	setTemp(filepath.Dir(exe))
+	assert.True(t, isGoRunArtifact(), "binary under the temp dir looks like a go run artifact")
 
-	t.Setenv("TMPDIR", t.TempDir())
+	setTemp(t.TempDir())
 	assert.False(t, isGoRunArtifact())
 }
