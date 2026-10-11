@@ -93,6 +93,13 @@ func TestSetupFromEnv_UsesKeylatchBackend(t *testing.T) {
 	assert.Equal(t, "op", cbLoadConfig(t, cfgDir).Backend)
 }
 
+func skipIfKeychainRecommended(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "darwin" {
+		t.Skip("the recommended backend on macOS is the Keychain, which blocks on GUI authorisation")
+	}
+}
+
 func TestSetupInteractive_BasicMenuChoices(t *testing.T) {
 	type menuCase struct {
 		choice string
@@ -130,6 +137,7 @@ func TestSetupInteractive_BasicMenuChoices(t *testing.T) {
 }
 
 func TestSetupInteractive_StorageBranchReprompts(t *testing.T) {
+	skipIfKeychainRecommended(t)
 	cbIsolate(t)
 	cbScriptStdin(t, "maybe\nl\n\n\n\n\n")
 	out, _, err := cbRun(t, "setup", "--no-daemon-start")
@@ -157,6 +165,7 @@ func TestSetupInteractive_AdvancedTelemetryOptIn(t *testing.T) {
 }
 
 func TestSetupInteractive_AdvancedUnknownChoiceAndTelemetryDeclined(t *testing.T) {
+	skipIfKeychainRecommended(t)
 	cfgDir := cbIsolate(t)
 	cbScriptStdin(t, "\n\n99\n\n\n\n")
 	out, _, err := cbRun(t, "setup", "--advanced", "--no-daemon-start")
@@ -242,6 +251,7 @@ func TestSetupInteractive_KeychainUnavailableOffLinux(t *testing.T) {
 }
 
 func TestSetupInteractive_FullFlowSpawnsGatewayConnectAndUI(t *testing.T) {
+	skipIfKeychainRecommended(t)
 	cbIsolate(t)
 	argvLog := cbFakeSelf(t, "ok")
 	// storage, accept recommended, mode, provider #1, open UI
