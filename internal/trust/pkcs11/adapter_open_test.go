@@ -266,6 +266,7 @@ func TestComputeModuleHashAndSaveErrors(t *testing.T) {
 
 	blocked := t.TempDir()
 	t.Setenv("HOME", blocked)
+	t.Setenv("USERPROFILE", blocked)
 	if err := os.WriteFile(filepath.Join(blocked, ".keylatch"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +274,9 @@ func TestComputeModuleHashAndSaveErrors(t *testing.T) {
 		t.Fatalf("SaveAllowlist mkdir: %v", err)
 	}
 
-	t.Setenv("HOME", t.TempDir())
+	dir = t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	home, _ = os.UserHomeDir()
 	if err := os.MkdirAll(filepath.Join(home, ".keylatch", "trust-allowlist.json"), 0o700); err != nil {
 		t.Fatal(err)
