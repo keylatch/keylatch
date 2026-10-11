@@ -168,8 +168,17 @@ func TestGrant_CreateListRevoke(t *testing.T) {
 		t.Fatal("rejected grant must not write the grants file")
 	}
 
+	// Windows grants need an absolute program path; the test binary always exists.
+	command := "curl *"
+	if runtime.GOOS == "windows" {
+		exe, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		command = exe + " *"
+	}
 	start := time.Now().UTC()
-	r = cdExec(t, newGrantCmd(), nil, "create", "openai", "--actor", "ci", "--ttl", "30m", "--max-uses", "3", "--command", "curl *")
+	r = cdExec(t, newGrantCmd(), nil, "create", "openai", "--actor", "ci", "--ttl", "30m", "--max-uses", "3", "--command", command)
 	if r.e != nil {
 		t.Fatalf("create: %v", r.e)
 	}
@@ -181,7 +190,7 @@ func TestGrant_CreateListRevoke(t *testing.T) {
 		t.Fatalf("list grants: %v %d", err, len(gs))
 	}
 	g := gs[0]
-	if g.Actor != "ci" || g.Connection != "openai" || g.Capability != "inject" || g.MaxUses != 3 || g.Command != "curl *" {
+	if g.Actor != "ci" || g.Connection != "openai" || g.Capability != "inject" || g.MaxUses != 3 || g.Command != command {
 		t.Fatalf("unexpected grant %+v", g)
 	}
 	if exp := g.ExpiresAt.Sub(start); exp < 29*time.Minute || exp > 31*time.Minute {
