@@ -60,6 +60,7 @@ func bootstrappedHome(t *testing.T) (string, llmcontext.Lookup) {
 	t.Helper()
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	env := makeEnv(map[string]string{"KEYLATCH_CONFIG_DIR": filepath.Join(tmp, ".keylatch")})
 	fullEnv := func(k string) string {
 		if v := env(k); v != "" {
@@ -141,6 +142,7 @@ func TestRun_FreshHome_NoPaths(t *testing.T) {
 	// Run doctor on a fresh home with no bootstrap — should have failed path checks.
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	env := func(k string) string {
 		if k == "HOME" {
 			return tmp

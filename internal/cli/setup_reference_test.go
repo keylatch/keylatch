@@ -32,6 +32,7 @@ func TestSetupReferenceOnFreshInstall(t *testing.T) {
 	home := t.TempDir()
 	cfgDir := filepath.Join(home, ".config", "keylatch")
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("KEYLATCH_CONFIG_DIR", cfgDir)
 	t.Setenv("KEYLATCH_CONFIG", "")

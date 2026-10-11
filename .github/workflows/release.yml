@@ -61,8 +61,8 @@ jobs:
         env:
           KEYLATCH_BACKEND: file
         run: go test -coverprofile=coverage.out ./... -race -count=1 -timeout 15m
-      - name: Check coverage threshold
-        run: bash release-checks/coverage-threshold.sh coverage.out
+      - name: coverage floors
+        run: bash release-checks/coverage-threshold.sh --report coverage.out
       - run: bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh
       - run: bash contrib/agent-guards/aider/block-keylatch-exfiltration.test.sh
       - run: bash contrib/agent-guards/copilot/block-keylatch-exfiltration.test.sh

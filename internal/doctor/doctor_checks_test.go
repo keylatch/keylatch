@@ -100,6 +100,7 @@ func TestDoctor_BootstrapMissing_FailsKeyringCheck(t *testing.T) {
 	// Use an unbootstrapped temp HOME — no keyring.json created.
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	env := func(k string) string {
 		if k == "HOME" {
 			return tmp
