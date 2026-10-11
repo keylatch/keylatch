@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -227,6 +228,39 @@ func TestMatchKeylatchExclusion(t *testing.T) {
 			matches, runs := doctor.ExportMatchKeylatchExclusion(tc.pattern)
 			assert.Equal(t, tc.matches, matches)
 			assert.Equal(t, tc.coversRun, runs)
+		})
+	}
+}
+
+func TestKeylatchSafeVerbs_AreRealSubcommands(t *testing.T) {
+	real := map[string]bool{}
+	for _, c := range cli.NewRootCommand().Commands() {
+		real[c.Name()] = true
+	}
+	for _, v := range doctor.ExportKeylatchSafeVerbs() {
+		assert.True(t, real[v], "%q is not a keylatch subcommand", v)
+	}
+}
+
+func TestHostSandboxKeylatchExcluded_UnreadableManagedDropInDir_ReportsIt(t *testing.T) {
+	home, project, managed := t.TempDir(), t.TempDir(), t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(managed, "managed-settings.d"), []byte("x"), 0o600))
+	lookup := makeEnv(map[string]string{"HOME": home, "CLAUDE_PROJECT_DIR": project})
+	t.Cleanup(doctor.ExportSetManagedSettingsDir(managed))
+
+	st := doctor.ExportCheckHostSandboxKeylatchExcluded(lookup)(context.Background())
+
+	assert.True(t, st.Warn)
+	assert.Contains(t, st.Detail, "could not read")
+	assert.Contains(t, st.Detail, filepath.Join(managed, "managed-settings.d"))
+}
+
+func TestMatchKeylatchExclusionOn_ProgramCase(t *testing.T) {
+	for goos, want := range map[string]bool{"linux": false, "darwin": true, "windows": true} {
+		t.Run(goos, func(t *testing.T) {
+			matches, runs := doctor.ExportMatchKeylatchExclusionOn(goos, "KEYLATCH run:*")
+			assert.Equal(t, want, matches)
+			assert.Equal(t, want, runs)
 		})
 	}
 }

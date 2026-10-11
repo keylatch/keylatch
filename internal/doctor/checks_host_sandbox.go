@@ -136,7 +136,18 @@ type settingsFile struct {
 
 // managedSettingsDir returns the system directory Claude Code reads
 // administrator-managed settings from.
-var managedSettingsDir = func() string {
+var managedSettingsDir = defaultManagedSettingsDir
+
+// OverrideManagedSettingsDir points the managed settings lookup at dir and
+// returns a func that restores the previous lookup. Tests use it so a
+// developer's real managed settings never affect results.
+func OverrideManagedSettingsDir(dir string) func() {
+	prev := managedSettingsDir
+	managedSettingsDir = func() string { return dir }
+	return func() { managedSettingsDir = prev }
+}
+
+func defaultManagedSettingsDir() string {
 	switch runtime.GOOS {
 	case "darwin":
 		return "/Library/Application Support/ClaudeCode"
@@ -156,7 +167,17 @@ func claudeSettingsFiles(lookup llmcontext.Lookup) ([]settingsFile, string) {
 
 	if dir := managedSettingsDir(); dir != "" {
 		files = append(files, settingsFile{filepath.Join(dir, "managed-settings.json"), filepath.Join(dir, "managed-settings.json"), true})
-		drops, _ := filepath.Glob(filepath.Join(dir, "managed-settings.d", "*.json"))
+		dropDir := filepath.Join(dir, "managed-settings.d")
+		entries, err := os.ReadDir(dropDir)
+		if err != nil && !os.IsNotExist(err) {
+			files = append(files, settingsFile{dropDir, dropDir, true})
+		}
+		var drops []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+				drops = append(drops, filepath.Join(dropDir, e.Name()))
+			}
+		}
 		sort.Strings(drops)
 		for _, d := range drops {
 			files = append(files, settingsFile{d, d, true})
@@ -198,15 +219,19 @@ func claudeSettingsFiles(lookup llmcontext.Lookup) ([]settingsFile, string) {
 	return files, project
 }
 
-// keylatchSafeVerbs are subcommands that never start a child process of the
-// caller's choosing. Any other verb is treated as able to run arbitrary
-// commands, since `run` and `launch` execute their argv outside the sandbox
-// when excluded.
+// keylatchSafeVerbs are top-level subcommands that start no child process
+// chosen by their arguments. `doctor` runs fixed probes such as
+// `<bin> --version`, which the caller cannot redirect. Every other verb is
+// treated as able to run arbitrary commands, since `run` and `launch` execute
+// their argv outside the sandbox when excluded.
 var keylatchSafeVerbs = map[string]bool{
-	"call": true, "status": true, "doctor": true, "version": true, "help": true,
-	"connections": true, "recipes": true, "audit": true, "approve": true, "deny": true,
-	"mint": true, "config": true, "registry": true, "policy": true, "actors": true,
-	"grants": true, "rules": true, "receipts": true, "projects": true, "completion": true,
+	"actors": true, "approve": true, "audit": true, "call": true, "check-expiry": true,
+	"completion": true, "config": true, "connections": true, "deny": true,
+	"describe": true, "doctor": true, "env": true, "grant": true, "health": true,
+	"help-topic": true, "list": true, "mint": true, "modes": true, "paths": true,
+	"policy": true, "projects": true, "receipts": true, "recipes": true,
+	"registry": true, "rules": true, "scope": true, "security": true, "share": true,
+	"status": true, "validate": true, "version": true, "versions": true,
 }
 
 // matchKeylatchExclusion reports whether an excludedCommands pattern targets
@@ -214,6 +239,12 @@ var keylatchSafeVerbs = map[string]bool{
 // Anything that is not a literal known non-spawning verb counts as covering
 // one: an empty verb, leading flags, and glob characters.
 func matchKeylatchExclusion(pattern string) (matches, coversRun bool) {
+	return matchKeylatchExclusionOn(runtime.GOOS, pattern)
+}
+
+// matchKeylatchExclusionOn matches the program name case-insensitively on
+// the platforms whose filesystems are.
+func matchKeylatchExclusionOn(goos, pattern string) (matches, coversRun bool) {
 	p := strings.TrimSpace(pattern)
 	prog, rest := splitProgram(p)
 	prog = strings.TrimSuffix(prog, "*")
@@ -221,6 +252,9 @@ func matchKeylatchExclusion(pattern string) (matches, coversRun bool) {
 	base := path.Base(prog)
 	if len(base) > 4 && strings.EqualFold(base[len(base)-4:], ".exe") {
 		base = base[:len(base)-4]
+	}
+	if goos == "darwin" || goos == "windows" {
+		base = strings.ToLower(base)
 	}
 	if base != "keylatch" {
 		return false, false

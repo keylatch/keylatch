@@ -36,7 +36,19 @@ func ExportMatchKeylatchExclusion(pattern string) (bool, bool) {
 
 // ExportSetManagedSettingsDir points the managed settings lookup at dir and returns a restore func.
 func ExportSetManagedSettingsDir(dir string) func() {
-	prev := managedSettingsDir
-	managedSettingsDir = func() string { return dir }
-	return func() { managedSettingsDir = prev }
+	return OverrideManagedSettingsDir(dir)
+}
+
+// ExportKeylatchSafeVerbs returns the subcommands the matcher treats as not spawning children.
+func ExportKeylatchSafeVerbs() []string {
+	var verbs []string
+	for v := range keylatchSafeVerbs {
+		verbs = append(verbs, v)
+	}
+	return verbs
+}
+
+// ExportMatchKeylatchExclusionOn exposes matchKeylatchExclusionOn for unit tests.
+func ExportMatchKeylatchExclusionOn(goos, pattern string) (bool, bool) {
+	return matchKeylatchExclusionOn(goos, pattern)
 }
