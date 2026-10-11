@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/cli"
@@ -243,6 +244,9 @@ func TestKeylatchSafeVerbs_AreRealSubcommands(t *testing.T) {
 }
 
 func TestHostSandboxKeylatchExcluded_UnreadableManagedDropInDir_ReportsIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("reading a file as a directory reports not-found on windows")
+	}
 	home, project, managed := t.TempDir(), t.TempDir(), t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(managed, "managed-settings.d"), []byte("x"), 0o600))
 	lookup := makeEnv(map[string]string{"HOME": home, "CLAUDE_PROJECT_DIR": project})
