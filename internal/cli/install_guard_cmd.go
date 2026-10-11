@@ -23,22 +23,23 @@ func newInstallGuardCmd() *cobra.Command {
 from an LLM agent. Supported agents:
 
   claude-code   PreToolUse hook in ~/.claude/settings.json
-  cursor        PreToolUse hook in ~/.cursor/settings.json
-  aider         pre-tool-use-hook in ~/.aider.conf.yml
-  windsurf      Manual — set CREDENTIALS_LLM_SESSION=windsurf in shell rc
-  codex         PreToolUse hook in ~/.codex/hooks.json
-  copilot       Shell wrapper (patches shell rc to intercept copilot invocations)
+  cursor        beforeShellExecution and beforeReadFile hooks in ~/.cursor/hooks.json
+  windsurf      pre_run_command and pre_read_code hooks in ~/.codeium/windsurf/hooks.json
+  codex         PreToolUse hook in ~/.codex/hooks.json (review it with /hooks in Codex)
+  copilot       PreToolUse hook in ~/.copilot/hooks/keylatch-guard.json
   gemini        BeforeTool hook in ~/.gemini/settings.json
   opencode      TypeScript plugin (tool.execute.before hook)
-  antigravity   Manual — set CREDENTIALS_LLM_SESSION=antigravity in shell rc
+  antigravity   PreToolUse hook in ~/.gemini/config/hooks.json
 
 The guard is a shell script (or TypeScript plugin for opencode) that runs before
-every tool call. It exits non-zero / throws when it detects credential exfiltration
-patterns (keylatch get, security find-password, op read, etc.), causing the tool
-call to be blocked by the agent.
+every tool call. When it detects a credential exfiltration pattern (keylatch get,
+secret-manager reads, env dumps, direnv/mise/atuin dumps, ...) it exits 2 and
+prints the harness's deny JSON, which blocks the tool call.
 
 Keylatch's own LLM-session guard (Layer 1) still applies even without this hook.
 The hook provides a second layer of defence (Layer 2) at the agent framework level.
+
+Aider has no hook API; start it with 'keylatch launch -- aider'.
 
 Use --list to show all supported agents with their hook mechanism type.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -91,7 +92,7 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 	case "cursor":
 		agent = guard.AgentCursor
 	case "aider":
-		agent = guard.AgentAider
+		return fmt.Errorf("install-guard: aider has no hook API; start it with 'keylatch launch -- aider'")
 	case "windsurf":
 		agent = guard.AgentWindsurf
 	case "codex":
@@ -115,40 +116,6 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 		)
 	}
 
-	// Windsurf and Antigravity have no hook API — print shell-rc guidance and return.
-	if agent == guard.AgentWindsurf {
-		w := cmd.OutOrStdout()
-		fmt.Fprintln(w, "To protect credentials in Windsurf integrated terminals, add this to your shell rc:")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  zsh/bash:   export CREDENTIALS_LLM_SESSION=windsurf")
-		fmt.Fprintln(w, "  fish:       set -Ux CREDENTIALS_LLM_SESSION windsurf")
-		fmt.Fprintln(w, "  PowerShell: [Environment]::SetEnvironmentVariable('CREDENTIALS_LLM_SESSION','windsurf','User')")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "After setting the variable, restart your terminal or reload your shell rc.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "This triggers the LLM-session guard (Layer 1), blocking direct credential")
-		fmt.Fprintln(w, "access via 'keylatch get' whenever Windsurf's integrated terminal is active.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "See: https://keylatch.dev/integrations/windsurf")
-		return nil
-	}
-	if agent == guard.AgentAntigravity {
-		w := cmd.OutOrStdout()
-		fmt.Fprintln(w, "To protect credentials in Antigravity integrated terminals, add this to your shell rc:")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  zsh/bash:   export CREDENTIALS_LLM_SESSION=antigravity")
-		fmt.Fprintln(w, "  fish:       set -Ux CREDENTIALS_LLM_SESSION antigravity")
-		fmt.Fprintln(w, "  PowerShell: [Environment]::SetEnvironmentVariable('CREDENTIALS_LLM_SESSION','antigravity','User')")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "After setting the variable, restart your terminal or reload your shell rc.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "This triggers the LLM-session guard (Layer 1), blocking direct credential")
-		fmt.Fprintln(w, "access via 'keylatch get' whenever Antigravity's integrated terminal is active.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "See: https://keylatch.dev/integrations/antigravity")
-		return nil
-	}
-
 	opts := guard.InstallOpts{}
 	if project {
 		opts.ProjectDir = "."
@@ -168,18 +135,27 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 	case guard.AgentCursor:
 		fmt.Fprintln(w, "Guard installed for Cursor.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
-	case guard.AgentAider:
-		fmt.Fprintln(w, "Guard installed for Aider.")
-		fmt.Fprintf(w, "Config updated: %s\n", settingsPath)
+		fmt.Fprintln(w, "\nCursor does not currently enforce a beforeReadFile deny for agent reads, so the")
+		fmt.Fprintln(w, "read hook is defence in depth only. Cursor's ignore files apply per project;")
+		fmt.Fprintln(w, "add these patterns to each project's .cursorignore, or to the global ignore")
+		fmt.Fprintln(w, "list in Cursor's user settings (the docs name no file path for it):")
+		fmt.Fprintln(w)
+		for _, pattern := range guard.CursorIgnorePatterns() {
+			fmt.Fprintf(w, "  %s\n", pattern)
+		}
+	case guard.AgentWindsurf:
+		fmt.Fprintln(w, "Guard installed for Windsurf.")
+		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
+	case guard.AgentAntigravity:
+		fmt.Fprintln(w, "Guard installed for Antigravity.")
+		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
 	case guard.AgentCodex:
 		fmt.Fprintln(w, "Guard installed for Codex CLI.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
+		fmt.Fprintln(w, "Review and trust the hook with /hooks in Codex before it runs.")
 	case guard.AgentCopilot:
-		fmt.Fprintln(w, "Installing shell wrapper for GitHub Copilot CLI.")
-		fmt.Fprintln(w, "Wrapper intercepts copilot invocations.")
-		if settingsPath != "" {
-			fmt.Fprintf(w, "Shell RC patched: %s\n", settingsPath)
-		}
+		fmt.Fprintln(w, "Guard installed for GitHub Copilot CLI.")
+		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
 	case guard.AgentGemini:
 		fmt.Fprintln(w, "Guard installed for Gemini CLI.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
