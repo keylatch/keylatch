@@ -275,7 +275,11 @@ func TestPolicyInit_MkdirFailure(t *testing.T) {
 	}
 	t.Setenv("KEYLATCH_POLICY_PATH", filepath.Join(blocker, "sub", "policy.json"))
 	r := cdExec(t, newPolicyInitCmd(), nil)
-	if r.e == nil || !strings.Contains(r.e.Error(), "mkdir") {
-		t.Fatalf("err = %v, want mkdir failure", r.e)
+	want := "mkdir"
+	if runtime.GOOS == "windows" {
+		want = "policy: write" // Windows reports the missing parent at open time
+	}
+	if r.e == nil || !strings.Contains(r.e.Error(), want) {
+		t.Fatalf("err = %v, want %q failure", r.e, want)
 	}
 }

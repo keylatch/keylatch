@@ -124,8 +124,13 @@ func TestStorageFailures(t *testing.T) {
 	t.Setenv("KEYLATCH_TEAM_DIR", teamDir)
 	require.NoError(t, os.WriteFile(filepath.Join(teamDir, "registry"), []byte("x"), 0o600))
 	_, err := teamregistry.List(ctx)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "readdir")
+	if runtime.GOOS == "windows" {
+		// Windows reports ReadDir on a regular file as not-exist, which List treats as an empty registry.
+		require.NoError(t, err)
+	} else {
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "readdir")
+	}
 
 	t.Setenv("KEYLATCH_TEAM_DIR", filepath.Join(blocker, "team"))
 	require.Error(t, mxInstall(t, k, 1, nil))
