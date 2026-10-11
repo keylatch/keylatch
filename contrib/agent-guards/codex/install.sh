@@ -29,25 +29,33 @@ def stale(cmd):
 
 
 def prune(node):
-    """Drop hook entries that run an older guard script, and containers that empty out."""
+    """Drop hook entries that run an older guard script, and only the containers that removal emptied. Returns (node, changed)."""
+    changed = False
     if isinstance(node, list):
         out = []
         for item in node:
             if isinstance(item, dict) and (stale(item.get("command")) or stale(item.get("bash"))):
+                changed = True
                 continue
             had_hooks = isinstance(item, dict) and "hooks" in item
-            item = prune(item)
-            if had_hooks and not item.get("hooks"):
-                continue
+            item, item_changed = prune(item)
+            if item_changed:
+                changed = True
+                if had_hooks and "hooks" not in item:
+                    continue
             out.append(item)
-        return out
+        return out, changed
     if isinstance(node, dict):
         for key in list(node):
-            node[key] = prune(node[key])
-            if node[key] == [] or node[key] == {}:
-                del node[key]
-    return node
-data = prune(data)
+            node[key], key_changed = prune(node[key])
+            if key_changed:
+                changed = True
+                if node[key] == [] or node[key] == {}:
+                    del node[key]
+        return node, changed
+    return node, False
+
+data, _ = prune(data)
 groups = data.setdefault("hooks", {}).setdefault("PreToolUse", [])
 if not any(h.get("command") == command for g in groups for h in g.get("hooks", [])):
     groups.append({"matcher": "Bash", "hooks": [{"type": "command", "command": command, "timeout": 30}]})
