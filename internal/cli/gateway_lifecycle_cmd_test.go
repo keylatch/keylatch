@@ -277,7 +277,13 @@ func TestGatewayLogs(t *testing.T) {
 	assert.Equal(t, "line one\nline two\n", out)
 
 	t.Setenv("KEYLATCH_GATEWAY_LOG", filepath.Join(gwDir, "gateway.log", "nested"))
-	_, _, err = cbRun(t, "gateway", "logs")
+	out, _, err = cbRun(t, "gateway", "logs")
+	if runtime.GOOS == "windows" {
+		// Windows reports a path through a regular file as not-exist.
+		require.NoError(t, err)
+		assert.Contains(t, out, "gateway: no log file found")
+		return
+	}
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gateway logs: open")
 }
