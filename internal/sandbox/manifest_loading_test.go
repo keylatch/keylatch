@@ -100,24 +100,25 @@ func TestLoadManifestFromExplicitPath(t *testing.T) {
 func TestValidateBindMounts_KeylatchDirDenied(t *testing.T) {
 	home := gdTempHome(t)
 	kl := filepath.Join(home, ".keylatch")
+	root := func(p string) string { return filepath.Join(filepath.VolumeName(home)+string(filepath.Separator), p) }
 	denied := []sandbox.BindMount{
-		{Src: kl, Dest: "/x"},
-		{Src: kl + "/", Dest: "/x"},
-		{Src: filepath.Join(kl, "vault"), Dest: "/x"},
-		{Src: filepath.Join(home, "proj", "..", ".keylatch", "audit"), Dest: "/x"},
-		{Src: "/data", Dest: kl},
-		{Src: "/data", Dest: filepath.Join(kl, "hooks")},
+		{Src: kl, Dest: root("x")},
+		{Src: kl + string(filepath.Separator), Dest: root("x")},
+		{Src: filepath.Join(kl, "vault"), Dest: root("x")},
+		{Src: filepath.Join(home, "proj", "..", ".keylatch", "audit"), Dest: root("x")},
+		{Src: root("data"), Dest: kl},
+		{Src: root("data"), Dest: filepath.Join(kl, "hooks")},
 	}
 	for _, bm := range denied {
-		err := sandbox.ValidateBindMounts(&sandbox.SandboxManifest{BindMounts: []sandbox.BindMount{{Src: "/ok", Dest: "/ok"}, bm}})
+		err := sandbox.ValidateBindMounts(&sandbox.SandboxManifest{BindMounts: []sandbox.BindMount{{Src: root("ok"), Dest: root("ok")}, bm}})
 		require.Error(t, err, "%+v", bm)
 		assert.ErrorIs(t, err, sandbox.ErrForbiddenMount, "%+v", bm)
 	}
 
 	allowed := []sandbox.BindMount{
-		{Src: filepath.Join(home, "proj"), Dest: "/work"},
-		{Src: filepath.Join(home, ".keylatch-other"), Dest: "/work"},
-		{Src: "/usr/share", Dest: "/share", RO: true},
+		{Src: filepath.Join(home, "proj"), Dest: root("work")},
+		{Src: filepath.Join(home, ".keylatch-other"), Dest: root("work")},
+		{Src: root("usr/share"), Dest: root("share"), RO: true},
 	}
 	assert.NoError(t, sandbox.ValidateBindMounts(&sandbox.SandboxManifest{BindMounts: allowed}))
 }
