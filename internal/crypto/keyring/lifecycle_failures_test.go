@@ -255,7 +255,11 @@ func TestLoadFile_StatAndReadErrors(t *testing.T) {
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadFile(filepath.Join(blocker, "keyring.json")); !errors.Is(err, ErrKeyringCorrupt) {
+	want := ErrKeyringCorrupt
+	if runtime.GOOS == "windows" {
+		want = ErrKeyringNotFound // Windows reports a path through a file as not-exist
+	}
+	if _, err := loadFile(filepath.Join(blocker, "keyring.json")); !errors.Is(err, want) {
 		t.Fatalf("stat error: %v", err)
 	}
 	asDir := filepath.Join(dir, "asdir")
