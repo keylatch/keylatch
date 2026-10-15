@@ -134,6 +134,12 @@ var safeLogFields = map[string][]string{
 		"connection", "namespace", "repository", "permissions",
 		"expires_at", "caller_kind", "reason",
 	},
+	// binding changes: host sets are authorities (no credential content).
+	// attempted is the change an agent caller was refused.
+	"binding.created":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.widened":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.narrowed": {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.refused":  {"connection", "caller_kind", "attempted", "hosts_before", "hosts_after"},
 }
 
 // Redact filters extra map keys against the SafeLogFields allowlist for action.
@@ -195,6 +201,8 @@ func AllActions() []string {
 		"mint",
 		"run.decided", "run.exited",
 		"approval.requested", "approval.granted", "approval.denied",
+		// binding change actions.
+		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
 	}
 }
 

@@ -1,10 +1,13 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"slices"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // SlotLocation is where in a request a secret may be substituted.
@@ -88,6 +91,19 @@ type Binding struct {
 	Shape    PlaceholderShape
 	Adapter  Adapter
 	EnvClass EnvClassSpec
+	// Env maps a secret field to the environment variable the child reads it from.
+	Env map[string]string
+}
+
+// ErrNoBinding means a connection declares no host bindings, adapter or local-only mode.
+var ErrNoBinding = errors.New("no_binding")
+
+// NoBindingReason is the reason code reported for a connection without bindings.
+const NoBindingReason = "no_binding"
+
+// NoBindingFix returns the command that adds a binding to the named custom connection.
+func NoBindingFix(name string) string {
+	return fmt.Sprintf(`keylatch connect %s --provider custom --host <api-host:443> --slot "header:Authorization:Bearer" --env <ENV_NAME>`, name)
 }
 
 // Binding returns the template's binding contract; ok is false when it declares none.
@@ -321,12 +337,26 @@ func validHostPattern(p string) error {
 		if !strings.Contains(suffix, ".") || strings.Contains(suffix, "*") {
 			return fmt.Errorf("invalid wildcard host %q", p)
 		}
+		if isICANNSuffix(suffix) {
+			return fmt.Errorf("wildcard host %q covers a public suffix", p)
+		}
 		return nil
 	}
 	if strings.Contains(h, "*") {
 		return fmt.Errorf("invalid wildcard host %q", p)
 	}
+	if isICANNSuffix(h) {
+		return fmt.Errorf("host %q is a public suffix", p)
+	}
 	return nil
+}
+
+// isICANNSuffix reports whether h is itself a registry-controlled suffix such
+// as "com" or "co.uk". Operator-run multi-tenant domains stay allowed: templates
+// bind to them (for example supabase.co).
+func isICANNSuffix(h string) bool {
+	ps, icann := publicsuffix.PublicSuffix(h)
+	return icann && ps == h
 }
 
 func subsetOf(sub, all []string) error {

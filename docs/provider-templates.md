@@ -122,3 +122,20 @@ Templates can declare where a secret may be substituted into outgoing requests.
 
 - [CLI Reference](./cli-reference.md#keylatch-registry)
 - [CONTRIBUTING.md](../CONTRIBUTING.md)
+
+## Custom connections
+
+A connection without a template declares its own bindings:
+
+```
+keylatch connect billing-internal --provider custom \
+  --provider-ref api_key=op://Dev/Billing API/credential \
+  --host api.billing.internal.example:443 \
+  --slot "header:Authorization:Bearer" --env BILLING_API_KEY
+```
+
+- `--host` is repeatable; `--slot` is `header:Name[:Scheme]`, `query:name` or `basic:user|password`; `--env` is `NAME`, or `field=NAME` when the connection has several secret fields.
+- `--placeholder-prefix` and `--placeholder-min-length` set the placeholder shape (default length 32).
+- Validation matches templates: no bare `*`, no wildcard over a public suffix (`*.com`, `*.co.uk`), and slot hosts must be among the connection's hosts.
+- Creating or widening a binding (a new host or slot) is refused inside an agent session. Narrowing is allowed from any caller. Every change is audited as `binding.created`, `binding.widened`, `binding.narrowed` or `binding.refused` with the before and after host sets.
+- A connection with no binding is reported as `no_binding`; `registry.NoBindingFix` gives the command that adds one.
