@@ -3,6 +3,7 @@
 package harness
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,6 +89,20 @@ func TestFakeAgentProfiles(t *testing.T) {
 				o := w.agent(name, "Bash", map[string]string{"command": "echo ran"})
 				assert.False(t, o.Blocked)
 				assert.Contains(t, string(o.Stdout), "ran")
+			})
+
+			t.Run("doctor reports the agent session", func(t *testing.T) {
+				install(`exit 0`)
+				o := w.agent(name, "Bash", map[string]string{"command": "keylatch doctor --json"})
+				var report struct {
+					AgentSession struct {
+						Detected bool   `json:"detected"`
+						Harness  string `json:"harness"`
+					} `json:"agent_session"`
+				}
+				require.NoError(t, json.Unmarshal(o.Stdout, &report), "stdout: %s stderr: %s", o.Stdout, o.Stderr)
+				assert.True(t, report.AgentSession.Detected)
+				assert.Equal(t, name, report.AgentSession.Harness)
 			})
 		})
 	}

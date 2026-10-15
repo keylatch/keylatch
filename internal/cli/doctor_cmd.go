@@ -37,16 +37,19 @@ type doctorJSONV1 struct {
 
 // doctorSummaryV1 holds aggregate counts.
 type doctorSummaryV1 struct {
-	OK   int `json:"ok"`
-	Warn int `json:"warn"`
-	Fail int `json:"fail"`
+	OK      int `json:"ok"`
+	Warn    int `json:"warn"`
+	Fail    int `json:"fail"`
+	Skipped int `json:"skipped"`
 }
 
 // buildDoctorJSONV1 converts a doctor.Report to the v1 JSON shape.
 func buildDoctorJSONV1(report doctor.Report, exitCode int) doctorJSONV1 {
 	var summary doctorSummaryV1
 	for _, s := range report.Checks {
-		if !s.OK {
+		if s.Skipped {
+			summary.Skipped++
+		} else if !s.OK {
 			summary.Fail++
 		} else if s.Warn {
 			summary.Warn++
@@ -296,7 +299,9 @@ func printDoctorReport(c *cobra.Command, report doctor.Report) {
 // printStatusLine writes a single check line (and optional fix line) to w.
 func printStatusLine(w interface{ Write([]byte) (int, error) }, s doctor.Status) {
 	icon := "[ ok ]"
-	if !s.OK {
+	if s.Skipped {
+		icon = "[skip]"
+	} else if !s.OK {
 		icon = "[FAIL]"
 	} else if s.Warn {
 		icon = "[warn]"
