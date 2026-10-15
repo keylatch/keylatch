@@ -151,18 +151,13 @@ func (k *KeychainBackend) finishInit(ctx context.Context, _ string, pw string, w
 	}
 
 	// Create the custom keychain (skip if already exists).
-	_, _, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"create-keychain", "-p", pw, k.opts.KeychainPath},
-		nil)
-	if err != nil {
-		return fmt.Errorf("keychain Init: create-keychain: %w", err)
-	}
-	if exitCode != 0 {
-		// exit code 48 = errSecDuplicateKeychain — keychain already exists, continue.
-		if exitCode != 48 {
-			return fmt.Errorf("keychain Init: create-keychain failed (exit %d)", exitCode)
+	// The password goes to security on stdin, which cannot report the inner
+	// command's exit status (48 for an existing keychain), so an existing
+	// keychain is detected up front instead.
+	if _, statErr := os.Stat(k.opts.KeychainPath); statErr != nil {
+		if err := k.script(ctx, "create-keychain", sflag("-p"), sval(pw), sval(k.opts.KeychainPath)); err != nil {
+			return fmt.Errorf("keychain Init: create-keychain: %w", err)
 		}
-		// already exists — proceed normally
 	}
 
 	// `security create-keychain` creates the keychain-db file with the
@@ -183,20 +178,15 @@ func (k *KeychainBackend) finishInit(ctx context.Context, _ string, pw string, w
 	// see the decision table in Init's doc comment. When writeUnlockItem is
 	// false, an already-verified existing item is left untouched.
 	if writeUnlockItem {
-		_, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-			[]string{"add-generic-password",
-				"-U",
-				"-s", "keylatch-keychain",
-				"-a", "unlock",
-				"-w", pw,
-				"-T", currentBin,
-			},
-			nil)
+		err := k.script(ctx, "add-generic-password",
+			sflag("-U"),
+			sflag("-s"), sval("keylatch-keychain"),
+			sflag("-a"), sval("unlock"),
+			sflag("-X"), shex([]byte(pw)),
+			sflag("-T"), sval(currentBin),
+		)
 		if err != nil {
 			return fmt.Errorf("keychain Init: store unlock password: %w", err)
-		}
-		if exitCode != 0 {
-			return fmt.Errorf("keychain Init: store unlock password: security exited %d: %s", exitCode, strings.TrimSpace(string(stderr)))
 		}
 	}
 

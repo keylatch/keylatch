@@ -25,8 +25,7 @@ func TestConcurrency_SameProcess(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("pw\n"),
 			},
-			secBin + "|unlock-keychain|-p|pw|" + testKeychainPath: {},
-			secBin + "|lock-keychain|" + testKeychainPath:         {},
+			secBin + "|lock-keychain|" + testKeychainPath: {},
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + testKeychainPath: {
 				ExitCode: 44,
 			},
@@ -89,8 +88,7 @@ func TestConcurrency_UnlockLockNonInterleaved(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("pw\n"),
 			},
-			secBin + "|unlock-keychain|-p|pw|" + testKeychainPath: {},
-			secBin + "|lock-keychain|" + testKeychainPath:         {},
+			secBin + "|lock-keychain|" + testKeychainPath: {},
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + testKeychainPath: {
 				ExitCode: 44,
 			},
@@ -126,10 +124,7 @@ func TestConcurrency_UnlockLockNonInterleaved(t *testing.T) {
 	calls := runner.CallsCopy()
 	depth := 0
 	for _, call := range calls {
-		if len(call.Args) == 0 {
-			continue
-		}
-		switch call.Args[0] {
+		switch call.Subcommand() {
 		case "unlock-keychain":
 			depth++
 			if depth > 1 {

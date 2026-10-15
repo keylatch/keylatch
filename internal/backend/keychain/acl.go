@@ -85,20 +85,15 @@ func (k *KeychainBackend) RepairACL(ctx context.Context) error {
 
 	// Update the item with the trusted application path. Always currentBin —
 	// see the doc comment above for why this is never the codesign identity.
-	_, _, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"add-generic-password",
-			"-U",
-			"-s", "keylatch-keychain",
-			"-a", "unlock",
-			"-w", pw,
-			"-T", currentBin,
-		},
-		nil)
+	err = k.script(ctx, "add-generic-password",
+		sflag("-U"),
+		sflag("-s"), sval("keylatch-keychain"),
+		sflag("-a"), sval("unlock"),
+		sflag("-X"), shex([]byte(pw)),
+		sflag("-T"), sval(currentBin),
+	)
 	if err != nil {
 		return fmt.Errorf("keychain RepairACL: add-generic-password: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("keychain RepairACL: security exited %d", exitCode)
 	}
 
 	return nil
@@ -164,17 +159,14 @@ func (k *KeychainBackend) repairItemACL(ctx context.Context, conn, field, truste
 	val := strings.TrimRight(string(valOut), "\n")
 
 	// Re-write with -T {trustedApp} to update the ACL.
-	_, _, _, err = k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"add-generic-password",
-			"-U",
-			"-s", "keylatch-" + conn,
-			"-a", field,
-			"-w", val,
-			"-T", trustedApp,
-			"-k", k.opts.KeychainPath,
-		},
-		nil)
-	return err
+	return k.script(ctx, "add-generic-password",
+		sflag("-U"),
+		sflag("-s"), sval("keylatch-"+conn),
+		sflag("-a"), sval(field),
+		sflag("-X"), shex([]byte(val)),
+		sflag("-T"), sval(trustedApp),
+		sflag("-k"), sval(k.opts.KeychainPath),
+	)
 }
 
 // detectCodeSigningIdentity reports whether binPath has a real, stable

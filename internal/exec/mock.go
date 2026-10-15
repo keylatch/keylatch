@@ -66,7 +66,7 @@ func (m *MockRunner) RunEnv(_ context.Context, name string, args []string, stdin
 		Time:  time.Now(),
 		Name:  name,
 		Args:  args,
-		Stdin: stdin,
+		Stdin: append([]byte(nil), stdin...), // callers may zero their buffer afterwards
 		Env:   extraEnv,
 	})
 
@@ -75,6 +75,13 @@ func (m *MockRunner) RunEnv(_ context.Context, name string, args []string, stdin
 	var resp MockResponse
 	if m.Responses != nil {
 		resp = m.Responses[key]
+		// A `-i` call carries its command on stdin, so it can also be matched
+		// by that command: "<name>|-i|<command>".
+		if len(args) == 1 && args[0] == "-i" {
+			if r, ok := m.Responses[key+"|"+firstWord(stdin)]; ok {
+				resp = r
+			}
+		}
 	}
 	m.mu.Unlock()
 
@@ -83,6 +90,26 @@ func (m *MockRunner) RunEnv(_ context.Context, name string, args []string, stdin
 	}
 
 	return resp.Stdout, resp.Stderr, resp.ExitCode, resp.Err
+}
+
+// Subcommand names the command a call ran: the first argument, or for an
+// interactive `-i` call (command line on stdin) the first word of stdin.
+func (c MockCall) Subcommand() string {
+	if len(c.Args) == 1 && c.Args[0] == "-i" {
+		return firstWord(c.Stdin)
+	}
+	if len(c.Args) == 0 {
+		return ""
+	}
+	return c.Args[0]
+}
+
+func firstWord(b []byte) string {
+	f := strings.Fields(string(b))
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
 }
 
 // argSignature builds the deterministic lookup key for a Run call.
