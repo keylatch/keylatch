@@ -157,12 +157,12 @@ type Session struct {
 	// ProxyID, CAPEM and CAVars are set for placeholder sessions: the proxy
 	// session to relay to, the session CA certificate, and the variables that
 	// must point at a bundle containing it.
-	ProxyID string   `json:"proxy_id,omitempty"`
+	ProxyID string `json:"proxy_id,omitempty"`
 	// RunID identifies the decision; the client echoes it on the traffic it
 	// relays and when the child exits.
-	RunID string `json:"run_id,omitempty"`
-	CAPEM   string   `json:"ca_pem,omitempty"`
-	CAVars  []string `json:"ca_vars,omitempty"`
+	RunID  string   `json:"run_id,omitempty"`
+	CAPEM  string   `json:"ca_pem,omitempty"`
+	CAVars []string `json:"ca_vars,omitempty"`
 }
 
 // Response is one daemon message.
