@@ -918,7 +918,7 @@ func newRunCmd() *cobra.Command {
 	}
 	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped),
 		"runtime mode (default: gateway_typed — run 'keylatch modes' to see all options)")
-	cmd.Flags().String("mode", "", "operating mode (standard, telemetry, canary, custom); overrides config file and KEYLATCH_MODE env var")
+	cmd.Flags().String("mode", "", "operating mode (standard, canary, custom); overrides config file and KEYLATCH_MODE env var")
 	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	cmd.Flags().StringArray("allow", nil, "allow this command prefix for this run only; repeat or comma-separate (blocked in LLM sessions)")
 	cmd.Flags().Bool("no-daemon-start", false, "do not auto-start keylatchd if it is not running")

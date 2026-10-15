@@ -19,8 +19,8 @@ func newBootstrapCmd() *cobra.Command {
 		Use:   "bootstrap",
 		Short: "Initialize the keylatch configuration directory",
 		Long: `Bootstrap creates ~/.keylatch/ (0700), ~/.keylatch/vault/ (0700),
-~/.keylatch/audit.log (0600), and ~/.keylatch/config.json (0600) with
-safe defaults. Running bootstrap a second time is a no-op unless --force
+~/.keylatch/audit.log (0600), ~/.keylatch/config.json (0600) and a
+default-deny policy (kept if one exists) with safe defaults. Running bootstrap a second time is a no-op unless --force
 is passed, which destroys and re-creates the cryptographic keyring after
 an interactive confirmation prompt. KEYLATCH_PASSPHRASE has no effect.
 
@@ -64,6 +64,13 @@ moves a plaintext identity from an older install into the keyring.`,
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "bootstrap: %v\n", err)
 				os.Exit(1)
+			}
+
+			if !dryRun {
+				if _, polErr := ensureDefaultPolicy(); polErr != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "bootstrap: default-deny policy: %v\n", polErr)
+					os.Exit(1)
+				}
 			}
 
 			if jsonOut {

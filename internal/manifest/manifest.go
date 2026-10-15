@@ -17,8 +17,8 @@ const (
 	// Community: builds and passes fake-based unit tests only. Listed but
 	// never enabled by this manifest; use needs an explicit opt-in.
 	Community Status = "community"
-	// Deprecated: kept for migration only and removed in a later release.
-	// Never enabled by this manifest.
+	// Deprecated marks an entry kept for migration only and removed in a later
+	// release. This manifest never enables it.
 	Deprecated Status = "deprecated"
 	// Unavailable: gated out of this build. Unreachable via CLI/API/MCP/UI
 	// entry points, regardless of feature flags or environment overrides.

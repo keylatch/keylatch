@@ -34,7 +34,8 @@ xchacha20-poly1305 encrypted tar archive derived from a backup passphrase.
 The passphrase is prompted interactively from the terminal and is never
 exposed on the command line. The output file is safe to store off-site.
 
-To restore from backup, use: keylatch restore <backup-file>`,
+There is no restore command: the archive header carries the Argon2id salt and
+parameters, so a backup decrypts by hand (see docs/cli-reference.md).`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			ctx := c.Context()
 			env := llmcontext.DefaultLookup
@@ -128,7 +129,7 @@ To restore from backup, use: keylatch restore <backup-file>`,
 }
 
 // backupHeader is serialised as the first entry in the backup archive.
-// It carries the argon2id salt and parameters so restore can re-derive the KEK.
+// It carries the argon2id salt and parameters so the KEK can be re-derived.
 type backupHeader struct {
 	Version   int    `json:"version"`
 	Timestamp string `json:"timestamp"`
