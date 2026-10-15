@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keylatch mint` refuses agent sessions, and the mint policy is read only from the operator's default config file (owner-only, not writable by group or others), never from `KEYLATCH_CONFIG` or other overrides. Caller, owner, repository, permission and lifetime checks all run before the key is read, and minting refuses to start without a working audit log.
 - `keylatch backup` no longer takes `--passphrase-file`: a human approves the export, which names the credential count, and the passphrase is read from the terminal only. `docs/cli-reference.md` no longer documents a `keylatch restore` command that does not exist.
 - A grant carries the digest of the presence proof it was issued under.
+- A caller counts as a `service` only when its cgroup is a non-transient systemd service unit that systemd confirms has a unit file. The `INVOCATION_ID` variable, which any process can set, no longer makes a caller a service and so no longer opens `mint` to it. Service classification is advisory in this release; the broker daemon enrolls units.
 - GitHub's reply must name only the requested repository, grant exactly the requested permissions and expire within `max_ttl`; otherwise the token is revoked with `DELETE /installation/token` and mint fails. A token whose audit line cannot be written is revoked too.
 
 ### Fixed
