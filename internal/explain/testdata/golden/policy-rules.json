@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "kind": "policy",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true,
+    "rule_count": 3
+  },
+  "callers": [
+    {
+      "actor": "claude-code",
+      "caller_kind": "agent",
+      "connections": [
+        {
+          "connection": "openai",
+          "known": true,
+          "hosts": [
+            "api.openai.com"
+          ],
+          "tiers": [
+            {
+              "tier": "D1",
+              "tier_name": "typed_action",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "typed actions run without a child process; use keylatch call"
+            },
+            {
+              "tier": "D2",
+              "tier_name": "gateway_session",
+              "status": "allowed",
+              "runtime": "gateway_typed",
+              "restricted": false,
+              "why": "permitted by policy rule r1"
+            },
+            {
+              "tier": "D3",
+              "tier_name": "placeholder_substitution",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+            },
+            {
+              "tier": "D4",
+              "tier_name": "protocol_adapter",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "no delivery implementation exists in this build"
+            },
+            {
+              "tier": "D5",
+              "tier_name": "contained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+            },
+            {
+              "tier": "D6",
+              "tier_name": "uncontained_raw",
+              "status": "denied",
+              "runtime": "",
+              "restricted": false,
+              "why": "uncontained raw delivery is human-only"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actor": "codex",
+      "caller_kind": "agent",
+      "connections": [
+        {
+          "connection": "openai",
+          "known": true,
+          "hosts": [
+            "api.openai.com"
+          ],
+          "tiers": [
+            {
+              "tier": "D1",
+              "tier_name": "typed_action",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "typed actions run without a child process; use keylatch call"
+            },
+            {
+              "tier": "D2",
+              "tier_name": "gateway_session",
+              "status": "allowed",
+              "runtime": "gateway_typed",
+              "restricted": true,
+              "why": "permitted by policy rule r3"
+            },
+            {
+              "tier": "D3",
+              "tier_name": "placeholder_substitution",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+            },
+            {
+              "tier": "D4",
+              "tier_name": "protocol_adapter",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "no delivery implementation exists in this build"
+            },
+            {
+              "tier": "D5",
+              "tier_name": "contained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+            },
+            {
+              "tier": "D6",
+              "tier_name": "uncontained_raw",
+              "status": "denied",
+              "runtime": "",
+              "restricted": false,
+              "why": "uncontained raw delivery is human-only"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actor": "human-shell",
+      "caller_kind": "human",
+      "connections": [
+        {
+          "connection": "openai",
+          "known": true,
+          "hosts": [
+            "api.openai.com"
+          ],
+          "tiers": [
+            {
+              "tier": "D1",
+              "tier_name": "typed_action",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "typed actions run without a child process; use keylatch call"
+            },
+            {
+              "tier": "D2",
+              "tier_name": "gateway_session",
+              "status": "approval",
+              "runtime": "gateway_typed",
+              "restricted": false,
+              "why": "permitted by policy rule r2"
+            },
+            {
+              "tier": "D3",
+              "tier_name": "placeholder_substitution",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+            },
+            {
+              "tier": "D4",
+              "tier_name": "protocol_adapter",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "no delivery implementation exists in this build"
+            },
+            {
+              "tier": "D5",
+              "tier_name": "contained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+            },
+            {
+              "tier": "D6",
+              "tier_name": "uncontained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime direct_classic is not supported in this build"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actor": "llm-session",
+      "caller_kind": "agent",
+      "connections": [
+        {
+          "connection": "openai",
+          "known": true,
+          "hosts": [
+            "api.openai.com"
+          ],
+          "tiers": [
+            {
+              "tier": "D1",
+              "tier_name": "typed_action",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "typed actions run without a child process; use keylatch call"
+            },
+            {
+              "tier": "D2",
+              "tier_name": "gateway_session",
+              "status": "denied",
+              "runtime": "",
+              "restricted": false,
+              "why": "no rule matches request"
+            },
+            {
+              "tier": "D3",
+              "tier_name": "placeholder_substitution",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+            },
+            {
+              "tier": "D4",
+              "tier_name": "protocol_adapter",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "no delivery implementation exists in this build"
+            },
+            {
+              "tier": "D5",
+              "tier_name": "contained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+            },
+            {
+              "tier": "D6",
+              "tier_name": "uncontained_raw",
+              "status": "denied",
+              "runtime": "",
+              "restricted": false,
+              "why": "uncontained raw delivery is human-only"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "rules limited by command or working directory are reported as restricted; use explain run for an exact answer"
+  ]
+}

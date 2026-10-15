@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "allow",
+  "tier": "D2",
+  "tier_name": "gateway_session",
+  "runtime": "gateway_typed",
+  "child_location": "caller",
+  "containment": {
+    "verdict": "no_secret_in_child",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "human",
+    "actor": "human-shell",
+    "connection": "openai",
+    "executable": "curl",
+    "argc": 4,
+    "argv_sha256": "bfa7c7d6c03174af1c75d5c2de2753f71e6e5f4ac76e4467344fd4cdeb3ed065",
+    "cwd": "/work/app"
+  },
+  "hosts": [
+    "api.openai.com"
+  ],
+  "scope": {
+    "rule_id": null,
+    "capabilities": [],
+    "connections": [],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "no rule matched; the policy allows by default",
+    "strongest eligible tier D2 (gateway_session) via runtime gateway_typed"
+  ],
+  "rejected_tiers": [
+    {
+      "tier": "D1",
+      "tier_name": "typed_action",
+      "why": "typed actions run without a child process; use keylatch call"
+    },
+    {
+      "tier": "D3",
+      "tier_name": "placeholder_substitution",
+      "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+    },
+    {
+      "tier": "D4",
+      "tier_name": "protocol_adapter",
+      "why": "no delivery implementation exists in this build"
+    },
+    {
+      "tier": "D5",
+      "tier_name": "contained_raw",
+      "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+    },
+    {
+      "tier": "D6",
+      "tier_name": "uncontained_raw",
+      "why": "runtime direct_classic is not supported in this build"
+    }
+  ],
+  "residual_risk": "The child holds a scoped, short-lived gateway session token, not the provider key. It can use every action the session allows until the token expires; a misused capability is bounded by scope and audit, not prevented.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": false
+  }
+}

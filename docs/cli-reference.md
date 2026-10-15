@@ -210,6 +210,27 @@ The `fix` column is populated for unavailable modes and is empty for available o
 
 ---
 
+### `keylatch explain`
+
+Explain whether a run is allowed and how its secret would be delivered, without running anything. Reads the policy and provider templates only; never prints a secret value.
+
+```
+keylatch explain [--json] run <connection> -- <command> [args...]
+keylatch explain [--json] policy [connection]
+keylatch explain schema
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output the versioned JSON document (`schema_version`, `decision`, `tier`, `child_location`, `approval`, `hosts`, `scope`, `rejected_tiers`, `residual_risk`) |
+| `--actor` | Evaluate as this actor instead of the inferred one |
+| `--cwd` | (`run`) Evaluate for this working directory |
+| `--tier` | (`run`) Ask about one delivery tier, D1 to D6 |
+
+See [Host guards and keylatch explain](integration/host-guards.md) for the schema and a guard hook example.
+
+---
+
 ### `keylatch connect`
 
 Register a new credential connection.
