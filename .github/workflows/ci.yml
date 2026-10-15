@@ -141,6 +141,29 @@ jobs:
       - name: bootstrap smoke test
         run: bash packaging/ci/test-clean-machine-bootstrap.sh
 
+  harness:
+    # Fake agent processes run the attacker scenario table against a built
+    # keylatch binary on every supported OS.
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: install bubblewrap
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y bubblewrap
+      - name: run the fake agent harness
+        shell: bash
+        run: go test -count=1 -timeout 20m -tags harness ./tests/harness/...
+
   experimental:
     # The experimental tag compiles unfinished features. They must keep
     # building and must never reach the release binary.

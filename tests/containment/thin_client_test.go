@@ -24,7 +24,7 @@ import (
 
 type sandboxEnv struct {
 	root, bin, fakeBin, runtimeDir, state, gatewayAddr, auditFile string
-	auth                                               chan string
+	auth                                                          chan string
 }
 
 func requireBwrap(t *testing.T) {
