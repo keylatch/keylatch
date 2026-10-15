@@ -21,63 +21,6 @@ import (
 // parseRunArgs (exported for test via a wrapper — test through GetCmd behaviour)
 // ---------------------------------------------------------------------------
 
-// TestGetMaskedCmd_TwoArgs verifies that `get-masked` with two args prints
-// a masked placeholder to stdout.
-func TestGetMaskedCmd_TwoArgs(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get-masked", "svc", "key"})
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****", "get-masked must output masked placeholder")
-}
-
-// TestGetMaskedCmd_NoArgs verifies get-masked without args prints a generic
-// masked output.
-func TestGetMaskedCmd_NoArgs(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get-masked"})
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****")
-}
-
-// TestGetCmd_MaskedFlag verifies `get --masked svc key` outputs **** and never
-// calls the guarded handler.
-func TestGetCmd_MaskedFlag(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get", "--masked", "svc", "key"})
-	// get --masked must NOT call os.Exit — it returns nil.
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****")
-}
-
-// TestGetCmd_MaskedFlag_NoArgs verifies `get --masked` with no positional args
-// still returns masked output.
-func TestGetCmd_MaskedFlag_NoArgs(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get", "--masked"})
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****")
-}
-
 // TestProxyCmd_Error verifies the proxy subcommand prints a helpful error.
 func TestProxyCmd_Error(t *testing.T) {
 	t.Parallel()
@@ -471,7 +414,7 @@ func TestRegister_KeyCommands(t *testing.T) {
 	expectedCmds := []string{
 		// v1.0.0: "inject" removed; direct_classic removed.
 		"setup", "connect", "agent", "doctor", "ui", "bootstrap",
-		"get", "get-masked", "list", "status", "run",
+		"get", "list", "status", "run",
 		"gateway", "team", "policy", "grant", "actors", "audit",
 		"registry", "rollback", "set", "shared-secret", "trust",
 		"versions", "mcp", "token",

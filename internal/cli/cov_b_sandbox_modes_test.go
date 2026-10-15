@@ -142,50 +142,6 @@ func TestSandboxDoctorCmd_WithConnectionArg(t *testing.T) {
 	}
 }
 
-// --- newSandboxRunCmd ---
-
-func TestSandboxRunCmd_MissingConnection(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping: Windows returns different error path")
-	}
-	root := NewRootCommand()
-	root.SetOut(bytes.NewBuffer(nil))
-	root.SetErr(bytes.NewBuffer(nil))
-	root.SetArgs([]string{"sandbox", "run", "echo", "hello"})
-
-	err := root.Execute()
-	if err == nil {
-		t.Fatal("expected error when --connection is missing")
-	}
-	// On Linux without bwrap installed, the sandbox preflight fails before
-	// flag validation; accept either error shape.
-	if !strings.Contains(err.Error(), "--connection") && !strings.Contains(err.Error(), "bwrap not found") {
-		t.Errorf("expected '--connection' or 'bwrap not found' in error, got: %v", err)
-	}
-}
-
-func TestSandboxRunCmd_NotImplemented(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("skipping: Windows returns different error path")
-	}
-	if runtime.GOOS == "linux" {
-		// On Linux without bwrap this returns a different error.
-		t.Skip("skipping on Linux: depends on bwrap availability")
-	}
-	root := NewRootCommand()
-	root.SetOut(bytes.NewBuffer(nil))
-	root.SetErr(bytes.NewBuffer(nil))
-	root.SetArgs([]string{"sandbox", "run", "--connection", "my-conn", "echo"})
-
-	err := root.Execute()
-	if err == nil {
-		t.Fatal("expected 'not yet implemented' error")
-	}
-	if !strings.Contains(err.Error(), "not yet implemented") {
-		t.Errorf("expected 'not yet implemented' in error, got: %v", err)
-	}
-}
-
 // --- newModesCmd ---
 
 func TestModesCmd_JSON(t *testing.T) {

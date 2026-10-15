@@ -195,11 +195,9 @@ func Register(root *cobra.Command) {
 
 	// --- Daily Use ---
 	addCmd(root, newGetCmd(), "daily")
-	addCmd(root, newGetMaskedCmd(), "daily")
 	addCmd(root, newListCmdImpl(), "daily")
 	addCmd(root, newStatusCmd(), "daily")
 	addCmd(root, newRunCmd(), "daily")
-	addCmd(root, newShareCmd(), "daily")
 	addCmd(root, newAllowCmd(), "daily")
 	addCmd(root, newDisconnectCmd(), "daily")
 	// keylatch inject was removed in v1.0.0. Running it returns cobra's "unknown command" error.
@@ -228,12 +226,8 @@ func Register(root *cobra.Command) {
 	addCmd(root, newCryptoCmd(), "advanced")
 	addCmd(root, newHealthCmd(), "advanced")
 	addCmd(root, newMigrateCmd(), "advanced")
-	addCmd(root, newProjectsCmd(), "advanced")
-	addCmd(root, newReceiptsCmd(), "advanced")
 	addCmd(root, newRegistryCmd(), "advanced")
 	addCmd(root, newRollbackCmd(), "advanced")
-	addCmd(root, newRulesCmd(), "advanced")
-	addCmd(root, newSessionsCmd(), "advanced")
 	addCmd(root, newSetCmd(), "advanced")
 	// Trust and shared-secret commands are now registered from internal/cmd/trust.
 	cmdtrust.RegisterCommands(root, "advanced")
@@ -292,9 +286,6 @@ func Register(root *cobra.Command) {
 
 	// Backup command.
 	addCmd(root, newBackupCmd(), "advanced")
-
-	// `verify` — cosign signature verification.
-	addCmd(root, newVerifyCmd(), "advanced")
 
 	// runtime group is now implemented.
 	addCmd(root, newRuntimeCmd(), "advanced")
@@ -477,7 +468,6 @@ func newGetCmd() *cobra.Command {
 		Use:   "get <service> <key>",
 		Short: "Retrieve a credential value",
 	}
-	cmd.Flags().Bool("masked", false, "return masked value (safe in LLM sessions)")
 
 	// notImplementedGetHandler is value-bearing but not yet implemented.
 	// GuardLLMSession (applied by AsValueBearing, below) wraps this handler
@@ -486,8 +476,7 @@ func newGetCmd() *cobra.Command {
 	// never reaches this inner handler at all — no escape hatch applies.
 	//
 	// Once GuardLLMSession has passed, the raw-credential gate still applies:
-	// `get` (non-masked) always returns a raw value. See
-	// RequireRawCredentialOptIn.
+	// `get` always returns a raw value. See RequireRawCredentialOptIn.
 	notImpl := Handler(func(_ context.Context, hArgs HandlerArgs) (Result, error) {
 		if verErr := RequireRawCredentialOptIn(true, configAllowsUnverifiedSession()); verErr != nil {
 			fmt.Fprintf(hArgs.Stderr, "%v\n", verErr)
@@ -499,19 +488,6 @@ func newGetCmd() *cobra.Command {
 	vbh := AsValueBearing(notImpl)
 
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		masked, _ := c.Flags().GetBool("masked")
-		if masked {
-			// --masked is NOT guarded — it never outputs raw credentials.
-			// get --masked is a safe path.
-			stdout := c.OutOrStdout()
-			if len(args) >= 2 {
-				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
-			} else {
-				fmt.Fprintf(stdout, "**** = ****\n")
-			}
-			return nil
-		}
-
 		hArgs := handlerArgsFromCmd(c, args)
 		res, err := vbh.Invoke(c.Context(), hArgs)
 		if err != nil {
@@ -523,24 +499,6 @@ func newGetCmd() *cobra.Command {
 		return nil
 	}
 	return cmd
-}
-
-// newGetMaskedCmd returns the `get-masked` subcommand — NOT guarded.
-// get-masked is a safe path.
-func newGetMaskedCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "get-masked <service> <key>",
-		Short: "Retrieve a masked credential (safe in LLM sessions)",
-		RunE: func(c *cobra.Command, args []string) error {
-			stdout := c.OutOrStdout()
-			if len(args) >= 2 {
-				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
-			} else {
-				fmt.Fprintf(stdout, "**** = ****\n")
-			}
-			return nil
-		},
-	}
 }
 
 // newRunCmd returns the `run` subcommand with --runtime and --approval-jwt flags.
@@ -866,8 +824,6 @@ func newRunCmd() *cobra.Command {
 			}
 			receipt, runErr := dr.Run(ctx, req)
 			elapsed := time.Since(start)
-			// Best-effort push to keylatchd dashboard (ignored if not running).
-			pushReceiptToUI(ctx, receipt)
 
 			_ = storagePath
 			if runErr != nil {
@@ -1410,7 +1366,6 @@ func mapCustomConfig(cfg *config.CustomModeConfig) *runtime.CustomModeConfig {
 		return nil
 	}
 	return &runtime.CustomModeConfig{
-		TelemetryEnabled:       cfg.TelemetryEnabled,
 		CanaryInjectionEnabled: cfg.CanaryInjectionEnabled,
 		ExperimentalGated:      cfg.ExperimentalGated,
 	}

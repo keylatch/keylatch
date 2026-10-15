@@ -114,12 +114,6 @@ func TestCheckPolicy_MalformedPolicyFile_ReturnsError(t *testing.T) {
 	require.Error(t, err, "malformed policy file must return an error")
 }
 
-// TestOK_ReturnsTrue verifies that runner.OK always returns true.
-func TestOK_ReturnsTrue(t *testing.T) {
-	assert.True(t, runner.OK(context.Background()),
-		"runner.OK must return true")
-}
-
 // TestCheckPolicyWithAudit_DefaultDeny verifies CheckPolicyWithAudit propagates
 // the denial from the underlying CheckPolicy call.
 func TestCheckPolicyWithAudit_DefaultDeny(t *testing.T) {

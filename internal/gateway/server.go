@@ -28,7 +28,6 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/registry"
-	"github.com/keylatch/keylatch/internal/telemetry"
 	"github.com/keylatch/keylatch/internal/ui"
 	"github.com/keylatch/keylatch/internal/version"
 )
@@ -82,9 +81,6 @@ type ServerOptions struct {
 	// Use only in tests to intercept upstream calls.
 	OverrideHTTPClient *http.Client
 
-	// TelemetrySink receives anonymised usage events. If nil, events are discarded.
-	TelemetrySink telemetry.Sink
-
 	Metrics *ui.MetricsCollector
 
 	// Budget enforces per-actor budget limits on gateway requests. When nil,
@@ -106,8 +102,6 @@ type Server struct {
 	httpClients map[string]*http.Client
 	// defaultHTTPClient is used for providers not in httpClients.
 	defaultHTTPClient *http.Client
-	// telemetrySink receives anonymised usage events. nil → NoopSink.
-	telemetrySink telemetry.Sink
 	// budget enforces per-actor limits; nil → no enforcement.
 	budget budget.BudgetCounter
 	// actorHashKey is the domain-separated key for HMAC'ing actor IDs in
@@ -278,7 +272,6 @@ func New(opts ServerOptions) (*Server, error) {
 		vault:             opts.Vault,
 		httpClients:       httpClients,
 		defaultHTTPClient: defaultClient,
-		telemetrySink:     opts.TelemetrySink,
 		budget:            opts.Budget,
 		actorHashKey:      budget.DeriveActorHashKey(opts.SigningKey),
 		policy:            loadedPolicy,

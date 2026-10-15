@@ -248,14 +248,6 @@ func (s *Server) registerRoutes() {
 		s.mux.HandleFunc("/api/approvals", s.requireSession(approvalsHandler.ServeHTTP))
 		s.mux.HandleFunc("/api/approvals/", s.requireSession(csrf.Middleware(approvalsHandler).ServeHTTP))
 
-		// Gateway (scoped to ScopeAdmin+; token minting additionally requires ScopeTokenMinting).
-		gatewayHandler := &api.GatewayHandler{AllowTokenMinting: s.opts.Scope >= ScopeTokenMinting}
-		s.mux.HandleFunc("/api/gateway/", s.requireSession(csrf.Middleware(gatewayHandler).ServeHTTP))
-
-		// Broker (501 stub).
-		brokerHandler := &api.BrokerHandler{}
-		s.mux.HandleFunc("/api/broker/", s.requireSession(csrf.Middleware(brokerHandler).ServeHTTP))
-
 		// Audit summary (read-only).
 		auditHandler := &api.AuditHandler{Logger: s.opts.AuditLogger}
 		s.mux.HandleFunc("/api/audit/", s.requireSession(auditHandler.ServeHTTP))

@@ -264,19 +264,6 @@ func TestE2E_no_signals_PlantedOptInIgnored(t *testing.T) {
 	assert.Equal(t, 2, code, "an opt-in outside the operator's default config must leave the gate closed")
 }
 
-// TestE2E_masked_exits_0_in_llm_session verifies get --masked is a safe path.
-func TestE2E_masked_exits_0_in_llm_session(t *testing.T) {
-	homeDir := t.TempDir()
-	stdout, stderr, code := runKeylatch(t,
-		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"get", "--masked", "foo", "bar")
-
-	assert.Equal(t, 0, code, "get --masked must exit 0 in LLM session")
-	assert.Contains(t, string(stdout), "****")
-	assert.Empty(t, stderr)
-	assertNoCanaryLeak(t, stdout, stderr, homeDir)
-}
-
 // TestE2E_VersionSubcommand_MatchesVersionFlag verifies the fix:
 // `keylatch version` (documented in docs/installation.md as the post-install
 // verification step) exists and produces the exact same output as

@@ -23,7 +23,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // Options configures a KeychainBackend.
@@ -107,20 +106,14 @@ func (k *KeychainBackend) Capabilities() []backend.Capability {
 // Get implements the full unlock→manifest→getOneValue→lock sequence.
 //
 // Sequence per architecture spec:
-//  1. Check runner.OK(ctx) → ErrLocked if not approved
-//  2. acquireFlock → defer release
-//  3. Read unlock password from LOGIN keychain (no -k flag)
-//  4. unlock-keychain -p $pw $KeychainPath
-//  5. defer lock-keychain — registered immediately after step 4
-//  6. loadManifest → resolve ManifestRow
-//  7. getOneValue(row, field) — exactly one value read
-//  8. Return value
+//  1. acquireFlock → defer release
+//  2. Read unlock password from LOGIN keychain (no -k flag)
+//  3. unlock-keychain -p $pw $KeychainPath
+//  4. defer lock-keychain — registered immediately after step 3
+//  5. loadManifest → resolve ManifestRow
+//  6. getOneValue(row, field) — exactly one value read
+//  7. Return value
 func (k *KeychainBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	// Check runner/gateway approval before returning plaintext.
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	// Acquire flock for cross-process serialization.
 	release, err := acquireFlock(k.opts.LockPath)
 	if err != nil {

@@ -19,7 +19,6 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/registry"
-	"github.com/keylatch/keylatch/internal/telemetry"
 )
 
 // errorResponse is the machine-readable gateway error format.
@@ -439,7 +438,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		redactedBody = redact.LabelUntrustedContent(redactedBody, rt.UntrustedContentSource)
 	}
 
-	// Step 12: Audit log and telemetry.
+	// Step 12: Audit log.
 	durationMS := time.Since(start).Milliseconds()
 	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, map[string]any{
 		"provider":    rt.Provider,
@@ -447,11 +446,6 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		"status_code": resp.StatusCode,
 		"duration_ms": durationMS,
 	})
-	sink := s.telemetrySink
-	if sink == nil {
-		sink = telemetry.NoopSink{}
-	}
-	telemetry.GatewayRequestCompleted(ctx, sink, rt.Provider, "allowed", durationMS)
 	outcome = audit.OutcomeOK
 
 	// Step 13: Write redacted response to client.

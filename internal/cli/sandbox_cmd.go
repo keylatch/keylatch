@@ -18,14 +18,9 @@ func newSandboxCmd() *cobra.Command {
 		Long: `Manage the keylatch direct_classic_sandboxed runtime mode.
 
 The sandbox provides a credential-isolated execution context using bwrap (Linux)
-or sandbox-exec (macOS). Use 'sandbox doctor' to diagnose availability.
-
-'sandbox run' is [experimental] and not yet implemented — it prints usage
-guidance pointing at 'keylatch run --runtime direct_classic_sandboxed', the
-working equivalent, instead of executing anything.`,
+or sandbox-exec (macOS). Use 'sandbox doctor' to diagnose availability.`,
 	}
 	cmd.AddCommand(newSandboxDoctorCmd())
-	cmd.AddCommand(newSandboxRunCmd())
 	return cmd
 }
 
@@ -121,51 +116,4 @@ func buildSandboxDoctorOutput(platform string) sandboxDoctorOutput {
 			Reason:    "sandbox-exec built-in — direct_classic_sandboxed mode available",
 		}
 	}
-}
-
-// newSandboxRunCmd returns the `sandbox run` subcommand.
-func newSandboxRunCmd() *cobra.Command {
-	var connection string
-	cmd := &cobra.Command{
-		Use:   "run [--connection <slug>] -- <command> [args...]",
-		Short: "[experimental] Run a command inside the keylatch sandbox (not yet implemented)",
-		Long: `[EXPERIMENTAL — not yet implemented]
-
-This command is wired into the CLI but does not yet execute anything: it
-always exits with usage guidance pointing at the working equivalent,
-'keylatch run --runtime direct_classic_sandboxed'. Kept here to reserve the
-UX shape for a future release; do not script against it.
-
-The sandbox isolates the subprocess using bwrap (Linux) or sandbox-exec (macOS).
-Credentials are injected via environment variables inside the sandbox; the host
-environment is never exposed to the subprocess.
-
-The connection slug identifies which sandbox profile and credentials to use.
-The command and arguments are passed after the -- separator.`,
-		Args: cobra.MinimumNArgs(1),
-		RunE: func(c *cobra.Command, args []string) error {
-			platform := goos.GOOS
-
-			// Windows is unsupported.
-			if platform == "windows" {
-				return NewUsageError("sandbox run: not supported on Windows — use 'direct_classic' or 'gateway_typed' instead")
-			}
-
-			// On Linux, verify bwrap is available.
-			if platform == "linux" {
-				if _, ok := sandbox.DetectBwrap(); !ok {
-					return NewUsageError("sandbox run: bwrap not found.\n%s", sandbox.BwrapInstallHint)
-				}
-			}
-
-			if connection == "" {
-				return NewUsageError("sandbox run: --connection is required")
-			}
-
-			return NewUsageError("sandbox run: [experimental] not yet implemented — use the working equivalent instead:\n  keylatch run --runtime direct_classic_sandboxed %s -- %s",
-				connection, args[0])
-		},
-	}
-	cmd.Flags().StringVar(&connection, "connection", "", "connection slug for sandbox profile lookup")
-	return cmd
 }

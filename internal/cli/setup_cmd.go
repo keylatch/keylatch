@@ -264,10 +264,9 @@ Exit codes:
 	cmd.Flags().Bool("non-interactive", false, "fail instead of prompting when required fields are missing")
 	cmd.Flags().Bool("from-env", false, "read field values from KEYLATCH_<FIELD_NAME> environment variables")
 	cmd.Flags().StringArray("stdin-field", nil, "supply a field value as key=value (may be repeated)")
-	cmd.Flags().Bool("advanced", false, "show all backend options and advanced configuration (audit dir, signing key, ports, telemetry)")
+	cmd.Flags().Bool("advanced", false, "show all backend options and advanced configuration (audit dir, signing key, ports)")
 	cmd.Flags().Bool("no-daemon-start", false, "skip gateway start in step 3 (useful in CI or restricted environments)")
 	cmd.Flags().String("config", "", "path to keylatch.yaml config file")
-	cmd.Flags().String("telemetry", "", "telemetry setting: on|off")
 	cmd.Flags().Bool("insecure-file-kek", false, "store the vault key in a plaintext file next to the vault when no OS keyring is available (any process running as you can decrypt the vault)")
 	return cmd
 }
@@ -383,7 +382,6 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	}
 
 	chosen := recommended
-	telemetrySetting := ""
 	// explicitFlagOverride: --backend is an unambiguous, deliberate choice
 	// (not an accidental Enter-through) — it bypasses the switch
 	// confirmation below, matching prior behavior for non-interactive/CI
@@ -394,13 +392,8 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	case explicitFlagOverride:
 		chosen = flagBackend
 		fmt.Fprintf(c.OutOrStdout(), "  Using --backend=%s\n", chosen)
-		// Honour --telemetry off flag even in non-advanced mode.
-		if tf, _ := c.Flags().GetString("telemetry"); strings.ToLower(tf) == "off" {
-			telemetrySetting = "off"
-		}
 	case advanced:
-		// Advanced mode: show all 10 backend options and telemetry prompt.
-		chosen, telemetrySetting = setupPromptAdvancedBackend(c, recommended)
+		chosen = setupPromptAdvancedBackend(c, recommended)
 	case configuredBackend != "":
 		// Resume: default to *keeping* the configured backend, not the OS
 		// recommendation.
@@ -554,19 +547,6 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 
 	if err := persistSetupBackend(c, chosen); err != nil {
 		return "", err
-	}
-
-	// Persist telemetry setting to config when the user explicitly opted in or out.
-	if telemetrySetting != "" {
-		cfgPath := paths.Config(llmcontext.DefaultLookup)
-		cfg, loadErr := config.Load(cfgPath)
-		if loadErr == nil {
-			cfg.Telemetry.Enabled = strings.ToLower(telemetrySetting) == "on"
-			if cfg.Telemetry.Enabled {
-				cfg.Telemetry.Sink = "local"
-			}
-			_ = config.Save(cfgPath, cfg) // best-effort — setup is still successful
-		}
 	}
 
 	fmt.Fprintf(c.OutOrStdout(), "  Backend %q configured.\n\n", chosen)
@@ -778,8 +758,7 @@ func setupPromptBasicBackend(c *cobra.Command, recommended string) string {
 }
 
 // setupPromptAdvancedBackend shows all available backend options (--advanced mode).
-// Returns the chosen backend slug and the resolved telemetry setting ("on", "off", or "").
-func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, string) {
+func setupPromptAdvancedBackend(c *cobra.Command, recommended string) string {
 	fmt.Fprintln(c.OutOrStdout(), "  Advanced backend options:")
 	fmt.Fprintln(c.OutOrStdout(), "    1)  file            — encrypted file in ~/.keylatch/")
 	fmt.Fprintln(c.OutOrStdout(), "    2)  keychain        — macOS Keychain (macOS only)")
@@ -800,27 +779,6 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	// Advanced port, audit, and key configuration are owned by dedicated
 	// commands once setup has created the baseline config.
 
-	// Telemetry opt-in: --telemetry off skips prompt; otherwise ask (default NO).
-	telemetryFlag, _ := c.Flags().GetString("telemetry")
-	chosenTelemetry := telemetryFlag
-	if strings.ToLower(telemetryFlag) == "off" {
-		chosenTelemetry = "off"
-	} else if telemetryFlag == "" {
-		fmt.Fprintln(c.OutOrStdout())
-		fmt.Fprintf(c.OutOrStdout(), "    Allow anonymous usage stats? This sends 7 anonymised metrics\n")
-		fmt.Fprintf(c.OutOrStdout(), "    (no keys, no values) to help improve Keylatch. (y/N): ")
-		ans := strings.ToLower(strings.TrimSpace(readLine()))
-		if ans == "y" || ans == "yes" {
-			chosenTelemetry = "on"
-		} else {
-			chosenTelemetry = "off"
-		}
-	}
-	if chosenTelemetry != "" {
-		fmt.Fprintf(c.OutOrStdout(), "  Telemetry: %s\n", chosenTelemetry)
-	}
-	fmt.Fprintln(c.OutOrStdout())
-
 	advancedMap := map[string]string{
 		"1": "file", "2": "keychain", "3": "op", "4": "bw",
 		"5": "proton-pass", "6": "keeper", "7": "lastpass",
@@ -833,28 +791,27 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	chosen, ok := advancedMap[choice]
 	if !ok {
 		fmt.Fprintf(c.OutOrStdout(), "  Using recommended backend %q.\n", recommended)
-		return recommended, chosenTelemetry
+		return recommended
 	}
 
 	canonical, ok := backend.CanonicalName(chosen)
 	if !ok {
 		fmt.Fprintf(c.ErrOrStderr(), "  Error: backend %q is not available in this build.\n", chosen)
 		fmt.Fprintf(c.OutOrStdout(), "  Using recommended backend %q.\n", recommended)
-		return recommended, chosenTelemetry
+		return recommended
 	}
 
-	return canonical, chosenTelemetry
+	return canonical
 }
 
 // setupStepModeChoice prompts the user to select an operating mode.
 //
-// Basic (non-advanced) prompt shows standard and telemetry.
-// If the user picks "advanced", all four modes are shown.
+// Basic (non-advanced) prompt shows standard only.
+// If the user picks "advanced", all modes are shown.
 // The selected mode is persisted via `keylatch config set mode <choice>`.
 func setupStepModeChoice(c *cobra.Command, advanced bool) {
 	fmt.Fprintln(c.OutOrStdout(), "Operating mode:")
-	fmt.Fprintln(c.OutOrStdout(), "  standard   — no telemetry, no canary injection (default)")
-	fmt.Fprintln(c.OutOrStdout(), "  telemetry  — enable anonymous usage telemetry")
+	fmt.Fprintln(c.OutOrStdout(), "  standard   — no canary injection (default)")
 
 	if advanced {
 		fmt.Fprintln(c.OutOrStdout(), "  canary     — inject canary tokens for leak detection")
@@ -873,12 +830,11 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 		return
 	}
 
-	// If the user typed "advanced" in basic mode, re-prompt with all four modes.
+	// If the user typed "advanced" in basic mode, re-prompt with all modes.
 	if answer == "advanced" && !advanced {
 		fmt.Fprintln(c.OutOrStdout(), "  All modes:")
-		fmt.Fprintln(c.OutOrStdout(), "    standard   — no telemetry, no canary injection")
-		fmt.Fprintln(c.OutOrStdout(), "    telemetry  — enable anonymous usage telemetry")
-		fmt.Fprintln(c.OutOrStdout(), "    canary     — inject canary tokens for leak detection")
+		fmt.Fprintln(c.OutOrStdout(), "    standard   — no canary injection")
+		fmt.Fprintln(c.OutOrStdout(), "    canary    — inject canary tokens for leak detection")
 		fmt.Fprintln(c.OutOrStdout(), "    custom     — configure individual flags (edit config.json)")
 		fmt.Fprintln(c.OutOrStdout())
 		fmt.Fprintf(c.OutOrStdout(), "  Choose mode [standard]: ")
