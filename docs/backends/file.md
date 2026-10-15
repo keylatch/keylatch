@@ -14,7 +14,7 @@ external services or binaries are required.
 | Property | Detail |
 |----------|--------|
 | Encryption algorithm | XChaCha20-Poly1305 (default); AES-256-GCM in FIPS builds (`-tags=fips`, not an env var — see [Security: FIPS compliance](../security.md#fips-compliance)) |
-| Key derivation | KEK derived from a vault identity held in the OS keyring (macOS Keychain or Secret Service); a plaintext identity file only with `--insecure-file-kek` |
+| Key derivation | KEK derived from a vault identity held in the OS keyring (macOS Keychain or Secret Service); a plaintext identity file only when `allow_insecure_file_kek` is set in the operator's config, and `keylatch doctor` fails while one is in use |
 | On-disk format | `value.enc` (ciphertext) + `value.enc.nonce` + `value.enc.aad` per secret |
 | Directory mode | 0o700 |
 | File mode | 0o600 |

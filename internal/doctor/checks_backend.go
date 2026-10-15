@@ -616,13 +616,13 @@ func checkPlaintextKEK(env llmcontext.Lookup) Check {
 		case loc == kek.IdentityInKeyring:
 			st.Detail = "KEK held in the OS keyring"
 		case loc == kek.IdentityInFileAcknowledged:
-			st.Warn = true
-			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s (--insecure-file-kek); any process running as this user can decrypt the vault offline", vi.Path)
-			st.Fix = migrateFix
+			st.OK = false
+			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s (allowed by allow_insecure_file_kek in the operator config); any process running as this user can decrypt the vault offline", vi.Path)
+			st.Fix = migrateFix + " Then remove allow_insecure_file_kek from the config file."
 		case loc == kek.IdentityInFileUnacknowledged:
 			st.OK = false
 			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s; any process running as this user can decrypt the vault offline", vi.Path)
-			st.Fix = migrateFix + " Without a keyring, run `keylatch bootstrap --insecure-file-kek` to accept the risk."
+			st.Fix = migrateFix + " Without a keyring, run `keylatch bootstrap` in a terminal to protect the key with a passphrase."
 		default:
 			st.Detail = "no vault identity found"
 		}
