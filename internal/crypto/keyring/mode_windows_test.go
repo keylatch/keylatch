@@ -62,7 +62,7 @@ func TestWindowsOwnerOnlyDACL(t *testing.T) {
 	}
 	setDACL(t, path, user.User.Sid, everyone)
 	err = checkPrivateFile(path, info)
-	if err == nil || !strings.Contains(err.Error(), "S-1-1-0") {
+	if err == nil || !strings.Contains(err.Error(), everyone.String()) {
 		t.Fatalf("a DACL that grants Everyone access was accepted: %v", err)
 	}
 	if _, err := loadFile(path); !errors.Is(err, ErrKeyringCorrupt) {
