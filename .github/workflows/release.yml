@@ -27,7 +27,7 @@ jobs:
       contents: read
       checks: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: require the tag commit on main
@@ -38,7 +38,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash release-checks/required-checks-passed.sh "$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: false
@@ -52,8 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -79,10 +79,10 @@ jobs:
     outputs:
       hashes: ${{ steps.compute-hashes.outputs.hashes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -113,7 +113,7 @@ jobs:
           sha256sum dist/*.tar.gz dist/*.zip dist/*_checksums.txt 2>/dev/null | \
             base64 -w0 > /tmp/hashes.b64
           echo "hashes=$(cat /tmp/hashes.b64)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dist
           path: dist/
@@ -123,8 +123,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dist
           path: dist/
@@ -144,7 +144,7 @@ jobs:
             --output spdx-json=dist/sbom/keylatch-${{ github.ref_name }}.spdx.json
       - name: verify SBOM via release gate
         run: bash release-checks/sbom-verify.sh dist/sbom/keylatch-${{ github.ref_name }}.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom
           path: dist/sbom/
@@ -156,12 +156,12 @@ jobs:
     env:
       KEYLATCH_INSECURE_FILE_KEK: "1" # no OS keyring on CI runners
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dist
           path: dist/
@@ -193,6 +193,7 @@ jobs:
       id-token: write
       contents: write
       actions: read
+    # Must stay on a release tag: the SLSA verifier rejects a builder ref that is not a tag.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
     with:
       base64-subjects: "${{ needs.build-cli.outputs.hashes }}"
@@ -207,12 +208,12 @@ jobs:
       contents: read
       id-token: write # keyless OIDC signing via Fulcio
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dist
           path: dist/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sbom
           path: dist/sbom/
@@ -232,7 +233,7 @@ jobs:
           echo "Signed ${#files[@]} files."
       - name: verify signatures
         run: bash release-checks/cosign-verify.sh ${{ github.ref_name }} dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signatures
           path: |
@@ -253,7 +254,7 @@ jobs:
       packages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
       - name: log in to ghcr.io
@@ -363,7 +364,7 @@ jobs:
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
               "${ref}"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: image-sbom
           path: dist/sbom/keylatch-image-*.json
@@ -376,16 +377,16 @@ jobs:
       contents: read
       id-token: write # keyless OIDC signing via Fulcio
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dist
           path: dist/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sbom
           path: dist/sbom/
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -413,7 +414,7 @@ jobs:
             --output-signature dist/release-manifest/keylatch-${{ github.ref_name }}.json.sig \
             --output-certificate dist/release-manifest/keylatch-${{ github.ref_name }}.json.pem \
             dist/release-manifest/keylatch-${{ github.ref_name }}.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: manifest
           path: dist/release-manifest/
@@ -442,8 +443,8 @@ jobs:
     # (see "compute per-leg signing status" below); the signing-status and
     # publish jobs download and aggregate all of them.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
@@ -605,7 +606,7 @@ jobs:
       # One artifact per matrix leg (filename/artifact name both suffixed
       # with matrix.os, so they never collide once downloaded with
       # merge-multiple: true elsewhere in this workflow).
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signing-status-${{ matrix.os }}
           path: signing-status-${{ matrix.os }}.json
@@ -629,14 +630,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-${{ matrix.os }}
           path: src-tauri/target/release/bundle/
           if-no-files-found: warn
       - name: upload macOS .dmg artifact
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-dmg-${{ github.ref_name }}
           path: src-tauri/target/release/bundle/dmg/*.dmg
@@ -655,7 +656,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: download per-leg signing-status artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: signing-status-*
           path: signing-status/
@@ -716,8 +717,8 @@ jobs:
             echo "::error::All desktop bundle builds failed - release blocked"
             exit 1
           fi
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           merge-multiple: true
           path: all-artifacts/
@@ -886,7 +887,7 @@ jobs:
       contents: read
       issues: write # create the release checklist issue + labels
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: create release checklist issue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

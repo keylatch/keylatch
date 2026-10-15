@@ -35,7 +35,7 @@ jobs:
       signed: ${{ steps.signed.outputs.signed }}
       hashes: ${{ steps.hashes.outputs.hashes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: keep the release check scripts from main
         run: |
           set -euo pipefail
@@ -44,12 +44,12 @@ jobs:
           cp -R release-checks "$RUNNER_TEMP/release-checks"
       # The tag is checked out at the default workspace path, which is where
       # the release was built; binaries without -trimpath embed that path.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
           clean: true
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: false
@@ -102,7 +102,7 @@ jobs:
         if: steps.compare.outputs.matched == 'true'
         working-directory: ${{ runner.temp }}/published
         run: echo "hashes=$(sha256sum keylatch_*.tar.gz keylatch_*.zip keylatch-*_checksums.txt | base64 -w0)" >>"$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: steps.compare.outputs.matched == 'true'
         with:
           name: published
@@ -118,7 +118,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: drop Latest and prepend the unverified-release note
         env:
           GH_TOKEN: ${{ github.token }}
@@ -141,12 +141,12 @@ jobs:
       contents: read
       id-token: write # keyless OIDC signing via Fulcio
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ inputs.tag }}
           path: tag-source
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: published
           path: attest/
@@ -183,7 +183,7 @@ jobs:
             cosign sign-blob --yes --output-signature "${f}.sig" --output-certificate "${f}.pem" "$f"
             cosign_verify_blob "$f"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: attestations
           path: |
@@ -199,6 +199,7 @@ jobs:
       id-token: write
       contents: write
       actions: read
+    # Must stay on a release tag: the SLSA verifier rejects a builder ref that is not a tag.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
     with:
       base64-subjects: "${{ needs.reproduce.outputs.hashes }}"
@@ -212,8 +213,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           merge-multiple: true
           path: attest/
