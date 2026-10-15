@@ -1,79 +1,74 @@
 # Runtime Modes
 
-Keylatch supports five runtime modes that control how credentials are injected into subprocesses. Use `--runtime <mode>` with `keylatch run`.
+Keylatch has three runtime modes that decide how a credential reaches a subprocess. Use
+`--runtime <mode>` with `keylatch run`. A name that is not a mode fails with
+`unknown runtime mode`.
 
-## Available Modes (v1.0.0)
+## The modes
 
-| Mode | Description |
-|------|-------------|
-| `gateway_typed` | Routes execution through the local keylatch gateway. Preferred for LLM sessions. Requires `keylatch gateway up`. |
-| `gateway_sdk` | Routes execution through the gateway using the OpenAI-compatible SDK proxy. Requires `keylatch gateway up`. |
-| `direct_brokered` | Exchanges credentials via a broker strategy (ephemeral tokens). No gateway required. |
-| `gateway_proxy` | Routes HTTPS traffic through a local MITM proxy that rewrites Authorization headers. Requires local CA trust installation. |
-| `direct_classic_sandboxed` | Injects raw credentials into a sandboxed subprocess (bwrap on Linux, sandbox-exec on macOS). `~/.keylatch/` is deny-listed inside the sandbox. See [Sandbox mode](./sandbox.md). |
+| Mode | Status | Description |
+|------|--------|-------------|
+| `gateway_typed` | Supported | Routes execution through the local Keylatch gateway. The default. Requires `keylatch gateway up`. |
+| `gateway_sdk` | Supported | Routes execution through the gateway using the OpenAI-compatible SDK routes. Requires `keylatch gateway up`. |
+| `gateway_proxy` | Unavailable | Routes HTTPS traffic through a local proxy that rewrites `Authorization` headers. Excluded from this release until its redirect, authority and credential-boundary fixes land. |
 
-## LLM Session Restrictions
+`direct_brokered`, which exchanged a root credential for a scoped one inside the CLI, is also
+Unavailable. v0.13.0 rebuilds it as `minted`. The `direct_classic_sandboxed` mode was removed; it
+is not a mode and no alias remains.
 
-When keylatch detects an LLM session (e.g. `CLAUDECODE=1`, `CODEX_SANDBOX` set), all five modes are permitted without restriction. Raw credential values are never returned to the agent process outside the sandboxed child environment.
+The support manifest is the single source for which modes are enabled. `keylatch scope` prints it.
 
-`keylatch get` is always blocked in LLM sessions (exit 2, SecurityBlock).
+## The gateway invariant
 
-## Credential Storage Path (S-FIND-23)
+In every gateway mode the child process receives a short-lived Keylatch session token and a
+gateway URL, never the provider key. The gateway sends the provider key only to the allowlisted
+provider.
 
-All credentials are stored at the canonical four-segment path:
+## Agent sessions
+
+When Keylatch detects an agent session (`CLAUDECODE=1`, `CODEX_SANDBOX` set, a harness ancestor, a
+session ticket), the gateway modes stay available. `keylatch get` is always refused in an agent
+session (exit code 2). Detection is a label, not a security boundary; see
+[Security](security.md).
+
+## Credential storage path
+
+Credentials are stored at the four-segment path:
 
 ```
 <namespace>/<category>/<provider>/<field>
 ```
 
-Example:
+For example `default/ai/openrouter/api_key`. The path format is the same for every backend, CLI
+command and gateway vault lookup.
+
+## Gateway token constraints
+
+The token `keylatch gateway token create` prints is a constrained bearer token:
+
+- **TTL**: it expires after the declared `--ttl` (default `1h`); an expired token returns `401 token_expired`.
+- **Scope**: each token names the capabilities it may use, such as `openrouter.chat.completion`; a route outside that scope returns `403 capability_mismatch`.
+- **Audience**: the capability format `<provider>.<action>` ties a token to one provider; a token for `openrouter` cannot be used on `sentry` routes.
+- **Replay protection**: a token created with `--max-uses N` is accepted at most N times; the next request returns `401 token_exhausted`.
+- **Revocation**: `keylatch gateway token revoke` ends a token; a revoked token returns `401 token_revoked`.
+
+## SDK route resolution
+
+For providers whose template declares `GatewayActions` with an explicit `sdk_path`, the gateway
+registers the route at that path. Without an `sdk_path` it synthesizes
+`/sdk/<provider>/v1/<action>`. The synthesized path is not registered when an explicit one exists.
 
 ```
-default/ai/openrouter/api_key
+sdk_path: /v1/chat/completions  ->  POST /v1/chat/completions
+sdk_path: /v1/models            ->  GET  /v1/models
 ```
 
-This path format applies uniformly to all backends, CLI commands, and gateway vault lookups. There is no legacy `connections/` prefix — v1.0.0 has no existing users requiring backward compatibility.
-
-## Gateway Token Constraints (EPIC-04)
-
-The `KEYLATCH_GATEWAY_TOKEN` (or the JWT produced by `gateway token create`) is a constrained bearer token with the following security properties:
-
-- **TTL**: Tokens expire after the declared `--ttl` (default `1h`). Expired tokens return `401 token_expired`.
-- **Scope / Capability**: Each token declares the capabilities it may exercise (e.g. `openrouter.chat.completion`). Requests to routes outside that scope return `403 capability_mismatch`.
-- **Audience isolation**: Capability format `<provider>.<action>` enforces provider-level audience — a token for `openrouter` cannot be used on `sentry` routes.
-- **Replay protection**: Tokens with `--max-uses N` are accepted at most N times. Subsequent requests return `401 token_exhausted` (FIND3-009).
-- **Revocation / Session end**: Tokens can be revoked with `gateway token revoke`. Revoked tokens return `401 token_revoked`.
-
-## SDK Route Resolution (EPIC-04)
-
-For providers that declare `GatewayActions` with an explicit `sdk_path` in their template, the gateway registers the route at the declared path. When no `sdk_path` is set, the gateway synthesizes a fallback path of the form `/sdk/<provider>/v1/<action>`.
-
-Example (openai template):
-
-```
-sdk_path: /v1/chat/completions  →  POST /v1/chat/completions
-sdk_path: /v1/models            →  GET  /v1/models
-```
-
-The synthesized fallback is NOT registered when an explicit `sdk_path` is declared.
-
-## Diagnosing Mode Availability
+## Diagnosing mode availability
 
 ```bash
 keylatch runtime doctor <provider>
 keylatch runtime doctor openrouter --json
 ```
 
-Example output:
-
-```
-runtime doctor — provider: openrouter
-
-  [ok  ] gateway_typed: gateway running (preferred mode)
-  [ok  ] gateway_sdk: gateway running
-  [ok  ] direct_brokered: supported
-  [ok  ] gateway_proxy: gateway running
-  [ok  ] direct_classic_sandboxed: sandbox primitive available: sandbox-exec built-in (macOS)
-```
-
-For sandbox-specific diagnostics use `keylatch sandbox doctor` (see [Sandbox mode](./sandbox.md)).
+The report says, for each mode, whether the provider supports it and whether it is available given
+the current state (for example, whether the gateway is running).

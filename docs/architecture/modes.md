@@ -7,7 +7,7 @@ since: 1.0.0
 
 ## 1. Overview
 
-Keylatch supports four runtime modes that control how credentials travel from the encrypted vault to the subprocess that needs them. Multiple modes exist because different contexts have different threat models: a local development script, an LLM agent session, and a CI pipeline each require different guarantees.
+Keylatch supports three runtime modes (plus the experimental `gateway_proxy`) that control how credentials travel from the encrypted vault to the subprocess that needs them. Multiple modes exist because different contexts have different threat models: a local development script, an LLM agent session, and a CI pipeline each require different guarantees.
 
 The trust hierarchy from highest to lowest isolation:
 
