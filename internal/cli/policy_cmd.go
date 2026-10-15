@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -69,10 +70,13 @@ Replacing an existing policy with --force needs a human at a terminal.`,
 			if exists && !force {
 				return fmt.Errorf("a policy already exists at %q; use --force to replace it", policyPath)
 			}
+			var digest string
 			if exists {
-				if _, err := requirePresence(c.Context(), presence.ActionPolicyChange, "Replace the existing policy with the default-deny policy"); err != nil {
+				proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "init", "", "Replace the existing policy with the default-deny policy")
+				if err != nil {
 					return err
 				}
+				digest = proof.Digest
 			}
 
 			if err := os.MkdirAll(pathDir(policyPath), 0o700); err != nil {
@@ -103,6 +107,7 @@ Replacing an existing policy with --force needs a human at a terminal.`,
 				return err
 			}
 
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "init", "", digest, "")
 			fmt.Fprintf(c.OutOrStdout(), "policy initialized at %s\nexamples written to %s\n", policyPath, examplesDir)
 			return nil
 		},
@@ -130,9 +135,10 @@ func newPolicyAllowCmd() *cobra.Command {
 			actor := args[0]
 			connection := args[1]
 
-			if _, err := requirePresence(c.Context(), presence.ActionPolicyChange,
+			proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "allow", connection,
 				"Allow rule: actor %q may use %q (capability %s, runtime %q, command %q, cwd %q, approval %v)",
-				actor, connection, capability, runtime, command, cwd, approval); err != nil {
+				actor, connection, capability, runtime, command, cwd, approval)
+			if err != nil {
 				return err
 			}
 
@@ -182,6 +188,7 @@ func newPolicyAllowCmd() *cobra.Command {
 			if err := policy.Save(policyPath, p); err != nil {
 				return err
 			}
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "allow", connection, proof.Digest, "")
 			fmt.Fprintf(c.OutOrStdout(), "rule %s added\n", id)
 			return nil
 		},
@@ -391,7 +398,8 @@ func newPolicyRemoveCmd() *cobra.Command {
 			ruleID := args[0]
 			policyPath := paths.Policy(llmcontext.DefaultLookup)
 
-			if _, err := requirePresence(c.Context(), presence.ActionPolicyChange, "Remove policy rule %s", ruleID); err != nil {
+			proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "remove", "", "Remove policy rule %s", ruleID)
+			if err != nil {
 				return err
 			}
 
@@ -415,6 +423,7 @@ func newPolicyRemoveCmd() *cobra.Command {
 			if err := policy.Save(policyPath, p); err != nil {
 				return err
 			}
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "remove", "", proof.Digest, "")
 			fmt.Fprintf(c.OutOrStdout(), "rule %s removed\n", ruleID)
 			return nil
 		},

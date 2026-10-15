@@ -490,11 +490,24 @@ func newConnectCmd() *cobra.Command {
 				return nil
 			}
 
+			recordConnect(ctx, name, cfg.Backend, nil)
 			fmt.Fprintf(c.OutOrStdout(), "  Connected: custom/%s (%s saved)\n", name, field)
 			return nil
 		},
 	}
 	connectCmd.AddCommand(customCmd)
+
+	// A connection written or updated is recorded once, by name.
+	audited := func(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+		return func(c *cobra.Command, args []string) error {
+			err := run(c, args)
+			if len(args) > 0 {
+				recordConnect(c.Context(), args[0], loadCLIConfig(c).Backend, err)
+			}
+			return err
+		}
+	}
+	connectCmd.RunE = audited(connectCmd.RunE)
 
 	return connectCmd
 }

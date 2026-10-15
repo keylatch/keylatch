@@ -111,6 +111,13 @@ starts in an empty file.
 run` writes exactly one `run` event, and a run is refused while the log cannot
 record it.
 
+`connect`, `set`, `policy.change` (policy rules, connection policy documents and
+grants, including refused attempts), `presence.decision` (every human-presence
+outcome) and `guard.block` (a runtime mode refused for an agent before a run
+starts) are written by the CLI after the action or refusal, so a log that
+cannot be opened loses the event but never undoes the action. `release` is
+reserved for a verb that hands a stored value to a caller; none exists.
+
 Audit is required, not best-effort. The broker and the vault refuse any
 operation that carries no audit emitter. `keylatch gateway up`, `keylatch set`
 and `keylatch list --raw` open the audit log first and exit with a security

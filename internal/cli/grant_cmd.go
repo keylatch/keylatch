@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/grant"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -70,7 +71,7 @@ Grants written by an agent session are never honoured.`,
 				return NewUsageError("grant create: --ttl must be at most %s. (KL-4142)", grant.MaxTTL)
 			}
 
-			proof, err := requirePresence(c.Context(), presence.ActionGrantCreate,
+			proof, err := requirePolicyChange(c.Context(), presence.ActionGrantCreate, "grant.create", connection,
 				"Grant %q %s on %q for %s (command %q, cwd %q, max uses %d)", actorName, capability, connection, ttl, cmdGlob, cwdGlob, maxUses)
 			if err != nil {
 				return err
@@ -91,8 +92,9 @@ Grants written by an agent session are never honoured.`,
 			if err != nil {
 				return fmt.Errorf("grant create: %w", err)
 			}
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "grant.create", connection, proof.Digest, "")
 
-			fmt.Fprintf(c.OutOrStdout(), "grant id:      %s\n", g.ID)
+			fmt.Fprintf(c.OutOrStdout(), "grant id:     %s\n", g.ID)
 			fmt.Fprintf(c.OutOrStdout(), "expires at:    %s\n", g.ExpiresAt.UTC().Format(time.RFC3339))
 			if maxUses > 0 {
 				fmt.Fprintf(c.OutOrStdout(), "max uses:      %d\n", g.MaxUses)
@@ -189,13 +191,15 @@ func newGrantRevokeCmd() *cobra.Command {
 			env := llmcontext.DefaultLookup
 			grantPath := paths.Grants(env)
 
-			if _, err := requirePresence(c.Context(), presence.ActionGrantRevoke, "Revoke grant %s and the grants derived from it", grantID); err != nil {
+			proof, err := requirePolicyChange(c.Context(), presence.ActionGrantRevoke, "grant.revoke", "", "Revoke grant %s and the grants derived from it", grantID)
+			if err != nil {
 				return err
 			}
 
 			if err := grant.Revoke(context.Background(), grantPath, grantID); err != nil {
 				return fmt.Errorf("grant revoke: %w", err)
 			}
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "grant.revoke", "", proof.Digest, "")
 			fmt.Fprintf(c.OutOrStdout(), "grant %s revoked\n", grantID)
 			return nil
 		},

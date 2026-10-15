@@ -88,7 +88,7 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"action": "list-models", "status": 200, "signals": "claude_code",
 			"destination_kind": "file", "rule": "exfiltration", "change": "allow",
 			"actor": "agent", "before": "none", "after": "allow",
-			"operation": "backup", "method": "tty",
+			"operation": "backup", "method": "tty", "digest": "abcdef0123456789",
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)

@@ -145,12 +145,12 @@ var safeLogFields = map[string][]string{
 	"set":     {"connection", "field", "backend", "caller_kind", "reason"},
 	// before and after summarise the rule, never a credential.
 	"policy.change": {
-		"change", "actor", "connection", "capability", "caller_kind", "before", "after", "digest", "files", "reason",
+		"change", "actor", "connection", "capability", "caller_kind", "before", "after", "digest", "reason",
 	},
-	"presence.decision": {"operation", "presence_action", "method", "result", "digest", "caller_kind", "reason"},
+	"presence.decision": {"operation", "method", "result", "digest", "caller_kind", "reason"},
 	"security.block":    {"command", "signals", "caller_kind"},
 	"guard.block":       {"command", "rule", "caller_kind", "reason"},
-	"backup.export":     {"destination_kind", "count", "method", "caller_kind", "reason"},
+	"backup.export":     {"destination_kind", "caller_kind", "reason"},
 
 	// binding changes: host sets are authorities (no credential content).
 	// attempted is the change an agent caller was refused.

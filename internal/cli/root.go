@@ -665,6 +665,7 @@ func newRunCmd() *cobra.Command {
 			// cannot verify the signature — callers must obtain approval via a
 			// running gateway instance that holds the key.
 			if block, code := GuardRuntime(mode, approvalJWT, llmcontext.DefaultLookup, nil); block {
+				recordGuardBlock(c.Context(), "run", "runtime_mode:"+string(mode), "runtime mode not permitted in an agent session")
 				WriteGuardRuntimeError(&stderrBuf, mode)
 				fmt.Fprint(c.ErrOrStderr(), stderrBuf.String())
 				os.Exit(code)

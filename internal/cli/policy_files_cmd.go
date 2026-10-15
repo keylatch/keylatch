@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/examples"
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -183,13 +184,15 @@ the summary shown there is the diff.`,
 			diff := "  " + strings.Join(lines, "\n  ")
 			fmt.Fprintf(c.OutOrStdout(), "Changes:\n%s\n", diff)
 
-			if _, err := requirePresence(c.Context(), presence.ActionPolicyChange,
-				"Import %d connection policy document(s) from %s:\n%s", len(incoming), dir, diff); err != nil {
+			proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "import", "",
+				"Import %d connection policy document(s) from %s:\n%s", len(incoming), dir, diff)
+			if err != nil {
 				return err
 			}
 			if err := store.Replace(incoming); err != nil {
 				return fmt.Errorf("policy import: %w", err)
 			}
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "import", "", proof.Digest, "")
 			fmt.Fprintf(c.OutOrStdout(), "policy import: %d document(s) imported\n", len(incoming))
 			return nil
 		},
@@ -251,7 +254,8 @@ document if the connection has none. Needs a human at a terminal.`,
 				return err
 			}
 			conn := args[0]
-			if _, err := requirePresence(c.Context(), presence.ActionPolicyChange, "Deny %s callers the use of %q", kind, conn); err != nil {
+			proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "deny", conn, "Deny %s callers the use of %q", kind, conn)
+			if err != nil {
 				return err
 			}
 			store := connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}
@@ -274,6 +278,7 @@ document if the connection has none. Needs a human at a terminal.`,
 			if err := store.Replace(docs); err != nil {
 				return fmt.Errorf("policy deny: %w", err)
 			}
+			recordPolicyChange(c.Context(), audit.OutcomeOK, "deny", conn, proof.Digest, "")
 			fmt.Fprintf(c.OutOrStdout(), "%s callers are denied the use of %s\n", kind, conn)
 			return nil
 		},

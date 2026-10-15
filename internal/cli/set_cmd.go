@@ -107,6 +107,7 @@ Example:
 			}
 
 			newVersion, err := vault.RotateValue(ctx, path, value, partialMeta, cfg, env)
+			recordSet(ctx, al, path, cfg.Backend, err)
 			if err != nil {
 				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
 			}
