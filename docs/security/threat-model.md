@@ -29,7 +29,7 @@ exfiltrating a raw credential value.
 - `keylatch approve` and `keylatch deny` require an interactive terminal on
   stdin, independent of detection.
 - The `keylatch run` command wraps the subprocess with injected credentials but
-  never prints them to stdout/stderr. In all four runtime modes, raw credential
+  never prints them to stdout/stderr. In all three available runtime modes, raw credential
   values are not returned to the calling process.
 - The agent-guard hook (`contrib/agent-guards/`) blocks any `keylatch get`
   invocation at the shell level before the process even starts.
@@ -88,8 +88,8 @@ attacker-controlled binary, or exfiltrate values to a third-party service.
   `~/.keylatch/` namespace.
 - The `allowed_command_prefixes` allowlist is enforced for every `keylatch run`
   invocation — the subprocess binary must match a declared prefix.
-- Community templates require explicit opt-in (`keylatch registry add --url ...`)
-  and are stored separately from embedded templates.
+- Community templates are loaded only from the local provider directory
+  (`keylatch registry reload`) and are kept separate from embedded templates.
 - CI runs `keylatch registry validate` against all embedded templates on every
   pull request.
 
