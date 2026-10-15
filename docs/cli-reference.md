@@ -110,17 +110,17 @@ After running, edit `.keylatch/integration.yml` to set your actual provider name
 Initialize local keylatch configuration (scriptable).
 
 ```
-keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--insecure-file-kek]
+keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--kek keystore|passphrase]
 ```
 
-Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring and fails when none is usable, unless `--insecure-file-kek` is given. Re-running it moves a plaintext identity from an older install into the keyring.
+Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring. When none is usable it asks, in a terminal, for a passphrase that wraps the vault key instead, and without a terminal it fails. No flag and no environment variable keeps the key in a plaintext file; only `allow_insecure_file_kek` in the operator's own config file does. Re-running it moves a plaintext identity from an older install into the keyring.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print plan without writing anything |
 | `--json` | Output plan as JSON |
 | `--backend` | Set credential backend (`file`, `keychain`, `op`, `bw`) |
-| `--insecure-file-kek` | Keep the vault identity in a plaintext file next to the vault when no OS keyring is available. Any process running as you can then decrypt the vault. Same as `KEYLATCH_INSECURE_FILE_KEK=1` |
+| `--kek` | How the vault key is held: `keystore` (an OS keyring, never a passphrase) or `passphrase` (Argon2id, asked on the terminal on every use). Default: the keystore, then a passphrase when no keyring is usable and a terminal is available |
 
 ---
 

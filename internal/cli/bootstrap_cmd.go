@@ -25,17 +25,20 @@ is passed, which destroys and re-creates the cryptographic keyring after
 an interactive confirmation prompt. KEYLATCH_PASSPHRASE has no effect.
 
 For the file backend the vault identity, from which the key-encryption key
-is derived, is stored in the OS keyring (macOS Keychain or a freedesktop
-Secret Service). Without a usable keyring bootstrap fails unless
---insecure-file-kek (or KEYLATCH_INSECURE_FILE_KEK=1) is given, which keeps
-the identity in a plaintext file next to the vault. Re-running bootstrap
-moves a plaintext identity from an older install into the keyring.`,
+is derived, is stored in the OS keyring (macOS Keychain, Windows DPAPI or a
+freedesktop Secret Service). Without a usable keyring, bootstrap run from a
+terminal asks for a passphrase that wraps the key instead (--kek passphrase
+asks for it even when a keyring exists). With neither a keyring nor a
+terminal it fails: no flag and no environment variable can make it keep the
+key in a plaintext file; only allow_insecure_file_kek in the operator's own
+config file can. Re-running bootstrap moves a plaintext identity from an
+older install into the keyring.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			dryRun, _ := c.Flags().GetBool("dry-run")
 			jsonOut, _ := c.Flags().GetBool("json")
 			backend, _ := c.Flags().GetString("backend")
 			force, _ := c.Flags().GetBool("force")
-			insecureFileKEK, _ := c.Flags().GetBool("insecure-file-kek")
+			kekMode, _ := c.Flags().GetString("kek")
 
 			// --force requires explicit user confirmation before proceeding.
 			if force && !dryRun {
@@ -59,7 +62,9 @@ moves a plaintext identity from an older install into the keyring.`,
 				Env:             llmcontext.DefaultLookup,
 				Force:           force,
 				Confirm:         true, // CLI handles confirmation above
-				InsecureFileKEK: insecureFileKEK,
+				InsecureFileKEK: insecureFileKEKAllowed(),
+				KEKMode:         kekMode,
+				Passphrase:      vaultPassphraseOption(),
 			})
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "bootstrap: %v\n", err)
@@ -84,7 +89,7 @@ moves a plaintext identity from an older install into the keyring.`,
 	cmd.Flags().Bool("json", false, "output plan as JSON")
 	cmd.Flags().String("backend", "file", "credential backend: file, keychain (macOS only), op, bw")
 	cmd.Flags().Bool("force", false, "destroy existing keyring and re-initialize (prompts for confirmation)")
-	cmd.Flags().Bool("insecure-file-kek", false, "store the vault key in a plaintext file next to the vault when no OS keyring is available (any process running as you can decrypt the vault)")
+	cmd.Flags().String("kek", "", "how the vault key is held: keystore or passphrase (default: keystore, then passphrase when no keyring is usable)")
 
 	return cmd
 }

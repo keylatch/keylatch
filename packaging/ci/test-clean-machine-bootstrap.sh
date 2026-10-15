@@ -115,6 +115,7 @@ pass "step 1: exit 7 + 'bootstrap' in output"
 # ─── Step 2: keylatch bootstrap → exit 0 ─────────────────────────────────────
 
 log "Step 2: bootstrap (expect exit 0)..."
+bash "$(dirname "${BASH_SOURCE[0]}")/../../scripts/ci-operator-config.sh"
 set +e
 combined_2="$("$KEYLATCH_BIN" bootstrap --backend file 2>&1)"
 exit_2=$?

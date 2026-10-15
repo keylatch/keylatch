@@ -92,6 +92,7 @@ mkdir -p "$KEYLATCH_DATA_DIR"
 # ─── bootstrap the file backend ───────────────────────────────────────────────
 
 log "Bootstrapping file backend..."
+bash "$(dirname "${BASH_SOURCE[0]}")/../../scripts/ci-operator-config.sh"
 "$KEYLATCH_BIN" bootstrap --backend file 2>/dev/null || true
 
 # ─── enroll the canary credential ─────────────────────────────────────────────

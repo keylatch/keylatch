@@ -4,6 +4,7 @@ package file
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/crypto/kek"
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -109,10 +111,17 @@ func LoadKeyringKEK(krPath string) (kek.KEK, error) {
 	case "keychain":
 		return kek.KeychainKEK("keylatch-vault-kek")
 	case "passphrase":
-		// Passphrase KEK requires interactive input — not supported at factory time.
-		// The user must use 'keylatch bootstrap' or provide the passphrase via
-		// a non-interactive path. Return a clear error.
-		return nil, fmt.Errorf("passphrase KEK requires interactive input: run 'keylatch bootstrap' to configure a platform keystore KEK")
+		// The passphrase is read from a terminal and nowhere else: not from
+		// a file, a pipe or the environment, which anything that can run
+		// this command could fill.
+		if PassphraseSource == nil {
+			return nil, ErrPassphraseNeedsTerminal
+		}
+		pass, err := PassphraseSource()
+		if err != nil {
+			return nil, err
+		}
+		return kek.PassphraseKEK(pass, kf.Salt, argon2.Recommended2026)
 	case "age-env":
 		// An operator-supplied identity file is used as-is and never migrated.
 		if identityPath := llmcontext.DefaultLookup("KEYLATCH_AGE_IDENTITY"); identityPath != "" {
@@ -122,24 +131,32 @@ func LoadKeyringKEK(krPath string) (kek.KEK, error) {
 			Path:  paths.KeyringIdentityPath(llmcontext.DefaultLookup),
 			Store: kek.DefaultIdentityStore(),
 		}
-		secureVaultIdentity(vi, llmcontext.DefaultLookup, os.Stderr)
+		secureVaultIdentity(vi, os.Stderr)
 		return vi.KEK(kf.Salt)
 	default:
 		return nil, fmt.Errorf("unsupported KEK type %q: run 'keylatch bootstrap' to re-initialize", kekType)
 	}
 }
 
+// ErrPassphraseNeedsTerminal is returned for a passphrase-wrapped keyring when
+// no terminal is available to ask on.
+var ErrPassphraseNeedsTerminal = errors.New("the vault key is protected by a passphrase, which is asked for on a terminal only; run this command yourself in a terminal")
+
+// PassphraseSource asks the human for the passphrase of a passphrase-wrapped
+// keyring. It must read from a terminal only. Nil means none is available.
+var PassphraseSource func() ([]byte, error)
+
 var plaintextIdentityWarned sync.Once
 
 // secureVaultIdentity moves a plaintext identity left by an older install into
-// the OS keyring. When that is impossible and the user has not opted into
-// --insecure-file-kek, it warns once per process.
-func secureVaultIdentity(vi kek.VaultIdentity, env llmcontext.Lookup, warn io.Writer) {
+// the OS keyring. An identity the operator acknowledged stays where it is.
+// When the move is impossible it warns once per process.
+func secureVaultIdentity(vi kek.VaultIdentity, warn io.Writer) {
 	loc, onDisk, err := vi.Location()
 	if err != nil || !onDisk {
 		return
 	}
-	if loc != kek.IdentityInKeyring && (loc == kek.IdentityInFileAcknowledged || kek.InsecureFileKEKRequested(env)) {
+	if loc == kek.IdentityInFileAcknowledged {
 		return
 	}
 	moved, err := vi.MigrateToKeyring()
@@ -148,7 +165,7 @@ func secureVaultIdentity(vi kek.VaultIdentity, env llmcontext.Lookup, warn io.Wr
 	}
 	if err != nil {
 		plaintextIdentityWarned.Do(func() {
-			fmt.Fprintf(warn, "keylatch: WARNING: the vault key is stored in plaintext at %s and could not be moved into an OS keyring (%v). Any process running as your user can decrypt the vault offline. Run `keylatch doctor` for details, or `keylatch bootstrap --insecure-file-kek` to accept this.\n", vi.Path, err)
+			fmt.Fprintf(warn, "keylatch: WARNING: the vault key is stored in plaintext at %s and could not be moved into an OS keyring (%v). Any process running as your user can decrypt the vault offline. Run `keylatch doctor` for details, then `keylatch keys rewrap --to keystore` or `--to passphrase` from a terminal.\n", vi.Path, err)
 		})
 	}
 }

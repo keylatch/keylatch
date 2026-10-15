@@ -40,6 +40,12 @@ type Config struct {
 	// and proxy modes never do. Default: false (fail closed).
 	AllowUnverifiedSession bool `json:"allow_unverified_session,omitempty"`
 
+	// AllowInsecureFileKEK lets bootstrap keep the vault identity in a
+	// plaintext file when no OS keyring and no terminal for a passphrase are
+	// available. Only the operator's default config file is consulted for it:
+	// no flag and no environment variable can switch it on. Default: false.
+	AllowInsecureFileKEK bool `json:"allow_insecure_file_kek,omitempty"`
+
 	// Connections holds per-connection policy keyed by connection name.
 	// Only the operator's default config file is consulted for it.
 	Connections map[string]ConnectionPolicy `json:"connections,omitempty"`

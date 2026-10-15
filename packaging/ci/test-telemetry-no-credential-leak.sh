@@ -165,6 +165,7 @@ mkdir -p "$KEYLATCH_DATA_DIR"
 # ─── bootstrap ────────────────────────────────────────────────────────────────
 
 log "Bootstrapping keylatch in telemetry mode..."
+bash "$(dirname "${BASH_SOURCE[0]}")/../../scripts/ci-operator-config.sh"
 "$KEYLATCH_BIN" bootstrap --backend file 2>/dev/null || true
 
 # ─── enrol canary credential ──────────────────────────────────────────────────

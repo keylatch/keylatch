@@ -44,8 +44,8 @@ export KEYLATCH_BACKEND=<name>
 
 Stores credentials in `~/.keylatch/vault/` as XChaCha20-Poly1305 AEAD-encrypted blobs.
 The encryption key (DEK) is wrapped by a KEK derived from a vault identity held in the
-OS keyring (macOS Keychain or Secret Service). Hosts without a keyring need the explicit
-`--insecure-file-kek` opt-in, which keeps the identity in a plaintext file. See
+OS keyring (macOS Keychain or Secret Service). Hosts without a keyring use a passphrase
+asked on a terminal; only the operator's config can allow a plaintext identity file. See
 [File backend](file.md#where-the-vault-identity-lives).
 
 ```bash
@@ -148,8 +148,8 @@ For the remaining backends, set `KEYLATCH_BACKEND=<key>` and consult the provide
 ## Headless CI — using the encrypted vault without a prompt
 
 The `file` backend derives its KEK from a vault identity in the OS keyring, or from a
-plaintext identity file when bootstrapped with `--insecure-file-kek`, which is the usual
-choice on CI runners. No passphrase is required. In CI you have two options:
+plaintext identity file when the operator's config allows one (`scripts/ci-operator-config.sh`
+does that on CI runners). No passphrase is required then. In CI you have two options:
 
 ### Option 1 — `--provider-ref` (no local vault required)
 

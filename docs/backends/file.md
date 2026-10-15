@@ -48,19 +48,37 @@ keylatch connect openrouter api_key YOUR_KEY
 | macOS | login keychain, generic password with service `keylatch-vault-kek` |
 | Linux / BSD | Secret Service (GNOME Keyring, KWallet) through `secret-tool`, attributes `application=keylatch`, `purpose=kek` |
 | Windows | DPAPI (current user) with a random entropy blob, stored under `%LOCALAPPDATA%\keylatch\kek` |
-| Containers, headless hosts, Linux without a Secret Service session | none: bootstrap fails closed unless you opt in with `--insecure-file-kek` |
+| Containers, headless hosts, Linux without a Secret Service session | a passphrase, when bootstrap runs in a terminal; otherwise none: bootstrap fails closed |
 
 The secret reaches `security` and `secret-tool` on stdin, never on the command
 line. Keylatch never falls back to a plaintext file on its own: without a
-reachable store, bootstrap and `keylatch setup --backend file` stop with an
-error that names the opt-in. A keyring item is readable by other processes running as your user while
-the keyring is unlocked, so this keeps the key off disk and out of backups and
-file copies; it is not a boundary against a process running as you.
+reachable store, bootstrap run from a terminal asks for a passphrase and wraps
+the key under it (Argon2id; asked on the terminal on every use, never read from
+a file, a pipe or the environment), and with no terminal bootstrap and
+`keylatch setup --backend file` stop with an error that says so. A keyring item
+is readable by other processes running as your user while the keyring is
+unlocked, so this keeps the key off disk and out of backups and file copies; it
+is not a boundary against a process running as you.
 
-`keylatch bootstrap --insecure-file-kek` (or `KEYLATCH_INSECURE_FILE_KEK=1`)
-writes the identity to `~/.keylatch/keyring/identity` instead. Anything running
-as your user can copy that file together with the vault and decrypt every
-secret offline. `keylatch doctor` reports it as "plaintext KEK on disk".
+`keylatch bootstrap --kek passphrase` asks for a passphrase even where a keyring
+exists, and `--kek keystore` never falls back to one. Neither a flag nor an
+environment variable can make keylatch keep the identity in a plaintext file.
+Only the operator's own config file can: with `"allow_insecure_file_kek": true`
+in the default config file (`~/.config/keylatch/config.json` on Linux,
+`~/.keylatch/config.json` elsewhere; it must belong to you and not be writable
+by anyone else), bootstrap writes the identity to
+`~/.keylatch/keyring/identity` when there is neither a keyring nor a terminal.
+Anything running as your user can copy that file together with the vault and
+decrypt every secret offline. `keylatch doctor` reports it as "plaintext KEK on
+disk". CI runners use `scripts/ci-operator-config.sh` for this.
+
+### Changing where the key lives
+
+`keylatch keys status [--json]` shows how the key is held and reports
+`plaintext_kek`. `keylatch keys rewrap --to keystore|passphrase` moves it: it
+re-wraps the vault key under the new key-encryption key, proves that the new key
+alone opens the keyring and reads every secret, and only then overwrites and
+deletes the plaintext identity. It needs a human at a terminal.
 
 ### Upgrading an existing install
 
@@ -71,8 +89,8 @@ reads it back to verify it, writes `identity.keyring`, overwrites the file
 with random bytes and deletes it.
 Secrets do not need to be re-encrypted. If no keyring is reachable the file
 keeps working, a warning is printed once per command, and `keylatch doctor`
-fails until you either make a keyring available or acknowledge the risk with
-`keylatch bootstrap --insecure-file-kek`.
+fails until you move the key with `keylatch keys rewrap --to keystore` or
+`--to passphrase`.
 
 Older keylatch binaries cannot read the keyring item, so after the move they
 can no longer open the vault.
@@ -110,7 +128,10 @@ The `file` backend works in headless CI environments:
 ```bash
 # GitHub Actions example
 - name: bootstrap keylatch
-  run: keylatch bootstrap --insecure-file-kek
+  run: |
+    # A CI runner has no keyring and no terminal; the operator's config allows a plaintext key.
+    bash scripts/ci-operator-config.sh
+    keylatch bootstrap
   env:
     KEYLATCH_CONFIG_DIR: /tmp/.keylatch
 
@@ -140,7 +161,7 @@ env var is not read during bootstrap or credential access (S-FIND-12).
 ├── keyring/
 │   ├── keyring.json              # DEK wrapped with the KEK (0600)
 │   └── identity.keyring          # reference to the OS keyring item (0600)
-│                                 # (identity + identity.insecure instead with --insecure-file-kek)
+│                                 # (identity + identity.insecure instead when the operator's config allows a plaintext key)
 ├── config.json                   # backend config (0600)
 └── audit.log                     # HMAC-chained audit log (0600)
 ```
