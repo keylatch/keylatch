@@ -3,6 +3,7 @@ package token_test
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -42,8 +43,8 @@ func TestTokenCarriesCallerKind(t *testing.T) {
 	}
 }
 
-// Editing the stored record cannot turn an agent token into anything else:
-// the signed claims restore the restriction.
+// Editing the stored record cannot turn an agent token into anything else: a
+// record that no longer matches its MAC is refused.
 func TestStoreEditCannotRelaxAnAgentToken(t *testing.T) {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
@@ -68,12 +69,8 @@ func TestStoreEditCannotRelaxAnAgentToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := token.Verify(jwt, nil, key, storePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.CallerKind != callerkind.Agent || !got.LLMSession {
-		t.Fatalf("edited record relaxed the token: kind=%q llm=%v", got.CallerKind, got.LLMSession)
+	if _, err := token.Verify(jwt, nil, key, storePath); !errors.Is(err, token.ErrStoreTampered) {
+		t.Fatalf("edited record error = %v, want ErrStoreTampered", err)
 	}
 }
 
