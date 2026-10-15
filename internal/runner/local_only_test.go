@@ -111,7 +111,8 @@ func TestProcessRunner_OnlyEphemeralFieldsSkipRead(t *testing.T) {
 
 	got := runEnvEcho(t, runner.ProcessRunner{Backend: b}, conn)
 	require.Len(t, got, 2)
-	assert.Equal(t, "stored-session", got[1])
+	// The stored value reaches the child; the output redactor masks it on the way back.
+	assert.Equal(t, "[REDACTED]", got[1])
 	assert.Equal(t, []string{path}, b.paths)
 }
 
