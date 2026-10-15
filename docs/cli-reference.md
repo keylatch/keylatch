@@ -793,7 +793,14 @@ View the local audit log (value-free).
 
 ```
 keylatch audit [--summary] [--since <time>] [--json]
+keylatch audit export [--since <RFC3339>] [--until <RFC3339>] [--format jsonl] [--output <file>]
+keylatch audit head [--json]
+keylatch audit verify [--anchor <file>] [--json]
 ```
+
+`audit export` writes the events in a time range as JSON Lines, each with its log file, sequence number and chain hash. It verifies the chain of every log file that can hold events in the range first and writes nothing if one fails. Blocked in LLM sessions.
+
+`audit head --json` prints `{"seq", "hash", "time", "key_id"}` for the last entry. Keep it somewhere the log's writer cannot reach, then run `audit verify --anchor <file>` later: the chain must verify and the anchor's entry must be in the log, so a log cut back after the anchor was taken fails. The gateway also writes the head hash to the OS log (journald with `SYSLOG_IDENTIFIER=keylatch-audit`, `os_log` on macOS, the Windows Event Log) at start and every 1000 events.
 
 ---
 

@@ -61,6 +61,7 @@ func newAuditCmd() *cobra.Command {
 	cmd.AddCommand(newAuditTailCmd())
 	cmd.AddCommand(newAuditSinceCmd())
 	cmd.AddCommand(newAuditRetentionCmd())
+	cmd.AddCommand(newAuditExportCmd(), newAuditHeadCmd(), newAuditVerifyCmd())
 
 	return cmd
 }
@@ -95,6 +96,7 @@ func OpenAuditLogger() (*audit.Logger, func(), error) {
 	}
 	l.AddReadKeys(keys.older...)
 	l.SetRetainFiles(auditRetainFiles())
+	l.SetAnchorSink(audit.OSLogAnchor)
 
 	cleanup := func() {
 		_ = l.Close()

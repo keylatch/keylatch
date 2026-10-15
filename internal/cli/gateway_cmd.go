@@ -367,6 +367,11 @@ func newGatewayUpCmd() *cobra.Command {
 				return err
 			}
 			defer auditCleanup()
+			// The head hash goes to the OS log at start so a log truncated
+			// while the gateway was down can be caught later.
+			if err := auditLogger.Anchor(); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: audit anchor not written to the OS log: %v\n", err)
+			}
 
 			opts := gateway.ServerOptions{
 				Bind:              bind,

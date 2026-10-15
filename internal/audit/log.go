@@ -149,6 +149,7 @@ func (l *Logger) writeEvent(e Event) error {
 	// Step 9: update chain MAC state.
 	l.seq = seq
 	l.prevHMAC = audithmac.Of(l.chainMACKey, lineForMAC)
+	l.anchorIfDue(e.Timestamp)
 
 	// Step 10: export to SIEM if registered.
 	activeExporterOnce.Lock()

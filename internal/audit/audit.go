@@ -332,6 +332,9 @@ type Logger struct {
 
 	// fsyncFailHook is used for fault-injection tests.
 	fsyncFailHook func() error
+
+	// anchorSink receives the head hash every AnchorEvery events.
+	anchorSink func(Head) error
 }
 
 func openLogFile(path string) (*os.File, error) {
