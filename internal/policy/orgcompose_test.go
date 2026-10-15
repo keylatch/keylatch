@@ -1,3 +1,5 @@
+//go:build experimental
+
 package policy_test
 
 import (

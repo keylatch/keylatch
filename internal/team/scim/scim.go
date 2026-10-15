@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package scim implements a SCIM v2 server for team provisioning.
 //
 // Security invariants:

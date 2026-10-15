@@ -141,6 +141,25 @@ jobs:
       - name: bootstrap smoke test
         run: bash packaging/ci/test-clean-machine-bootstrap.sh
 
+  experimental:
+    # The experimental tag compiles unfinished features. They must keep
+    # building and must never reach the release binary.
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build with the experimental tag
+        run: go build -tags experimental ./...
+      - name: test the experimental code
+        run: go test -count=1 -tags experimental ./internal/team/... ./internal/trust/...
+      - name: release binary has no experimental symbols
+        run: go test -count=1 ./internal/release/... -run '^TestReleaseBinaryHasNoExperimentalSymbols$'
+
   go-mod-tidy:
     needs: lint
     runs-on: ubuntu-latest

@@ -1,3 +1,5 @@
+//go:build experimental
+
 package cli
 
 // cov_b_team_misc_test.go — Agent B coverage for team_cmd.go (error paths and

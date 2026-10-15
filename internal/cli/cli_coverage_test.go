@@ -404,7 +404,6 @@ func TestRegister_AllGroups(t *testing.T) {
 	assert.True(t, groupIDs["start"], "start group must be registered")
 	assert.True(t, groupIDs["daily"], "daily group must be registered")
 	assert.True(t, groupIDs["gateway"], "gateway group must be registered")
-	assert.True(t, groupIDs["team"], "team group must be registered")
 	assert.True(t, groupIDs["advanced"], "advanced group must be registered")
 }
 
@@ -415,8 +414,8 @@ func TestRegister_KeyCommands(t *testing.T) {
 		// v1.0.0: "inject" removed; direct_classic removed.
 		"setup", "connect", "agent", "doctor", "ui", "bootstrap",
 		"get", "list", "status", "run",
-		"gateway", "team", "policy", "grant", "actors", "audit",
-		"registry", "rollback", "set", "shared-secret", "trust",
+		"gateway", "policy", "grant", "actors", "audit",
+		"registry", "rollback", "set",
 		"versions", "mcp", "token",
 	}
 	for _, name := range expectedCmds {

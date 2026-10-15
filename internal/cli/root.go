@@ -21,7 +21,6 @@ import (
 	"github.com/keylatch/keylatch/internal/broker"
 	"github.com/keylatch/keylatch/internal/canary"
 	cmdregistry "github.com/keylatch/keylatch/internal/cmd/regvalidate"
-	cmdtrust "github.com/keylatch/keylatch/internal/cmd/trust"
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/connections"
@@ -36,7 +35,6 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
-	_ "github.com/keylatch/keylatch/internal/trust/all"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -139,7 +137,6 @@ func NewRootCommand() *cobra.Command {
 	root.AddGroup(&cobra.Group{ID: "start", Title: "Getting Started"})
 	root.AddGroup(&cobra.Group{ID: "daily", Title: "Daily Use"})
 	root.AddGroup(&cobra.Group{ID: "gateway", Title: "Gateway"})
-	root.AddGroup(&cobra.Group{ID: "team", Title: "Team"})
 	root.AddGroup(&cobra.Group{ID: "advanced", Title: "Advanced"})
 
 	Register(root)
@@ -209,8 +206,8 @@ func Register(root *cobra.Command) {
 	// --- Gateway ---
 	addCmd(root, newGatewayCmd(), "gateway")
 
-	// --- Team ---
-	addCmd(root, newTeamCmd(), "team")
+	// --- Team and trust (experimental builds only) ---
+	registerExperimentalFeatures(root)
 
 	// --- Advanced (everything else) ---
 	addCmd(root, newPolicyCmd(), "advanced")
@@ -229,8 +226,6 @@ func Register(root *cobra.Command) {
 	addCmd(root, newRegistryCmd(), "advanced")
 	addCmd(root, newRollbackCmd(), "advanced")
 	addCmd(root, newSetCmd(), "advanced")
-	// Trust and shared-secret commands are now registered from internal/cmd/trust.
-	cmdtrust.RegisterCommands(root, "advanced")
 	addCmd(root, newVersionsCmd(), "advanced")
 	addCmd(root, newDestroyVersionCmd(), "advanced")
 	addCmd(root, newCheckExpiryCmd(), "advanced")

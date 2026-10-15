@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package vault implements a trust.RootOfTrust adapter backed by HashiCorp Vault
 // or OpenBao Transit secrets engine.
 //

@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package api — admin route group for team governance UI.
 //
 // Security invariants:
