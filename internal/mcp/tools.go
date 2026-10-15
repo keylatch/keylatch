@@ -1,8 +1,10 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -12,9 +14,11 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/connections"
-	"github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/registry"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // registeredTools is the canonical list of tool names.
@@ -69,11 +73,7 @@ var objectSchema = json.RawMessage(`{"type":"object"}`)
 var tokenRedactRE = regexp.MustCompile(`[A-Za-z0-9\-_\.]{32,}`)
 
 // RegisterTools adds all five tool handlers to the MCP Server.
-func RegisterTools(s *sdkmcp.Server, store connections.Store, runner exec.CommandRunner) {
-	if runner == nil {
-		runner = exec.DefaultRunner
-	}
-
+func RegisterTools(s *sdkmcp.Server, store connections.Store, dispatch runner.Dispatcher) {
 	s.AddTool(
 		&sdkmcp.Tool{
 			Name:        "keylatch_status",
@@ -113,10 +113,10 @@ func RegisterTools(s *sdkmcp.Server, store connections.Store, runner exec.Comman
 	s.AddTool(
 		&sdkmcp.Tool{
 			Name:        "keylatch_run",
-			Description: "Run a command using a connection's credentials. Command must match the provider's allowed_command_prefixes allowlist.",
+			Description: "Run a command through a connection's gateway runtime. The executable and arguments must match the provider's allowed_command_prefixes; the command gets a scoped session token and never the credential.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"provider":{"type":"string"},"account":{"type":"string"},"namespace":{"type":"string"},"command":{}},"required":["provider","command"]}`),
 		},
-		makeRunHandler(store, runner),
+		makeRunHandler(store, dispatch),
 	)
 }
 
@@ -228,8 +228,13 @@ func makeTestHandler(store connections.Store) sdkmcp.ToolHandler {
 }
 
 // makeRunHandler implements keylatch_run.
-// Applies allowlist pre-flight before execution.
-func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.ToolHandler {
+//
+// The command is checked against the template's allowlist (exact executable
+// names and argument patterns, see runner.ResolveAllowedCommand) and then run
+// through the dispatcher as an agent caller: runtime resolution, the gateway
+// runtimes with a scoped session token, a scrubbed child environment and one
+// audit event. Without a dispatcher the tool refuses.
+func makeRunHandler(store connections.Store, dispatch runner.Dispatcher) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		args := getArguments(req)
 		provider := getString(args, "provider", "")
@@ -245,17 +250,12 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 			account = "default"
 		}
 
-		// Allowlist pre-flight — fetch template before parsing command.
 		tmpl, err := registry.Get(provider)
 		if err != nil {
 			return newToolResultError("run: provider not found"), nil
 		}
 
-		// Parse command.
-		var (
-			command          []string
-			allowlistChecked bool
-		)
+		var command []string
 		switch v := args["command"].(type) {
 		case []interface{}:
 			for _, item := range v {
@@ -264,52 +264,48 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 				}
 			}
 		case string:
-			// Check the raw trimmed string to prevent leading-space bypass.
-			// "  node exploit.js" must not pass a "node " prefix check.
-			raw := strings.TrimSpace(v)
-			command = strings.Fields(raw)
-			if !commandMatchesAllowlist(raw, tmpl.AllowedCommandPrefixes) {
-				return newToolResultError("run: command not in allowed_command_prefixes for this provider"), nil
-			}
-			allowlistChecked = true
+			command = strings.Fields(v)
 		}
 		if len(command) == 0 {
 			return newToolResultError("run: 'command' argument required"), nil
 		}
 
-		// Allowlist pre-flight for the []interface{} path (not yet checked above).
-		if !allowlistChecked {
-			cmdLine := strings.Join(command, " ")
-			if !commandMatchesAllowlist(cmdLine, tmpl.AllowedCommandPrefixes) {
-				return newToolResultError("run: command not in allowed_command_prefixes for this provider"), nil
-			}
+		resolved, ok := runner.ResolveAllowedCommand(tmpl.AllowedCommandPrefixes, command)
+		if !ok {
+			return newToolResultError("run: command not in allowed_command_prefixes for this provider"), nil
+		}
+		if dispatch == nil {
+			return newToolResultError("run: no runtime is configured for this server"), nil
 		}
 
-		// Resolve binary — must be an absolute path.
-		binary := command[0]
-		cmdArgs := command[1:]
-
-		// Execute via runner.
-		stdout, stderr, exitCode, execErr := runner.Run(ctx, binary, cmdArgs, nil)
-		if execErr != nil {
-			return newToolResultError("run: execution error"), nil
+		var stdout, stderr bytes.Buffer
+		receipt, runErr := dispatch.Run(ctx, runner.ExecRequest{
+			ConnectionSlug: provider,
+			Command:        resolved,
+			Actor:          "mcp",
+			Capability:     "inject",
+			CallerKind:     string(callerkind.Agent),
+			Stdin:          strings.NewReader(""),
+			Stdout:         &stdout,
+			Stderr:         &stderr,
+			// The allowlist above decided this exact executable; the
+			// dispatcher's own prefix check must agree with it.
+			ExtraAllowedPrefixes: []string{resolved[0]},
+		})
+		if runErr != nil {
+			return newToolResultError(runErrorMessage(runErr)), nil
 		}
 
 		// Apply redaction patterns to stdout/stderr before returning.
-		cleanedStdout := applyRedaction(string(stdout), tmpl.Redaction)
-		cleanedStderr := applyRedaction(string(stderr), tmpl.Redaction)
-
-		receipt := RuntimeReceipt{
-			Provider:   provider,
-			Connection: fmt.Sprintf("%s/%s/%s", namespace, provider, account), // HMAC'd in a future revision
-			Runtime:    string(tmpl.RuntimeSupport.Preferred),
-			ExitCode:   exitCode,
-		}
-
 		result := map[string]interface{}{
-			"receipt": receipt,
-			"stdout":  cleanedStdout,
-			"stderr":  cleanedStderr,
+			"receipt": RuntimeReceipt{
+				Provider:   provider,
+				Connection: fmt.Sprintf("%s/%s/%s", namespace, provider, account), // HMAC'd in a future revision
+				Runtime:    receipt.Runtime,
+				ExitCode:   receipt.ExitCode,
+			},
+			"stdout": applyRedaction(stdout.String(), tmpl.Redaction),
+			"stderr": applyRedaction(stderr.String(), tmpl.Redaction),
 		}
 		data, merr := json.Marshal(result)
 		if merr != nil {
@@ -319,18 +315,21 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 	}
 }
 
-// commandMatchesAllowlist checks whether cmdLine starts with one of the allowed prefixes.
-// Returns false if allowlist is empty (deny-all when no prefixes configured).
-func commandMatchesAllowlist(cmdLine string, allowedPrefixes []string) bool {
-	if len(allowedPrefixes) == 0 {
-		return false
+// runErrorMessage gives the caller the reason a run was refused without
+// anything from the error text that could carry a value.
+func runErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, runner.ErrCommandNotAllowed):
+		return "run: command not allowed for this provider"
+	case errors.Is(err, runner.ErrGuardDenied):
+		return "run: blocked by the session guard"
+	case errors.Is(err, runner.ErrGatewayNotRunning):
+		return "run: the gateway is not running; start it with 'keylatch gateway up'"
+	case errors.Is(err, audit.ErrUnavailable):
+		return "run: refused because the audit log cannot record it"
+	default:
+		return "run: execution error"
 	}
-	for _, prefix := range allowedPrefixes {
-		if strings.HasPrefix(cmdLine, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // applyRedaction applies all redaction patterns to text, replacing matches

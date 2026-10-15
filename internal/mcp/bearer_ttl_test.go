@@ -11,6 +11,7 @@ import (
 
 // TestBearerTTLExceedsCapRejected verifies that a TokenTTL > 1h is rejected.
 func TestBearerTTLExceedsCapRejected(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	testutil.ClearLLMSessionEnv(t)
 
 	s, err := New(ServerOptions{
@@ -31,6 +32,7 @@ func TestBearerTTLExceedsCapRejected(t *testing.T) {
 
 // TestBearerTTLOneHourAccepted verifies that TokenTTL=1h is accepted.
 func TestBearerTTLOneHourAccepted(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	testutil.ClearLLMSessionEnv(t)
 
 	s, err := New(ServerOptions{
