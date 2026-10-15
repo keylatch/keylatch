@@ -12,14 +12,19 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/daemon"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/spf13/cobra"
 )
+
+// callAction is the capability policy sees for `keylatch call`.
+const callAction = "call"
 
 // newCallCmd returns the `call` subcommand.
 //
@@ -150,6 +155,19 @@ Examples:
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: invalid --param flag: %v\n", err)
 				os.Exit(exitcode.UserError)
+			}
+
+			// Policy decides before the credential is read.
+			callerInfo := callerkind.Local(llmcontext.DefaultLookup, interactiveStdin())
+			if verdict := enforce.Decide(ctx, enforce.Request{
+				Connection: connectionName,
+				Action:     callAction,
+				Caller:     callerInfo.Kind,
+				Unit:       callerInfo.Unit,
+				Namespace:  namespace,
+			}); !verdict.Allow || verdict.ApprovalRequired {
+				printStructuredError(c, useJSON, "policy_denied", verdict.Reason, verdict.SafeFix)
+				os.Exit(exitcode.PolicyDeny)
 			}
 
 			// Read the credential from the vault. This is the value-bearing path.

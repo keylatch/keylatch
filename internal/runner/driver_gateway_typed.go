@@ -118,7 +118,7 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 		Actor:        actor,
 		Capabilities: []string{cap},
 		TTL:          ttl,
-		LLMSession:   false,
+		Caller:       req.Caller,
 		SigningKey:   d.signingKey,
 		StorePath:    d.tokenStorePath,
 	})

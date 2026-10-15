@@ -4,7 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/localonly"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -39,6 +42,10 @@ type DispatchRunner struct {
 	Drivers map[string]Driver
 	// Guard is the LLM session guard hook. When nil, all sessions are permitted — only set nil in tests.
 	Guard GuardFunc
+	// Enforce decides whether the request may use the connection. It runs
+	// after the runtime is resolved and before any credential is read.
+	// Production wires enforce.Decide; nil skips the check and is for tests.
+	Enforce func(context.Context, enforce.Request) enforce.Decision
 }
 
 // Dispatcher is the contract for the new ExecRequest-based dispatch path.
@@ -115,6 +122,31 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 	if err != nil {
 		empty.PolicyDecision = "mode_not_supported"
 		return empty, err
+	}
+
+	if d.Enforce != nil {
+		if req.Caller == "" {
+			req.Caller = callerkind.Local(llmcontext.DefaultLookup, false).Kind
+		}
+		verdict := d.Enforce(ctx, enforce.Request{
+			Connection:  req.ConnectionSlug,
+			Action:      cap,
+			Runtime:     string(decision.Mode),
+			Caller:      req.Caller,
+			Actor:       req.Actor,
+			Command:     req.Command,
+			CWD:         req.WorkingDir,
+			Unit:        req.CallerUnit,
+			ApprovalJWT: req.ApprovalJWT,
+		})
+		if !verdict.Allow || verdict.ApprovalRequired {
+			empty.Runtime = string(decision.Mode)
+			empty.PolicyDecision = "policy_denied"
+			return empty, &PolicyDeniedError{Decision: verdict}
+		}
+		if verdict.MaxTTL > 0 && (req.TTL <= 0 || req.TTL > verdict.MaxTTL) {
+			req.TTL = verdict.MaxTTL
+		}
 	}
 
 	// Ephemeral values for local-only fields; unsupported modes stop here.

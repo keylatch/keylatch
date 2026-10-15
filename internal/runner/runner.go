@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/redactor"
 )
@@ -62,6 +63,12 @@ type ExecRequest struct {
 	Runtime string
 	// ApprovalJWT is the hardware/two-person approval token for sandboxed modes.
 	ApprovalJWT string
+	// Caller is the kind of process that asked for the run: it decides which
+	// callers entry of the connection's policy applies and is carried by any
+	// token issued. Empty is classified from the current process.
+	Caller callerkind.Kind
+	// CallerUnit is the systemd unit of a Service caller.
+	CallerUnit string
 	// Stdin, Stdout, Stderr allow tests to capture subprocess I/O.
 	Stdin  io.Reader
 	Stdout io.Writer

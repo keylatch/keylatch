@@ -1,8 +1,8 @@
 // Package token implements JWT-shaped scoped gateway tokens.
 //
 // Security invariants:
-//   - LLMSession is derived from the JWT claim, NEVER from os.Getenv.
-//   - Callers MUST set spec.LLMSession from llmcontext.IsLLMSession() in their own process.
+//   - The caller kind and LLMSession are derived from the JWT claims, NEVER from os.Getenv.
+//   - Callers MUST set spec.Caller from callerkind.Local in their own process.
 //   - MaxUses enforcement uses flock + append-only consumption log.
 //   - No credential bytes appear in any error message or log.
 package token
@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/keylatch/keylatch/internal/callerkind"
 )
 
 // Sentinel errors.
@@ -81,7 +83,10 @@ type Token struct {
 	RevokedAt          *time.Time `json:"revoked_at,omitempty"`
 	Parent             string     `json:"parent,omitempty"`
 	LLMSession         bool       `json:"llm_session"`
-	FDNonceHash        string     `json:"fd_nonce_hash,omitempty"` // ephemeral nonce hash
+	// CallerKind is who asked for the token. LLMSession is true whenever it is
+	// an agent, so route restrictions that read LLMSession keep applying.
+	CallerKind  callerkind.Kind `json:"caller_kind,omitempty"`
+	FDNonceHash string          `json:"fd_nonce_hash,omitempty"` // ephemeral nonce hash
 
 	// Approval root claims.
 	// All root IDs are HMAC'd; never raw.
@@ -111,7 +116,10 @@ type TokenSpec struct {
 	MaxUses      int // 0 = unlimited (explicit); default for runner-minted = 1
 	Parent       string
 	LLMSession   bool
-	FDNonce      []byte // 32-byte ephemeral nonce from pipe
+	// Caller is the kind of the process the token is issued to. An agent
+	// caller makes the token an LLM-session token.
+	Caller  callerkind.Kind
+	FDNonce []byte // 32-byte ephemeral nonce from pipe
 	StorePath    string // defaults to paths.GatewayTokens(env)
 	SigningKey   []byte // 32-byte; loaded from ~/.keylatch/gateway/signing.key
 
@@ -146,6 +154,7 @@ type gatewayClaims struct {
 	CommandHash string   `json:"cmd_hash,omitempty"`
 	CWDHash     string   `json:"cwd_hash,omitempty"`
 	LLMSession  bool     `json:"llm_session"`
+	CallerKind  string   `json:"caller_kind,omitempty"`
 
 	// Approval root claims (root IDs are HMAC'd, never raw).
 	ApprovalRootHMAC  string   `json:"apv_root_hmac,omitempty"`
@@ -167,6 +176,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 	if len(spec.SigningKey) != 32 {
 		return "", nil, fmt.Errorf("token: signing key must be 32 bytes")
 	}
+	spec.LLMSession = spec.LLMSession || spec.Caller == callerkind.Agent
 
 	if spec.MaxUses > 0 && spec.StorePath == "" {
 		return "", nil, fmt.Errorf("token: MaxUses > 0 requires StorePath to be set for cross-process safety")
@@ -228,6 +238,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		CommandHash:       cmdHash,
 		CWDHash:           cwdHash,
 		LLMSession:        spec.LLMSession,
+		CallerKind:        string(spec.Caller),
 		ApprovalRootHMAC:  approvalRootHMAC,
 		ApprovalCap:       spec.ApprovalCapability,
 		ApprovalMaxAgeSec: spec.ApprovalMaxAgeSec,
@@ -256,6 +267,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		UsesRemaining: spec.MaxUses,
 		Parent:        spec.Parent,
 		LLMSession:    spec.LLMSession,
+		CallerKind:    spec.Caller,
 
 		// Approval root fields (HMAC'd).
 		ApprovalRootHMAC:   approvalRootHMAC,
@@ -333,6 +345,13 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 	if t.Revoked {
 		return nil, ErrTokenRevoked
 	}
+
+	// The signed claims can only add a restriction to the stored record: an
+	// agent token stays an agent token even if the record was edited.
+	if claims.CallerKind != "" {
+		t.CallerKind = callerkind.Kind(claims.CallerKind)
+	}
+	t.LLMSession = t.LLMSession || claims.LLMSession || t.CallerKind == callerkind.Agent
 
 	// Check expiry (belt-and-suspenders beyond JWT exp).
 	if time.Now().UTC().After(t.ExpiresAt) {

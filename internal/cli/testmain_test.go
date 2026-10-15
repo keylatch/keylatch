@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/crypto/kek"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/presence/presencetest"
 )
@@ -18,5 +19,6 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	presence.SetDefault(presencetest.Approver())
+	enforce.SetDefault(enforce.AllowAll())
 	os.Exit(m.Run())
 }
