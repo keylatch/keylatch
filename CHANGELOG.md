@@ -31,10 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `github-app` provider template: `private_key` (secret), `app_id` and one `installation_<owner>` field per account the App is installed on. `keylatch connect github-app` tests the connection with a signed App JWT against `GET /app`.
 - Per-connection policy `connections.<name>.mint.github_app` in `config.json`: `callers` (default `service` and `host`), `deny_owners`, `allow_owners`, `allow_repos`, `permission_ceiling` and `max_ttl` (1–3600 seconds, default 3600). A connection without the policy cannot mint.
 - Audit action `mint` with connection, namespace, repository, permissions, `expires_at`, caller kind and, on failure, the reason. The token is never recorded.
+- Privileged commands need a human: `backup`, `grant create` and `revoke`, `gateway token create` with any `--allow`, `config set` for `policy.`, `gateway.`, `backends.` and `guard.` keys, `ui` with a scope above `read`, and `install-guard --uninstall`. Each asks at a terminal that no agent harness owns (stdin and stderr are terminals and no ancestor process is a known harness), then asks the platform where one is available: polkit on Linux when the `dev.keylatch.privileged` action from `packaging/linux/polkit/` is installed, Touch ID or the account password on macOS, Windows Hello on Windows. No environment variable changes the outcome. In-user presence is friction, not a boundary: see `docs/security/threat-model.md`.
+- `keylatch install-guard <agent> --uninstall` removes the hook and script for Claude Code, Cursor, Codex, Gemini CLI, Aider and OpenCode.
+- Audit event types `presence.decision`, `policy.change` and `backup.export` are reserved with their allowlisted fields.
+
+### Changed
+
+- `keylatch ui` opens with the `read` scope. Any wider scope (`setup`, `admin`, `token-minting`) needs presence. The one-time bootstrap URL is printed only when stdout is a terminal and is otherwise handed only to the OS browser opener; `--no-open` without a terminal is refused.
 
 ### Security
 
 - `keylatch mint` refuses agent sessions, and the mint policy is read only from the operator's default config file (owner-only, not writable by group or others), never from `KEYLATCH_CONFIG` or other overrides. Caller, owner, repository, permission and lifetime checks all run before the key is read, and minting refuses to start without a working audit log.
+- `keylatch backup` no longer takes `--passphrase-file`: a human approves the export, which names the credential count, and the passphrase is read from the terminal only. `docs/cli-reference.md` no longer documents a `keylatch restore` command that does not exist.
+- A grant carries the digest of the presence proof it was issued under.
 - GitHub's reply must name only the requested repository, grant exactly the requested permissions and expire within `max_ttl`; otherwise the token is revoked with `DELETE /installation/token` and mint fails. A token whose audit line cannot be written is revoked too.
 
 ### Fixed

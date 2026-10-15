@@ -28,6 +28,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -698,6 +699,15 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				ttl, err = time.ParseDuration(ttlStr)
 				if err != nil {
 					return fmt.Errorf("gateway token create: invalid --ttl: %w", err)
+				}
+			}
+
+			// A token without capabilities reaches nothing; any capability
+			// widens what its holder can do, so a human approves it.
+			if len(allow) > 0 {
+				if _, err := requirePresence(c.Context(), presence.ActionGatewayToken,
+					"Allow gateway token for %q: %s, ttl %s, max uses %d", actor, strings.Join(allow, ", "), ttl, maxUses); err != nil {
+					return err
 				}
 			}
 

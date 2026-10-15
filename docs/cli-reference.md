@@ -304,21 +304,24 @@ On a `dev` or `test` connection, fields named `*_SECRET`, `*_SIGNING_KEY`, `*_EN
 Export an AEAD-encrypted backup of all enrolled connections (T-12-02).
 
 ```
-keylatch backup [--output <file>] [--passphrase-file <file>]
+keylatch backup [--output <file>]
 ```
 
 Writes all enrolled connection credentials to an XChaCha20-Poly1305 encrypted
-tar archive protected by a separate backup passphrase. The passphrase is
-prompted interactively from the terminal (TTY required) or read from a file.
+tar archive protected by a separate backup passphrase. A human approves the
+export at a terminal (the prompt names how many credentials leave the store),
+and the passphrase is read from that terminal only.
 
 **Security invariants:**
 
 - Blocked in LLM sessions (exit `2`, `SecurityBlock`). Backup is a value-bearing
   operation that must not be accessible to agent sessions.
+- Needs human presence: an interactive terminal that no agent harness owns, plus
+  the platform prompt where one is installed.
 - The backup passphrase is independent of the vault KEK — compromise of the
   backup passphrase does not compromise the vault, and vice versa.
-- Passphrase is never exposed on the command line. The only safe inputs are a
-  TTY prompt or `--passphrase-file`.
+- The passphrase is never taken from the command line, a file or a pipe. There
+  is no `--passphrase-file`; passing it is a usage error.
 - Each credential entry is individually AEAD-sealed with the credential path as
   associated data (AAD), binding ciphertext to its identity.
 
@@ -337,32 +340,23 @@ the Argon2id salt and parameters needed to re-derive the KEK from the passphrase
 | Flag | Description |
 |------|-------------|
 | `--output <file>` | Output file path (default: `keylatch-backup-<timestamp>.enc` in cwd) |
-| `--passphrase-file <file>` | Read backup passphrase from this file instead of a TTY prompt |
 
-**Examples**
+**Example**
 
 ```bash
-# Interactive (TTY required):
-keylatch backup
-
-# Non-interactive (CI / scripted restore workflows):
-keylatch backup --output /mnt/secure/backup.enc --passphrase-file /run/secrets/backup-passphrase
-
-# Decrypt and inspect (using openssl or a purpose-built restore tool):
-keylatch restore backup.enc --output-dir ./restored-vault
+keylatch backup --output /mnt/secure/backup.enc
 ```
 
-**Restore / Decryption**
+**Decryption**
 
-Backups are self-contained. To decrypt a backup:
+There is no restore command yet. Backups are self-contained, so a backup can be
+decrypted by hand:
 
 1. Read `keylatch-backup/header.json` from the archive for the Argon2id salt and
    parameters.
 2. Re-derive the KEK: `KEK = argon2id(passphrase, salt, time=3, memory=64MiB, threads=4, keyLen=32)`.
 3. For each credential entry, split the payload as `nonce[24] || ciphertext`, then:
    `plaintext = XChaCha20Poly1305_Open(kek, nonce, ciphertext, AAD=<entry-path>)`.
-
-The restore command (`keylatch restore`) automates this process.
 
 ---
 

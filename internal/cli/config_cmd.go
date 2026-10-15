@@ -11,9 +11,24 @@ import (
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/presence"
 	klruntime "github.com/keylatch/keylatch/internal/runtime"
 	"github.com/spf13/cobra"
 )
+
+// privilegedConfigPrefixes are the key groups that decide who may reach a
+// credential. Changing one needs a human.
+var privilegedConfigPrefixes = []string{"policy.", "gateway.", "backends.", "guard."}
+
+func isPrivilegedConfigKey(key string) bool {
+	key = strings.ToLower(key)
+	for _, p := range privilegedConfigPrefixes {
+		if strings.HasPrefix(key, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // newConfigCmd returns the `config` subcommand with get/set/list subcommands.
 func newConfigCmd() *cobra.Command {
@@ -71,6 +86,12 @@ func newConfigSetCmd() *cobra.Command {
 			if err := config.ValidateSetKey(key); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", err)
 				os.Exit(1)
+			}
+
+			if isPrivilegedConfigKey(key) {
+				if _, err := requirePresence(c.Context(), presence.ActionConfigSet, "Change security setting %s to %q", key, value); err != nil {
+					return err
+				}
 			}
 
 			cfgPath := paths.Config(llmcontext.DefaultLookup)

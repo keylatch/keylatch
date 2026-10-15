@@ -62,7 +62,7 @@ func (s UISessionScope) String() string {
 // ParseScope parses a scope string from CLI flags.
 func ParseScope(s string) (UISessionScope, error) {
 	switch s {
-	case "status-only":
+	case "status-only", "read":
 		return ScopeStatusOnly, nil
 	case "setup":
 		return ScopeSetup, nil
