@@ -152,6 +152,13 @@ Examples:
 				os.Exit(exitcode.UserError)
 			}
 
+			// A call never uses a credential without an audit trail.
+			auditLog, auditCleanup, auditErr := requireAuditLogger("call")
+			if auditErr != nil {
+				return auditErr
+			}
+			defer auditCleanup()
+
 			// Read the credential from the vault. This is the value-bearing path.
 			// The credential is used only as a Bearer token and is zeroed after use.
 			category := tmpl.Category
@@ -180,6 +187,8 @@ Examples:
 			result, execErr := runner.ExecuteAction(ctx, baseURL, connectionName, actionName, params, string(cred))
 			// Zero the credential bytes immediately after use — never keep them alive.
 			zeroBytes(cred)
+
+			recordCall(ctx, auditLog, connectionName, actionName, result, execErr)
 
 			if execErr != nil {
 				printStructuredError(c, useJSON, "dispatch_failed",

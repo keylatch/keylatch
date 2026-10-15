@@ -152,8 +152,13 @@ type TelemetryConfig struct {
 type AuditConfig struct {
 	Enabled            bool  `json:"enabled"`
 	MaxSize            int64 `json:"max_size_bytes"`       // default 5 MiB
-	RetentionDays      int   `json:"retention_days"`       // default: 30; valid range 1–3650
+	RetentionDays      int   `json:"retention_days"`       // default: 365; valid range 1–3650
 	SweepIntervalHours int   `json:"sweep_interval_hours"` // default: 24; 0 means use default, negative is invalid
+	// RetainDays is the preferred name for RetentionDays and wins when both
+	// are set.
+	RetainDays int `json:"retain_days,omitempty"`
+	// RetainFiles is how many rotated log files are kept (default 20).
+	RetainFiles int `json:"retain_files,omitempty"`
 }
 
 // Validate checks AuditConfig field ranges and returns an actionable error for
@@ -161,9 +166,18 @@ type AuditConfig struct {
 func (a *AuditConfig) Validate() error {
 	if a.RetentionDays != 0 && (a.RetentionDays < 1 || a.RetentionDays > 3650) {
 		return fmt.Errorf(
-			"audit.retention_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 30",
+			"audit.retention_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 365",
 			a.RetentionDays,
 		)
+	}
+	if a.RetainDays != 0 && (a.RetainDays < 1 || a.RetainDays > 3650) {
+		return fmt.Errorf(
+			"audit.retain_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 365",
+			a.RetainDays,
+		)
+	}
+	if a.RetainFiles < 0 {
+		return fmt.Errorf("audit.retain_files must be ≥ 0 (0 means use default of 20), got %d", a.RetainFiles)
 	}
 	// Zero means "use the default" (24 h); only negative values are errors.
 	if a.SweepIntervalHours < 0 {
@@ -227,7 +241,7 @@ func Default() Config {
 		Audit: AuditConfig{
 			Enabled:            true,
 			MaxSize:            5 * 1024 * 1024, // 5 MiB
-			RetentionDays:      30,
+			RetentionDays:      365,
 			SweepIntervalHours: 24,
 		},
 		UI: UIConfig{

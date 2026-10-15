@@ -118,6 +118,7 @@ To restore from backup, use: keylatch restore <backup-file>`,
 				return nil
 			}
 
+			recordBackupExport(ctx, n)
 			fmt.Fprintf(c.OutOrStdout(), "backed up %d connection(s) to %s\n", n, outputPath)
 			return nil
 		},

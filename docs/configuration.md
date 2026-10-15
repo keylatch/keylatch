@@ -16,7 +16,8 @@ defaults when a key is absent.
 | `backend` | string | `file` | Credential storage backend. One of `file`, `keychain`, `op`, `bw`, `proton-pass`, `keeper`, `lastpass`, `vault`, `aws-sm`, `op-connect`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`. |
 | `mode` | string | `standard` | **Operating mode** — controls telemetry, canary injection, and experimental gates. One of `standard`, `telemetry`, `canary`, `custom`. See [Operating Modes](./operating-modes.md) for the full reference. |
 | `audit.enabled` | bool | `true` | Whether to write a tamper-evident audit log. Disabling is not recommended in production. |
-| `audit.retention_days` | int | `30` | Number of days to retain rotated audit log files. Valid range: 1–3650. Rotated files older than this threshold are deleted by the retention sweep. |
+| `audit.retain_days` | int | `365` | Number of days to retain rotated audit log files. Valid range: 1–3650. Rotated files older than this threshold are deleted by the retention sweep. `audit.retention_days` is the older name for the same setting and is still read; `retain_days` wins when both are set. |
+| `audit.retain_files` | int | `20` | Number of rotated audit log files kept (`audit.log.1` … `audit.log.N`, each up to 5 MiB). The oldest is removed on rotation. |
 | `audit.sweep_interval_hours` | int | `24` | How often (in hours) the retention sweep runs. Minimum: 1. The sweep is run as a background goroutine by `keylatchd`. |
 | `gateway.endpoint` | string | `http://127.0.0.1:7878` | Full URL of the local gateway server. Override if you run the gateway on a non-default port. |
 | `gateway.mode` | string | `local` | Gateway mode. One of `local`, `docker`, `hosted`, `off`. |

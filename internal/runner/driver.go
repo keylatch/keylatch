@@ -2,8 +2,14 @@ package runner
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -39,6 +45,9 @@ type DispatchRunner struct {
 	Drivers map[string]Driver
 	// Guard is the LLM session guard hook. When nil, all sessions are permitted — only set nil in tests.
 	Guard GuardFunc
+	// Audit receives one `run` event per Run. When set, a Run is refused
+	// while the event could not be recorded.
+	Audit audit.Emitter
 }
 
 // Dispatcher is the contract for the new ExecRequest-based dispatch path.
@@ -57,6 +66,54 @@ var _ Dispatcher = DispatchRunner{}
 //
 // A RuntimeReceipt is returned on every path including errors.
 func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceipt, error) {
+	if d.Audit != nil {
+		if err := audit.Ready(d.Audit); err != nil {
+			return RuntimeReceipt{Provider: req.ConnectionSlug, Capability: req.Capability, PolicyDecision: "audit_unavailable"}, err
+		}
+	}
+	start := time.Now()
+	receipt, err := d.run(ctx, req)
+	if d.Audit != nil {
+		if aerr := d.Audit.Emit(ctx, runEvent(req, receipt, err, time.Since(start))); aerr != nil {
+			err = errors.Join(err, fmt.Errorf("record run event: %w", aerr))
+		}
+	}
+	return receipt, err
+}
+
+// runEvent is the single value-free audit event for one Run.
+func runEvent(req ExecRequest, r RuntimeReceipt, runErr error, took time.Duration) audit.Event {
+	kind := req.CallerKind
+	if kind == "" {
+		kind = string(callerkind.Human)
+		if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
+			kind = string(callerkind.Agent)
+		}
+	}
+	outcome := audit.OutcomeOK
+	if runErr != nil {
+		outcome = audit.OutcomeDenied
+	}
+	decision := r.PolicyDecision
+	if decision == "" && runErr == nil {
+		decision = "allowed"
+	}
+	return audit.Event{
+		Action:  audit.ActionRun,
+		Outcome: outcome,
+		Extra: map[string]any{
+			"connection":  req.ConnectionSlug,
+			"runtime":     r.Runtime,
+			"capability":  r.Capability,
+			"caller_kind": kind,
+			"decision":    decision,
+			"exit":        r.ExitCode,
+			"duration_ms": took.Milliseconds(),
+		},
+	}
+}
+
+func (d DispatchRunner) run(ctx context.Context, req ExecRequest) (RuntimeReceipt, error) {
 	cap := req.Capability
 	if cap == "" {
 		cap = "inject"

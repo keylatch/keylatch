@@ -56,6 +56,9 @@ type ExecRequest struct {
 	Actor string
 	// Capability is the requested operation (default: "inject").
 	Capability string
+	// CallerKind is the classification of the caller (a callerkind.Kind
+	// value). Empty derives it from the process's LLM-session signals.
+	CallerKind string
 	// TTL caps the subprocess and any issued tokens.
 	TTL time.Duration
 	// Runtime is the requested RuntimeMode. Empty triggers automatic selection.

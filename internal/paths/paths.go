@@ -111,6 +111,16 @@ func AuditSalt(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "audit-salt")
 }
 
+// AuditKeyWrapped returns the path of the KEK-wrapped secret the audit chain
+// MAC key is derived from.
+// Override: KEYLATCH_AUDIT_KEY_PATH
+func AuditKeyWrapped(env Lookup) string {
+	if v := env("KEYLATCH_AUDIT_KEY_PATH"); v != "" {
+		return v
+	}
+	return filepath.Join(ConfigDir(env), "audit-key.enc")
+}
+
 // Policy returns the path to the policy file.
 // Override: KEYLATCH_POLICY_PATH
 func Policy(env Lookup) string {

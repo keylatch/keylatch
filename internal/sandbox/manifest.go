@@ -177,7 +177,7 @@ func protectedPaths(homeDir string, env paths.Lookup) []string {
 		out = append(out, filepath.Join(xdg, "keylatch"))
 	}
 	for _, resolve := range []func(paths.Lookup) string{
-		paths.ConfigDir, paths.Config, paths.Vault, paths.Audit, paths.AuditSalt,
+		paths.ConfigDir, paths.Config, paths.Vault, paths.Audit, paths.AuditSalt, paths.AuditKeyWrapped,
 		paths.Policy, paths.Grants, paths.GrantsDir, paths.GrantAccessorKey,
 		paths.KeyringDir, paths.KeyringPath, paths.KeyringIdentityPath,
 		paths.GatewayDir, paths.GatewaySigningKey, paths.GatewaySigningKeyWrapped, paths.GatewayTokens,

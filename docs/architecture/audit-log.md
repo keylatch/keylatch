@@ -81,7 +81,7 @@ Each rotation shifts older generations up by one (`audit.log.1` becomes
 `audit.log.2`, and so on). Twenty rotated generations are kept; the oldest is
 removed. `rotated_to` and `rotated_from` name the generation at the time of
 rotation. The keylatchd retention sweep removes only `audit.log.<n>` files
-older than `audit.retention_days` and never touches other files in the
+older than `audit.retain_days` and never touches other files in the
 configuration directory.
 
 If a rotation fails (for example the new file cannot be created), the logger
@@ -89,6 +89,27 @@ puts the full file back, keeps appending to it and retries a minute later. If
 no file can be written at all, `Log` returns `audit.ErrUnavailable` and every
 audited secret access through the broker and the vault is refused until the
 log can be opened again. `keylatch doctor` reports this as `audit.writable`.
+
+### Chain key
+
+The chain MAC key is derived from `HKDF(secret, audit-salt, "keylatch/audit/v1")`,
+where `secret` is a random value stored wrapped by the KEK
+(`audit-key.enc` next to the audit log). The audit salt is a readable file, so
+the key cannot be recomputed from it, and the secret is independent of the
+vault DEK. Verifying a chain therefore needs the KEK, as `keylatch audit
+--verify-chain` does. The first time the secret is created, an existing log
+written under the old salt-only key is moved to `audit.log.1` so the new chain
+starts in an empty file.
+
+### Event vocabulary
+
+`internal/audit/events.go` lists the brokered-action events: `run`, `call`,
+`mint`, `release`, `connect`, `set`, `policy.change`, `presence.decision`,
+`security.block`, `guard.block`, `backup.export`, plus `run.decided`,
+`run.exited`, `approval.*` and `binding.*`. Their fields are allowlisted in
+`internal/audit/fields`; none carries a value, key or token. Every `keylatch
+run` writes exactly one `run` event, and a run is refused while the log cannot
+record it.
 
 Audit is required, not best-effort. The broker and the vault refuse any
 operation that carries no audit emitter. `keylatch gateway up`, `keylatch set`

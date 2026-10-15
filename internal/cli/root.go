@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
 	_ "github.com/keylatch/keylatch/internal/backend/all"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
@@ -795,8 +796,14 @@ func newRunCmd() *cobra.Command {
 			// unavailable gateway can never fall back into a direct
 			// secret-injection mode.
 			supported := manifest.Current()
+			auditLog, auditCleanup, auditErr := requireAuditLogger("run")
+			if auditErr != nil {
+				return auditErr
+			}
+			defer auditCleanup()
 			dr := runner.DispatchRunner{
 				Guard: guardFn,
+				Audit: audit.AsEmitter(auditLog),
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.
 					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),

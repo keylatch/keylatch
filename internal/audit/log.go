@@ -380,6 +380,26 @@ func (l *Logger) rotate() error {
 	return nil
 }
 
+// RetireLog moves a non-empty log at path to generation 1, shifting older
+// generations, so a chain under a different MAC key starts in an empty file.
+// The Logger must not be open on path.
+func RetireLog(path string, retain int) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) || (err == nil && info.Size() == 0) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("audit: retire log: %w", err)
+	}
+	if err := shiftGenerations(path, retain); err != nil {
+		return err
+	}
+	if err := os.Rename(path, rotatedName(path, 1)); err != nil {
+		return fmt.Errorf("audit: retire log: %w", err)
+	}
+	return nil
+}
+
 // keepCurrent reopens the current file after a failed rotation, keeping the
 // chain state so later events still link to its last line. It returns
 // cause, wrapped in ErrUnavailable when the file cannot be reopened either.
