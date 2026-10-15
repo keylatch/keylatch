@@ -87,6 +87,9 @@ type CustomModeConfig struct {
 type GatewayConfig struct {
 	Endpoint string `json:"endpoint"` // e.g. http://127.0.0.1:7878
 	Mode     string `json:"mode"`     // "local" | "docker" | "hosted" | "off"
+	// MaxBody is the largest request body the gateway inspects and forwards,
+	// in bytes (default 10 MiB). Larger bodies are rejected.
+	MaxBody int64 `json:"max_body,omitempty"`
 }
 
 // OPConfig holds 1Password-specific settings.

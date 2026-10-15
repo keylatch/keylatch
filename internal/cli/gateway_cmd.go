@@ -28,6 +28,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/proc"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -309,6 +310,12 @@ func newGatewayUpCmd() *cobra.Command {
 				return nil
 			}
 
+			// The gateway holds the unwrapped signing key and credentials in
+			// memory: keep other processes of this user from reading them.
+			if err := proc.Harden(); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: process hardening incomplete: %v\n", err)
+			}
+
 			// Load signing key (migrating a raw key file on first start).
 			signingKey, err := LoadGatewaySigningKey(env, false)
 			if err != nil {
@@ -355,7 +362,12 @@ func newGatewayUpCmd() *cobra.Command {
 			// The gateway's job is to inject the provider credential into the
 			// upstream request; without a vault it would forward requests
 			// unauthenticated, so an unusable backend is fatal here.
-			vaultReader, err := newGatewayVaultReader(ctx, loadCLIConfig(c), env)
+			cliCfg := loadCLIConfig(c)
+			var maxBody int64
+			if cliCfg.Gateway != nil {
+				maxBody = cliCfg.Gateway.MaxBody
+			}
+			vaultReader, err := newGatewayVaultReader(ctx, cliCfg, env)
 			if err != nil {
 				return NewBackendUnavailable("gateway up: %v", err)
 			}
@@ -384,6 +396,7 @@ func newGatewayUpCmd() *cobra.Command {
 				AuditLogger:       auditLogger,
 				Budget:            budgetCounter,
 				Vault:             vaultReader,
+				MaxBody:           maxBody,
 				// PolicyPath: default policy location. New() treats a
 				// missing file as "not configured" and stays pass-through —
 				// this does not change behavior for operators who have

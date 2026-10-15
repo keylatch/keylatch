@@ -21,6 +21,7 @@ defaults when a key is absent.
 | `audit.sweep_interval_hours` | int | `24` | How often (in hours) the retention sweep runs. Minimum: 1. The sweep is run as a background goroutine by `keylatchd`. |
 | `gateway.endpoint` | string | `http://127.0.0.1:7878` | Full URL of the local gateway server. Override if you run the gateway on a non-default port. |
 | `gateway.mode` | string | `local` | Gateway mode. One of `local`, `docker`, `hosted`, `off`. |
+| `gateway.max_body` | int | `10485760` | Largest request body (bytes) the gateway inspects and forwards. Larger bodies are rejected with 413. |
 
 ## Example configuration
 

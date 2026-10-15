@@ -62,7 +62,11 @@ The local gateway HTTP server enforces three middlewares on all proxy routes:
 
 - **`authBlockerMiddleware`** — strips agent-supplied `Authorization` replacement attempts. The gateway consumes the Authorization header as the Keylatch session JWT and strips it before forwarding upstream; the handler injects the real provider credential internally.
 - **`hostOverrideBlockerMiddleware`** — blocks `X-Forwarded-Host`, `X-Original-URL`, and `X-Rewrite-URL` headers that could redirect upstream traffic to attacker-controlled hosts.
-- **`SSRFGate`** — blocks SSRF-class upstream destinations (loopback, link-local, metadata endpoints, etc.) before any outbound connection is made.
+- **`SSRFGate`** — blocks SSRF-class upstream destinations (loopback, link-local, metadata endpoints, etc.) before any outbound connection is made. The gateway connects only to the addresses the gate checked for that request and never resolves the name again, so a DNS answer that changes between the check and the connection is not used.
+
+The gateway never follows a provider redirect: the injected credential belongs to the validated host, so a 3xx answer is returned to the caller unchanged. Request bodies are inspected in full up to `gateway.max_body` (default 10 MiB); a larger body is rejected with 413 rather than truncated.
+
+The gateway and `keylatchd` harden their own process at start: on Linux the dumpable flag is cleared (so `/proc/<pid>/environ` and `mem` are unreadable by the same user and ptrace attach is refused) and core dumps are disabled; on macOS debugger attach is denied (`PT_DENY_ATTACH`); on Windows extension points and remote image loads are disabled and crash dialogs suppressed.
 
 ## Canary leak detection
 

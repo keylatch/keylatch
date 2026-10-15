@@ -262,7 +262,8 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// outbound request. Pure HTTP middleware cannot do this because the
 	// provider ID and upstream host are only known after router.Match() above.
 	if s.ssrfGate != nil {
-		if err := s.ssrfGate.Validate(rt.Provider, rt.UpstreamHost); err != nil {
+		ips, err := s.ssrfGate.Resolve(rt.Provider, rt.UpstreamHost)
+		if err != nil {
 			writeError(w, http.StatusForbidden, "ssrf_blocked", "upstream host rejected by SSRF gate")
 			s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
 				"error":    "ssrf_blocked",
@@ -271,6 +272,9 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			outcome = audit.OutcomeDenied
 			return
 		}
+		// The upstream connection goes to the addresses just checked, not to
+		// whatever the name resolves to at dial time.
+		ctx = withPinnedIPs(ctx, rt.UpstreamHost, ips)
 	}
 
 	// T02: Remove the Keylatch Authorization header before substitution checks run
@@ -290,12 +294,16 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 7: Read body (size-limited to default max).
-	body, err := io.ReadAll(io.LimitReader(r.Body, rt.MaxBodyBytes+1))
+	bodyLimit := rt.MaxBodyBytes
+	if s.opts.MaxBody > 0 {
+		bodyLimit = s.opts.MaxBody
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, bodyLimit+1))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "body_read_error", "failed to read request body")
 		return
 	}
-	if int64(len(body)) > rt.MaxBodyBytes {
+	if int64(len(body)) > bodyLimit {
 		writeError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body exceeds maximum size")
 		return
 	}

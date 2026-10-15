@@ -22,7 +22,7 @@ var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 // prevent agents from authenticating to the gateway at all. Upstream
 // credential isolation is enforced by the handler's strip-and-inject logic.
 func TestSecurity_AuthorizationHeaderPassesThroughMiddleware(t *testing.T) {
-	handler := authBlockerMiddleware(okHandler, false)
+	handler := authBlockerMiddleware(okHandler, false, 0)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req.Header.Set("Authorization", "Bearer sk-canary-BROKER-should-not-pass")
@@ -39,7 +39,7 @@ func TestSecurity_AuthorizationHeaderPassesThroughMiddleware(t *testing.T) {
 
 // TestSecurity_ApiKeyQueryParamBlocked verifies api_key query param is blocked.
 func TestSecurity_ApiKeyQueryParamBlocked(t *testing.T) {
-	handler := authBlockerMiddleware(okHandler, false)
+	handler := authBlockerMiddleware(okHandler, false, 0)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test?api_key=sk-secret", nil)
 	rr := httptest.NewRecorder()
@@ -53,7 +53,7 @@ func TestSecurity_ApiKeyQueryParamBlocked(t *testing.T) {
 
 // TestSecurity_BearerTokenInBodyBlocked verifies Bearer token in body is blocked.
 func TestSecurity_BearerTokenInBodyBlocked(t *testing.T) {
-	handler := authBlockerMiddleware(okHandler, false)
+	handler := authBlockerMiddleware(okHandler, false, 0)
 
 	body := `{"message":"Bearer sk-canary-BROKER-0xDEADBEEF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/test", strings.NewReader(body))
@@ -69,7 +69,7 @@ func TestSecurity_BearerTokenInBodyBlocked(t *testing.T) {
 
 // TestSecurity_TokenEndpointDirectCallBlocked verifies /oauth/token calls are blocked.
 func TestSecurity_TokenEndpointDirectCallBlocked(t *testing.T) {
-	handler := authBlockerMiddleware(okHandler, false)
+	handler := authBlockerMiddleware(okHandler, false, 0)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth/token", nil)
 	rr := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestSecurity_XForwardedHostBlocked(t *testing.T) {
 // TestSecurity_LegitimateRequestPassesThrough verifies a clean request is not blocked.
 func TestSecurity_LegitimateRequestPassesThrough(t *testing.T) {
 	// No Authorization header, no suspicious params, no token endpoint.
-	handler := authBlockerMiddleware(okHandler, false)
+	handler := authBlockerMiddleware(okHandler, false, 0)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/openai/chat", strings.NewReader(`{"model":"gpt-4"}`))
 	req.ContentLength = int64(len(`{"model":"gpt-4"}`))

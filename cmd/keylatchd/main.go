@@ -88,6 +88,7 @@ When run without --from-desktop-shell, behaviour is identical to
 				level = slog.LevelWarn
 			}
 			slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+			hardenProcess()
 
 			env := llmcontext.DefaultLookup
 
@@ -230,6 +231,7 @@ caller may have. Run it from your own terminal or a user service, outside
 any agent sandbox.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			hardenProcess()
 			env := llmcontext.DefaultLookup
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 			defer stop()
