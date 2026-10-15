@@ -54,6 +54,7 @@ These variables configure cryptographic operations. They are **security-sensitiv
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_AUDIT_PATH` | Override the audit log directory | No | Never |
 | `KEYLATCH_AUDIT_SALT_PATH` | Override the audit chain MAC salt file path | Yes | Never |
+| `KEYLATCH_AUDIT_KEY_PATH` | Override the path of the KEK-wrapped secret the audit chain key is derived from (`audit-key.enc` beside the audit log) | Yes | Never |
 
 ---
 
