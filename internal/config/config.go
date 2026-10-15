@@ -114,7 +114,9 @@ type BWConfig struct {
 	Server     string `json:"server,omitempty"` // Vaultwarden URL; empty for Bitwarden Cloud
 	Folder     string `json:"folder,omitempty"`
 	Collection string `json:"collection,omitempty"`
-	Bin        string `json:"bin"`
+	// OrganizationID is the Bitwarden organization the vault belongs to.
+	OrganizationID string `json:"organization_id,omitempty"`
+	Bin            string `json:"bin"`
 
 	// Forward-compat team-mode fields. Not interpreted in single-user mode.
 	ServiceAccountTokenRef string `json:"service_account_token_ref,omitempty"`

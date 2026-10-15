@@ -42,28 +42,7 @@ func newPolicyInitCmd() *cobra.Command {
 		Short: "Create a default policy file",
 		RunE: func(c *cobra.Command, _ []string) error {
 			policyPath := paths.Policy(llmcontext.DefaultLookup)
-
-			if !force {
-				if _, err := os.Stat(policyPath); err == nil {
-					return fmt.Errorf("policy file already exists at %q; use --force to overwrite", policyPath)
-				}
-			}
-
-			if err := os.MkdirAll(pathDir(policyPath), 0o700); err != nil {
-				return fmt.Errorf("mkdir: %w", err)
-			}
-
-			now := time.Now().UTC()
-			p := policy.Policy{
-				SchemaVersion: 1,
-				Mode:          policy.ModeEnforcing,
-				DefaultDeny:   true,
-				Rules:         []policy.Rule{},
-				CreatedAt:     now,
-				UpdatedAt:     now,
-			}
-
-			if err := policy.Save(policyPath, p); err != nil {
+			if err := saveDefaultDenyPolicy(policyPath, force); err != nil {
 				return err
 			}
 			fmt.Fprintf(c.OutOrStdout(), "policy initialized at %s\n", policyPath)
@@ -72,6 +51,31 @@ func newPolicyInitCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing policy file")
 	return cmd
+}
+
+// errPolicyExists is returned by saveDefaultDenyPolicy when a policy file is
+// already present and overwriting was not requested.
+var errPolicyExists = errors.New("policy file already exists")
+
+// saveDefaultDenyPolicy writes an enforcing, default-deny policy with no rules.
+func saveDefaultDenyPolicy(policyPath string, force bool) error {
+	if !force {
+		if _, err := os.Stat(policyPath); err == nil {
+			return fmt.Errorf("%w at %q; use --force to overwrite", errPolicyExists, policyPath)
+		}
+	}
+	if err := os.MkdirAll(pathDir(policyPath), 0o700); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	now := time.Now().UTC()
+	return policy.Save(policyPath, policy.Policy{
+		SchemaVersion: 1,
+		Mode:          policy.ModeEnforcing,
+		DefaultDeny:   true,
+		Rules:         []policy.Rule{},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
 }
 
 // newPolicyAllowCmd appends an allow rule to the policy.

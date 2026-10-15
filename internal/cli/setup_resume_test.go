@@ -75,9 +75,7 @@ func setupResumeStdin(t *testing.T, lines ...string) {
 
 func setupResumeClearLLMEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"CLAUDE_CODE", "CODEX_ENV", "CREDENTIALS_LLM_SESSION", "CURSOR_SESSION", "AIDER_SESSION", "GEMINI_SESSION", "OPENCODE_SESSION"} {
-		t.Setenv(k, "")
-	}
+	testutil.ClearLLMSessionEnv(t)
 }
 
 // TestSetupResume_EnterThrough_KeepsConfiguredBackend verifies that
