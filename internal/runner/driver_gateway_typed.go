@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
@@ -200,53 +199,9 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	return receipt, nil
 }
 
-// gatewayTypedChildEnv builds the child environment for gateway_typed mode.
-//
-// Rules:
-//  1. Strip every provider API key env var declared in tmpl.InjectionRules.
-//  2. Strip every KEYLATCH_* configuration var (FilterChildEnv).
-//  3. Re-inject only KEYLATCH_GATEWAY_URL, KEYLATCH_GATEWAY_TOKEN, KEYLATCH_RUNTIME.
-//
-// When cleanEnv is true, step 2 is replaced by CleanBaseEnv which
-// starts from a minimal set (PATH, HOME, USER, …, LC_*) rather than the full
-// parent env. extra lists additional var names to preserve in that case.
-//
-// The child process never sees the raw API key or any Keylatch internal
-// configuration that could be used for reconnaissance.
+// gatewayTypedChildEnv builds the child environment for gateway_typed mode:
+// provider key variables are stripped, KEYLATCH_* configuration is dropped and
+// only the gateway URL, session token and runtime name are set.
 func gatewayTypedChildEnv(tmpl registry.ConnectionTemplate, gatewayURL, jwtStr string, cleanEnv bool, extra []string) []string {
-	denyVars := make(map[string]struct{}, len(tmpl.InjectionRules))
-	for _, rule := range tmpl.InjectionRules {
-		denyVars[rule.EnvVar] = struct{}{}
-	}
-
-	raw := os.Environ()
-	// First strip provider API key vars.
-	stripped := make([]string, 0, len(raw))
-	for _, e := range raw {
-		idx := strings.IndexByte(e, '=')
-		if idx < 0 {
-			stripped = append(stripped, e)
-			continue
-		}
-		if _, skip := denyVars[e[:idx]]; !skip {
-			stripped = append(stripped, e)
-		}
-	}
-
-	var childEnv []string
-	if cleanEnv {
-		// Start from a minimal base env, then append gateway vars.
-		childEnv = runtime.CleanBaseEnv(stripped, extra...)
-	} else {
-		// Then strip all remaining KEYLATCH_* vars; re-inject only the gateway vars.
-		childEnv = runtime.FilterChildEnv(stripped,
-			"KEYLATCH_GATEWAY_URL",
-			"KEYLATCH_GATEWAY_TOKEN",
-			"KEYLATCH_RUNTIME",
-		)
-	}
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_URL", gatewayURL)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewayTypedMode)
-	return childEnv
+	return GatewaySessionEnv(runtime.RuntimeGatewayTyped, tmpl, gatewayURL, jwtStr).Apply(os.Environ(), cleanEnv, extra)
 }

@@ -265,6 +265,60 @@
         "burst_size":          { "type": "integer" }
       }
     },
+    "hosts": {
+      "type": "array",
+      "description": "Authorities (host[:port], default port 443) a secret may be substituted toward. A leading *. matches one or more labels.",
+      "items": { "type": "string" }
+    },
+    "slots": {
+      "type": "array",
+      "description": "Request positions where a secret field may be substituted.",
+      "items": {
+        "type": "object",
+        "required": ["field", "in", "hosts"],
+        "additionalProperties": false,
+        "properties": {
+          "field":  { "type": "string" },
+          "in":     { "type": "string", "enum": ["header", "query", "basic"] },
+          "name":   { "type": "string" },
+          "scheme": { "type": "string" },
+          "part":   { "type": "string", "enum": ["user", "password"] },
+          "hosts":  { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "placeholder_shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix":     { "type": "string" },
+        "min_length": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "required": ["kind", "field", "hosts"],
+      "additionalProperties": false,
+      "properties": {
+        "kind":  { "type": "string", "enum": ["postgres", "mysql", "redis", "ssh_agent", "git_credential", "docker_credential"] },
+        "field": { "type": "string" },
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "username": { "type": "string" }
+      }
+    },
+    "minted_fields": {
+      "type": "array",
+      "description": "Credential fields Keylatch produces at use time; slots and adapters may bind them, and they are never stored or supplied.",
+      "items": { "type": "string" }
+    },
+    "env_class": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default":   { "type": "string", "enum": ["test", "dev", "prod"] },
+        "by_prefix": { "type": "object", "additionalProperties": { "type": "string", "enum": ["test", "dev", "prod"] } }
+      }
+    },
     "test_strategy": {
       "type": "object",
       "required": ["kind", "endpoint"],

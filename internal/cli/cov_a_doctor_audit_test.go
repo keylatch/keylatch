@@ -2,7 +2,7 @@
 // File: cov_a_doctor_audit_test.go
 // Tests for: doctor_cmd.go (buildDoctorJSONV1, printStatusLine, printDoctorReport),
 //
-//	audit_hook.go (SecurityBlockHook type), audit_cmd.go (openAuditLogger path).
+//	audit_hook.go (SecurityBlockHook type), audit_cmd.go (OpenAuditLogger path).
 package cli
 
 import (

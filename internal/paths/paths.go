@@ -335,6 +335,37 @@ func DaemonState(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "daemon-state.json")
 }
 
+// ControlSocket returns the path of the keylatchd control socket.
+// Override: KEYLATCH_SOCKET
+// Default: $XDG_RUNTIME_DIR/keylatch/keylatchd.sock, else
+// <tmp>/keylatch-<uid>/keylatchd.sock.
+func ControlSocket(env Lookup) string {
+	if v := env("KEYLATCH_SOCKET"); v != "" {
+		return v
+	}
+	if xdg := env("XDG_RUNTIME_DIR"); xdg != "" {
+		return filepath.Join(xdg, "keylatch", "keylatchd.sock")
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("keylatch-%d", os.Getuid()), "keylatchd.sock")
+}
+
+// KeyOperations returns the path of the key operation allowlist. It lives in
+// Keylatch state, which host sandboxes deny, and is changed only through the
+// daemon.
+func KeyOperations(env Lookup) string {
+	return filepath.Join(ConfigDir(env), "key-operations.json")
+}
+
+// SSHAgentSocket returns the path of the ssh-agent endpoint served by keylatchd.
+// Override: KEYLATCH_SSH_AGENT_SOCKET
+// Default: ssh-agent.sock next to the control socket.
+func SSHAgentSocket(env Lookup) string {
+	if v := env("KEYLATCH_SSH_AGENT_SOCKET"); v != "" {
+		return v
+	}
+	return filepath.Join(filepath.Dir(ControlSocket(env)), "ssh-agent.sock")
+}
+
 // UnsafeMode is returned by AssertSafeModes when the file or directory has
 // insecure permissions.
 type UnsafeMode struct {

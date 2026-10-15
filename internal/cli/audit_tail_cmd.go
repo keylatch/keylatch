@@ -91,7 +91,7 @@ func newAuditTailCmd() *cobra.Command {
 Without -f: print the last N lines (default 20) and exit, like tail(1).
 With -f: live-follow and print new events as they arrive. Press Ctrl-C to stop.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			l, cleanup, err := openAuditLogger()
+			l, cleanup, err := OpenAuditLogger()
 			if err != nil {
 				return err
 			}
@@ -201,7 +201,7 @@ Filter flags:
 				}
 			}
 
-			l, cleanup, err := openAuditLogger()
+			l, cleanup, err := OpenAuditLogger()
 			if err != nil {
 				return err
 			}
@@ -257,7 +257,7 @@ func runAuditRetentionSweep(retentionDays int) (int, error) {
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		return 0, err
 	}

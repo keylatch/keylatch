@@ -268,6 +268,14 @@ type ConnectionTemplate struct {
 	OverbroadScopes        []string        `json:"overbroad_scopes,omitempty"         yaml:"overbroad_scopes,omitempty"`
 	RateLimit              RateLimitSpec   `json:"rate_limit,omitempty"               yaml:"rate_limit,omitempty"`
 
+	// Secret substitution bindings
+	Hosts            []string         `json:"hosts,omitempty"             yaml:"hosts,omitempty"`
+	Slots            []Slot           `json:"slots,omitempty"             yaml:"slots,omitempty"`
+	PlaceholderShape PlaceholderShape `json:"placeholder_shape,omitempty" yaml:"placeholder_shape,omitempty"`
+	Adapter          Adapter          `json:"adapter,omitempty"           yaml:"adapter,omitempty"`
+	EnvClass         EnvClassSpec     `json:"env_class,omitempty"         yaml:"env_class,omitempty"`
+	MintedFields     []string         `json:"minted_fields,omitempty"     yaml:"minted_fields,omitempty"`
+
 	// Test strategy
 	TestStrategy TestStrategy `json:"test_strategy" yaml:"test_strategy"`
 }

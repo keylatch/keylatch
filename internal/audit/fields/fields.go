@@ -88,9 +88,32 @@ var safeLogFields = map[string][]string{
 	// denied_paths: list of filesystem paths denied in the sandbox (no values).
 	"sandbox.deny_applied": {"provider", "runtime", "denied_paths"},
 
+	// key operations: names and the digest of the input, never key or data.
+	"key.operation":     {"operation", "alg", "connection", "field", "caller_kind", "input_sha256", "reason"},
+	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason"},
+
+	// socket decisions: digests, names and counters only. argv_sha256 and
+	// cwd_sha256 are SHA-256 hex digests; hosts is a list of host names.
+	"run.decided": {
+		"op", "verb", "connection", "tier", "child_location", "caller_kind",
+		"harness", "argv_sha256", "cwd_sha256", "hosts", "approval_id", "run_id", "reason",
+	},
+	"run.exited": {
+		"run_id", "op", "verb", "exit", "duration_ms", "bytes_relayed", "redactions", "reason",
+	},
+	"approval.requested": {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+	"approval.granted":   {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+	"approval.denied":    {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+
 	// operating-mode actions.
 	// ActionCanaryInjected — provider slug and session_id_hmac (no canary token value).
 	"canary.injected": {"provider", "session_id_hmac"},
+
+	// placeholder proxy actions: identifiers and counters only.
+	"placeholder.misuse": {"provider", "field", "host", "where", "reason", "session_id_hmac"},
+	"proxy.substituted":  {"provider", "field", "host", "count"},
+	"egress.denied":      {"provider", "host", "reason"},
+	"proxy.session":      {"provider", "reason", "hosts", "substitutions", "session_id_hmac"},
 
 	// broker dry-run action.
 	// command: the binary/subcommand name requested (no credential content).
@@ -162,11 +185,16 @@ func AllActions() []string {
 		"child_env.filter", "child_env.clean",
 		// sandbox actions.
 		"sandbox.launched", "sandbox.launch_refused", "sandbox.deny_applied",
+		"key.operation", "key.policy_change",
 		// canary actions.
 		"canary.injected",
 		// broker dry-run and token revocation actions.
 		"broker.dry_run_requested", "broker.token_revoked",
+		// placeholder proxy actions.
+		"placeholder.misuse", "proxy.substituted", "egress.denied", "proxy.session",
 		"mint",
+		"run.decided", "run.exited",
+		"approval.requested", "approval.granted", "approval.denied",
 	}
 }
 

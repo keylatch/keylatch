@@ -56,6 +56,8 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"reason": "ssrf_denied", "host": "api.example.com", "error": "capability_mismatch",
 			// proxy lifecycle keys (proxy.started / proxy.stopped).
 			"port": 8888, "pid": os.Getpid(),
+			// placeholder proxy keys.
+			"field": "secret_key", "where": "header", "hosts": "api.example.com", "substitutions": 1,
 			// audit_rotate cross-file chain continuity keys.
 			"rotated_to": "/path/to/log.1", "rotated_from": "/path/to/log.1",
 			"prev_file_hmac": "abcdef0123456789",

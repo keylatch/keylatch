@@ -32,8 +32,58 @@ runtime_support:
   preferred: direct_brokered
   supported:
     - direct_brokered
-  runtime_reason: "The private key is never injected into a process; tokens are issued by keylatch mint."
+  runtime_reason: "The private key is never injected into a process. An agent session receives a placeholder token that the daemon's proxy replaces with a minted installation token."
   gateway_supported: false
+
+minted_fields:
+  - token
+
+injection_rules:
+  - env_var: GH_TOKEN
+    source: token
+  - env_var: GITHUB_TOKEN
+    source: token
+
+hosts:
+  - "api.github.com"
+  - "uploads.github.com"
+  - "github.com"
+
+slots:
+  - field: token
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "api.github.com"
+      - "uploads.github.com"
+  - field: token
+    in: header
+    name: Authorization
+    scheme: token
+    hosts:
+      - "api.github.com"
+      - "uploads.github.com"
+  - field: token
+    in: basic
+    part: password
+    hosts:
+      - "github.com"
+
+placeholder_shape:
+  # escaped so secret scanners do not flag the prefix literal
+  prefix: "ghs\x5f"
+  min_length: 40
+
+env_class:
+  default: prod
+
+adapter:
+  kind: git_credential
+  field: token
+  username: x-access-token
+  hosts:
+    - "github.com"
 
 capabilities:
   - name: tokens.mint

@@ -60,11 +60,17 @@ type MintPolicy struct {
 type GitHubAppMintPolicy struct {
 	// Callers lists the caller kinds allowed to mint ("service", "host",
 	// "human"). Empty means service and host. Agent sessions are never allowed.
-	Callers           []string          `json:"callers,omitempty"`
-	DenyOwners        []string          `json:"deny_owners,omitempty"`
-	AllowOwners       []string          `json:"allow_owners,omitempty"`
-	AllowRepos        []string          `json:"allow_repos,omitempty"`
-	PermissionCeiling map[string]string `json:"permission_ceiling,omitempty"`
+	Callers []string `json:"callers,omitempty"`
+	// PlaceholderCallers lists the caller kinds ("agent", "host", "human",
+	// "service") that may run commands whose GitHub credential is a
+	// placeholder the daemon's proxy replaces with a minted token. Empty means
+	// none. The owner, repository, permission and lifetime limits below apply
+	// to these sessions too.
+	PlaceholderCallers []string          `json:"placeholder_callers,omitempty"`
+	DenyOwners         []string          `json:"deny_owners,omitempty"`
+	AllowOwners        []string          `json:"allow_owners,omitempty"`
+	AllowRepos         []string          `json:"allow_repos,omitempty"`
+	PermissionCeiling  map[string]string `json:"permission_ceiling,omitempty"`
 	// MaxTTL is the longest token lifetime in seconds, 1–3600. Zero means 3600.
 	MaxTTL int `json:"max_ttl,omitempty"`
 }

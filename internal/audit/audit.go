@@ -129,10 +129,43 @@ const (
 	// sandbox run. Extra.denied_paths lists the paths (no values).
 	ActionSandboxDenyApplied Action = "sandbox.deny_applied"
 
+	// placeholder proxy actions. Extra carries provider, field, host and a
+	// short reason; never a placeholder or a credential value.
+	ActionPlaceholderMisuse Action = "placeholder.misuse"
+	ActionProxySubstituted  Action = "proxy.substituted"
+	ActionEgressDenied      Action = "egress.denied"
+	ActionProxySession      Action = "proxy.session"
+
 	// ActionMint records one scoped credential mint. Extra holds the
 	// connection, repository, permissions, expires_at and caller kind;
 	// the minted credential is never recorded.
 	ActionMint Action = "mint"
+
+	// ActionKeyOperation records a sign, verify, encrypt, decrypt or ssh
+	// signing request served from a key that never leaves the daemon.
+	// Extra holds the operation, algorithm, connection, field, caller kind and
+	// the SHA-256 of the input; never the key or the data.
+	ActionKeyOperation Action = "key.operation"
+
+	// ActionKeyPolicyChange records an allow or revoke on the key operation
+	// allowlist, including refused attempts. Extra holds a digest-free summary
+	// of the entry before and after; never a key or a secret path.
+	ActionKeyPolicyChange Action = "key.policy_change"
+
+	// ActionRunDecided records the daemon's decision on a socket request that
+	// runs something: tier, where the child runs, caller kind and harness,
+	// digests of argv and cwd, and the hosts involved. Allows and refusals
+	// both produce one event.
+	ActionRunDecided Action = "run.decided"
+	// ActionRunExited records the end of a decided run: exit status, duration
+	// and bytes relayed.
+	ActionRunExited Action = "run.exited"
+	// ActionApprovalRequested, ActionApprovalGranted and ActionApprovalDenied
+	// record the life of an approval a decision waited on. Extra carries the
+	// approval id and the run it belongs to, never the approval's proof.
+	ActionApprovalRequested Action = "approval.requested"
+	ActionApprovalGranted   Action = "approval.granted"
+	ActionApprovalDenied    Action = "approval.denied"
 )
 
 // Emitter is a minimal interface for components that need to emit audit events
