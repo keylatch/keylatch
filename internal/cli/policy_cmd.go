@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -17,6 +18,9 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/policy/connpolicy"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/spf13/cobra"
 )
 
@@ -31,28 +35,49 @@ func newPolicyCmd() *cobra.Command {
 	cmd.AddCommand(newPolicyListCmd())
 	cmd.AddCommand(newPolicyCheckCmd())
 	cmd.AddCommand(newPolicyRemoveCmd())
+	cmd.AddCommand(newPolicyDenyCmd())
+	cmd.AddCommand(newPolicyImportCmd())
+	cmd.AddCommand(newPolicyExportCmd())
 	return cmd
 }
 
-// newPolicyInitCmd creates ~/.keylatch/policy.json with safe defaults.
+// newPolicyInitCmd creates the default-deny policy: an empty rules file, the
+// fallback connection policy that lets only a human use a connection, and
+// examples to copy from.
 func newPolicyInitCmd() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Create a default policy file",
-		RunE: func(c *cobra.Command, _ []string) error {
-			policyPath := paths.Policy(llmcontext.DefaultLookup)
+		Short: "Create a default-deny policy and examples",
+		Long: `Create the default-deny policy:
 
-			if !force {
-				if _, err := os.Stat(policyPath); err == nil {
-					return fmt.Errorf("policy file already exists at %q; use --force to overwrite", policyPath)
+  policy.json                 no rules; whatever no rule allows is denied
+  policy.d/_default.json      fallback: a human at a terminal may use any
+                              connection, every other caller kind is denied
+  policy.examples/*.json      examples to edit and import with
+                              keylatch policy import <dir>
+
+Replacing an existing policy with --force needs a human at a terminal.`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			env := llmcontext.DefaultLookup
+			policyPath := paths.Policy(env)
+			policyDir := paths.PolicyDir(env)
+
+			_, rulesErr := os.Stat(policyPath)
+			_, docsErr := os.Stat(policyDir)
+			exists := rulesErr == nil || docsErr == nil
+			if exists && !force {
+				return fmt.Errorf("a policy already exists at %q; use --force to replace it", policyPath)
+			}
+			if exists {
+				if _, err := requirePresence(c.Context(), presence.ActionPolicyChange, "Replace the existing policy with the default-deny policy"); err != nil {
+					return err
 				}
 			}
 
 			if err := os.MkdirAll(pathDir(policyPath), 0o700); err != nil {
 				return fmt.Errorf("mkdir: %w", err)
 			}
-
 			now := time.Now().UTC()
 			p := policy.Policy{
 				SchemaVersion: 1,
@@ -62,15 +87,27 @@ func newPolicyInitCmd() *cobra.Command {
 				CreatedAt:     now,
 				UpdatedAt:     now,
 			}
-
 			if err := policy.Save(policyPath, p); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "policy initialized at %s\n", policyPath)
+
+			fallback, err := exampleDocuments("default.json")
+			if err != nil {
+				return err
+			}
+			if err := (connpolicy.Store{Dir: policyDir}).Replace(fallback); err != nil {
+				return err
+			}
+			examplesDir := filepath.Join(filepath.Dir(policyPath), "policy.examples")
+			if err := writeExamples(examplesDir); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(c.OutOrStdout(), "policy initialized at %s\nexamples written to %s\n", policyPath, examplesDir)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing policy file")
+	cmd.Flags().BoolVar(&force, "force", false, "replace an existing policy (needs a human at a terminal)")
 	return cmd
 }
 
@@ -93,11 +130,10 @@ func newPolicyAllowCmd() *cobra.Command {
 			actor := args[0]
 			connection := args[1]
 
-			// Refuse --runtime direct_classic_sandboxed inside LLM session.
-			if runtime == "direct_classic_sandboxed" && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "error: --runtime direct_classic_sandboxed is not permitted inside an LLM session")
-				os.Exit(exitcode.SecurityBlock)
-				return nil
+			if _, err := requirePresence(c.Context(), presence.ActionPolicyChange,
+				"Allow rule: actor %q may use %q (capability %s, runtime %q, command %q, cwd %q, approval %v)",
+				actor, connection, capability, runtime, command, cwd, approval); err != nil {
+				return err
 			}
 
 			policyPath := paths.Policy(llmcontext.DefaultLookup)
@@ -228,12 +264,32 @@ func newPolicyCheckCmd() *cobra.Command {
 	var (
 		capability string
 		jsonOut    bool
+		as         string
+		rtFlag     string
+		action     string
+		checkActor string
 	)
 	cmd := &cobra.Command{
-		Use:   "check <actor> <connection> [-- <cmd...>]",
-		Short: "Dry-run a policy decision (safe in LLM sessions)",
-		Args:  cobra.MinimumNArgs(2),
+		Use:   "check <connection> --as agent|host|service|human [--runtime <r>] [--action <a>] [-- <cmd...>]\n  check <actor> <connection> [-- <cmd...>]",
+		Short: "Dry-run a policy decision (read-only; safe in LLM sessions)",
+		Long: `Dry-run the decision keylatch would make, with the same code run, call and the
+gateway use. Nothing is changed and no presence is needed.
+
+With --as, the first form asks what a caller of that kind may do with the
+connection. The second form evaluates the rules file for an actor.`,
+		Args: func(c *cobra.Command, args []string) error {
+			if c.Flags().Changed("as") {
+				if len(args) < 1 || (c.ArgsLenAtDash() >= 0 && c.ArgsLenAtDash() != 1) || (c.ArgsLenAtDash() < 0 && len(args) != 1) {
+					return fmt.Errorf("check --as takes one connection, optionally followed by -- <cmd...>")
+				}
+				return nil
+			}
+			return cobra.MinimumNArgs(2)(c, args)
+		},
 		RunE: func(c *cobra.Command, args []string) error {
+			if c.Flags().Changed("as") {
+				return runPolicyCheckAs(c, args, policyCheckOptions{as: as, runtime: rtFlag, action: action, actor: checkActor, json: jsonOut})
+			}
 			actor := args[0]
 			connection := args[1]
 
@@ -316,8 +372,12 @@ func newPolicyCheckCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&capability, "capability", "inject", "capability to check")
+	cmd.Flags().StringVar(&capability, "capability", "inject", "capability to check (rules form)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
+	cmd.Flags().StringVar(&as, "as", "", "caller kind to check as: agent, host, service or human")
+	cmd.Flags().StringVar(&rtFlag, "runtime", "", "runtime mode of the request (with --as)")
+	cmd.Flags().StringVar(&action, "action", enforce.DefaultAction, "capability asked for (with --as)")
+	cmd.Flags().StringVar(&checkActor, "actor", "", "rules-file actor to check as (with --as; default inferred)")
 	return cmd
 }
 
@@ -330,6 +390,10 @@ func newPolicyRemoveCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			ruleID := args[0]
 			policyPath := paths.Policy(llmcontext.DefaultLookup)
+
+			if _, err := requirePresence(c.Context(), presence.ActionPolicyChange, "Remove policy rule %s", ruleID); err != nil {
+				return err
+			}
 
 			p, err := loadOrDefaultPolicy(policyPath)
 			if err != nil {
