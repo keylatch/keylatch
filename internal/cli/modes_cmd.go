@@ -3,13 +3,11 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	goos "runtime"
 	"text/tabwriter"
 
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
-	"github.com/keylatch/keylatch/internal/sandbox"
 	"github.com/spf13/cobra"
 )
 
@@ -52,9 +50,6 @@ Exits non-zero if any preferred mode is unavailable.`,
 
 			// Determine if the proxy is running.
 			proxyRunning, _, _ := proxyLiveness(env)
-
-			// Determine direct_classic_sandboxed availability.
-			sandboxAvailable, sandboxReason, sandboxFix := sandboxModeAvailability()
 
 			modes := []ModeEntry{
 				{
@@ -121,16 +116,6 @@ Exits non-zero if any preferred mode is unavailable.`,
 						return "keylatch proxy up"
 					}(),
 				},
-				{
-					// direct_classic_sandboxed reinstated.
-					Name:          "direct_classic_sandboxed",
-					UseWhen:       "Isolated subprocess execution via OS sandbox (bwrap/sandbox-exec). Credentials injected inside a filesystem-restricted container.",
-					SecurityLevel: "High — ~/.keylatch denied inside sandbox; executable hash verified",
-					Requires:      "bwrap (Linux) or sandbox-exec (macOS built-in)",
-					Available:     sandboxAvailable,
-					Reason:        sandboxReason,
-					Fix:           sandboxFix,
-				},
 			}
 
 			// Determine exit code: non-zero if any mode is unavailable.
@@ -176,8 +161,6 @@ Exits non-zero if any preferred mode is unavailable.`,
 			}
 			fmt.Fprintln(c.OutOrStdout())
 			fmt.Fprintln(c.OutOrStdout(), "For per-provider mode availability: keylatch runtime doctor <provider>")
-			fmt.Fprintln(c.OutOrStdout(), "Note: direct_classic was permanently removed in v1.0.0. Use: --runtime gateway_typed")
-			fmt.Fprintln(c.OutOrStdout(), "Sandbox: direct_classic_sandboxed requires 'keylatch sandbox doctor' preflight check.")
 
 			if anyUnavailable {
 				return fmt.Errorf("one or more runtime modes are unavailable")
@@ -193,29 +176,4 @@ Exits non-zero if any preferred mode is unavailable.`,
 // Wraps gateway.IsRunning for use in modes_cmd.
 func gatewayLiveness(pidPath string) (int, bool) {
 	return gateway.IsRunning(pidPath)
-}
-
-// sandboxModeAvailability returns (available, reason, fix) for
-// direct_classic_sandboxed on the current platform.
-func sandboxModeAvailability() (available bool, reason, fix string) {
-	switch goos.GOOS {
-	case "windows":
-		return false,
-			"not supported on Windows",
-			"Use --runtime gateway_typed on Windows"
-	case "linux":
-		if path, ok := sandbox.DetectBwrap(); ok {
-			return true,
-				fmt.Sprintf("bwrap found at %s", path),
-				""
-		}
-		return false,
-			"bwrap (bubblewrap) not found",
-			"apt-get install bubblewrap | dnf install bubblewrap | pacman -S bubblewrap"
-	default:
-		// macOS and other POSIX: sandbox-exec is built-in.
-		return true,
-			"sandbox-exec built-in (macOS)",
-			""
-	}
 }

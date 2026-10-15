@@ -21,11 +21,6 @@ const RUNTIME_OPTIONS: RuntimeOption[] = [
     description: 'Route credentials through the classic gateway.',
   },
   {
-    mode: 'direct_classic_sandboxed',
-    label: 'Direct (sandboxed)',
-    description: 'Direct injection with hardware approval required.',
-  },
-  {
     mode: 'absent',
     label: 'Absent',
     description: 'Credentials are not injected (read-only mode).',

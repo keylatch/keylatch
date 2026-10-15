@@ -173,7 +173,7 @@ func TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get(t *testing.T) {
 // (docker-server-security hardening, fix/daemonup-bypass).
 //
 // Raw-credential-exposure paths — non-masked `get`, and `run` in
-// direct_brokered / direct_classic_sandboxed runtime modes
+// direct_brokered runtime mode
 // (runtime.IsRawCredentialMode) — are now gated for EVERY session, including
 // SignalNone (no LLM signal detected at all, e.g. CREDENTIALS_LLM_SESSION=0
 // or no signals set). This closes the "unset every signal and sail through"
@@ -427,24 +427,34 @@ func TestE2E_GuardRuntime_DirectClassicRemoved(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Run_SandboxedBootstrapPrecedesSessionGate verifies that
-// direct_classic_sandboxed (a raw-credential mode) also surfaces the
-// BootstrapMissing error (exit 7) on a clean machine, ahead of the
-// raw-credential session gate — same onboarding-first ordering as
-// direct_brokered. The session gate's raw-credential fail-closed behavior
-// (which supersedes GuardRuntime's allowance of sandboxed in LLM sessions once
-// a machine is set up) is covered by the get-path e2e tests and the
-// session_enforce unit tests.
-func TestE2E_Run_SandboxedBootstrapPrecedesSessionGate(t *testing.T) {
+// TestE2E_Run_BrokeredBootstrapPrecedesSessionGate verifies that
+// direct_brokered (a raw-credential mode) surfaces the BootstrapMissing error
+// (exit 7) on a clean machine, ahead of the raw-credential session gate. The
+// session gate's raw-credential fail-closed behavior is covered by the
+// get-path e2e tests and the session_enforce unit tests.
+func TestE2E_Run_BrokeredBootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"run", "--runtime", "direct_classic_sandboxed",
+		"run", "--runtime", "direct_brokered",
 		"openrouter", "--", "node", "x.js")
 
 	assert.Equal(t, 7, code,
-		"raw sandboxed run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
+		"raw brokered run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
+}
+
+// TestE2E_Run_RemovedClassicSandboxedIsUnknown verifies the removed runtime is
+// rejected as an unknown runtime on any machine, before any other check.
+func TestE2E_Run_RemovedClassicSandboxedIsUnknown(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"run", "--runtime", "direct_classic_sandboxed",
+		"openrouter", "--", "node", "x.js")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, string(stderr), "unknown runtime")
 }
 
 // TestE2E_InjectBlockedInLLMSession verifies that keylatch inject returns a non-zero
@@ -615,7 +625,7 @@ func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
-		"run", "--runtime", "direct_classic_sandboxed", "openrouter", "--", "node", "x.js")
+		"run", "--runtime", "direct_brokered", "openrouter", "--", "node", "x.js")
 
 	assert.Equal(t, 7, code,
 		"raw run before bootstrap must exit 7 (BootstrapMissing) for a SignalNone session too, ahead of the session gate; stderr: %s", stderr)

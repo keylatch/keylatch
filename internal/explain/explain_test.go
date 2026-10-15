@@ -37,7 +37,6 @@ func (f fixture) manifest() manifest.Manifest {
 	}
 	m.Entries = append(m.Entries,
 		manifest.Entry{ID: "gateway_proxy", Category: manifest.CategoryRuntime, Status: manifest.Unavailable, Note: "excluded pending credential-boundary fixes"},
-		manifest.Entry{ID: "direct_classic_sandboxed", Category: manifest.CategoryRuntime, Status: manifest.Unavailable, Note: "excluded"},
 	)
 	return m
 }

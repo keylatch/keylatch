@@ -413,4 +413,3 @@ func newProxyStatusCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&useJSON, "json", false, "output as JSON")
 	return cmd
 }
-

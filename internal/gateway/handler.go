@@ -155,14 +155,13 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			outcome = audit.OutcomeDenied
 			return
 		}
-		// direct_classic_sandboxed in LLM sessions requires two-person approval.
-		// If the token was minted with ApprovalRootHMAC set (sandboxed approval path)
-		// but TwoPerson is false, block the request. token.Mint now rejects any
-		// hardware approval claim outright, so ApprovalRootHMAC is never
-		// set on a minted token; this check is retained as defense in depth.
+		// A token carrying an approval root in an LLM session requires
+		// two-person approval. token.Mint now rejects any hardware approval
+		// claim outright, so ApprovalRootHMAC is never set on a minted token;
+		// this check is retained as defense in depth.
 		if t.ApprovalRootHMAC != "" && !t.TwoPerson {
 			writeError(w, http.StatusForbidden, "llm_session_requires_two_person_approval",
-				"direct_classic_sandboxed in an LLM session requires two-person approval")
+				"an approval root in an LLM session requires two-person approval")
 			s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
 				"error": "llm_session_requires_two_person_approval",
 			})

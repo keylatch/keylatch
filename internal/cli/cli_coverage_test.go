@@ -367,11 +367,11 @@ func TestWriteGuardRuntimeError_DirectClassic(t *testing.T) {
 	assert.Contains(t, buf.String(), "direct_classic")
 }
 
-func TestWriteGuardRuntimeError_DirectClassicSandboxed(t *testing.T) {
+func TestWriteGuardRuntimeError_RemovedRuntimeIsUnsupported(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	cli.WriteGuardRuntimeError(&buf, "direct_classic_sandboxed")
-	assert.Contains(t, buf.String(), "direct_classic_sandboxed")
+	assert.Contains(t, buf.String(), "not a supported runtime mode")
 }
 
 func TestWriteGuardRuntimeError_Unrestricted(t *testing.T) {

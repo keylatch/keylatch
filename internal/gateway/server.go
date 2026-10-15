@@ -7,7 +7,7 @@
 //   - LLMSession derived from JWT claim, NEVER from gateway's os.Getenv.
 //   - child env contains ONLY KEYLATCH_SESSION_TOKEN + KEYLATCH_GATEWAY_URL.
 //   - substitution prevention enforced on every request.
-//   - ErrExchangeUnsupported → 503 with Remediation string; never fallback to direct_classic_sandboxed.
+//   - ErrExchangeUnsupported → 503 with Remediation string; never fall back to a direct mode.
 package gateway
 
 import (

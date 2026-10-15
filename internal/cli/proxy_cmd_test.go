@@ -226,28 +226,6 @@ func TestProxyDownCmd_NotRunning(t *testing.T) {
 	}
 }
 
-// TestBuildSandboxDoctorOutput_Windows verifies windows reports unavailable.
-func TestBuildSandboxDoctorOutput_Windows(t *testing.T) {
-	out := buildSandboxDoctorOutput("windows")
-	if out.Available {
-		t.Error("windows sandbox should be unavailable")
-	}
-	if out.Platform != "windows" {
-		t.Errorf("platform = %q, want windows", out.Platform)
-	}
-}
-
-// TestBuildSandboxDoctorOutput_Darwin verifies macOS reports available.
-func TestBuildSandboxDoctorOutput_Darwin(t *testing.T) {
-	out := buildSandboxDoctorOutput("darwin")
-	if !out.Available {
-		t.Error("darwin sandbox should be available")
-	}
-	if out.Tool != "sandbox-exec" {
-		t.Errorf("tool = %q, want sandbox-exec", out.Tool)
-	}
-}
-
 // --- proxy up tests ---
 
 // freePort returns a local port that is not currently in use.

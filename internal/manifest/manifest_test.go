@@ -72,17 +72,19 @@ func TestCurrent_OnlySupportedAndPreviewAreEnabled(t *testing.T) {
 	assert.Equal(t, manifest.Preview, m.Status("windows"))
 }
 
-// TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy,
-// direct_brokered and direct_classic_sandboxed stay unreachable, with no
-// fallback into a direct secret-injection mode.
+// TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy and
+// direct_brokered stay unreachable, with no fallback into a direct
+// secret-injection mode. The classic sandboxed runtime no longer exists.
 func TestCurrent_RuntimeCohort(t *testing.T) {
 	m := manifest.Current()
 	assert.True(t, m.Enabled("gateway_typed"))
 	assert.True(t, m.Enabled("gateway_sdk"))
 
-	for _, id := range []string{"gateway_proxy", "direct_brokered", "direct_classic_sandboxed"} {
+	for _, id := range []string{"gateway_proxy", "direct_brokered"} {
 		assert.False(t, m.Enabled(id), "runtime %q must not be enabled", id)
 	}
+	_, tracked := m.Lookup("direct_classic_sandboxed")
+	assert.False(t, tracked, "direct_classic_sandboxed was removed")
 }
 
 // TestCurrent_ExcludedFeatures locks in every explicitly excluded feature.

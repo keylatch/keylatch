@@ -385,11 +385,6 @@ func anyMatch(patterns []string, value string, fn func(string, string) bool) boo
 // (zero, false) to continue.
 func checkLLMSessionRuntime(rule Rule, req Request) (Decision, bool) {
 	if rule.LLMSessions == nil {
-		// No LLM session overrides configured.
-		// direct_classic_sandboxed without explicit key → approval_required.
-		if req.Runtime == "direct_classic_sandboxed" {
-			return Decision{Allow: true, ApprovalRequired: true}, true
-		}
 		return Decision{}, false
 	}
 	switch rule.LLMSessions[req.Runtime] {
@@ -405,9 +400,6 @@ func checkLLMSessionRuntime(rule Rule, req Request) (Decision, bool) {
 		return Decision{}, false
 	default:
 		// Key absent.
-		if req.Runtime == "direct_classic_sandboxed" {
-			return Decision{Allow: true, ApprovalRequired: true}, true
-		}
 		return Decision{}, false
 	}
 }

@@ -93,13 +93,6 @@ func newPolicyAllowCmd() *cobra.Command {
 			actor := args[0]
 			connection := args[1]
 
-			// Refuse --runtime direct_classic_sandboxed inside LLM session.
-			if runtime == "direct_classic_sandboxed" && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
-				fmt.Fprintln(c.ErrOrStderr(), "error: --runtime direct_classic_sandboxed is not permitted inside an LLM session")
-				os.Exit(exitcode.SecurityBlock)
-				return nil
-			}
-
 			policyPath := paths.Policy(llmcontext.DefaultLookup)
 
 			// Ensure policy file exists.

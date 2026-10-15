@@ -35,7 +35,7 @@ var (
 	ErrTokenExhausted     = errors.New("token: max uses reached")
 	ErrFDNonceMismatch    = errors.New("token: fd nonce mismatch")
 	ErrTokenNotFound      = errors.New("token: not found")
-	ErrInvalidRuntime     = errors.New("token: direct_classic_sandboxed is not a gateway runtime")
+	ErrInvalidRuntime     = errors.New("token: runtime is not a gateway runtime")
 	ErrTokenPersistFailed = errors.New("token: persist failed")
 	ErrMaxUsesRequired    = errors.New("token: MaxUses required for runner-minted tokens")
 	// ErrHardwareApprovalUnsupported is returned when a TokenSpec carries

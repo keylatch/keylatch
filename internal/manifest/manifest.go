@@ -83,7 +83,6 @@ func Current() Manifest {
 			{ID: "placeholder", Category: CategoryRuntime, Status: Supported, Note: "tier D3 placeholder substitution; Linux only, proven by the containment tests"},
 			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect, authority and credential-boundary fixes"},
 			{ID: "direct_brokered", Category: CategoryRuntime, Status: Unavailable, Note: "excluded: no exchange strategies are wired"},
-			{ID: "direct_classic_sandboxed", Category: CategoryRuntime, Status: Unavailable, Note: "not equivalent to the isolated agent boundary; excluded"},
 
 			// Platforms.
 			{ID: "linux", Category: CategoryPlatform, Status: Supported, Note: "Linux broker plus isolated agent environment"},
