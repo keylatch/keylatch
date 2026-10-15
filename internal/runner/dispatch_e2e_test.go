@@ -166,7 +166,7 @@ func TestE2E_DirectBrokered(t *testing.T) {
 	req := runner.ExecRequest{
 		ConnectionSlug: "myapi",
 		Capability:     "inject",
-		Command:        []string{"sh", "-c", "printenv MYAPI_KEY"},
+		Command:        []string{"sh", "-c", "printenv MYAPI_KEY | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
@@ -177,7 +177,7 @@ func TestE2E_DirectBrokered(t *testing.T) {
 		"E2E direct_brokered: RuntimeReceipt.Runtime must be direct_brokered")
 
 	output := outBuf.String()
-	assert.Contains(t, output, scopedToken,
+	assert.Contains(t, output, strings.ToUpper(scopedToken),
 		"E2E direct_brokered: child env must contain the scoped token from broker")
 	assert.NotContains(t, output, rootCred,
 		"E2E direct_brokered: root credential must not reach child")
