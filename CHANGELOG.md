@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `keylatch launch [--harness <name>] -- <command>` starts an agent harness with a signed session ticket bound to the launcher process; every process below it is treated as an agent session.
+- Connection fields can be marked local-only (`keylatch connect --class dev --local-only FIELD=ephemeral`, `keylatch local-only set`). An `ephemeral` field gets a random value per `keylatch run` session and its stored secret is never read; `operation` and `contained` are accepted but refused at run time until they ship.
 - `keylatch doctor --json` reports `agent_session.detected`, `agent_session.signals` and `agent_session.harness`.
 - `keylatch explain [--json] run <connection> -- <command>` and `keylatch explain policy` report the delivery tier, approval need, hosts, scope, containment and residual risk for a run without executing it. The JSON output is versioned (`schema_version`), ships with a JSON Schema (`keylatch explain schema`) and is documented for host guards in `docs/integration/host-guards.md`.
 - Output of every child process Keylatch launches is streamed through an exact-value redactor: injected tokens are replaced with `[REDACTED]` in raw, base64 (standard and URL alphabets, padded or not, at any alignment), hex, percent-encoded and JSON-escaped form, including when split across writes. Files the child wrote in its working directory are scanned afterwards and reported; the receipt carries `leaked_files`.

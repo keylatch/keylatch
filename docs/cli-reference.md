@@ -274,6 +274,28 @@ automatically picked up on next use.
 
 See [External Store References](./backends/external-references.md) for full documentation.
 
+**Local-only fields**
+
+A field the process only uses itself (a JWT, session or encryption secret) has no host to send it to. Mark it with `--local-only` and Keylatch stops storing a value for it.
+
+```
+keylatch connect <provider> --class dev --local-only JWT_SECRET=ephemeral
+keylatch local-only set <provider> <field> <ephemeral|operation|contained|none>
+```
+
+| Mode | Behaviour |
+|------|-----------|
+| `ephemeral` | `keylatch run` generates a random value (48 random bytes, base64url) once per run and gives every child the same one. It is never stored, and the stored secret is never read for that field. |
+| `operation` | Accepted and recorded; `keylatch run` refuses it with a "not available yet" error. |
+| `contained` | Accepted and recorded; `keylatch run` refuses it with a "not available yet" error. |
+
+| Flag | Description |
+|------|-------------|
+| `--class dev\|test\|prod` | Connection class. `ephemeral` needs `dev` or `test`; a `prod` or unclassified connection rejects it. |
+| `--local-only <field>=<mode>` | Set a field's mode (repeatable). |
+
+On a `dev` or `test` connection, fields named `*_SECRET`, `*_SIGNING_KEY`, `*_ENCRYPTION_KEY` or `SECRET_KEY_BASE` are suggested for `ephemeral`. The suggestion is applied only when a human confirms the prompt; agent callers and non-interactive runs get a hint. Changing a field toward weaker delivery (for example `ephemeral` to `contained`, or `none`) is human-only. `status` and `describe` show each field's mode.
+
 ---
 
 ### `keylatch backup`

@@ -134,6 +134,7 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	gatewayURL := "http://" + addr
 
 	childEnv := gatewayTypedChildEnv(tmpl, gatewayURL, jwtStr, req.CleanEnv, req.ExtraEnvVars)
+	childEnv = mergeEnvPairs(childEnv, req.LocalEnv)
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.

@@ -161,7 +161,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 		addr = "127.0.0.1:7879"
 	}
 
-	childEnv := proxy.EnvInject(baseEnv, addr, authToken, d.caPath)
+	childEnv := mergeEnvPairs(proxy.EnvInject(baseEnv, addr, authToken, d.caPath), req.LocalEnv)
 
 	// Step 4: launch subprocess. stderr was already resolved above (needed
 	// for the --extra denylist warning before this point).

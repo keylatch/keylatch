@@ -123,6 +123,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	// Step 2: Build child env: base URL + session token. No provider key.
 	childEnv := GatewaySessionEnv(runtime.RuntimeGatewaySDK, tmpl, "http://"+d.server.Addr(), jwtStr).
 		Apply(os.Environ(), req.CleanEnv, req.ExtraEnvVars)
+	childEnv = mergeEnvPairs(childEnv, req.LocalEnv)
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.

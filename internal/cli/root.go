@@ -24,10 +24,12 @@ import (
 	cmdtrust "github.com/keylatch/keylatch/internal/cmd/trust"
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/daemon"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/proxy"
@@ -203,6 +205,7 @@ func Register(root *cobra.Command) {
 	// keylatch inject was removed in v1.0.0. Running it returns cobra's "unknown command" error.
 	addCmd(root, newTestCmd(), "daily")
 	addCmd(root, newDescribeCmd(), "daily")
+	addCmd(root, newLocalOnlyCmd(), "daily")
 	addCmd(root, newModesCmd(), "daily")
 
 	// --- Gateway ---
@@ -725,6 +728,11 @@ func newRunCmd() *cobra.Command {
 				os.Exit(exitcode.UserError)
 			}
 
+			var localCfg runner.LocalOnly
+			if lc, lcErr := connections.Load(ctx, "default", connectionName, b); lcErr == nil {
+				localCfg = runner.LocalOnly{Class: lc.Class, Fields: lc.LocalOnly}
+			}
+
 			// Track start time for summary.
 			start := time.Now()
 
@@ -853,6 +861,8 @@ func newRunCmd() *cobra.Command {
 				ExtraAllowedPrefixes: extraAllowed,
 				CleanEnv:             cleanEnv,
 				ExtraEnvVars:         extraEnvVars,
+				LocalOnly:            localCfg,
+				LocalSession:         localonly.NewSession(),
 			}
 			receipt, runErr := dr.Run(ctx, req)
 			elapsed := time.Since(start)
@@ -875,6 +885,16 @@ func newRunCmd() *cobra.Command {
 						exitCode = exitcode.OperationFailed
 					}
 					os.Exit(exitCode)
+				}
+				if errors.Is(runErr, localonly.ErrNotAvailable) {
+					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
+					_ = closeAndZeroBackend(b)
+					os.Exit(exitcode.RuntimeNotAvailable)
+				}
+				if errors.Is(runErr, localonly.ErrEphemeralClass) {
+					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
+					_ = closeAndZeroBackend(b)
+					os.Exit(exitcode.PolicyDeny)
 				}
 				if errors.Is(runErr, runner.ErrCommandNotAllowed) {
 					// Actionable allowlist error.

@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/redactor"
 )
 
@@ -34,6 +35,7 @@ var ErrModeNotAvailable = errors.New("runner: runtime mode not available in this
 type Connection struct {
 	Name                   string
 	AllowedCommandPrefixes []string // Per-template allowlist; empty = run REJECTED
+	LocalOnly              LocalOnly
 }
 
 // RunOptions carries per-invocation options.
@@ -83,6 +85,13 @@ type ExecRequest struct {
 	// FileScan selects what happens to files the child wrote that contain a
 	// secret value or encoding. The zero value reports them.
 	FileScan redactor.ScanPolicy
+	// LocalOnly holds the connection's class and local-only field modes.
+	LocalOnly LocalOnly
+	// LocalSession supplies ephemeral values; nil gives each Run its own.
+	LocalSession *localonly.Session
+	// LocalEnv is filled by DispatchRunner with the KEY=VALUE pairs generated
+	// for ephemeral fields. Drivers add them to the child environment.
+	LocalEnv []string
 }
 
 // RuntimeReceipt is the value-free record emitted for every execution path
