@@ -14,6 +14,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/presence"
 )
 
 // newBackendLoginCmd returns `keylatch backend login <id>`.
@@ -48,6 +49,11 @@ them, and any allow_env_credentials setting.`,
 			}
 			if !config.ValidCredentialRef(ref) {
 				return withExitCode(exitcode.UserError, fmt.Errorf("backend login: --ref %q must be 1-64 letters, digits, '.', '_' or '-'", ref))
+			}
+
+			if _, err := requirePresence(c.Context(), presence.ActionBackendLogin,
+				"Store the %s backend credential under the KEK as %q", id, ref); err != nil {
+				return err
 			}
 
 			fields := map[string]string{}

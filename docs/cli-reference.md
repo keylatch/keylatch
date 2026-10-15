@@ -884,6 +884,9 @@ is loaded once at startup; editing the file requires a `gateway down` /
 | `--port` | `7878` | Port to listen on |
 | `--detach` | | Background mode (stub in current release) |
 | `--unsafe-bind-all` | | Bind to `0.0.0.0` (non-LLM sessions only) |
+| `--no-audit` | | Start without an audit log. A human approves it at a terminal, it runs in the foreground only (not with `--detach`), and credential reads are not recorded |
+
+The gateway refuses to start without a writable audit log unless `--no-audit` is given.
 
 #### `gateway down`
 

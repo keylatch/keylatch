@@ -334,8 +334,11 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// restrictions. No additional guard is required here.
 	//
 	// Inject audit emitter so vault.Get can emit ActionRead events.
-	if s.opts.AuditLogger != nil {
+	switch {
+	case s.opts.AuditLogger != nil:
 		ctx = audit.WithEmitter(ctx, audit.AsEmitter(s.opts.AuditLogger))
+	case s.opts.NoAudit:
+		ctx = audit.WithEmitter(ctx, audit.Discard{})
 	}
 	var rootCredential []byte
 	if rt.SecretRef != "" && s.vault == nil {

@@ -198,7 +198,7 @@ Remote backends (`op`, `opconnect`, `vault`, `awssm`, `gcpsm`, `azurekv`, `doppl
 keylatch backend login vault     # prompts on the terminal, stores it wrapped by the KEK
 ```
 
-`backend login` is human-only: it needs an interactive terminal, refuses agent sessions, and takes the value from the prompt, never from a flag or a pipe. It sets `backends.<id>.credential_ref` in the config. The backend reads the stored credential first; a stale variable in the environment does not override it.
+`backend login` is human-only: it needs an interactive terminal, refuses agent sessions, asks a human to approve the change before it prompts, and takes the value from the prompt, never from a flag or a pipe. It sets `backends.<id>.credential_ref` in the config. The backend reads the stored credential first; a stale variable in the environment does not override it.
 
 Credentials exported in the environment (`VAULT_TOKEN`, `AWS_ACCESS_KEY_ID`, `DOPPLER_TOKEN`, ...) are refused with an explanation unless the config sets `backends.<id>.allow_env_credentials` to `true`; `keylatch doctor` warns while it is on. Every command Keylatch runs for you (`keylatch run`, the gateway runtimes, the MCP `keylatch_run` tool) starts with these variables and all `KEYLATCH_*` variables removed from its environment, whatever the parent exported.
 

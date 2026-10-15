@@ -182,8 +182,10 @@ func SetDefault(r *Requirer) (restore func()) {
 
 // Actions the CLI gates.
 const (
+	ActionBackendLogin   Action = "backend.login"
 	ActionBackupExport   Action = "backup.export"
 	ActionConfigSet      Action = "config.set"
+	ActionGatewayNoAudit Action = "gateway.no-audit"
 	ActionGatewayToken   Action = "gateway.token.create"
 	ActionGrantCreate    Action = "grant.create"
 	ActionGrantRevoke    Action = "grant.revoke"

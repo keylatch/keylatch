@@ -19,6 +19,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	kexec "github.com/keylatch/keylatch/internal/exec"
@@ -231,6 +232,7 @@ func newGatewayUpCmd() *cobra.Command {
 		budgetPerHour float64
 		budgetPerDay  float64
 		force         bool
+		noAudit       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -256,6 +258,16 @@ func newGatewayUpCmd() *cobra.Command {
 			case gatewayUpProceed:
 				if note != "" {
 					fmt.Fprintf(c.OutOrStdout(), "gateway: %s\n", note)
+				}
+			}
+
+			if noAudit {
+				if detach {
+					return withExitCode(exitcode.UserError, fmt.Errorf("gateway up: --no-audit needs a human at the terminal and cannot be combined with --detach"))
+				}
+				if _, err := requirePresence(c.Context(), presence.ActionGatewayNoAudit,
+					"Start the gateway without an audit log: credential reads will not be recorded"); err != nil {
+					return err
 				}
 			}
 
@@ -375,15 +387,21 @@ func newGatewayUpCmd() *cobra.Command {
 
 			// Every credential read is audited; without a log the gateway
 			// would hand credentials upstream with no trail.
-			auditLogger, auditCleanup, err := requireAuditLogger("gateway up")
-			if err != nil {
-				return err
-			}
-			defer auditCleanup()
-			// The head hash goes to the OS log at start so a log truncated
-			// while the gateway was down can be caught later.
-			if err := auditLogger.Anchor(); err != nil {
-				fmt.Fprintf(c.ErrOrStderr(), "gateway: audit anchor not written to the OS log: %v\n", err)
+			var auditLogger *audit.Logger
+			if noAudit {
+				fmt.Fprintln(c.ErrOrStderr(), "gateway: audit log disabled for this run; credential reads are not recorded")
+			} else {
+				l, auditCleanup, err := requireAuditLogger("gateway up")
+				if err != nil {
+					return err
+				}
+				defer auditCleanup()
+				auditLogger = l
+				// The head hash goes to the OS log at start so a log truncated
+				// while the gateway was down can be caught later.
+				if err := auditLogger.Anchor(); err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: audit anchor not written to the OS log: %v\n", err)
+				}
 			}
 
 			opts := gateway.ServerOptions{
@@ -395,6 +413,7 @@ func newGatewayUpCmd() *cobra.Command {
 				TokenStorePath:    paths.GatewayTokens(env),
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
+				NoAudit:           noAudit,
 				Budget:            budgetCounter,
 				Vault:             vaultReader,
 				MaxBody:           maxBody,
@@ -457,6 +476,7 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
+	cmd.Flags().BoolVar(&noAudit, "no-audit", false, "start without an audit log (needs a human at the terminal; foreground only)")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }

@@ -86,6 +86,7 @@ type ServerOptions struct {
 	MaxBody           int64
 	SigningKey        []byte // 32-byte; unwrapped from the KEK-wrapped gateway signing key
 	AuditLogger       *audit.Logger
+	NoAudit           bool // credential reads proceed with AuditLogger nil; set only for a gateway a human started
 	Mode              Mode
 	Env               llmcontext.Lookup
 	ApprovalsDir      string
