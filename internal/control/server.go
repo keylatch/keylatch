@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -225,7 +226,9 @@ func (s *Server) validTicket(raw string) bool {
 	return err == nil
 }
 
-func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Response {
+// runSession answers a session request. When it issues a gateway token it
+// sets *revoke to the function that revokes it.
+func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest, revoke *func()) Response {
 	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
 	if rr == nil || rr.Connection == "" || len(rr.Command) == 0 {
 		resp.Error = "a connection and a command are required"
@@ -288,7 +291,8 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Resp
 		return resp
 	}
 	defer clear(key)
-	jwtStr, _, err := token.Mint(token.TokenSpec{
+	storePath := paths.GatewayTokens(s.cfg.Env)
+	jwtStr, tok, err := token.Mint(token.TokenSpec{
 		Actor:        "thin_client:" + string(kind),
 		Capabilities: tmpl.GatewayCapabilities(),
 		TTL:          sessionTTL,
@@ -296,13 +300,14 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Resp
 		Caller:       kind,
 		LLMSession:   kind.Constrained(),
 		SigningKey:   key,
-		StorePath:    paths.GatewayTokens(s.cfg.Env),
+		StorePath:    storePath,
 	})
 	if err != nil {
 		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.OperationFailed
 		resp.Error = "could not issue a session token"
 		return resp
 	}
+	*revoke = func() { s.revokeToken(tok.ID, storePath) }
 
 	return Response{OK: true, Kind: kind, Session: &Session{
 		Tier:       tier,
@@ -310,6 +315,23 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Resp
 		Env:        runner.GatewaySessionEnv(mode, tmpl, "http://"+runner.GatewayAddrPlaceholder, jwtStr),
 		TTLSeconds: int(sessionTTL.Seconds()),
 	}}
+}
+
+// revokeToken revokes an issued session token. The signing key is read again
+// because the daemon does not keep it in memory between requests.
+func (s *Server) revokeToken(id, storePath string) {
+	if s.cfg.SigningKey == nil {
+		return
+	}
+	key, err := s.cfg.SigningKey()
+	if err != nil {
+		slog.Warn("session token not revoked: signing key unavailable", "error", err)
+		return
+	}
+	defer clear(key)
+	if err := token.Revoke(id, storePath, key); err != nil {
+		slog.Warn("session token not revoked", "error", err)
+	}
 }
 
 // preferredTier is the strongest tier the daemon can serve for the request:

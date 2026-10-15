@@ -123,6 +123,14 @@ type runState struct {
 	id      string
 	started time.Time
 	bytes   atomic.Int64
+	// revoke ends the gateway token issued for the run; nil when none was.
+	revoke func()
+}
+
+func (r *runState) end() {
+	if r.revoke != nil {
+		r.revoke()
+	}
 }
 
 // relayed counts bytes moved for the run; a nil run counts nothing.
@@ -172,7 +180,8 @@ func (t *runTable) add(r *runState) (expired []*runState) {
 // decideRun answers a session request and records the decision. A decision
 // that cannot be recorded is refused.
 func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRequest) Response {
-	resp := s.runSession(ctx, res.Kind, rr)
+	var revoke func()
+	resp := s.runSession(ctx, res.Kind, rr, &revoke)
 	d := decision{op: string(OpRunSession), res: res, child: childInCaller}
 	if rr != nil {
 		d.connection, d.argv, d.cwd, d.tier = rr.Connection, rr.Command, rr.CWD, rr.Tier
@@ -195,12 +204,16 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 	}
 	if err := s.record(ctx, d, outcome); err != nil {
 		s.abandon(resp)
+		(&runState{revoke: revoke}).end()
 		return auditRefusal(Response{Kind: res.Kind}, err)
 	}
 	if d.runID != "" {
-		for _, old := range s.runs.add(&runState{id: d.runID, started: time.Now()}) {
+		for _, old := range s.runs.add(&runState{id: d.runID, started: time.Now(), revoke: revoke}) {
+			old.end()
 			s.recordExit(ctx, d.op, "", old.id, -1, old.started, old.bytes.Load(), "expired")
 		}
+	} else {
+		(&runState{revoke: revoke}).end()
 	}
 	return resp
 }
@@ -220,6 +233,7 @@ func (s *Server) runExited(ctx context.Context, req Request) Response {
 	if r == nil {
 		return Response{Code: CodeNotFound, ExitCode: exitcode.Missing, Error: "no such run"}
 	}
+	r.end()
 	s.recordExit(ctx, string(OpRunSession), "", r.id, req.Exit, r.started, r.bytes.Load(), "")
 	return Response{OK: true}
 }
