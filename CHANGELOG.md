@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Gateway tokens take capabilities, caller kind, maximum uses and expiry from their signed claims; the token store can only narrow them (revoked) and every record carries a MAC, so editing the store can no longer widen a token. Revoking a token revokes all of its descendants.
+- The gateway signing key is stored wrapped by the KEK (`gateway/signing.key.enc`) instead of a raw `signing.key` file; the raw file is migrated and deleted the first time the gateway starts.
+- Session tokens from `keylatch run` live 10 minutes by default (1 hour at most), carry the caller's LLM classification, are limited to the actions the template declares, allow at most 1000 requests, and are revoked when the child exits.
 - The Claude Code exfiltration guard allows `env` when it runs a command (`env -C /abs/dir cmd`, `env NAME=value cmd`, `env -i`, `env -u NAME`). Bare `env`, `env` with no command, other `env` options (`-0`, `-S`, …), a relative `-C` directory and `printenv` stay blocked, and the command after `env` is checked like any other.
 
 ## [0.9.9] - 2026-10-05

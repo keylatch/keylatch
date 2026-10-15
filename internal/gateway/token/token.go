@@ -37,11 +37,21 @@ var (
 	ErrTokenNotFound      = errors.New("token: not found")
 	ErrInvalidRuntime     = errors.New("token: direct_classic_sandboxed is not a gateway runtime")
 	ErrTokenPersistFailed = errors.New("token: persist failed")
+	// ErrStoreTampered means the token record does not match its MAC: the store
+	// was edited, or written without the signing key.
+	ErrStoreTampered = errors.New("token: store record failed its integrity check")
 	ErrMaxUsesRequired    = errors.New("token: MaxUses required for runner-minted tokens")
 	// ErrHardwareApprovalUnsupported is returned when a TokenSpec carries
 	// hardware approval claim fields: this build has no hardware attestation
 	// or approval workflow, so no gateway token may be minted from one.
 	ErrHardwareApprovalUnsupported = errors.New("token: hardware approval claims are not supported")
+)
+
+const (
+	// DefaultTTL is how long a token lives when the caller names no lifetime.
+	DefaultTTL = 10 * time.Minute
+	// MaxTTL bounds every token's lifetime.
+	MaxTTL = time.Hour
 )
 
 var (
@@ -82,6 +92,11 @@ type Token struct {
 	Parent             string     `json:"parent,omitempty"`
 	LLMSession         bool       `json:"llm_session"`
 	FDNonceHash        string     `json:"fd_nonce_hash,omitempty"` // ephemeral nonce hash
+	// Kind is the caller kind the token was issued to ("human", "agent", ...).
+	Kind string `json:"kind,omitempty"`
+	// MAC authenticates the record under a key derived from the signing key.
+	// A record whose MAC does not verify is never used.
+	MAC string `json:"mac,omitempty"`
 
 	// Approval root claims.
 	// All root IDs are HMAC'd; never raw.
@@ -111,9 +126,10 @@ type TokenSpec struct {
 	MaxUses      int // 0 = unlimited (explicit); default for runner-minted = 1
 	Parent       string
 	LLMSession   bool
+	Kind         string // caller kind the token is issued to
 	FDNonce      []byte // 32-byte ephemeral nonce from pipe
 	StorePath    string // defaults to paths.GatewayTokens(env)
-	SigningKey   []byte // 32-byte; loaded from ~/.keylatch/gateway/signing.key
+	SigningKey   []byte // 32-byte; unwrapped from the KEK-wrapped gateway signing key
 
 	// Approval root parameters.
 	// ApprovalRootID is the raw root spec ID; it will be HMAC'd before embedding in JWT/Token.
@@ -146,6 +162,9 @@ type gatewayClaims struct {
 	CommandHash string   `json:"cmd_hash,omitempty"`
 	CWDHash     string   `json:"cwd_hash,omitempty"`
 	LLMSession  bool     `json:"llm_session"`
+	MaxUses     int      `json:"max_uses,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Parent      string   `json:"parent,omitempty"`
 
 	// Approval root claims (root IDs are HMAC'd, never raw).
 	ApprovalRootHMAC  string   `json:"apv_root_hmac,omitempty"`
@@ -189,8 +208,9 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 	now := time.Now().UTC()
 	ttl := spec.TTL
 	if ttl <= 0 {
-		ttl = 1 * time.Hour
+		ttl = DefaultTTL
 	}
+	ttl = min(ttl, MaxTTL)
 	expiresAt := now.Add(ttl)
 
 	// Compute command and CWD hashes.
@@ -228,6 +248,9 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		CommandHash:       cmdHash,
 		CWDHash:           cwdHash,
 		LLMSession:        spec.LLMSession,
+		MaxUses:           spec.MaxUses,
+		Kind:              spec.Kind,
+		Parent:            spec.Parent,
 		ApprovalRootHMAC:  approvalRootHMAC,
 		ApprovalCap:       spec.ApprovalCapability,
 		ApprovalMaxAgeSec: spec.ApprovalMaxAgeSec,
@@ -256,6 +279,7 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 		UsesRemaining: spec.MaxUses,
 		Parent:        spec.Parent,
 		LLMSession:    spec.LLMSession,
+		Kind:          spec.Kind,
 
 		// Approval root fields (HMAC'd).
 		ApprovalRootHMAC:   approvalRootHMAC,
@@ -274,13 +298,12 @@ func Mint(spec TokenSpec) (string, *Token, error) {
 
 	// Consumption log path for MaxUses tokens.
 	if spec.MaxUses > 0 && spec.StorePath != "" {
-		dir := filepath.Join(filepath.Dir(spec.StorePath), "gateway-consumption")
-		t.ConsumptionLogPath = filepath.Join(dir, id+".consumption.log")
+		t.ConsumptionLogPath = consumptionLogPath(spec.StorePath, id)
 	}
 
 	// Persist token record.
 	if spec.StorePath != "" {
-		if err := persistToken(spec.StorePath, *t); err != nil {
+		if err := persistToken(spec.StorePath, *t, spec.SigningKey); err != nil {
 			return "", nil, ErrTokenPersistFailed
 		}
 	}
@@ -321,20 +344,21 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 		return nil, fmt.Errorf("token: not valid")
 	}
 
-	tokenID := claims.ID
-
-	// Load persisted token record.
-	t, err := loadToken(storePath, tokenID)
+	// The signed claims are the authority. The store record can only narrow
+	// what they grant (revoked, uses consumed) and must carry a valid MAC, so
+	// editing the store can never widen a token.
+	rec, err := loadToken(storePath, claims.ID)
 	if err != nil {
 		return nil, ErrTokenNotFound
 	}
-
-	// Check revocation.
-	if t.Revoked {
+	if !recordMACValid(signingKey, rec) {
+		return nil, ErrStoreTampered
+	}
+	if rec.Revoked {
 		return nil, ErrTokenRevoked
 	}
 
-	// Check expiry (belt-and-suspenders beyond JWT exp).
+	t := tokenFromClaims(claims, rec, storePath)
 	if time.Now().UTC().After(t.ExpiresAt) {
 		return nil, ErrTokenExpired
 	}
@@ -365,8 +389,46 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 	return t, nil
 }
 
-// Revoke marks the token and its children as revoked.
-func Revoke(id string, storePath string) error {
+// tokenFromClaims builds the token a verified JWT grants. Everything that
+// decides what the holder may do comes from claims; rec contributes only the
+// nonce commitment and accessor.
+func tokenFromClaims(c *gatewayClaims, rec *Token, storePath string) *Token {
+	t := &Token{
+		ID:           c.ID,
+		Accessor:     rec.Accessor,
+		Actor:        c.Actor,
+		Capabilities: c.Caps,
+		CommandHash:  c.CommandHash,
+		CWDHash:      c.CWDHash,
+		MaxUses:      c.MaxUses,
+		Parent:       c.Parent,
+		LLMSession:   c.LLMSession,
+		Kind:         c.Kind,
+		FDNonceHash:  rec.FDNonceHash,
+	}
+	if c.IssuedAt != nil {
+		t.IssuedAt = c.IssuedAt.UTC()
+	}
+	if c.ExpiresAt != nil {
+		t.ExpiresAt = c.ExpiresAt.UTC()
+	}
+	t.UsesRemaining = t.MaxUses
+	if t.MaxUses > 0 {
+		t.ConsumptionLogPath = consumptionLogPath(storePath, t.ID)
+	}
+	return t
+}
+
+func consumptionLogPath(storePath, id string) string {
+	return filepath.Join(filepath.Dir(storePath), "gateway-consumption", id+".consumption.log")
+}
+
+// Revoke marks the token and every descendant as revoked. signingKey re-seals
+// the changed records.
+func Revoke(id string, storePath string, signingKey []byte) error {
+	if len(signingKey) != 32 {
+		return fmt.Errorf("token: signing key must be 32 bytes")
+	}
 	storeMu.Lock()
 	defer storeMu.Unlock()
 
@@ -376,22 +438,32 @@ func Revoke(id string, storePath string) error {
 			return err
 		}
 		now := time.Now().UTC()
+		revoked := map[string]bool{id: true}
 		found := false
 		for i := range tokens {
 			if tokens[i].ID == id {
-				tokens[i].Revoked = true
-				tokens[i].RevokedAt = &now
 				found = true
 			}
 		}
 		if !found {
 			return ErrTokenNotFound
 		}
-		// Cascade to children.
+		// A child may be listed before its parent, so repeat until no more
+		// descendants turn up.
+		for changed := true; changed; {
+			changed = false
+			for i := range tokens {
+				if !revoked[tokens[i].ID] && revoked[tokens[i].Parent] {
+					revoked[tokens[i].ID] = true
+					changed = true
+				}
+			}
+		}
 		for i := range tokens {
-			if tokens[i].Parent == id && !tokens[i].Revoked {
+			if revoked[tokens[i].ID] && !tokens[i].Revoked {
 				tokens[i].Revoked = true
 				tokens[i].RevokedAt = &now
+				sealRecord(signingKey, &tokens[i])
 			}
 		}
 		return writeTokens(storePath, tokens)
@@ -471,10 +543,11 @@ func writeTokens(storePath string, tokens []Token) error {
 // Thread-safe via storeMu (same-process goroutines) and withStoreLock (cross-process).
 var storeMu sync.Mutex
 
-func persistToken(storePath string, t Token) error {
+func persistToken(storePath string, t Token, signingKey []byte) error {
 	storeMu.Lock()
 	defer storeMu.Unlock()
 
+	sealRecord(signingKey, &t)
 	return withStoreLock(storePath, func() error {
 		tokens, err := readTokens(storePath)
 		if err != nil {
@@ -483,6 +556,26 @@ func persistToken(storePath string, t Token) error {
 		tokens = append(tokens, t)
 		return writeTokens(storePath, tokens)
 	})
+}
+
+// storeMACKey derives the record MAC key; the signing key itself is only
+// used for JWTs.
+func storeMACKey(signingKey []byte) []byte {
+	return []byte(hmacHex(signingKey, []byte("keylatch/gateway/token-store/v1")))
+}
+
+func recordMAC(signingKey []byte, t Token) string {
+	t.MAC = ""
+	body, _ := json.Marshal(t) //nolint:errchkjson // Token holds only marshalable fields
+	return hmacHex(storeMACKey(signingKey), body)
+}
+
+func sealRecord(signingKey []byte, t *Token) {
+	t.MAC = recordMAC(signingKey, *t)
+}
+
+func recordMACValid(signingKey []byte, t *Token) bool {
+	return t.MAC != "" && hmac.Equal([]byte(t.MAC), []byte(recordMAC(signingKey, *t)))
 }
 
 // loadToken finds a token by ID in the store.

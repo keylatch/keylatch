@@ -7,9 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
-	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/proxy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -79,11 +77,6 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	if actor == "" {
 		actor = "proxy_driver"
 	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = 1 * time.Hour
-	}
-
 	capability := req.Capability
 	if capability == "" {
 		capability = req.ConnectionSlug + ".inject"
@@ -94,16 +87,11 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	// proxy caller-auth check, below): the JWT records who/what was authorized to run this capability;
 	// the caller-auth token is what the child must present back to the proxy
 	// listener to prove it is the process we intended to authorize.
-	if _, _, err := token.Mint(token.TokenSpec{
-		Actor:        actor,
-		Capabilities: []string{capability},
-		TTL:          ttl,
-		LLMSession:   false, // proxy mode is always non-LLM (CLI-invoked)
-		SigningKey:   d.signingKey,
-		StorePath:    d.storePath,
-	}); err != nil {
+	_, revoke, err := sessionToken(d.signingKey, d.storePath, actor, []string{capability}, req.TTL)
+	if err != nil {
 		return receipt, fmt.Errorf("gateway_proxy: mint session token: %w", err)
 	}
+	defer revoke()
 
 	// The value injected into the child's KEYLATCH_SESSION_TOKEN env var
 	// is the proxy's own per-session caller-auth bearer token — this is what

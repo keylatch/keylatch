@@ -12,7 +12,6 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/canary"
-	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -96,29 +95,12 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	if actor == "" {
 		actor = "sdk_driver"
 	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = 1 * time.Hour
-	}
-
-	cap := tmpl.Provider + "." + req.Capability
-	if req.Capability == "" || req.Capability == "inject" {
-		// Default: grant all gateway actions for this provider.
-		cap = tmpl.Provider + ".*"
-	}
-
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        actor,
-		Capabilities: []string{cap},
-		TTL:          ttl,
-		LLMSession:   false,
-		SigningKey:   d.key,
-		StorePath:    d.store,
-	})
+	jwtStr, revoke, err := sessionToken(d.key, d.store, actor, sessionCapabilities(tmpl, req.Capability), req.TTL)
 	if err != nil {
 		receipt.PolicyDecision = "token_mint_failed"
 		return receipt, fmt.Errorf("gateway_sdk driver: mint token: %w", err)
 	}
+	defer revoke()
 
 	// Step 2: Build child env: base URL + session token. No provider key.
 	childEnv := GatewaySessionEnv(runtime.RuntimeGatewaySDK, tmpl, "http://"+d.server.Addr(), jwtStr).

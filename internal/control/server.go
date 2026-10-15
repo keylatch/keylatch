@@ -53,7 +53,8 @@ func IsServedVerb(verb string) bool {
 }
 
 const (
-	sessionTTL     = 15 * time.Minute
+	sessionTTL     = token.DefaultTTL
+	sessionMaxUses = 1000
 	requestTimeout = 30 * time.Second
 	execTimeout    = 5 * time.Minute
 )
@@ -80,6 +81,9 @@ type Config struct {
 	Audit audit.Emitter
 	// Callers classifies socket peers. Nil walks the real process tree.
 	Callers *callerkind.Classifier
+	// SigningKey returns the gateway signing key session tokens are minted
+	// with. Nil means the gateway cannot be served.
+	SigningKey func() ([]byte, error)
 }
 
 // Server answers control socket requests.
@@ -272,7 +276,12 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Resp
 		return resp
 	}
 
-	key, err := os.ReadFile(paths.GatewaySigningKey(s.cfg.Env))
+	var key []byte
+	if s.cfg.SigningKey != nil {
+		key, err = s.cfg.SigningKey()
+	} else {
+		err = errors.New("no signing key source")
+	}
 	if err != nil {
 		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.OperationFailed
 		resp.Error = "gateway signing key is not available to the daemon"
@@ -281,8 +290,10 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest) Resp
 	defer clear(key)
 	jwtStr, _, err := token.Mint(token.TokenSpec{
 		Actor:        "thin_client:" + string(kind),
-		Capabilities: []string{tmpl.Provider + ".*"},
+		Capabilities: tmpl.GatewayCapabilities(),
 		TTL:          sessionTTL,
+		MaxUses:      sessionMaxUses,
+		Kind:         string(kind),
 		LLMSession:   kind.Constrained(),
 		SigningKey:   key,
 		StorePath:    paths.GatewayTokens(s.cfg.Env),

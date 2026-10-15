@@ -7,14 +7,33 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGatewayInitWrapsSigningKeyUnderTheKEK(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	testutil.SetupTestKeyring(t)
+
+	root := NewRootCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"gateway", "init"})
+	require.NoError(t, root.Execute())
+
+	require.Contains(t, out.String(), "signing key generated")
+	require.NoFileExists(t, filepath.Join(configDir, "gateway", "signing.key"))
+	require.FileExists(t, filepath.Join(configDir, "gateway", "signing.key.enc"))
+}
 
 // --- gateway init preserves existing custom values ---
 
 func TestGatewayInit_PreservesCustomBindAndMode(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	testutil.SetupTestKeyring(t)
 
 	root := NewRootCommand()
 	var out1 bytes.Buffer
@@ -58,6 +77,7 @@ func TestGatewayInit_PreservesCustomBindAndMode(t *testing.T) {
 func TestGatewayInit_FillsMissingFieldsOnly(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	testutil.SetupTestKeyring(t)
 
 	gatewayDir := filepath.Join(configDir, "gateway")
 	require.NoError(t, os.MkdirAll(gatewayDir, 0o700))

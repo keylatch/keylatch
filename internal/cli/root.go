@@ -751,7 +751,7 @@ func newRunCmd() *cobra.Command {
 			// if the key is absent. This is acceptable: without a signing key the
 			// gateway cannot have been initialized so gateway_is_running returns false.
 			env := llmcontext.DefaultLookup
-			signingKey, _ := os.ReadFile(paths.GatewaySigningKey(env))
+			signingKey, _ := LoadGatewaySigningKey(env, false)
 			tokenStorePath := paths.GatewayTokens(env)
 			pidPath := paths.GatewayPID(env)
 

@@ -280,6 +280,26 @@ type ConnectionTemplate struct {
 	TestStrategy TestStrategy `json:"test_strategy" yaml:"test_strategy"`
 }
 
+// GatewayCapabilities lists the capabilities a gateway session for t may hold:
+// one per declared gateway action, or per advertised capability when the
+// template declares no actions. A template that declares neither gets the
+// whole provider.
+func (t ConnectionTemplate) GatewayCapabilities() []string {
+	var caps []string
+	for _, a := range t.GatewayActions {
+		caps = append(caps, t.Provider+"."+a.Name)
+	}
+	if len(caps) == 0 {
+		for _, c := range t.Capabilities {
+			caps = append(caps, t.Provider+"."+c.Name)
+		}
+	}
+	if len(caps) == 0 {
+		caps = []string{t.Provider + ".*"}
+	}
+	return caps
+}
+
 // Get looks up a provider template by slug.
 // Returns ErrProviderNotFound if provider is not registered.
 func Get(provider string) (ConnectionTemplate, error) {

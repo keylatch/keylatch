@@ -4,7 +4,6 @@ package cli
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/budget"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
@@ -125,20 +125,23 @@ func newGatewayInitCmd() *cobra.Command {
 				return fmt.Errorf("gateway init: mkdir %q: %w", gatewayDir, err)
 			}
 
-			// Generate signing key if absent.
-			keyPath := paths.GatewaySigningKey(env)
-			if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-				key := make([]byte, 32)
-				if _, err := rand.Read(key); err != nil {
-					return fmt.Errorf("gateway init: generate signing key: %w", err)
-				}
-				if err := os.WriteFile(keyPath, key, 0o600); err != nil {
-					return fmt.Errorf("gateway init: write signing key: %w", err)
-				}
-				_ = os.Chmod(keyPath, 0o600)
-				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key generated")
-			} else {
+			// The signing key lives wrapped by the KEK; a raw key file from
+			// an older install is migrated here.
+			_, wrappedErr := os.Stat(paths.GatewaySigningKeyWrapped(env))
+			_, legacyErr := os.Stat(paths.GatewaySigningKey(env))
+			keyExisted := wrappedErr == nil || legacyErr == nil
+			key, err := LoadGatewaySigningKey(env, true)
+			if err != nil {
+				return fmt.Errorf("gateway init: signing key: %w", err)
+			}
+			clear(key)
+			switch {
+			case legacyErr == nil:
+				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key migrated under the KEK")
+			case keyExisted:
 				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key already exists")
+			default:
+				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key generated")
 			}
 
 			// Write gateway config. A re-run must not clobber a
@@ -306,14 +309,10 @@ func newGatewayUpCmd() *cobra.Command {
 				return nil
 			}
 
-			// Load signing key.
-			keyPath := paths.GatewaySigningKey(env)
-			signingKey, err := os.ReadFile(keyPath)
+			// Load signing key (migrating a raw key file on first start).
+			signingKey, err := LoadGatewaySigningKey(env, false)
 			if err != nil {
-				return fmt.Errorf("gateway up: read signing key %q: %w", keyPath, err)
-			}
-			if len(signingKey) != 32 {
-				return fmt.Errorf("gateway up: signing key must be 32 bytes (run 'gateway init' first)")
+				return fmt.Errorf("gateway up: read signing key: %w", err)
 			}
 
 			// LLM sessions never get a non-loopback bind, regardless of flags/env
@@ -692,7 +691,7 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				return fmt.Errorf("gateway token create: MaxUses=0 (unlimited) tokens are not allowed in LLM sessions")
 			}
 
-			ttl := 1 * time.Hour
+			ttl := token.DefaultTTL
 			if ttlStr != "" {
 				var err error
 				ttl, err = time.ParseDuration(ttlStr)
@@ -701,13 +700,16 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				}
 			}
 
-			// Load signing key.
-			keyPath := paths.GatewaySigningKey(env)
-			signingKey, err := os.ReadFile(keyPath)
+			signingKey, err := LoadGatewaySigningKey(env, false)
 			if err != nil {
 				return fmt.Errorf("gateway token create: read signing key: %w", err)
 			}
+			defer clear(signingKey)
 
+			kind := callerkind.Human
+			if isLLM {
+				kind = callerkind.Agent
+			}
 			storePath := paths.GatewayTokens(env)
 			spec := token.TokenSpec{
 				Actor:        actor,
@@ -715,6 +717,7 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				TTL:          ttl,
 				MaxUses:      maxUses,
 				LLMSession:   isLLM,
+				Kind:         string(kind),
 				StorePath:    storePath,
 				SigningKey:   signingKey,
 			}
@@ -738,7 +741,7 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&allow, "allow", nil, "capability to allow (e.g. openrouter.chat)")
-	cmd.Flags().StringVar(&ttlStr, "ttl", "1h", "token TTL (e.g. 1h, 30m)")
+	cmd.Flags().StringVar(&ttlStr, "ttl", "10m", "token TTL (e.g. 10m, 1h; at most 1h)")
 	cmd.Flags().IntVar(&maxUses, "max-uses", 0, "maximum uses (0=unlimited)")
 	return cmd
 }
@@ -803,7 +806,12 @@ func newGatewayTokenRevokeCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			env := llmcontext.DefaultLookup
 			storePath := paths.GatewayTokens(env)
-			if err := token.Revoke(args[0], storePath); err != nil {
+			signingKey, err := LoadGatewaySigningKey(env, false)
+			if err != nil {
+				return fmt.Errorf("gateway token revoke: read signing key: %w", err)
+			}
+			defer clear(signingKey)
+			if err := token.Revoke(args[0], storePath, signingKey); err != nil {
 				return fmt.Errorf("gateway token revoke: %w", err)
 			}
 			fmt.Fprintf(c.OutOrStdout(), "gateway: token %s revoked\n", args[0])

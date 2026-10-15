@@ -259,7 +259,9 @@ any agent sandbox.`,
 				return fmt.Errorf("keylatchd: the audit log cannot be opened, and Keylatch does not serve without an audit trail: %w", err)
 			}
 			defer closeAudit()
-			cfg := control.Config{Env: env, Binary: binary, Audit: emitter}
+			cfg := control.Config{Env: env, Binary: binary, Audit: emitter, SigningKey: func() ([]byte, error) {
+				return cli.LoadGatewaySigningKey(env, false)
+			}}
 			if mgr, mintCred, release, err := newPlaceholders(env); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: placeholder tier unavailable: %v\n", err)
 			} else {

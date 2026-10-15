@@ -180,7 +180,7 @@ func protectedPaths(homeDir string, env paths.Lookup) []string {
 		paths.ConfigDir, paths.Config, paths.Vault, paths.Audit, paths.AuditSalt,
 		paths.Policy, paths.Grants, paths.GrantsDir, paths.GrantAccessorKey,
 		paths.KeyringDir, paths.KeyringPath, paths.KeyringIdentityPath,
-		paths.GatewayDir, paths.GatewaySigningKey, paths.GatewayTokens,
+		paths.GatewayDir, paths.GatewaySigningKey, paths.GatewaySigningKeyWrapped, paths.GatewayTokens,
 		paths.ApprovalsDir, paths.DaemonState,
 	} {
 		if p := resolve(env); filepath.IsAbs(p) {

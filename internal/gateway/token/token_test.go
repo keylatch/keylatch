@@ -77,7 +77,7 @@ func TestVerify_RejectsRevoked(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := token.Revoke(tok.ID, storePath); err != nil {
+	if err := token.Revoke(tok.ID, storePath, key); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
 
@@ -299,7 +299,7 @@ func TestRevoke_CascadesToChildren(t *testing.T) {
 	}
 
 	// Revoke parent.
-	if err := token.Revoke(parent.ID, storePath); err != nil {
+	if err := token.Revoke(parent.ID, storePath, key); err != nil {
 		t.Fatalf("Revoke parent: %v", err)
 	}
 

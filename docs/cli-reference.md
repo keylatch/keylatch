@@ -831,7 +831,7 @@ keylatch gateway <subcommand>
 keylatch gateway init [--docker]
 ```
 
-Generates the gateway signing key at `~/.keylatch/gateway/signing.key` and writes `gateway-config.json`. With `--docker`, also writes a Docker Compose file.
+Generates the gateway signing key, stores it wrapped by the KEK at `~/.keylatch/gateway/signing.key.enc`, and writes `gateway-config.json`. A raw `signing.key` file from an older install is wrapped and deleted the first time the gateway starts. With `--docker`, also writes a Docker Compose file.
 
 #### `gateway up`
 
@@ -893,7 +893,7 @@ Mints a new gateway token (`KEYLATCH_GATEWAY_TOKEN`). The JWT is printed once â€
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--allow` | | Capability to allow (e.g. `openrouter.chat.completion`). Repeatable. |
-| `--ttl` | `1h` | Token TTL (e.g. `1h`, `30m`) |
+| `--ttl` | `10m` | Token TTL (e.g. `10m`, `1h`); never more than 1 hour |
 | `--max-uses` | `0` (unlimited) | Maximum uses. LLM sessions cannot create unlimited tokens. |
 
 #### `gateway token list`
