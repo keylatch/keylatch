@@ -18,6 +18,7 @@ func newBackendCmd() *cobra.Command {
 		Use:   "backend",
 		Short: "Manage root-of-trust backend adapters",
 	}
+	cmd.AddCommand(newBackendListCmd())
 	cmd.AddCommand(newBackendVaultCmd())
 	cmd.AddCommand(newBackendUpgradeTrustCmd())
 	return cmd
