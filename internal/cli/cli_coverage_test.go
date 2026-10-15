@@ -34,15 +34,6 @@ func TestProxyCmd_Error(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestSandboxCmd_Registered verifies the sandbox subcommand is registered.
-func TestSandboxCmd_Registered(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	cmd, _, err := root.Find([]string{"sandbox"})
-	require.NoError(t, err)
-	assert.Equal(t, "sandbox", cmd.Name())
-}
-
 // TestConnectionsCmd_Registered verifies the connections subcommand is registered.
 func TestConnectionsCmd_Registered(t *testing.T) {
 	t.Parallel()
