@@ -41,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Claude Code exfiltration guard allows `env` when it runs a command (`env -C /abs/dir cmd`, `env NAME=value cmd`, `env -i`, `env -u NAME`). Bare `env`, `env` with no command, other `env` options (`-0`, `-S`, …), a relative `-C` directory and `printenv` stay blocked, and the command after `env` is checked like any other.
 
+### Removed
+
+- Commands that did nothing: `get --masked`, `get-masked`, `share`, `receipts`, `rules`, `sessions`, `projects`, `sandbox run`, and the `gateway up --with-proxy` listener. The duplicate `verify` registration and `runner.OK` are gone too.
+- Telemetry in every form: the `telemetry` operating mode, `KEYLATCH_TELEMETRY_*` variables, the setup prompt and the telemetry settings in the UI. Keylatch sends no telemetry.
+- The classic sandboxed runtime (`direct_classic_sandboxed`), its driver and its documentation. Selecting it now fails as an unknown runtime mode. Three runtime modes remain.
+- Windsurf: the guard script, `install-guard windsurf`, the integration pages and the harness marker. Windsurf exposes no hook API.
+
+### Changed
+
+- Features that are not finished (`team`, `trust` and its hardware adapters, the vault team backend) compile only with the `experimental` build tag; release binaries contain none of them.
+- `keylatch backend list [--json]` prints every backend with its support tier: supported (`bw`, `op`, `file`), community, deprecated.
+- The version comes from the release tag; builds made with `go install` read it from the Go build information. `scripts/set-version.sh` stamps the desktop shell and web package from the same tag.
+- `keylatch doctor` reports the root cause first and marks dependent checks skipped. New checks cover the guard hook, the default-deny policy, agent-readable backend credentials, the audit chain, the backend tier and the deployment mode. `--json` follows `schemas/doctor.schema.json`.
+- `keylatch setup` recommends a backend (Bitwarden, then 1Password, else the file store), writes a default-deny policy and ends with a doctor report. Headless flags: `--server`, `--organization-id`, `--namespace`, `--install-guard`.
+- Every GitHub Action is pinned to a commit SHA, golangci-lint is pinned, Dependabot covers Docker, and CodeQL runs on every push and weekly. A scenario harness with fake agent processes runs the attacker scenarios on three operating systems.
+- The README, SECURITY.md and the documentation state that in-user mode is not a security boundary, and a test checks every documented command and flag against the command tree.
+
 ## [0.9.9] - 2026-10-05
 
 ### Added
@@ -107,6 +124,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The file backend refuses to decrypt a secret whose stored binding names a different path, so ciphertext copied between secrets no longer decrypts. AES-GCM nonce allocation now shares the keyring's single lock with KEK rotation, and a reload can no longer move the nonce counter backwards.
 - The sidecar IPC socket is created owner-only without changing the process umask, which could leave files created concurrently by other goroutines unreadable.
 
+## [0.9.8] - 2026-10-04
+
+### Fixed
+
+- Environment detection matches the variables agent harnesses actually set (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX`, `CURSOR_AGENT`, `GEMINI_CLI`, `OPENCODE`).
+- Release claims in the documentation match what each release carries; pre-release tags verify under cosign.
+
+### Security
+
+- A release is published only after signing, SBOMs and provenance verify; signatures already attached are kept when a release is attested. Go 1.26.8 is required; `google.golang.org/grpc` is bumped to v1.83.2 and `govulncheck` is pinned.
+
 ## [0.9.7] - 2026-08-11
 
 ### Security
@@ -124,6 +152,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `keylatch trust` is now marked experimental in its help text. `trust enroll <type>` (all five root types) and `trust approve <challenge-id>`'s signing step are unimplemented hardware-root ceremonies — they are hidden from `trust --help`, still directly runnable, and now exit with a distinct code (`NotImplemented`, 10) and a message pointing at this entry and `docs/experimental.md`, instead of a generic error. `trust list`, `trust doctor`, and `trust challenge` remain fully functional and visible. `docs/cli-reference.md`'s `keylatch trust` section previously documented commands that do not exist (`trust status`, `trust add`, `trust remove`) — corrected to match the real command surface.
+
+## [0.9.6] - 2026-08-11
+
+### Fixed
+
+- Backend auth and session checks are stricter, and gateway signal handling no longer acts on the wrong process.
+- `gateway up --force` verifies the process identity of a stale PID file and refuses when the evidence is inconclusive; setup does the same and no longer treats an already-running gateway as a failure.
+- A config file that cannot be read because of permissions or an I/O error is no longer reset; only unusable content is.
+- Policy rules that carry commands or working directories are rejected at load time, and `policy.Check` no longer panics on a permissive policy in an LLM session.
+- `gateway install` is safe to repeat.
 
 ## [0.9.5] - 2026-07-31
 
@@ -223,6 +261,23 @@ Keylatch 0.9.2 is the stabilization release before the v1.0.0-alpha cycle. It is
 - SBOM published in CycloneDX and SPDX formats for every release.
 - Release artifacts signed with cosign via GitHub Actions OIDC (keyless).
 - Dependabot enabled for Go modules, npm, Cargo, and GitHub Actions (weekly, conventional-commit prefix).
+
+## [0.9.3-alpha.2] - 2026-06-12
+
+### Fixed
+
+- Release verification accepts pre-release tags in the cosign identity.
+
+## [0.9.1] - 2026-06-03
+
+### Fixed
+
+- First-run onboarding initialises the keychain, writes connection metadata and fixes the doctor checks; the web wizard bootstraps correctly.
+- Mock binaries in tests no longer race with exec on Linux, and CI caches Go and bun builds.
+
+## [0.9.0] - 2026-06-02
+
+First release of the 0.9 line, cut after the history rewrite described above.
 
 ## [0.1.0-alpha] - 2026-05-13
 
