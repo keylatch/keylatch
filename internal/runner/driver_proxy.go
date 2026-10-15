@@ -98,7 +98,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 		Actor:        actor,
 		Capabilities: []string{capability},
 		TTL:          ttl,
-		LLMSession:   false, // proxy mode is always non-LLM (CLI-invoked)
+		Caller:       req.Caller,
 		SigningKey:   d.signingKey,
 		StorePath:    d.storePath,
 	}); err != nil {

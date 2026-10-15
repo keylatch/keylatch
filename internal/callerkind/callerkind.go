@@ -35,11 +35,13 @@ const (
 // Constrained reports whether the kind may not receive secret values.
 func (k Kind) Constrained() bool { return k != Human }
 
-// Result is a classification and the evidence behind it. Reasons and Harness
-// never contain values.
+// Result is a classification and the evidence behind it. Reasons, Harness and
+// Unit never contain values.
 type Result struct {
 	Kind    Kind
 	Harness string
+	// Unit is the systemd service unit of a Service caller.
+	Unit    string
 	Reasons []string
 }
 
@@ -105,17 +107,19 @@ func (c *Classifier) Peer(ev Evidence) Result {
 	return r
 }
 
-// Local classifies the current process. An agent session wins; systemd sets
-// INVOCATION_ID for service units; an interactive terminal is a human; the
-// rest is host. A hidden agent counts as host, so policy bounds what a host
-// can do.
+// Local classifies the current process. An agent session wins; a process in a
+// non-transient systemd service unit, read from its cgroup and confirmed with
+// systemd, is a service; an interactive terminal is a human; the rest is
+// host. A hidden agent counts as host, so policy bounds what a host can do.
+// Service classification is advisory until the broker daemon enrolls units.
 func Local(env llmcontext.Lookup, interactive bool) Result {
 	if cl := llmcontext.Classify(env); cl.Detected() {
 		return Result{Kind: Agent, Harness: cl.Harness, Reasons: cl.Signals}
 	}
+	if unit, ok := serviceUnit(); ok {
+		return Result{Kind: Service, Unit: unit, Reasons: []string{"unit:" + unit}}
+	}
 	switch {
-	case env("INVOCATION_ID") != "":
-		return Result{Kind: Service, Reasons: []string{"INVOCATION_ID"}}
 	case interactive:
 		return Result{Kind: Human}
 	default:

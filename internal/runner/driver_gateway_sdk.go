@@ -111,7 +111,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 		Actor:        actor,
 		Capabilities: []string{cap},
 		TTL:          ttl,
-		LLMSession:   false,
+		Caller:       req.Caller,
 		SigningKey:   d.key,
 		StorePath:    d.store,
 	})

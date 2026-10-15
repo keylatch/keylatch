@@ -120,6 +120,14 @@ func Policy(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "policy.json")
 }
 
+// PolicyDir returns the directory of per-connection policy documents. It sits
+// beside the policy file and has no override of its own: one more variable a
+// caller controls would be one more way to point the check at a permissive
+// directory.
+func PolicyDir(env Lookup) string {
+	return filepath.Join(filepath.Dir(Policy(env)), "policy.d")
+}
+
 // Grants returns the path to the grants JSON file.
 // Override: KEYLATCH_GRANTS_PATH
 func Grants(env Lookup) string {

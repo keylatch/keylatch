@@ -7,14 +7,14 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/guard"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/spf13/cobra"
 )
 
 // newInstallGuardCmd returns the `keylatch install-guard` command.
 // §4.2: surfaces the agent exfiltration guard for one-command installation.
 func newInstallGuardCmd() *cobra.Command {
-	var project bool
-	var list bool
+	var project, list, uninstall bool
 
 	cmd := &cobra.Command{
 		Use:   "install-guard <agent>",
@@ -48,10 +48,15 @@ Use --list to show all supported agents with their hook mechanism type.`,
 			if len(args) == 0 {
 				return fmt.Errorf("install-guard: agent name required (use --list to see available agents)")
 			}
+			if uninstall {
+				return runUninstallGuard(cmd, args[0], project)
+			}
 			return runInstallGuard(cmd, args[0], project)
 		},
 	}
 
+	cmd.Flags().BoolVar(&uninstall, "uninstall", false,
+		"remove the guard hook and script (needs a human at a terminal)")
 	cmd.Flags().BoolVar(&project, "project", false,
 		"install into .claude/settings.json in the current directory instead of global (claude-code only)")
 	cmd.Flags().BoolVar(&list, "list", false,
@@ -73,7 +78,31 @@ func runInstallGuardList(cmd *cobra.Command) error {
 	return nil
 }
 
-func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
+func runUninstallGuard(cmd *cobra.Command, agentName string, project bool) error {
+	agent, err := parseGuardAgent(agentName)
+	if err != nil {
+		return err
+	}
+	if _, err := requirePresence(cmd.Context(), presence.ActionGuardUninstall, "Remove the %s exfiltration guard", agent); err != nil {
+		return err
+	}
+	opts := guard.InstallOpts{}
+	if project {
+		opts.ProjectDir = "."
+	}
+	path, removed, err := guard.Uninstall(agent, opts)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		fmt.Fprintf(cmd.OutOrStdout(), "No %s guard found.\n", agent)
+		return nil
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Guard removed for %s (%s).\n", agent, path)
+	return nil
+}
+
+func parseGuardAgent(agentName string) (guard.Agent, error) {
 	agentName = strings.ToLower(strings.TrimSpace(agentName))
 
 	// Normalise common aliases.
@@ -109,10 +138,18 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 		for _, a := range guard.SupportedAgents {
 			supported = append(supported, string(a))
 		}
-		return fmt.Errorf(
+		return "", fmt.Errorf(
 			"install-guard: unknown agent %q\n\nSupported agents: %s\n\nExample: keylatch install-guard claude-code\nUse --list for details",
 			agentName, strings.Join(supported, ", "),
 		)
+	}
+	return agent, nil
+}
+
+func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
+	agent, err := parseGuardAgent(agentName)
+	if err != nil {
+		return err
 	}
 
 	// Windsurf and Antigravity have no hook API — print shell-rc guidance and return.

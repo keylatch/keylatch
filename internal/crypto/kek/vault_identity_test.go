@@ -295,16 +295,25 @@ func TestVaultIdentity_RemoveDeletesKeyringItem(t *testing.T) {
 	assert.Equal(t, IdentityMissing, loc)
 }
 
-func TestInsecureFileKEKRequested(t *testing.T) {
-	for v, want := range map[string]bool{"1": true, "true": true, "YES": true, "": false, "0": false, "no": false} {
-		got := InsecureFileKEKRequested(func(k string) string {
-			if k == InsecureFileKEKEnv {
-				return v
-			}
-			return ""
-		})
-		assert.Equal(t, want, got, "value %q", v)
-	}
+func TestVaultIdentity_RemovePlaintextKeepsTheKeyringItem(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "identity")
+	store := newFakeStore()
+	vi := VaultIdentity{Path: path, Store: store}
+	require.NoError(t, vi.Provision(false))
+	require.NoError(t, writeFileAtomic(path, bytes.Repeat([]byte{9}, identitySize)))
+	require.NoError(t, vi.Acknowledge())
+
+	require.NoError(t, vi.RemovePlaintext())
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "plaintext identity left behind")
+	_, err = os.Stat(vi.InsecureMarkerPath())
+	assert.True(t, os.IsNotExist(err), "opt-in marker left behind")
+	assert.Len(t, store.items, 1, "the keyring item must survive")
+	loc, onDisk, err := vi.Location()
+	require.NoError(t, err)
+	assert.Equal(t, IdentityInKeyring, loc)
+	assert.False(t, onDisk)
 }
 
 type runnerCall struct {

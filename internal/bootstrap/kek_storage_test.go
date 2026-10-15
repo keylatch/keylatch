@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/keylatch/keylatch/internal/bootstrap"
+	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/crypto/kek"
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -50,14 +51,18 @@ func TestBootstrapNeverWritesPlaintextKEK(t *testing.T) {
 	openKeyring(t, env, store)
 }
 
-func TestBootstrap_NoKeyringRequiresOptIn(t *testing.T) {
+// Neither a keyring nor a terminal: fail with a way forward instead of
+// falling back to a plaintext file.
+func TestBootstrap_NoKeyringAndNoTerminalFails(t *testing.T) {
 	env := makeEnv(t.TempDir(), nil)
 	store := testutil.NewMemoryIdentityStore()
 	store.StoreErr = testutil.ErrKeyringLocked
 
 	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
 	require.ErrorIs(t, err, kek.ErrNoOSKeyring)
-	assert.Contains(t, err.Error(), "--insecure-file-kek")
+	assert.Contains(t, err.Error(), "terminal")
+	assert.Contains(t, err.Error(), "passphrase")
+	assert.NotContains(t, err.Error(), "--insecure-file-kek", "the error must not point at a flag")
 
 	_, statErr := os.Stat(paths.KeyringIdentityPath(env))
 	assert.True(t, os.IsNotExist(statErr))
@@ -65,32 +70,104 @@ func TestBootstrap_NoKeyringRequiresOptIn(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "no keyring may be created without a KEK")
 }
 
+// The old environment opt-in grants nothing.
+func TestBootstrap_EnvironmentCannotOptIntoPlaintext(t *testing.T) {
+	env := makeEnv(t.TempDir(), map[string]string{"KEYLATCH_INSECURE_FILE_KEK": "1"})
+	store := testutil.NewMemoryIdentityStore()
+	store.StoreErr = testutil.ErrKeyringLocked
+
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	require.ErrorIs(t, err, kek.ErrNoOSKeyring)
+	_, statErr := os.Stat(paths.KeyringIdentityPath(env))
+	assert.True(t, os.IsNotExist(statErr))
+}
+
 func TestBootstrap_InsecureFileKEKOptIn(t *testing.T) {
-	for name, opts := range map[string]func(string) bootstrap.Options{
-		"flag": func(home string) bootstrap.Options {
-			return bootstrap.Options{Env: makeEnv(home, nil), InsecureFileKEK: true}
-		},
-		"env": func(home string) bootstrap.Options {
-			return bootstrap.Options{Env: makeEnv(home, map[string]string{kek.InsecureFileKEKEnv: "1"})}
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			store := testutil.NewMemoryIdentityStore()
-			o := opts(t.TempDir())
-			o.IdentityStore = store
+	home := t.TempDir()
+	store := testutil.NewMemoryIdentityStore()
+	o := bootstrap.Options{Env: makeEnv(home, nil), InsecureFileKEK: true, IdentityStore: store}
 
-			plan, err := bootstrap.Run(context.Background(), o)
-			require.NoError(t, err)
+	plan, err := bootstrap.Run(context.Background(), o)
+	require.NoError(t, err)
 
-			loc, onDisk := identityState(t, o.Env, store)
-			assert.Equal(t, kek.IdentityInFileAcknowledged, loc)
-			assert.True(t, onDisk)
-			assert.Zero(t, store.Len())
-			require.Len(t, plan.Warnings, 1)
-			assert.True(t, strings.HasPrefix(plan.Warnings[0], "INSECURE:"))
-			openKeyring(t, o.Env, store)
-		})
-	}
+	loc, onDisk := identityState(t, o.Env, store)
+	assert.Equal(t, kek.IdentityInFileAcknowledged, loc)
+	assert.True(t, onDisk)
+	assert.Zero(t, store.Len())
+	require.Len(t, plan.Warnings, 1)
+	assert.True(t, strings.HasPrefix(plan.Warnings[0], "INSECURE:"))
+	openKeyring(t, o.Env, store)
+}
+
+func openPassphraseKeyring(t *testing.T, env func(string) string, pass string) {
+	t.Helper()
+	krPath := paths.KeyringPath(env)
+	kf, err := keyring.ReadHeader(krPath)
+	require.NoError(t, err)
+	assert.Equal(t, "passphrase", kf.KEKType)
+	k, err := kek.PassphraseKEK([]byte(pass), kf.Salt, argon2.Recommended2026)
+	require.NoError(t, err)
+	_, err = keyring.Open(krPath, k)
+	require.NoError(t, err)
+}
+
+// With no keyring but a human at a terminal, the key is wrapped under a
+// passphrase and no identity file is written.
+func TestBootstrap_PassphraseWhenNoKeyringButATerminal(t *testing.T) {
+	env := makeEnv(t.TempDir(), nil)
+	store := testutil.NewMemoryIdentityStore()
+	store.StoreErr = testutil.ErrKeyringLocked
+	asked := 0
+
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+		Env: env, IdentityStore: store,
+		Passphrase: func() ([]byte, error) { asked++; return []byte("a long enough passphrase"), nil },
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, asked)
+	require.NotEmpty(t, plan.Warnings)
+
+	_, statErr := os.Stat(paths.KeyringIdentityPath(env))
+	assert.True(t, os.IsNotExist(statErr), "no plaintext identity")
+	openPassphraseKeyring(t, env, "a long enough passphrase")
+
+	// Running again is a no-op and does not ask again.
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{
+		Env: env, IdentityStore: store,
+		Passphrase: func() ([]byte, error) { asked++; return nil, nil },
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, asked)
+}
+
+func TestBootstrap_PassphraseModeIsExplicit(t *testing.T) {
+	env := makeEnv(t.TempDir(), nil)
+	store := testutil.NewMemoryIdentityStore() // a keyring is available but not wanted
+
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
+		Env: env, IdentityStore: store, KEKMode: bootstrap.KEKModePassphrase,
+		Passphrase: func() ([]byte, error) { return []byte("another long passphrase"), nil },
+	})
+	require.NoError(t, err)
+	assert.Zero(t, store.Len(), "the keyring must not be used in passphrase mode")
+	openPassphraseKeyring(t, env, "another long passphrase")
+
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Env: makeEnv(t.TempDir(), nil), IdentityStore: store, KEKMode: bootstrap.KEKModePassphrase})
+	require.Error(t, err, "passphrase mode without a terminal must fail")
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Env: makeEnv(t.TempDir(), nil), KEKMode: "carrier-pigeon"})
+	require.Error(t, err)
+}
+
+func TestBootstrap_KeystoreModeNeverFallsBackToAPassphrase(t *testing.T) {
+	env := makeEnv(t.TempDir(), nil)
+	store := testutil.NewMemoryIdentityStore()
+	store.StoreErr = testutil.ErrKeyringLocked
+
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
+		Env: env, IdentityStore: store, KEKMode: bootstrap.KEKModeKeystore,
+		Passphrase: func() ([]byte, error) { return []byte("never used passphrase"), nil },
+	})
+	require.ErrorIs(t, err, kek.ErrNoOSKeyring)
 }
 
 func legacyInstall(t *testing.T) func(string) string {

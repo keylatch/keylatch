@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/config"
 	kargon2 "github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/spf13/cobra"
 )
 
@@ -31,10 +33,9 @@ func newBackupCmd() *cobra.Command {
 		Long: `backup writes all enrolled connection credentials to an
 xchacha20-poly1305 encrypted tar archive derived from a backup passphrase.
 
-The passphrase is prompted interactively from the terminal and is never
-exposed on the command line. The output file is safe to store off-site.
-
-To restore from backup, use: keylatch restore <backup-file>`,
+A human must approve the export at a terminal, and the passphrase is read
+from that terminal only: it is never taken from the command line, a file or a
+pipe. The output file is safe to store off-site.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			ctx := c.Context()
 			env := llmcontext.DefaultLookup
@@ -46,7 +47,6 @@ To restore from backup, use: keylatch restore <backup-file>`,
 			}
 
 			outputPath, _ := c.Flags().GetString("output")
-			passphraseFile, _ := c.Flags().GetString("passphrase-file")
 
 			// Resolve output path.
 			if outputPath == "" {
@@ -54,40 +54,42 @@ To restore from backup, use: keylatch restore <backup-file>`,
 				outputPath = "keylatch-backup-" + ts + ".enc"
 			}
 
-			// Read passphrase.
-			var passphrase []byte
-			if passphraseFile != "" {
-				data, err := os.ReadFile(passphraseFile)
-				if err != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: reading passphrase file %q: %v\n", passphraseFile, err)
-					os.Exit(exitcode.UserError)
-					return nil
-				}
-				passphrase = []byte(strings.TrimRight(string(data), "\r\n"))
-			} else {
-				if !stdinIsTTY() {
-					fmt.Fprintln(c.ErrOrStderr(), "Error: backup passphrase requires a TTY. Use --passphrase-file to provide a passphrase non-interactively.")
-					os.Exit(exitcode.UserError)
-					return nil
-				}
-				var err error
-				passphrase, err = promptHidden("Enter backup passphrase")
-				if err != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-					os.Exit(exitcode.UserError)
-					return nil
-				}
-				confirm, err := promptHidden("Confirm backup passphrase")
-				if err != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-					os.Exit(exitcode.UserError)
-					return nil
-				}
-				if subtle.ConstantTimeCompare(passphrase, confirm) != 1 {
-					fmt.Fprintln(c.ErrOrStderr(), "Error: passphrases do not match.")
-					os.Exit(exitcode.UserError)
-					return nil
-				}
+			// The summary the human approves names how many credentials leave
+			// the store, so count them before asking.
+			cfg := loadCLIConfig(c)
+			store := backupStore(cfg, env)
+			credPaths, err := backupCredentialPaths(ctx, store)
+			if err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				os.Exit(exitcode.OperationFailed)
+				return nil
+			}
+			if _, err := requirePresence(ctx, presence.ActionBackupExport,
+				"Export %d connection credential(s) into an encrypted backup at %s", len(credPaths), outputPath); err != nil {
+				return err
+			}
+
+			// The passphrase comes from the terminal only: a file or pipe could
+			// be filled by anything that can run this command.
+			if !stdinIsTTY() {
+				return NewSecurityBlock("backup: the passphrase is read from the terminal only")
+			}
+			passphrase, err := promptHidden("Enter backup passphrase")
+			if err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+			confirm, err := promptHidden("Confirm backup passphrase")
+			if err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+			if subtle.ConstantTimeCompare(passphrase, confirm) != 1 {
+				fmt.Fprintln(c.ErrOrStderr(), "Error: passphrases do not match.")
+				os.Exit(exitcode.UserError)
+				return nil
 			}
 
 			// Derive backup KEK via argon2id.
@@ -108,9 +110,6 @@ To restore from backup, use: keylatch restore <backup-file>`,
 				passphrase[i] = 0
 			}
 
-			// Collect connection credentials.
-			cfg := loadCLIConfig(c)
-			store := newDispatchedStore(cfg, env)
 			n, err := writeBackupToFile(ctx, c.ErrOrStderr(), store, outputPath, kek, salt)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
@@ -123,8 +122,12 @@ To restore from backup, use: keylatch restore <backup-file>`,
 		},
 	}
 	cmd.Flags().String("output", "", "output file path (default: keylatch-backup-<timestamp>.enc in cwd)")
-	cmd.Flags().String("passphrase-file", "", "read backup passphrase from this file instead of prompting")
 	return cmd
+}
+
+// backupStore opens the credential store a backup reads. Replaced in tests.
+var backupStore = func(cfg config.Config, env llmcontext.Lookup) backupCredStore {
+	return newDispatchedStore(cfg, env)
 }
 
 // backupHeader is serialised as the first entry in the backup archive.
@@ -146,6 +149,26 @@ type backupHeader struct {
 type backupCredStore interface {
 	List(ctx context.Context, prefix string) ([]backend.Entry, error)
 	Get(ctx context.Context, path string) ([]byte, backend.Meta, error)
+}
+
+// backupCredentialPaths lists the unique credential paths a backup contains,
+// skipping meta and config entries.
+func backupCredentialPaths(ctx context.Context, store backupCredStore) ([]string, error) {
+	entries, err := store.List(ctx, "default/ai/")
+	if err != nil {
+		return nil, fmt.Errorf("list connections: %w", err)
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range entries {
+		p := e.Path
+		if strings.HasSuffix(p, "/meta") || strings.Contains(p, "/meta/") || strings.Contains(p, "/config/") || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // writeBackupToFile builds the encrypted tar archive and writes it to outputPath.
@@ -174,28 +197,9 @@ func writeBackupToFile(ctx context.Context, warnOut interface {
 		return 0, fmt.Errorf("marshal backup header: %w", err)
 	}
 
-	// List connections using canonical ai category prefix.
-	entries, err := store.List(ctx, "default/ai/")
+	credPaths, err := backupCredentialPaths(ctx, store)
 	if err != nil {
-		return 0, fmt.Errorf("list connections: %w", err)
-	}
-
-	// Gather unique credential paths (skip meta and config paths).
-	seenPaths := map[string]bool{}
-	var credPaths []string
-	for _, e := range entries {
-		p := e.Path
-		if strings.HasSuffix(p, "/meta") || strings.Contains(p, "/meta/") {
-			continue
-		}
-		if strings.Contains(p, "/config/") {
-			continue
-		}
-		if seenPaths[p] {
-			continue
-		}
-		seenPaths[p] = true
-		credPaths = append(credPaths, p)
+		return 0, err
 	}
 
 	// Create output file.

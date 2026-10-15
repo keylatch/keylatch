@@ -13,9 +13,9 @@ concurrency:
 permissions:
   contents: read
 
-# CI runners have no OS keyring; vaults created here keep a plaintext KEK.
-env:
-  KEYLATCH_INSECURE_FILE_KEK: "1"
+# CI runners have no OS keyring. Steps that bootstrap a throwaway vault run
+# scripts/ci-operator-config.sh first, which writes the operator config that
+# allows a plaintext vault key; no environment variable can.
 
 jobs:
   lint:
@@ -337,6 +337,7 @@ jobs:
       - name: smoke
         run: |
           SMOKE_HOME=$(mktemp -d)
+          bash scripts/ci-operator-config.sh
           HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch bootstrap --dry-run --json
           HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch bootstrap
           DOCTOR_DIR=$(mktemp -d)

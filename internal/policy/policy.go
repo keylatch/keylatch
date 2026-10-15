@@ -66,6 +66,8 @@ type Policy struct {
 	SchemaVersion    int       `json:"schema_version"`
 	Mode             Mode      `json:"mode"`
 	Rules            []Rule    `json:"rules"`
+	// DefaultDeny denies a request no rule allows. A file that omits it
+	// denies; only an explicit false allows.
 	DefaultDeny      bool      `json:"default_deny"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
@@ -182,6 +184,14 @@ func Load(path string) (Policy, error) {
 	var p Policy
 	if err := json.Unmarshal(data, &p); err != nil {
 		return Policy{}, fmt.Errorf("policy: parse %q: %w", path, err)
+	}
+	// A file that does not say what happens to an unmatched request denies it:
+	// the zero value of a Go bool must not turn omission into allow.
+	var probe struct {
+		DefaultDeny *bool `json:"default_deny"`
+	}
+	if err := json.Unmarshal(data, &probe); err == nil && probe.DefaultDeny == nil {
+		p.DefaultDeny = true
 	}
 	// Validate runtime mode on every rule that specifies one.
 	// Also reject rate_limit fields: the RateSpec is parsed but never enforced.

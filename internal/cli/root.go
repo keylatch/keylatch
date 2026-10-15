@@ -19,6 +19,7 @@ import (
 	_ "github.com/keylatch/keylatch/internal/backend/all"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/canary"
 	cmdregistry "github.com/keylatch/keylatch/internal/cmd/regvalidate"
 	cmdtrust "github.com/keylatch/keylatch/internal/cmd/trust"
@@ -32,6 +33,7 @@ import (
 	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/proxy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
@@ -241,6 +243,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newDestroyVersionCmd(), "advanced")
 	addCmd(root, newCheckExpiryCmd(), "advanced")
 	addCmd(root, newKeyringCmd(), "advanced")
+	addCmd(root, newKeysCmd(), "advanced")
 	addCmd(root, newMCPCmd(), "advanced")
 	addCmd(root, newTokenCmd(), "advanced")
 
@@ -796,7 +799,8 @@ func newRunCmd() *cobra.Command {
 			// secret-injection mode.
 			supported := manifest.Current()
 			dr := runner.DispatchRunner{
-				Guard: guardFn,
+				Guard:   guardFn,
+				Enforce: enforce.Decide,
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.
 					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
@@ -846,6 +850,7 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			callerInfo := callerkind.Local(env, interactiveStdin())
 			req := runner.ExecRequest{
 				ConnectionSlug:       connectionName,
 				Command:              command,
@@ -855,6 +860,8 @@ func newRunCmd() *cobra.Command {
 				TTL:                  0,
 				Runtime:              string(mode),
 				ApprovalJWT:          approvalJWT,
+				Caller:               callerInfo.Kind,
+				CallerUnit:           callerInfo.Unit,
 				Stdin:                c.InOrStdin(),
 				Stdout:               c.OutOrStdout(),
 				Stderr:               c.ErrOrStderr(),
@@ -894,6 +901,18 @@ func newRunCmd() *cobra.Command {
 				if errors.Is(runErr, localonly.ErrEphemeralClass) {
 					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
 					_ = closeAndZeroBackend(b)
+					os.Exit(exitcode.PolicyDeny)
+				}
+				var denied *runner.PolicyDeniedError
+				if errors.As(runErr, &denied) {
+					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", denied)
+					if denied.Decision.SafeFix != "" {
+						fmt.Fprintf(c.ErrOrStderr(), "  fix: %s\n", denied.Decision.SafeFix)
+					}
+					_ = closeAndZeroBackend(b)
+					if denied.Decision.ApprovalRequired {
+						os.Exit(exitcode.ApprovalRequired)
+					}
 					os.Exit(exitcode.PolicyDeny)
 				}
 				if errors.Is(runErr, runner.ErrCommandNotAllowed) {

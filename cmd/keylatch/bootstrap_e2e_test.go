@@ -72,23 +72,42 @@ func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-func TestE2E_Bootstrap_NoKeyringRequiresInsecureOptIn(t *testing.T) {
+func skipWhereAKeystoreAlwaysExists(t *testing.T) {
+	t.Helper()
 	switch runtime.GOOS {
 	case "darwin":
 		t.Skip("the macOS login keychain is always present")
 	case "windows":
 		t.Skip("DPAPI is always available for the current user")
 	}
+}
+
+// Without a keyring and without a terminal bootstrap fails and says what to
+// do; neither a flag nor the old environment variable gets a plaintext key.
+func TestE2E_Bootstrap_NoKeyringAndNoTerminalFails(t *testing.T) {
+	skipWhereAKeystoreAlwaysExists(t)
 	homeDir := t.TempDir()
-	env := map[string]string{"HOME": homeDir, "KEYLATCH_INSECURE_FILE_KEK": ""}
+	env := map[string]string{"HOME": homeDir, noInsecureKEK: "1", "KEYLATCH_INSECURE_FILE_KEK": "1"}
 
 	_, stderr, code := runKeylatch(t, env, "bootstrap")
 	require.NotEqual(t, 0, code, "bootstrap without a keyring must fail")
-	assert.Contains(t, string(stderr), "--insecure-file-kek")
+	assert.Contains(t, string(stderr), "passphrase")
+	assert.NotContains(t, string(stderr), "--insecure-file-kek")
 	_, err := os.Stat(filepath.Join(homeDir, ".keylatch", "keyring", "identity"))
-	assert.True(t, os.IsNotExist(err), "no plaintext identity without the opt-in")
+	assert.True(t, os.IsNotExist(err), "no plaintext identity without the operator's opt-in")
 
-	stdout, stderr, code := runKeylatch(t, env, "bootstrap", "--insecure-file-kek")
+	_, stderr, code = runKeylatch(t, env, "bootstrap", "--insecure-file-kek")
+	require.NotEqual(t, 0, code, "the flag no longer exists")
+	assert.Contains(t, string(stderr), "unknown flag")
+}
+
+// The operator's own config file is the one way to a plaintext key.
+func TestE2E_Bootstrap_OperatorConfigAllowsAPlaintextKey(t *testing.T) {
+	skipWhereAKeystoreAlwaysExists(t)
+	homeDir := t.TempDir()
+	env := map[string]string{"HOME": homeDir}
+
+	stdout, stderr, code := runKeylatch(t, env, "bootstrap")
 	require.Equal(t, 0, code, "stderr: %s", stderr)
 	assert.Contains(t, string(stdout), "INSECURE")
 	assertPathMode(t, filepath.Join(homeDir, ".keylatch", "keyring", "identity"), 0o600, false)

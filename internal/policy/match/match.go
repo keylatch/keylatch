@@ -51,10 +51,11 @@ func MatchCapability(pattern, cap string) bool {
 	return ok
 }
 
-// MatchCommand performs a glob match against strings.Join(argv, " ") anchored
-// at the start. The pattern is matched against the full joined string with
-// path.Match, which anchors at start and end. To allow trailing arguments
-// use a trailing "*" in the pattern.
+// MatchCommand performs a glob match against strings.Join(argv, " "). The
+// pattern is matched against the full joined string with path.Match, which
+// anchors at start and end, so a pattern matches exactly unless it ends in
+// "*". There is no implicit trailing wildcard: "pnpm test" does not match
+// ["pnpm","test","--","rm"].
 //
 // "tsx scripts/openrouter/*" matches ["tsx","scripts/openrouter/foo.ts","arg"]
 // because the joined string "tsx scripts/openrouter/foo.ts arg" is matched
@@ -63,27 +64,8 @@ func MatchCommand(pattern string, argv []string) bool {
 	if pattern == "" {
 		return len(argv) == 0
 	}
-	if len(argv) == 0 {
-		ok, err := path.Match(pattern, "")
-		if err != nil {
-			return false
-		}
-		return ok
-	}
-	joined := strings.Join(argv, " ")
-	// Try exact match first.
-	if ok, err := path.Match(pattern, joined); err == nil && ok {
-		return true
-	}
-	// If pattern does not end with a wildcard, try prefix matching by appending
-	// a wildcard for trailing arguments.
-	if !strings.HasSuffix(pattern, "*") {
-		extended := pattern + " *"
-		if ok, err := path.Match(extended, joined); err == nil && ok {
-			return true
-		}
-	}
-	return false
+	ok, err := path.Match(pattern, strings.Join(argv, " "))
+	return err == nil && ok
 }
 
 // MatchCWD performs glob match on an absolute working directory path.

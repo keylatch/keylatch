@@ -25,7 +25,9 @@ func bootstrapForAudit(t *testing.T) string {
 	dir := filepath.Join(t.TempDir(), "keylatch")
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 	testutil.ClearLLMSessionEnv(t)
-	if _, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: auditTestLookup}); err != nil {
+	// A plaintext identity file: these tests open the keyring without a key
+	// store, and one of them reads the identity file directly.
+	if _, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: auditTestLookup, InsecureFileKEK: true}); err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
 	return dir

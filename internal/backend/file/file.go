@@ -6,6 +6,7 @@ package file
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,19 @@ import (
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 	vpath "github.com/keylatch/keylatch/internal/vault/path"
 )
+
+// ErrAADMismatch is returned by Get when the stored binding of a secret names a
+// different partition, path or version than the one requested, as when two
+// secrets' files have been swapped.
+var ErrAADMismatch = errors.New("file backend: aad binding mismatch")
+
+// namespaceOf is the partition a canonical path belongs to.
+func namespaceOf(path string) string {
+	if parts, err := vpath.Parts(path); err == nil {
+		return parts.Namespace
+	}
+	return "default"
+}
 
 // Options configures a FileBackend.
 type Options struct {
@@ -95,7 +109,14 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 	fb.mu.Lock()
 	defer fb.mu.Unlock()
 
-	if err := fb.ensureManifestLocked(); err != nil {
+	// Another process may have written since this one loaded the manifest, so
+	// reload it under the vault lock before changing and saving it.
+	release, err := fb.lockVault()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := fb.reloadManifestLocked(); err != nil {
 		return err
 	}
 
@@ -111,10 +132,7 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 
 	// AEAD encryption.
 	now := time.Now().UTC()
-	namespace := "default"
-	if parts, err := vpath.Parts(path); err == nil {
-		namespace = parts.Namespace
-	}
+	namespace := namespaceOf(path)
 
 	_, term, err := fb.keyring.ActiveDEK()
 	if err != nil {
@@ -252,11 +270,12 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	// generation) to another would get a validly-decrypting response for the
 	// wrong path, since the AEAD tag only proves the AAD bytes are unchanged —
 	// not that they match what was actually requested. Require the stored
-	// binding to match the requested path. The backend ID embeds the vault
-	// directory, so comparing it would break a vault that was moved.
-	if binding.Path != path {
+	// binding to match the requested partition, path and version. The backend
+	// ID embeds the vault directory, so comparing it would break a vault that
+	// was moved.
+	if binding.Path != path || binding.Namespace != namespaceOf(path) || (meta.Version > 0 && binding.Version != meta.Version) {
 		return nil, backend.Meta{}, fmt.Errorf(
-			"file backend: aad binding mismatch for %q: stored path=%q", path, binding.Path)
+			"%w for %q: stored namespace=%q path=%q version=%d", ErrAADMismatch, path, binding.Namespace, binding.Path, binding.Version)
 	}
 	// Re-marshal to get canonical AAD bytes (same as used during encryption).
 	aadBytes, err := aad.Marshal(binding)
@@ -287,7 +306,12 @@ func (fb *FileBackend) Delete(ctx context.Context, path string) error {
 		return fmt.Errorf("file backend: path escapes vault root")
 	}
 
-	if err := fb.ensureManifestLocked(); err != nil {
+	release, err := fb.lockVault()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := fb.reloadManifestLocked(); err != nil {
 		return err
 	}
 

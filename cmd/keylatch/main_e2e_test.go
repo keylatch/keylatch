@@ -15,6 +15,7 @@ import (
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,7 +51,9 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		binaryPath += ".exe"
 	}
-	out, err := exec.Command("go", "build", "-buildvcs=false", "-o", binaryPath, "github.com/keylatch/keylatch/cmd/keylatch").CombinedOutput()
+	// The keylatch_e2e tag lets the binary read operator settings from the
+	// scratch home these tests use instead of the account's real home.
+	out, err := exec.Command("go", "build", "-buildvcs=false", "-tags", "keylatch_e2e", "-o", binaryPath, "github.com/keylatch/keylatch/cmd/keylatch").CombinedOutput()
 	if err != nil {
 		panic("failed to build keylatch binary: " + err.Error() + "\n" + string(out))
 	}
@@ -635,20 +638,43 @@ func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// noInsecureKEK, set in a test's overrides, keeps the scratch home's operator
+// config from allowing a plaintext vault key.
+const noInsecureKEK = "KEYLATCH_E2E_NO_INSECURE_KEK"
+
 // isolateFromKeyring drops the session-bus variables so the subprocess never
-// reaches the developer's Secret Service keyring, and opts into the file KEK
-// unless the test sets KEYLATCH_INSECURE_FILE_KEK itself.
+// reaches the developer's Secret Service keyring and points it at the scratch
+// home for operator settings. Unless the test sets noInsecureKEK, the scratch
+// home's operator config allows a plaintext vault key: the one way to bootstrap
+// without a keyring or a terminal.
 func isolateFromKeyring(environ []string, overrides map[string]string) []string {
-	out := make([]string, 0, len(environ)+1)
+	out := make([]string, 0, len(environ)+2)
 	for _, e := range environ {
 		switch name, _, _ := strings.Cut(e, "="); name {
-		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_INSECURE_FILE_KEK":
+		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_E2E_OPERATOR_HOME", noInsecureKEK:
 			continue
 		}
 		out = append(out, e)
 	}
-	if _, set := overrides["KEYLATCH_INSECURE_FILE_KEK"]; !set {
-		out = append(out, "KEYLATCH_INSECURE_FILE_KEK=1")
+	home, ok := overrides["HOME"]
+	if !ok {
+		return out
+	}
+	// The operator's home is a directory of its own, so a config a test plants
+	// under HOME is never mistaken for the operator's.
+	operatorHome := filepath.Join(home, "operator-home")
+	out = append(out, "KEYLATCH_E2E_OPERATOR_HOME="+operatorHome)
+	if _, off := overrides[noInsecureKEK]; !off && runtime.GOOS == "linux" {
+		if cfgPath := paths.DefaultConfig(operatorHome); !fileExists(cfgPath) {
+			c := config.Default()
+			c.AllowInsecureFileKEK = true
+			_ = config.Save(cfgPath, c)
+		}
 	}
 	return out
 }

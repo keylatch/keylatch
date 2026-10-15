@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,7 +27,10 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/route"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/policy/connpolicy"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/telemetry"
 	"github.com/keylatch/keylatch/internal/ui"
@@ -113,12 +117,20 @@ type Server struct {
 	// actorHashKey is the domain-separated key for HMAC'ing actor IDs in
 	// budget denial receipts (derived from SigningKey, never the raw key).
 	actorHashKey []byte
-	// policy is the loaded request policy. nil means no policy is
-	// configured (ServerOptions.PolicyPath == "" or the file does not yet
-	// exist) — the handler's Step 6 treats nil as pass-through allow to
-	// preserve pre-wiring behavior. Non-nil means Step 6 evaluates
-	// every request against it.
+	// policy is the rules policy loaded and validated at startup. nil means
+	// the rules file does not exist; Step 6 still decides every request, and
+	// with no policy of any kind it denies.
 	policy *policy.Policy
+	// enforcer decides every request. nil selects enforce.Default().
+	enforcer *enforce.Enforcer
+}
+
+// decider returns the Enforcer Step 6 asks.
+func (s *Server) decider() *enforce.Enforcer {
+	if s.enforcer != nil {
+		return s.enforcer
+	}
+	return enforce.Default()
 }
 
 // RuntimeDecision describes the routing + credential decision for a request.
@@ -188,17 +200,14 @@ func New(opts ServerOptions) (*Server, error) {
 		return nil, fmt.Errorf("gateway: compile routes: %w", err)
 	}
 
-	// Load the request policy, if configured (wiring).
+	// Load and validate the rules policy at startup.
 	//
-	// opts.PolicyPath == "" means the operator has not opted into gateway
-	// policy enforcement — leave loadedPolicy nil so the handler's Step 6
-	// stays pass-through, exactly like before this field was wired. A
-	// configured-but-not-yet-created file is treated the same way: there is
-	// nothing to enforce yet, not an error. Any other Load failure
-	// (malformed JSON, bad permissions, invalid schema) fails server
-	// startup — starting a gateway with a policy file the operator believes
-	// is active but which cannot actually be read would be worse than
-	// refusing to start.
+	// A rules file that does not exist yet is not an error: Step 6 still
+	// decides every request, and with no policy of any kind it denies. Any
+	// other Load failure (malformed JSON, bad permissions, invalid schema)
+	// fails server startup — starting a gateway with a policy file the
+	// operator believes is active but which cannot actually be read would be
+	// worse than refusing to start.
 	var loadedPolicy *policy.Policy
 	if opts.PolicyPath != "" {
 		p, err := policy.Load(opts.PolicyPath)
@@ -226,10 +235,9 @@ func New(opts ServerOptions) (*Server, error) {
 			// treats a non-empty pattern list as required, and
 			// match.MatchCommand("", nil)/match.MatchCWD(pattern, "") only
 			// ever succeed for a bare "*"). A rule authored for CLI
-			// enforcement (internal/runner.CheckPolicy, which does
-			// populate both) and reused verbatim for the gateway would
-			// silently never apply, with no error anywhere. Reject such
-			// rules at load time instead.
+			// enforcement (the run path populates both) and reused
+			// verbatim for the gateway would silently never apply, with
+			// no error anywhere. Reject such rules at load time instead.
 			if badRules := rulesWithGatewayUnsupportedFields(p.Rules); len(badRules) > 0 {
 				return nil, fmt.Errorf(
 					"gateway: policy %q has rule(s) with commands/cwds constraints, which never match gateway "+
@@ -239,9 +247,29 @@ func New(opts ServerOptions) (*Server, error) {
 			}
 			loadedPolicy = &p
 		case errors.Is(err, fs.ErrNotExist):
-			// Not configured yet — pass-through preserved.
+			// Not created yet; every request is denied until it is.
 		default:
 			return nil, fmt.Errorf("gateway: load policy: %w", err)
+		}
+	}
+
+	// Connection policy documents beside the rules file are validated now too,
+	// so a broken document stops the gateway instead of denying its
+	// connection's requests one by one.
+	var enforcer *enforce.Enforcer
+	if opts.PolicyPath != "" {
+		env := opts.Env
+		if env == nil {
+			env = llmcontext.DefaultLookup
+		}
+		enforcer = &enforce.Enforcer{
+			PolicyPath: opts.PolicyPath,
+			PolicyDir:  filepath.Join(filepath.Dir(opts.PolicyPath), "policy.d"),
+			GrantPath:  paths.Grants(env),
+			Rules:      loadedPolicy,
+		}
+		if _, err := (connpolicy.Store{Dir: enforcer.PolicyDir}).LoadAll(); err != nil {
+			return nil, fmt.Errorf("gateway: %w", err)
 		}
 	}
 
@@ -282,6 +310,7 @@ func New(opts ServerOptions) (*Server, error) {
 		budget:            opts.Budget,
 		actorHashKey:      budget.DeriveActorHashKey(opts.SigningKey),
 		policy:            loadedPolicy,
+		enforcer:          enforcer,
 	}
 
 	// hostOverrideBlockerMiddleware is configured with an empty allowedHosts

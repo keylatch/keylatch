@@ -134,6 +134,10 @@ var safeLogFields = map[string][]string{
 		"connection", "namespace", "repository", "permissions",
 		"expires_at", "caller_kind", "reason",
 	},
+	// privileged actions: names, counts and the digest of the approved summary.
+	"presence.decision": {"presence_action", "method", "digest", "reason"},
+	"policy.change":     {"change", "connection", "caller_kind", "digest", "files"},
+	"backup.export":     {"count", "method"},
 	// binding changes: host sets are authorities (no credential content).
 	// attempted is the change an agent caller was refused.
 	"binding.created":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
@@ -201,6 +205,7 @@ func AllActions() []string {
 		"mint",
 		"run.decided", "run.exited",
 		"approval.requested", "approval.granted", "approval.denied",
+		"presence.decision", "policy.change", "backup.export",
 		// binding change actions.
 		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
 	}

@@ -110,17 +110,17 @@ After running, edit `.keylatch/integration.yml` to set your actual provider name
 Initialize local keylatch configuration (scriptable).
 
 ```
-keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--insecure-file-kek]
+keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--kek keystore|passphrase]
 ```
 
-Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring and fails when none is usable, unless `--insecure-file-kek` is given. Re-running it moves a plaintext identity from an older install into the keyring.
+Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring. When none is usable it asks, in a terminal, for a passphrase that wraps the vault key instead, and without a terminal it fails. No flag and no environment variable keeps the key in a plaintext file; only `allow_insecure_file_kek` in the operator's own config file does. Re-running it moves a plaintext identity from an older install into the keyring.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print plan without writing anything |
 | `--json` | Output plan as JSON |
 | `--backend` | Set credential backend (`file`, `keychain`, `op`, `bw`) |
-| `--insecure-file-kek` | Keep the vault identity in a plaintext file next to the vault when no OS keyring is available. Any process running as you can then decrypt the vault. Same as `KEYLATCH_INSECURE_FILE_KEK=1` |
+| `--kek` | How the vault key is held: `keystore` (an OS keyring, never a passphrase) or `passphrase` (Argon2id, asked on the terminal on every use). Default: the keystore, then a passphrase when no keyring is usable and a terminal is available |
 
 ---
 
@@ -304,21 +304,24 @@ On a `dev` or `test` connection, fields named `*_SECRET`, `*_SIGNING_KEY`, `*_EN
 Export an AEAD-encrypted backup of all enrolled connections (T-12-02).
 
 ```
-keylatch backup [--output <file>] [--passphrase-file <file>]
+keylatch backup [--output <file>]
 ```
 
 Writes all enrolled connection credentials to an XChaCha20-Poly1305 encrypted
-tar archive protected by a separate backup passphrase. The passphrase is
-prompted interactively from the terminal (TTY required) or read from a file.
+tar archive protected by a separate backup passphrase. A human approves the
+export at a terminal (the prompt names how many credentials leave the store),
+and the passphrase is read from that terminal only.
 
 **Security invariants:**
 
 - Blocked in LLM sessions (exit `2`, `SecurityBlock`). Backup is a value-bearing
   operation that must not be accessible to agent sessions.
+- Needs human presence: an interactive terminal that no agent harness owns, plus
+  the platform prompt where one is installed.
 - The backup passphrase is independent of the vault KEK — compromise of the
   backup passphrase does not compromise the vault, and vice versa.
-- Passphrase is never exposed on the command line. The only safe inputs are a
-  TTY prompt or `--passphrase-file`.
+- The passphrase is never taken from the command line, a file or a pipe. There
+  is no `--passphrase-file`; passing it is a usage error.
 - Each credential entry is individually AEAD-sealed with the credential path as
   associated data (AAD), binding ciphertext to its identity.
 
@@ -337,24 +340,17 @@ the Argon2id salt and parameters needed to re-derive the KEK from the passphrase
 | Flag | Description |
 |------|-------------|
 | `--output <file>` | Output file path (default: `keylatch-backup-<timestamp>.enc` in cwd) |
-| `--passphrase-file <file>` | Read backup passphrase from this file instead of a TTY prompt |
 
-**Examples**
+**Example**
 
 ```bash
-# Interactive (TTY required):
-keylatch backup
-
-# Non-interactive (CI / scripted restore workflows):
-keylatch backup --output /mnt/secure/backup.enc --passphrase-file /run/secrets/backup-passphrase
-
-# Decrypt and inspect (using openssl or a purpose-built restore tool):
-keylatch restore backup.enc --output-dir ./restored-vault
+keylatch backup --output /mnt/secure/backup.enc
 ```
 
-**Restore / Decryption**
+**Decryption**
 
-Backups are self-contained. To decrypt a backup:
+There is no restore command yet. Backups are self-contained, so a backup can be
+decrypted by hand:
 
 1. Read `keylatch-backup/header.json` from the archive for the Argon2id salt and
    parameters.
@@ -362,7 +358,29 @@ Backups are self-contained. To decrypt a backup:
 3. For each credential entry, split the payload as `nonce[24] || ciphertext`, then:
    `plaintext = XChaCha20Poly1305_Open(kek, nonce, ciphertext, AAD=<entry-path>)`.
 
-The restore command (`keylatch restore`) automates this process.
+---
+
+### `keylatch keys`
+
+Show and change how the vault key is protected.
+
+```
+keylatch keys status [--json]
+keylatch keys rewrap --to keystore|passphrase
+```
+
+`status` reports where the key-encryption key is held (`os-keyring`,
+`passphrase`, `plaintext-file` or `external`) and `plaintext_kek`, which is true
+while a plaintext identity file is on disk. Nothing is changed and no key
+material is shown.
+
+`rewrap` generates a fresh key (a new identity in the OS keyring, or a passphrase
+typed twice on the terminal) and re-wraps the vault's data keys under it. Before
+anything is deleted it proves that the new key alone opens the keyring and
+recovers the same keys, then reads every secret through it; only then is the
+plaintext identity overwritten with random bytes and removed. If the proof fails
+the keyring is wrapped back under the previous key. It needs a human at a
+terminal. A copy of the old plaintext identity opens nothing afterwards.
 
 ---
 
@@ -808,12 +826,14 @@ keylatch ui [--port <n>] [--scope <scope>] [--demo] [--no-open] [--unsafe-bind-a
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `7890` | Port to listen on |
-| `--scope` | `admin` | Session scope: `status-only`, `setup`, `admin`, `token-minting` |
+| `--scope` | `read` | Session scope: `read` (also `status-only`), `setup`, `admin`, `token-minting`. Anything above `read` needs a human at a terminal |
 | `--demo` | | Run with stub data |
-| `--no-open` | | Print URL without opening browser |
+| `--no-open` | | Do not open the browser; only allowed when stdout is a terminal, where the URL is shown |
 | `--unsafe-bind-all` | | Bind to `0.0.0.0` (non-LLM sessions only) |
 
-In an LLM session, scope is forced to `status-only` and `--unsafe-bind-all` is ignored.
+The one-time bootstrap URL is shown only when stdout is a terminal; otherwise it
+goes only to the OS browser opener. In an LLM session, scope is forced to
+`read` and `--unsafe-bind-all` is ignored.
 
 ---
 
@@ -980,23 +1000,32 @@ Exposes 5 tools: connection status, capability check, policy evaluation, run-und
 
 ### `keylatch policy`
 
-Manage runtime access policies.
+Manage runtime access policies. The model, the connection policy document
+format and every example are in [`docs/policy.md`](policy.md).
 
 ```
-keylatch policy allow <actor> <path> [--capability <cap>] [--command <cmd>] [--ttl <duration>]
-keylatch policy list [--actor <actor>] [--json]
-keylatch policy revoke <id>
+keylatch policy init [--force]
+keylatch policy import <dir>
+keylatch policy export <dir> [--force]
+keylatch policy check <connection> --as agent|host|service|human [--runtime <r>] [--action <a>] [--json]
+keylatch policy check <actor> <connection> [-- <cmd...>] [--capability <cap>] [--json]
+keylatch policy allow <actor> <connection> [--capability <cap>] [--command <cmd>] [--ttl <duration>]
+keylatch policy deny <connection> --as agent|host|service|human
+keylatch policy list [--json]
+keylatch policy remove <rule-id>
 ```
 
-**`default_deny` defaults to `false`.** A policy file that only lists
-allow-style rules (no `"default_deny": true`) falls through to
-default-**allow** for every request that doesn't match any rule — not
-default-deny. If you're authoring a deny-only or allow-list policy (e.g.
-"only these connections/capabilities may be used, deny everything else"),
-you must set `"default_deny": true` explicitly for the policy to actually
-be fail-secure; omitting it is a common authoring mistake that silently
-allows everything unlisted. This applies to both the gateway (`keylatch
-gateway up`, below) and direct/CLI policy enforcement.
+**Policy denies by default.** `run`, `call` and every gateway request are
+denied with ``no policy for <connection>: run `keylatch policy init` `` until a
+policy allows them. A rules file (`policy.json`) that omits `default_deny`
+denies whatever no rule allows; only an explicit `"default_deny": false`
+allows. A connection policy document names the caller kinds that may use a
+connection; a kind it does not name is denied.
+
+`init` (with `--force` over an existing policy), `import`, `allow`, `deny` and
+`remove` need a human at a terminal (see [`docs/policy.md`](policy.md)); `check`
+and `export` are read-only and need none. `check` answers with the same function
+`run`, `call` and the gateway use.
 
 Two other constraints specific to a **gateway-loaded** policy
 (`gateway up`'s `PolicyPath`, see below):
@@ -1012,9 +1041,12 @@ Two other constraints specific to a **gateway-loaded** policy
 
 ### `keylatch grant`
 
-List and revoke capability grants.
+Issue, list and revoke capability grants. A grant overrides a policy denial
+only when it was issued with a presence proof, so `create` and `revoke` need a
+human at a terminal.
 
 ```
+keylatch grant create <connection> --actor <actor> [--capability <cap>] [--ttl <duration>] [--command <cmd>] [--cwd <dir>] [--max-uses <n>]
 keylatch grant list [--json]
 keylatch grant revoke <id>
 ```

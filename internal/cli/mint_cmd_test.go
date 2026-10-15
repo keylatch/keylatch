@@ -21,6 +21,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -130,7 +131,6 @@ func setupMint(t *testing.T, policy *config.GitHubAppMintPolicy) *mintEnv {
 	require.NoError(t, registry.InitFromConfig(context.Background(), os.Getenv))
 	testutil.ClearLLMSessionEnv(t)
 	testutil.SetupHermeticConfig(t)
-	t.Setenv("INVOCATION_ID", "")
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -391,11 +391,22 @@ func TestMintServiceCaller(t *testing.T) {
 	p := defaultMintPolicy()
 	p.Callers = []string{"service"}
 	env := setupMint(t, p)
-	t.Setenv("INVOCATION_ID", "0123456789abcdef")
+	t.Cleanup(callerkind.SetServiceUnit("deploy.service"))
 
 	_, stderr, code := runMintArgs(t, okArgs...)
 	require.Equal(t, exitcode.OK, code, stderr)
 	assert.Equal(t, "service", env.recorder.Events()[0].Extra["caller_kind"])
+}
+
+// A variable the caller sets is not evidence of a service unit.
+func TestMintIgnoresInvocationIDVariable(t *testing.T) {
+	p := defaultMintPolicy()
+	p.Callers = []string{"service"}
+	setupMint(t, p)
+	t.Setenv("INVOCATION_ID", "0123456789abcdef")
+
+	_, _, code := runMintArgs(t, okArgs...)
+	require.Equal(t, exitcode.PolicyDeny, code)
 }
 
 func TestMintReplyMismatchRevokes(t *testing.T) {
