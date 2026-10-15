@@ -275,6 +275,12 @@ type ConnectionTemplate struct {
 	Adapter          Adapter          `json:"adapter,omitempty"           yaml:"adapter,omitempty"`
 	EnvClass         EnvClassSpec     `json:"env_class,omitempty"         yaml:"env_class,omitempty"`
 	MintedFields     []string         `json:"minted_fields,omitempty"     yaml:"minted_fields,omitempty"`
+	// DenyRoutes lists provider routes that create, read or list credentials
+	// or keys; the gateway refuses them (see ValidateDenyRoutes).
+	DenyRoutes []string `json:"deny_routes,omitempty" yaml:"deny_routes,omitempty"`
+	// ForwardHeaders names extra inbound headers the gateway forwards to the
+	// provider, beyond its built-in allowlist.
+	ForwardHeaders []string `json:"forward_headers,omitempty" yaml:"forward_headers,omitempty"`
 
 	// Test strategy
 	TestStrategy TestStrategy `json:"test_strategy" yaml:"test_strategy"`

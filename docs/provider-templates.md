@@ -82,6 +82,15 @@ Templates can declare where a secret may be substituted into outgoing requests.
 
 `keylatch registry validate` rejects the core providers (GitHub, Vercel, Supabase, Stripe, OpenAI, Anthropic) when they omit `hosts`, `slots`, `placeholder_shape` or `env_class`. Go callers read the contract with `registry.BindingFor(provider)`.
 
+### Denied routes and forwarded headers
+
+| Field | Description |
+|-------|-------------|
+| `deny_routes` | Provider routes that create, read or list credentials or keys (create/roll/list API tokens, key and secret endpoints, token exchange). Each entry is a path, optionally prefixed by an HTTP method and a space (`PUT /v1/tokens/*/value`); each segment is a glob (`*` matches within one segment) and a final `**` matches the rest. The gateway answers `403 route_denied` for a route that matches, and `keylatch call` refuses an action that does. |
+| `forward_headers` | Extra inbound header names the gateway forwards to the provider, beyond its built-in list (`Accept`, `Content-Type`, `User-Agent`, SDK version headers). Names that look like credentials (`key`, `token`, `auth`, `secret`, `cookie`, ...) are never forwarded. |
+
+Every core template lists its provider's credential routes in `deny_routes`. `keylatch registry validate` fails a template whose `actions` or `gateway_actions` expose a path with a segment such as `api_keys`, `keys`, `tokens`, `credentials` or `secrets` when `deny_routes` does not list it, and one that exposes a route its own `deny_routes` refuses.
+
 ### `trust_level` values
 
 | Level | Meaning |

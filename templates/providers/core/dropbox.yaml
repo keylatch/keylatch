@@ -50,6 +50,12 @@ redaction:
   - pattern: 'sl\.[A-Za-z0-9\-_]{40,}'
     replacement: "****"
 
+# Routes that issue or exchange access tokens.
+deny_routes:
+  - "/oauth2/token"
+  - "/2/auth/token/from_oauth1"
+  - "/2/team/token/**"
+
 test_strategy:
   kind: http_post
   endpoint: https://api.dropboxapi.com/2/users/get_current_account

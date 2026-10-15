@@ -119,6 +119,13 @@ Examples:
 				)
 				os.Exit(exitcode.UserError)
 			}
+			if act, ok := tmpl.Actions[actionName]; ok && tmpl.DeniesRoute(act.Method, act.Path) {
+				printStructuredError(c, useJSON, "route_denied",
+					fmt.Sprintf("action %q targets a provider route its template denies", actionName),
+					"routes that create, read or list credentials are never called through keylatch",
+				)
+				os.Exit(exitcode.SecurityBlock)
+			}
 			if _, ok := tmpl.Actions[actionName]; !ok {
 				var available []string
 				for name := range tmpl.Actions {

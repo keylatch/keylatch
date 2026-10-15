@@ -115,6 +115,30 @@ func TestDialPinsResolvedIP(t *testing.T) {
 	}
 }
 
+// Only allowlisted headers and the ones the template declares are forwarded;
+// cookies, encodings and anything that looks like a credential never are.
+func TestHeaderAllowlist(t *testing.T) {
+	declared := []string{"X-Svc-Version", "X-Svc-Api-Key"}
+	src := http.Header{
+		"Accept": {"application/json"}, "Content-Type": {"application/json"}, "User-Agent": {"agent/1"},
+		"X-Svc-Version": {"2"}, "X-Svc-Api-Key": {"agent-supplied"},
+		"Cookie": {"s=1"}, "Accept-Encoding": {"gzip"}, "Connection": {"keep-alive"},
+		"Transfer-Encoding": {"chunked"}, "Te": {"trailers"}, "X-Unlisted": {"v"},
+	}
+	dst := http.Header{}
+	copyForwardedHeaders(dst, src, declared)
+	for _, h := range []string{"Accept", "Content-Type", "User-Agent", "X-Svc-Version"} {
+		if dst.Get(h) == "" {
+			t.Errorf("%s was not forwarded", h)
+		}
+	}
+	for _, h := range []string{"X-Svc-Api-Key", "Cookie", "Accept-Encoding", "Connection", "Transfer-Encoding", "Te", "X-Unlisted"} {
+		if v := dst.Get(h); v != "" {
+			t.Errorf("%s was forwarded: %q", h, v)
+		}
+	}
+}
+
 // The whole body is inspected, not just its first 64 KiB, and a body over the
 // limit is rejected instead of being truncated.
 func TestFullBodyInspected(t *testing.T) {

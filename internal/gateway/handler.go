@@ -125,6 +125,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Step 4b: routes that create, read or list provider credentials are
+	// never forwarded, whatever the token allows.
+	if registry.RouteDenied(rt.DenyRoutes, rt.Method, rt.UpstreamPath) {
+		writeError(w, http.StatusForbidden, "route_denied", "this provider route is denied by its template")
+		s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
+			"error":    "route_denied",
+			"provider": rt.Provider,
+		})
+		outcome = audit.OutcomeDenied
+		return
+	}
+
 	// Step 5: Capability check.
 	if !token.HasCapability(t, rt.Capability) {
 		writeError(w, http.StatusForbidden, "capability_mismatch", "token does not have required capability")
@@ -396,7 +408,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	copyForwardedHeaders(upstreamReq.Header, r.Header)
+	copyForwardedHeaders(upstreamReq.Header, r.Header, rt.ForwardHeaders)
 
 	// Inject auth per AuthPlacement.
 	injectAuth(upstreamReq, rt.AuthPlacement, accessToken.Value)

@@ -104,7 +104,10 @@ func validateTemplateBytes(yamlBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	return ValidateBindings(tmpl)
+	if err := ValidateBindings(tmpl); err != nil {
+		return err
+	}
+	return ValidateDenyRoutes(tmpl)
 }
 
 // normalizeYAML converts yaml.v3 decoded values (which can have map[string]any)
