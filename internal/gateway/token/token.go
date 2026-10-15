@@ -39,8 +39,8 @@ var (
 	ErrTokenPersistFailed = errors.New("token: persist failed")
 	// ErrStoreTampered means the token record does not match its MAC: the store
 	// was edited, or written without the signing key.
-	ErrStoreTampered = errors.New("token: store record failed its integrity check")
-	ErrMaxUsesRequired    = errors.New("token: MaxUses required for runner-minted tokens")
+	ErrStoreTampered   = errors.New("token: store record failed its integrity check")
+	ErrMaxUsesRequired = errors.New("token: MaxUses required for runner-minted tokens")
 	// ErrHardwareApprovalUnsupported is returned when a TokenSpec carries
 	// hardware approval claim fields: this build has no hardware attestation
 	// or approval workflow, so no gateway token may be minted from one.

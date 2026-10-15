@@ -181,7 +181,7 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 	}
 
 	// Step 3: build subprocess env.
-	env := os.Environ()
+	env := ScrubChildEnv(os.Environ())
 	for _, c := range creds {
 		env = append(env, c.envVar+"="+string(c.value))
 	}

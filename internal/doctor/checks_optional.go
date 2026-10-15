@@ -758,6 +758,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		{"backends", checkBackendLastPass(probe)},
 		{"backends", checkBackendFile(env)},
 		{"backends", checkPlaintextKEK(env)},
+		{"backends", checkBackendEnvCredentials(env)},
 		{"daemon", checkExternalDocker(env, probe)},
 		{"daemon", checkExternalSOPS(probe)},
 		// External password-manager CLI checks (op, aws, vault) — skipped when no

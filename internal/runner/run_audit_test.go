@@ -58,7 +58,12 @@ func TestEveryBrokeredActionAudited(t *testing.T) {
 		{"allowed", allowed, nil, false, "allowed"},
 		{"guard denied", allowed, func(runtime.RuntimeMode, string) bool { return true }, true, "guard_denied"},
 		{"unknown provider", func() runner.ExecRequest { r := allowed; r.ConnectionSlug = "no-such-provider"; return r }(), nil, true, "provider_not_found"},
-		{"command not allowed", func() runner.ExecRequest { r := allowed; r.ExtraAllowedPrefixes = nil; r.Command = []string{"/bin/evil"}; return r }(), nil, true, "command_not_allowed"},
+		{"command not allowed", func() runner.ExecRequest {
+			r := allowed
+			r.ExtraAllowedPrefixes = nil
+			r.Command = []string{"/bin/evil"}
+			return r
+		}(), nil, true, "command_not_allowed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

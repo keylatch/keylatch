@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package runner
 
 import (
@@ -9,9 +7,7 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
-// KNOWN-FAILING: gatewayTypedChildEnv only strips KEYLATCH_* vars via
-// internal/runtime.FilterChildEnv instead of building from an allowlist, so
-// BW_SESSION and OP_SERVICE_ACCOUNT_TOKEN survive into child environments.
+// The gateway child environment carries no manager authentication.
 func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) {
 	t.Setenv("BW_SESSION", "synthetic-manager-session")
 	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "synthetic-service-account")

@@ -75,12 +75,12 @@ type VaultReader interface {
 
 // ServerOptions configures a Gateway Server.
 type ServerOptions struct {
-	Bind              string // default "127.0.0.1:7878"; NEVER "0.0.0.0" except --unsafe-bind-all + !LLM
-	PolicyPath        string
+	Bind       string // default "127.0.0.1:7878"; NEVER "0.0.0.0" except --unsafe-bind-all + !LLM
+	PolicyPath string
 	// MaxBody is the largest request body inspected and forwarded; larger
 	// bodies are rejected. Zero means DefaultMaxBody.
-	MaxBody    int64
-	SigningKey []byte // 32-byte; unwrapped from the KEK-wrapped gateway signing key
+	MaxBody           int64
+	SigningKey        []byte // 32-byte; unwrapped from the KEK-wrapped gateway signing key
 	AuditLogger       *audit.Logger
 	Mode              Mode
 	Env               llmcontext.Lookup

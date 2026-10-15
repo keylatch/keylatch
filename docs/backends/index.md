@@ -102,7 +102,8 @@ keylatch connect openrouter api_key YOUR_KEY
 |---------|---------|
 | `KEYLATCH_OP_VAULT` | Vault name (default: `Keylatch`) |
 | `KEYLATCH_OP_BIN` | Path to `op` binary (default: PATH) |
-| `OP_SERVICE_ACCOUNT_TOKEN` | Service account token for CI |
+
+For CI, store the service account token with `keylatch backend login op` (see [Backend credentials](#backend-credentials)); an exported `OP_SERVICE_ACCOUNT_TOKEN` is refused unless `backends.op.allow_env_credentials` is `true`.
 
 ---
 
@@ -111,14 +112,13 @@ keylatch connect openrouter api_key YOUR_KEY
 Delegates storage to the Bitwarden CLI (`bw`). Works with hosted Bitwarden and self-hosted Vaultwarden instances.
 
 ```bash
-export BW_SESSION=$(bw unlock --raw)
+keylatch bw unlock
 keylatch config set backend bw
 keylatch connect openrouter api_key YOUR_KEY
 ```
 
 | Env var | Purpose |
 |---------|---------|
-| `BW_SESSION` | Session token from `bw unlock --raw` |
 | `KEYLATCH_BW_SERVER` | Vaultwarden server URL (`https://` required) |
 | `KEYLATCH_BW_BIN` | Path to `bw` binary (default: PATH) |
 | `KEYLATCH_BW_FOLDER` | Filter items by folder name |
@@ -187,6 +187,20 @@ store on demand and never written to disk by keylatch.
 
 **Note**: `KEYLATCH_PASSPHRASE` has no effect on the `file` backend (S-FIND-12).
 The passphrase env var is not read during bootstrap or credential access.
+
+---
+
+## Backend credentials
+
+Remote backends (`op`, `opconnect`, `vault`, `awssm`, `gcpsm`, `azurekv`, `doppler`, `infisical`) authenticate with a credential: a service account or Connect token, a Vault token or AppRole, an AWS key pair, a Google credentials file, an Azure client secret, a Doppler token, an Infisical client ID and secret. Keep it out of the environment:
+
+```bash
+keylatch backend login vault     # prompts on the terminal, stores it wrapped by the KEK
+```
+
+`backend login` is human-only: it needs an interactive terminal, refuses agent sessions, and takes the value from the prompt, never from a flag or a pipe. It sets `backends.<id>.credential_ref` in the config. The backend reads the stored credential first; a stale variable in the environment does not override it.
+
+Credentials exported in the environment (`VAULT_TOKEN`, `AWS_ACCESS_KEY_ID`, `DOPPLER_TOKEN`, ...) are refused with an explanation unless the config sets `backends.<id>.allow_env_credentials` to `true`; `keylatch doctor` warns while it is on. Every command Keylatch runs for you (`keylatch run`, the gateway runtimes, the MCP `keylatch_run` tool) starts with these variables and all `KEYLATCH_*` variables removed from its environment, whatever the parent exported.
 
 ---
 
