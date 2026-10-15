@@ -37,8 +37,6 @@ When `CREDENTIALS_LLM_SESSION` is set to any non-empty value, Keylatch treats th
 
 Setting it to `antigravity` (rather than `1`) makes the guard reason traceable in audit logs and diagnostics.
 
-See also: [docs/integrations/windsurf.md](windsurf.md) for the equivalent setup for Windsurf.
-
 ---
 
 ## Install command
@@ -54,7 +52,7 @@ This prints the shell-rc snippets above and exits cleanly. No files are written 
 For the strongest protection, run Keylatch in gateway mode. Credentials never leave the gateway process:
 
 ```bash
-keylatch proxy start --port 8080
+keylatch proxy up --port 8080
 # Point Antigravity's network proxy setting to http://localhost:8080
 ```
 

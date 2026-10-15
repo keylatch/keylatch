@@ -67,7 +67,6 @@ jobs:
       - run: bash contrib/agent-guards/aider/block-keylatch-exfiltration.test.sh
       - run: bash contrib/agent-guards/copilot/block-keylatch-exfiltration.test.sh
       - run: bash contrib/agent-guards/cursor/block-keylatch-exfiltration.test.sh
-      - run: bash contrib/agent-guards/windsurf/block-keylatch-exfiltration.test.sh
 
   build-cli:
     needs: test

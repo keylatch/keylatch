@@ -29,13 +29,13 @@ The raw credential never leaves the vault. The agent process receives a short-li
 
 ## Quick-start matrix
 
-| | Claude Code | Cursor | Gemini CLI | Windsurf | Generic |
-|---|---|---|---|---|---|
-| **Shell** | [shell.md](shell.md) | [shell.md](shell.md) | [shell.md](shell.md) | [shell.md](shell.md) | [shell.md](shell.md) |
-| **Python** | [python.md](python.md) | [python.md](python.md) | [python.md](python.md) | [python.md](python.md) | [python.md](python.md) |
-| **Node.js** | [node.md](node.md) | [node.md](node.md) | [node.md](node.md) | [node.md](node.md) | [node.md](node.md) |
-| **Agent guide** | [agents/claude-code.md](agents/claude-code.md) | [agents/cursor.md](agents/cursor.md) | [agents/gemini.md](agents/gemini.md) | [agents/windsurf.md](agents/windsurf.md) | [agents/generic.md](agents/generic.md) |
-| **CI** | [ci.md](ci.md) | [ci.md](ci.md) | [ci.md](ci.md) | [ci.md](ci.md) | [ci.md](ci.md) |
+| | Claude Code | Cursor | Gemini CLI | Generic |
+|---|---|---|---|---|
+| **Shell** | [shell.md](shell.md) | [shell.md](shell.md) | [shell.md](shell.md) | [shell.md](shell.md) |
+| **Python** | [python.md](python.md) | [python.md](python.md) | [python.md](python.md) | [python.md](python.md) |
+| **Node.js** | [node.md](node.md) | [node.md](node.md) | [node.md](node.md) | [node.md](node.md) |
+| **Agent guide** | [agents/claude-code.md](agents/claude-code.md) | [agents/cursor.md](agents/cursor.md) | [agents/gemini.md](agents/gemini.md) | [agents/generic.md](agents/generic.md) |
+| **CI** | [ci.md](ci.md) | [ci.md](ci.md) | [ci.md](ci.md) | [ci.md](ci.md) |
 
 ---
 
@@ -71,7 +71,6 @@ keylatch call openrouter list-models
 | [Claude Code](agents/claude-code.md) | Claude Code | `CLAUDECODE` env var |
 | [Cursor](agents/cursor.md) | Cursor | `CURSOR_AGENT` env var |
 | [Gemini CLI](agents/gemini.md) | Gemini CLI | `GEMINI_CLI` env var |
-| [Windsurf](agents/windsurf.md) | Windsurf | `CREDENTIALS_LLM_SESSION=windsurf` (manual) |
 | [Generic](agents/generic.md) | Any agent | `CREDENTIALS_LLM_SESSION` fallback |
 
 ---

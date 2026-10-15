@@ -31,7 +31,6 @@ declare -a AGENT_VARS=(
 declare -a AGENT_MARKERS=(
   ".claude/settings.json"
   ".cursor/settings.json"
-  ".windsurf/hooks"
   "AGENTS.md"
   "CLAUDE.md"
   ".gemini/settings.json"

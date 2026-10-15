@@ -25,7 +25,6 @@ from an LLM agent. Supported agents:
   claude-code   PreToolUse hook in ~/.claude/settings.json
   cursor        PreToolUse hook in ~/.cursor/settings.json
   aider         pre-tool-use-hook in ~/.aider.conf.yml
-  windsurf      Manual — set CREDENTIALS_LLM_SESSION=windsurf in shell rc
   codex         PreToolUse hook in ~/.codex/hooks.json
   copilot       Shell wrapper (patches shell rc to intercept copilot invocations)
   gemini        BeforeTool hook in ~/.gemini/settings.json
@@ -92,8 +91,6 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 		agent = guard.AgentCursor
 	case "aider":
 		agent = guard.AgentAider
-	case "windsurf":
-		agent = guard.AgentWindsurf
 	case "codex":
 		agent = guard.AgentCodex
 	case "copilot":
@@ -115,23 +112,7 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 		)
 	}
 
-	// Windsurf and Antigravity have no hook API — print shell-rc guidance and return.
-	if agent == guard.AgentWindsurf {
-		w := cmd.OutOrStdout()
-		fmt.Fprintln(w, "To protect credentials in Windsurf integrated terminals, add this to your shell rc:")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  zsh/bash:   export CREDENTIALS_LLM_SESSION=windsurf")
-		fmt.Fprintln(w, "  fish:       set -Ux CREDENTIALS_LLM_SESSION windsurf")
-		fmt.Fprintln(w, "  PowerShell: [Environment]::SetEnvironmentVariable('CREDENTIALS_LLM_SESSION','windsurf','User')")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "After setting the variable, restart your terminal or reload your shell rc.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "This triggers the LLM-session guard (Layer 1), blocking direct credential")
-		fmt.Fprintln(w, "access via 'keylatch get' whenever Windsurf's integrated terminal is active.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "See: https://keylatch.dev/integrations/windsurf")
-		return nil
-	}
+	// Antigravity has no hook API — print shell-rc guidance and return.
 	if agent == guard.AgentAntigravity {
 		w := cmd.OutOrStdout()
 		fmt.Fprintln(w, "To protect credentials in Antigravity integrated terminals, add this to your shell rc:")
