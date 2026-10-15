@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -200,6 +201,11 @@ func runGitHubChild(t *testing.T, g *githubFixture, extra ...string) (string, st
 }
 
 func TestMintedRunHoldsOnlyPlaceholders(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		// Only Linux Go reads SSL_CERT_FILE, which is how the child trusts the
+		// session CA; the placeholder tier is supported on Linux only.
+		t.Skip("placeholder tier is Linux-only")
+	}
 	g := startGitHubDaemon(t, agentPolicy())
 	g.env["CLAUDECODE"] = "1"
 	out, errOut, code := runGitHubChild(t, g, "--permission", "contents=write")
