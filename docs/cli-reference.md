@@ -1003,7 +1003,7 @@ keylatch mcp --stdio
 
 Exposes 5 tools: connection status, capability check, policy evaluation, run-under-keylatch, and receipt retrieval. Never exposes secret values.
 
-`keylatch_run` checks the command against the provider's `allowed_command_prefixes`: the executable must match by exact name (`python3evil` does not match `python3`), and an entry such as `node script.js` or `tsx scripts/` also constrains the first arguments. A permitted command runs as an agent caller through the gateway runtimes with a scoped session token and a scrubbed environment, and writes one `run` audit event. The tool refuses when the gateway signing key or the audit log is unavailable. The socket transport (`--port`) is not offered on Windows; use stdio.
+`keylatch_run` checks the command against the provider's `allowed_command_prefixes`: the executable must match by exact name (`python3evil` does not match `python3`), and an entry such as `node script.js` or `tsx scripts/` also constrains the first arguments. A permitted command runs as an agent caller through the gateway runtimes with a scoped session token and a scrubbed environment, and writes one `run` audit event. Connection policy decides first, as it does for `keylatch run`: with no policy that allows agents the tool is refused. The tool refuses when the gateway signing key or the audit log is unavailable. The socket transport (`--port`) is not offered on Windows; use stdio.
 
 ---
 
