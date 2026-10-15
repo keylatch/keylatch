@@ -42,13 +42,13 @@ func getCompiledSchema() (*jsonschema.Schema, error) {
 		compiler := jsonschema.NewCompiler()
 		compiler.Draft = jsonschema.Draft7
 		if err := compiler.AddResource(
-			"https://keylatch.io/schemas/provider-template/v1",
+			"https://keylatch.dev/schemas/provider-template/v1",
 			bytes.NewReader(embeddedSchemaBytes),
 		); err != nil {
 			schemaCompileErr = fmt.Errorf("registry: compile schema: %w", err)
 			return
 		}
-		s, err := compiler.Compile("https://keylatch.io/schemas/provider-template/v1")
+		s, err := compiler.Compile("https://keylatch.dev/schemas/provider-template/v1")
 		if err != nil {
 			schemaCompileErr = fmt.Errorf("registry: compile schema: %w", err)
 			return
