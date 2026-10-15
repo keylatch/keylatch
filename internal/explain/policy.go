@@ -25,6 +25,10 @@ type PolicyInput struct {
 	Resolve    func(connection string) Connection
 	Connection string
 	Actor      string
+	// Document consults the connection policy documents; DocumentConnections
+	// names the connections they cover so they are reported without a rule.
+	Document            DocumentFunc
+	DocumentConnections []string
 }
 
 // TierStatus is how one delivery tier fares for a caller and connection.
@@ -93,6 +97,11 @@ func Effective(in PolicyInput) PolicyReport {
 			}
 		}
 	}
+	for _, c := range in.DocumentConnections {
+		if literal(c) {
+			conns = append(conns, c)
+		}
+	}
 	if in.Actor != "" {
 		actors = []string{in.Actor}
 	}
@@ -120,6 +129,7 @@ func Effective(in PolicyInput) PolicyReport {
 				Manifest:   in.Manifest,
 				Connection: facts,
 				Request:    Request{Actor: actor, LLMSession: llm, Connection: name, Argv: []string{"-"}},
+				Document:   in.Document,
 			}
 			for _, ev := range evaluate(ein, kind) {
 				cn.Tiers = append(cn.Tiers, tierStatus(ev, facts.Known, restricted))

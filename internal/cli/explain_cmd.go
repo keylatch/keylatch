@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,12 +12,15 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/explain"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/policy/actor"
+	"github.com/keylatch/keylatch/internal/policy/connpolicy"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -67,6 +71,7 @@ func newExplainRunCmd() *cobra.Command {
 				Policy:     pol,
 				Manifest:   manifest.Current(),
 				Connection: resolveConnection(connection),
+				Document:   explainDocument(c.Context()),
 				Request: explain.Request{
 					Actor:      actorName,
 					LLMSession: llmcontext.IsLLMSession(lookup),
@@ -98,7 +103,10 @@ func newExplainPolicyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			in := explain.PolicyInput{Policy: pol, Manifest: manifest.Current(), Resolve: resolveConnection}
+			in := explain.PolicyInput{Policy: pol, Manifest: manifest.Current(), Resolve: resolveConnection, Document: explainDocument(c.Context())}
+			if docs, err := (connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}).LoadAll(); err == nil {
+				in.DocumentConnections = connpolicy.Connections(docs)
+			}
 			if len(args) == 1 {
 				in.Connection = args[0]
 			}
@@ -129,6 +137,30 @@ func newExplainSchemaCmd() *cobra.Command {
 func wantJSON(c *cobra.Command) bool {
 	v, _ := c.Flags().GetBool("json")
 	return v
+}
+
+// explainDocument answers from the connection policy documents through the
+// same enforcement point run and call use. It reports false when no document
+// governs the request, so the rules file decides.
+func explainDocument(ctx context.Context) explain.DocumentFunc {
+	return func(req explain.Request, kind, runtime string) (explain.Verdict, bool) {
+		argv := req.Argv
+		if len(argv) == 1 && argv[0] == "-" { // the placeholder explain policy uses, not a program
+			argv = nil
+		}
+		d := enforce.Decide(ctx, enforce.Request{
+			Connection: req.Connection,
+			Runtime:    runtime,
+			Caller:     callerkind.Kind(kind),
+			Actor:      req.Actor,
+			Command:    argv,
+			CWD:        req.CWD,
+		})
+		if d.Source != "connection-policy" && d.Source != "fallback-policy" {
+			return explain.Verdict{}, false
+		}
+		return explain.Verdict{Allow: d.Allow, ApprovalRequired: d.ApprovalRequired, Reason: d.Reason, SafeFix: d.SafeFix}, true
+	}
 }
 
 func loadExplainPolicy(lookup llmcontext.Lookup) (policy.Policy, error) {

@@ -3,15 +3,19 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/explain"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/policy/connpolicy"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/testutil"
 )
 
@@ -95,6 +99,35 @@ func TestExplainPolicy_JSON(t *testing.T) {
 	assert.Equal(t, "policy", rep.Kind)
 	assert.Equal(t, 1, rep.Policy.RuleCount)
 	assert.NotEmpty(t, rep.Callers)
+}
+
+// The report follows connection policy documents, not only the rules file: a
+// document that allows humans and denies agents is reflected per caller.
+func TestExplainPolicy_ReadsConnectionDocuments(t *testing.T) {
+	testutil.ClearLLMSessionEnv(t)
+	writeExplainPolicy(t, policy.Policy{SchemaVersion: 1, Mode: policy.ModeEnforcing, DefaultDeny: true})
+	dir := filepath.Join(filepath.Dir(os.Getenv("KEYLATCH_POLICY_PATH")), "policy.d")
+	require.NoError(t, (connpolicy.Store{Dir: dir}).Replace(map[string]connpolicy.Document{
+		"openai": {
+			SchemaVersion: connpolicy.SchemaVersion, Connection: "openai", Default: "deny",
+			Callers: map[callerkind.Kind]connpolicy.CallerRule{callerkind.Human: {Allow: true}, callerkind.Agent: {}},
+		},
+	}))
+	t.Cleanup(enforce.SetDefault(nil))
+
+	var rep explain.PolicyReport
+	require.NoError(t, json.Unmarshal(runExplain(t, "explain", "--json", "policy", "openai"), &rep))
+
+	status := map[string]map[string]string{}
+	for _, cp := range rep.Callers {
+		require.Len(t, cp.Connections, 1)
+		status[cp.Actor] = map[string]string{}
+		for _, ts := range cp.Connections[0].Tiers {
+			status[cp.Actor][ts.Tier] = ts.Status
+		}
+	}
+	assert.Equal(t, explain.StatusAllowed, status["human-shell"]["D2"])
+	assert.Equal(t, explain.StatusDenied, status["llm-session"]["D2"])
 }
 
 func TestExplainSchema_PrintsValidJSON(t *testing.T) {

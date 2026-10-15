@@ -119,7 +119,22 @@ type Input struct {
 	Manifest   manifest.Manifest
 	Connection Connection
 	Request    Request
+	// Document, when set, asks the connection policy documents about a caller
+	// kind and runtime. It reports false when no document governs the
+	// request, and the rules file then decides.
+	Document DocumentFunc
 }
+
+// Verdict is the answer of a connection policy document.
+type Verdict struct {
+	Allow            bool
+	ApprovalRequired bool
+	Reason           string
+	SafeFix          string
+}
+
+// DocumentFunc answers for one request, caller kind and runtime.
+type DocumentFunc func(req Request, kind, runtime string) (Verdict, bool)
 
 // RequestInfo echoes the request without argv content.
 type RequestInfo struct {
@@ -409,6 +424,15 @@ func evalRuntime(in Input, kind, rt string) (failClass, string, string, runtimeR
 	}
 	if in.Request.LLMSession && in.Policy.Mode == policy.ModePermissive {
 		return failPolicy, "permissive policy mode cannot be used in an agent session", "set the policy mode to enforcing", res
+	}
+	if in.Document != nil {
+		if v, ok := in.Document(in.Request, kind, rt); ok {
+			if !v.Allow {
+				return failPolicy, nonEmpty(v.Reason, "denied by connection policy"), v.SafeFix, res
+			}
+			res.approval = v.ApprovalRequired
+			return failNone, "", "", res
+		}
 	}
 	d := in.Policy.Check(policy.Request{
 		Actor:      in.Request.Actor,
