@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -156,6 +157,11 @@ func TestHelperChild(t *testing.T) {
 }
 
 func TestRunTierD3SubstitutesWithoutTheKeyInTheChild(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		// Only Linux Go reads SSL_CERT_FILE, which is how the child trusts the
+		// session CA; the placeholder tier is supported on Linux only.
+		t.Skip("placeholder tier is Linux-only")
+	}
 	env, auth, seen := startPlaceholderDaemon(t)
 	t.Setenv("HELPER_CHILD", "1")
 	t.Setenv("STRIPE_SECRET_KEY", "ambient-key-must-be-replaced")
