@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -49,6 +50,10 @@ type Config struct {
 	// Connections holds per-connection policy keyed by connection name.
 	// Only the operator's default config file is consulted for it.
 	Connections map[string]ConnectionPolicy `json:"connections,omitempty"`
+
+	// Backends holds per-backend credential settings keyed by backend id:
+	// op, opconnect, vault, awssm, gcpsm, azurekv, doppler, infisical.
+	Backends map[string]BackendCredentials `json:"backends,omitempty"`
 }
 
 // ConnectionPolicy is the policy attached to one connection.
@@ -89,10 +94,60 @@ type CustomModeConfig struct {
 	ExperimentalGated      bool `json:"experimental_gated"`
 }
 
+// BackendCredentials says where a remote backend's credential comes from.
+// The credential itself never appears in the config.
+type BackendCredentials struct {
+	// CredentialRef names the credential stored by `keylatch backend login`,
+	// wrapped by the KEK. It is read before anything in the environment.
+	CredentialRef string `json:"credential_ref,omitempty"`
+	// AllowEnvCredentials accepts credentials from environment variables
+	// when no credential_ref is set. doctor warns while it is on.
+	AllowEnvCredentials bool `json:"allow_env_credentials,omitempty"`
+}
+
+// RemoteBackendIDs are the backends that authenticate with a credential and so
+// take BackendCredentials.
+var RemoteBackendIDs = []string{"op", "opconnect", "vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical"}
+
+// BackendID maps a backend name as the registry spells it (aws-sm) to the id
+// used in the config (awssm).
+func BackendID(name string) string { return strings.ReplaceAll(name, "-", "") }
+
+// validateBackends checks the credential settings of every configured backend.
+func validateBackends(m map[string]BackendCredentials) error {
+	for id, b := range m {
+		if !slices.Contains(RemoteBackendIDs, id) {
+			return fmt.Errorf("backends.%s: not a backend that takes credentials (one of %s)", id, strings.Join(RemoteBackendIDs, ", "))
+		}
+		if b.CredentialRef != "" && !ValidCredentialRef(b.CredentialRef) {
+			return fmt.Errorf("backends.%s.credential_ref %q: use 1-64 letters, digits, '.', '_' or '-'", id, b.CredentialRef)
+		}
+	}
+	return nil
+}
+
+// ValidCredentialRef reports whether ref is usable as a credential_ref.
+func ValidCredentialRef(ref string) bool {
+	if ref == "" || len(ref) > 64 || ref == "." || ref == ".." {
+		return false
+	}
+	for _, r := range ref {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // GatewayConfig holds gateway connection settings.
 type GatewayConfig struct {
 	Endpoint string `json:"endpoint"` // e.g. http://127.0.0.1:7878
 	Mode     string `json:"mode"`     // "local" | "docker" | "hosted" | "off"
+	// MaxBody is the largest request body the gateway inspects and forwards,
+	// in bytes (default 10 MiB). Larger bodies are rejected.
+	MaxBody int64 `json:"max_body,omitempty"`
 }
 
 // OPConfig holds 1Password-specific settings.
@@ -158,8 +213,13 @@ type TelemetryConfig struct {
 type AuditConfig struct {
 	Enabled            bool  `json:"enabled"`
 	MaxSize            int64 `json:"max_size_bytes"`       // default 5 MiB
-	RetentionDays      int   `json:"retention_days"`       // default: 30; valid range 1–3650
+	RetentionDays      int   `json:"retention_days"`       // default: 365; valid range 1–3650
 	SweepIntervalHours int   `json:"sweep_interval_hours"` // default: 24; 0 means use default, negative is invalid
+	// RetainDays is the preferred name for RetentionDays and wins when both
+	// are set.
+	RetainDays int `json:"retain_days,omitempty"`
+	// RetainFiles is how many rotated log files are kept (default 20).
+	RetainFiles int `json:"retain_files,omitempty"`
 }
 
 // Validate checks AuditConfig field ranges and returns an actionable error for
@@ -167,9 +227,18 @@ type AuditConfig struct {
 func (a *AuditConfig) Validate() error {
 	if a.RetentionDays != 0 && (a.RetentionDays < 1 || a.RetentionDays > 3650) {
 		return fmt.Errorf(
-			"audit.retention_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 30",
+			"audit.retention_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 365",
 			a.RetentionDays,
 		)
+	}
+	if a.RetainDays != 0 && (a.RetainDays < 1 || a.RetainDays > 3650) {
+		return fmt.Errorf(
+			"audit.retain_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 365",
+			a.RetainDays,
+		)
+	}
+	if a.RetainFiles < 0 {
+		return fmt.Errorf("audit.retain_files must be ≥ 0 (0 means use default of 20), got %d", a.RetainFiles)
 	}
 	// Zero means "use the default" (24 h); only negative values are errors.
 	if a.SweepIntervalHours < 0 {
@@ -233,7 +302,7 @@ func Default() Config {
 		Audit: AuditConfig{
 			Enabled:            true,
 			MaxSize:            5 * 1024 * 1024, // 5 MiB
-			RetentionDays:      30,
+			RetentionDays:      365,
 			SweepIntervalHours: 24,
 		},
 		UI: UIConfig{
@@ -275,6 +344,9 @@ func LoadBytes(path string, data []byte) (Config, error) {
 	}
 
 	if err := c.Audit.Validate(); err != nil {
+		return Config{}, fmt.Errorf("config %q: %w", path, err)
+	}
+	if err := validateBackends(c.Backends); err != nil {
 		return Config{}, fmt.Errorf("config %q: %w", path, err)
 	}
 

@@ -350,19 +350,24 @@ keylatch op-list
 |----------|---------|
 | `KEYLATCH_OP_VAULT` | Vault name (default: `Keylatch`) |
 | `KEYLATCH_OP_BIN` | Path to `op` binary (default: PATH) |
-| `OP_SERVICE_ACCOUNT_TOKEN` | Service account token for CI |
+
+For CI, store the service account token with `keylatch backend login op` instead
+of exporting `OP_SERVICE_ACCOUNT_TOKEN`; an exported token is refused unless
+`backends.op.allow_env_credentials` is `true`.
 
 ### Bitwarden / Vaultwarden
 
 ```bash
-export BW_SESSION=$(bw unlock --raw)
+keylatch bw unlock          # prompts on the terminal; the session is cached by keylatch
 export KEYLATCH_BACKEND=bw
 keylatch bw-list
 ```
 
+Keylatch never needs `BW_SESSION` in your shell, and it removes it (with other
+backend credentials) from the environment of every command it runs.
+
 | Variable | Purpose |
 |----------|---------|
-| `BW_SESSION` | Session token from `bw unlock --raw` |
 | `KEYLATCH_BW_SERVER` | Vaultwarden server URL (must be `https://`) |
 | `KEYLATCH_BW_BIN` | Path to `bw` binary (default: PATH) |
 | `KEYLATCH_BW_FOLDER` | Filter items by folder name |

@@ -95,6 +95,19 @@ redaction:
   - pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----'
     replacement: "****"
 
+# Routes that mint, reveal or list tokens, deploy keys, user keys and secrets.
+deny_routes:
+  - "/app/installations/*/access_tokens"
+  - "/app-manifests/*/conversions"
+  - "/applications/*/token"
+  - "/applications/*/token/**"
+  - "/user/keys/**"
+  - "/user/gpg_keys/**"
+  - "/user/ssh_signing_keys/**"
+  - "/repos/*/*/keys/**"
+  - "/repos/*/*/actions/secrets/**"
+  - "/orgs/*/actions/secrets/**"
+
 test_strategy:
   kind: github_app
   endpoint: https://api.github.com/app

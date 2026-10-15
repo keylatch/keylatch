@@ -39,7 +39,7 @@ func requireAuditRefusal(t *testing.T, err error) {
 	}
 }
 
-func TestGatewayUpRefusesWithoutAuditLog(t *testing.T) {
+func TestGatewayRefusesWithoutAudit(t *testing.T) {
 	cfg, _ := fileVaultEnv(t)
 	cfgDir := testutil.SetupHermeticConfig(t)
 	t.Setenv("KEYLATCH_DATA_DIR", cfg.DataDir)

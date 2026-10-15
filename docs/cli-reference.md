@@ -811,7 +811,14 @@ View the local audit log (value-free).
 
 ```
 keylatch audit [--summary] [--since <time>] [--json]
+keylatch audit export [--since <RFC3339>] [--until <RFC3339>] [--format jsonl] [--output <file>]
+keylatch audit head [--json]
+keylatch audit verify [--anchor <file>] [--json]
 ```
+
+`audit export` writes the events in a time range as JSON Lines, each with its log file, sequence number and chain hash. It verifies the chain of every log file that can hold events in the range first and writes nothing if one fails. Blocked in LLM sessions.
+
+`audit head --json` prints `{"seq", "hash", "time", "key_id"}` for the last entry. Keep it somewhere the log's writer cannot reach, then run `audit verify --anchor <file>` later: the chain must verify and the anchor's entry must be in the log, so a log cut back after the anchor was taken fails. The gateway also writes the head hash to the OS log (journald with `SYSLOG_IDENTIFIER=keylatch-audit`, `os_log` on macOS, the Windows Event Log) at start and every 1000 events.
 
 ---
 
@@ -851,7 +858,7 @@ keylatch gateway <subcommand>
 keylatch gateway init [--docker]
 ```
 
-Generates the gateway signing key at `~/.keylatch/gateway/signing.key` and writes `gateway-config.json`. With `--docker`, also writes a Docker Compose file.
+Generates the gateway signing key, stores it wrapped by the KEK at `~/.keylatch/gateway/signing.key.enc`, and writes `gateway-config.json`. A raw `signing.key` file from an older install is wrapped and deleted the first time the gateway starts. With `--docker`, also writes a Docker Compose file.
 
 #### `gateway up`
 
@@ -913,7 +920,7 @@ Mints a new gateway token (`KEYLATCH_GATEWAY_TOKEN`). The JWT is printed once â€
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--allow` | | Capability to allow (e.g. `openrouter.chat.completion`). Repeatable. |
-| `--ttl` | `1h` | Token TTL (e.g. `1h`, `30m`) |
+| `--ttl` | `10m` | Token TTL (e.g. `10m`, `1h`); never more than 1 hour |
 | `--max-uses` | `0` (unlimited) | Maximum uses. LLM sessions cannot create unlimited tokens. |
 
 #### `gateway token list`
@@ -995,6 +1002,8 @@ keylatch mcp --stdio
 ```
 
 Exposes 5 tools: connection status, capability check, policy evaluation, run-under-keylatch, and receipt retrieval. Never exposes secret values.
+
+`keylatch_run` checks the command against the provider's `allowed_command_prefixes`: the executable must match by exact name (`python3evil` does not match `python3`), and an entry such as `node script.js` or `tsx scripts/` also constrains the first arguments. A permitted command runs as an agent caller through the gateway runtimes with a scoped session token and a scrubbed environment, and writes one `run` audit event. The tool refuses when the gateway signing key or the audit log is unavailable. The socket transport (`--port`) is not offered on Windows; use stdio.
 
 ---
 

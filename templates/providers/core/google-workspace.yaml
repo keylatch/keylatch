@@ -52,6 +52,15 @@ redaction:
   - pattern: 'ya29\.[A-Za-z0-9\-_]{50,}'
     replacement: "****"
 
+# Routes that issue tokens or create, read or list service account keys.
+deny_routes:
+  - "/token"
+  - "/oauth2/*/token"
+  - "/v1/projects/*/serviceAccounts/*/keys/**"
+  - "/v1/projects/*/serviceAccounts/*:generateAccessToken"
+  - "/v1/projects/*/serviceAccounts/*:generateIdToken"
+  - "/v1/projects/*/serviceAccounts/*:signJwt"
+
 test_strategy:
   kind: http_get
   endpoint: https://www.googleapis.com/oauth2/v3/userinfo

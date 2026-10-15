@@ -61,5 +61,8 @@ func run(bin, auditFile string) error {
 		return err
 	}
 	defer func() { _ = os.Remove(socket) }()
-	return control.NewServer(control.Config{Env: env, Binary: bin, Audit: &fileAudit{f: f}}).Serve(ctx, ln)
+	return control.NewServer(control.Config{
+		Env: env, Binary: bin, Audit: &fileAudit{f: f},
+		SigningKey: func() ([]byte, error) { return os.ReadFile(paths.GatewaySigningKey(env)) },
+	}).Serve(ctx, ln)
 }

@@ -20,6 +20,7 @@ func newBackendCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newBackendVaultCmd())
 	cmd.AddCommand(newBackendUpgradeTrustCmd())
+	cmd.AddCommand(newBackendLoginCmd())
 	return cmd
 }
 

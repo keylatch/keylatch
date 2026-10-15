@@ -213,7 +213,7 @@ In an LLM session, the UI starts in `status-only` scope — write endpoints retu
 The local gateway lets agent processes receive a scoped session token instead of a raw credential:
 
 ```bash
-# Initialize (generates signing key at ~/.keylatch/gateway/)
+# Initialize (generates the signing key, wrapped by your KEK, under ~/.keylatch/gateway/)
 keylatch gateway init
 
 # Start in foreground (binds to 127.0.0.1:7878)

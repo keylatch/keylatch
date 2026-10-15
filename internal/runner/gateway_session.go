@@ -54,8 +54,9 @@ func (s SessionEnv) Apply(base []string, cleanEnv bool, extra []string) []string
 	for _, name := range s.Strip {
 		strip[name] = struct{}{}
 	}
-	kept := make([]string, 0, len(base))
-	for _, e := range base {
+	scrubbed := ScrubChildEnv(base)
+	kept := make([]string, 0, len(scrubbed))
+	for _, e := range scrubbed {
 		name := e
 		for i := 0; i < len(e); i++ {
 			if e[i] == '=' {

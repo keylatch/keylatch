@@ -124,6 +124,13 @@ Examples:
 				)
 				os.Exit(exitcode.UserError)
 			}
+			if act, ok := tmpl.Actions[actionName]; ok && tmpl.DeniesRoute(act.Method, act.Path) {
+				printStructuredError(c, useJSON, "route_denied",
+					fmt.Sprintf("action %q targets a provider route its template denies", actionName),
+					"routes that create, read or list credentials are never called through keylatch",
+				)
+				os.Exit(exitcode.SecurityBlock)
+			}
 			if _, ok := tmpl.Actions[actionName]; !ok {
 				var available []string
 				for name := range tmpl.Actions {
@@ -157,6 +164,13 @@ Examples:
 				os.Exit(exitcode.UserError)
 			}
 
+			// A call never uses a credential without an audit trail.
+			auditLog, auditCleanup, auditErr := requireAuditLogger("call")
+			if auditErr != nil {
+				return auditErr
+			}
+			defer auditCleanup()
+
 			// Policy decides before the credential is read.
 			callerInfo := callerkind.Local(llmcontext.DefaultLookup, interactiveStdin())
 			if verdict := enforce.Decide(ctx, enforce.Request{
@@ -166,6 +180,7 @@ Examples:
 				Unit:       callerInfo.Unit,
 				Namespace:  namespace,
 			}); !verdict.Allow || verdict.ApprovalRequired {
+				recordCallDenied(ctx, auditLog, connectionName, actionName, callerInfo.Kind, verdict.Reason)
 				printStructuredError(c, useJSON, "policy_denied", verdict.Reason, verdict.SafeFix)
 				os.Exit(exitcode.PolicyDeny)
 			}
@@ -198,6 +213,8 @@ Examples:
 			result, execErr := runner.ExecuteAction(ctx, baseURL, connectionName, actionName, params, string(cred))
 			// Zero the credential bytes immediately after use — never keep them alive.
 			zeroBytes(cred)
+
+			recordCall(ctx, auditLog, connectionName, actionName, callerInfo.Kind, result, execErr)
 
 			if execErr != nil {
 				printStructuredError(c, useJSON, "dispatch_failed",

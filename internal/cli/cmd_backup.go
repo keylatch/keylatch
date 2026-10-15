@@ -117,6 +117,7 @@ pipe. The output file is safe to store off-site.`,
 				return nil
 			}
 
+			recordBackupExport(ctx, n)
 			fmt.Fprintf(c.OutOrStdout(), "backed up %d connection(s) to %s\n", n, outputPath)
 			return nil
 		},

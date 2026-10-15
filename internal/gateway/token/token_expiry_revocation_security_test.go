@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package token
 
 import (
@@ -9,13 +7,8 @@ import (
 	"time"
 )
 
-// KNOWN-FAILING: the remaining, unresolved slice — Verify only checks
-// the JWT's own expiry, never a persisted Token's ApprovalExpiry field. Mint
-// can no longer produce such a record (see
-// TestMint_RejectsHardwareApprovalClaim), so this
-// writes the store record directly to prove Verify still has no expiry check
-// for any retained approval field — required before any future minting path
-// is allowed to set one.
+// A record edited in place (here: an approval expiry in the past) is not
+// accepted, because the edit invalidates the record's MAC.
 func TestSecurityRegression_VerifyIgnoresStoredApprovalExpiry(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	d := filepath.Join(t.TempDir(), "tokens.json")
@@ -44,8 +37,7 @@ func TestSecurityRegression_VerifyIgnoresStoredApprovalExpiry(t *testing.T) {
 	}
 }
 
-// KNOWN-FAILING: Revoke only invalidates the immediate child of a
-// token, so a grandchild token stays valid after the root token is revoked.
+// Revoking a token revokes every descendant, not only its direct children.
 func TestSecurityRegression_RevokeDescendants(t *testing.T) {
 	d := filepath.Join(t.TempDir(), "tokens.json")
 	key := make([]byte, 32)
@@ -64,7 +56,7 @@ func TestSecurityRegression_RevokeDescendants(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = Revoke(parent.ID, d); e != nil {
+	if e = Revoke(parent.ID, d, key); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = Verify(jwt, httptest.NewRequest("GET", "/", nil), key, d); e == nil {

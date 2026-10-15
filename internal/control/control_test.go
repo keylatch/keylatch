@@ -47,9 +47,6 @@ func startDaemonWith(t *testing.T, gatewayAddr, script string, tune func(*Config
 	if err := os.MkdirAll(filepath.Join(state, "gateway"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(state, "gateway", "signing.key"), bytes.Repeat([]byte{7}, 32), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	fake := filepath.Join(dir, "keylatch")
 	if script == "" {
 		script = "#!/bin/sh\necho \"args:$*\"\necho \"local:$KEYLATCH_LOCAL agent:$KEYLATCH_AGENT_SESSION\"\nexit ${FAKE_EXIT:-0}\n"
@@ -76,7 +73,9 @@ func startDaemonWith(t *testing.T, gatewayAddr, script string, tune func(*Config
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		cfg := Config{Env: lookupOf(env), Binary: fake}
+		cfg := Config{Env: lookupOf(env), Binary: fake, SigningKey: func() ([]byte, error) {
+			return bytes.Repeat([]byte{7}, 32), nil
+		}}
 		if tune != nil {
 			tune(&cfg)
 		}

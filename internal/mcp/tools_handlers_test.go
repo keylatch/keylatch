@@ -246,6 +246,7 @@ func TestServeBearerLegacyTTLExceedsCap(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeTCPDefaultAuthModeDispatch(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	// Create a server with no ConnectionAuth set, for a transport other than
 	// linux/darwin/windows. The defaultAuthMode returns AuthBearerLegacy for
 	// unknown GOOS. Since we can't override GOOS in tests, just use

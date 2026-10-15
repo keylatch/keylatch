@@ -111,6 +111,16 @@ func AuditSalt(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "audit-salt")
 }
 
+// AuditKeyWrapped returns the path of the KEK-wrapped secret the audit chain
+// MAC key is derived from.
+// Override: KEYLATCH_AUDIT_KEY_PATH
+func AuditKeyWrapped(env Lookup) string {
+	if v := env("KEYLATCH_AUDIT_KEY_PATH"); v != "" {
+		return v
+	}
+	return filepath.Join(ConfigDir(env), "audit-key.enc")
+}
+
 // Policy returns the path to the policy file.
 // Override: KEYLATCH_POLICY_PATH
 func Policy(env Lookup) string {
@@ -261,13 +271,20 @@ func GatewayConfig(env Lookup) string {
 	return filepath.Join(GatewayDir(env), "config.json")
 }
 
-// GatewaySigningKey returns the path to the gateway signing key file.
+// GatewaySigningKey returns the path of the raw signing key file older
+// installs created. It is read only to migrate it.
 // Override: KEYLATCH_GATEWAY_SIGNING_KEY
 func GatewaySigningKey(env Lookup) string {
 	if v := env("KEYLATCH_GATEWAY_SIGNING_KEY"); v != "" {
 		return v
 	}
 	return filepath.Join(GatewayDir(env), "signing.key")
+}
+
+// GatewaySigningKeyWrapped returns the path of the gateway signing key
+// wrapped by the KEK.
+func GatewaySigningKeyWrapped(env Lookup) string {
+	return GatewaySigningKey(env) + ".enc"
 }
 
 // GatewayPID returns the path to the gateway PID file.

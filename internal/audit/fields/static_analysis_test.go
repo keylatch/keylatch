@@ -83,6 +83,12 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"permissions": "contents=write,metadata=read",
 			"expires_at":  "2026-10-07T13:00:00Z",
 			"caller_kind": "service",
+			// brokered-action event keys.
+			"decision": "allowed", "exit": 0, "duration_ms": int64(12),
+			"action": "list-models", "status": 200, "signals": "claude_code",
+			"destination_kind": "file", "rule": "exfiltration", "change": "allow",
+			"actor": "agent", "before": "none", "after": "allow",
+			"operation": "backup", "method": "tty",
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)

@@ -149,6 +149,7 @@ func (l *Logger) writeEvent(e Event) error {
 	// Step 9: update chain MAC state.
 	l.seq = seq
 	l.prevHMAC = audithmac.Of(l.chainMACKey, lineForMAC)
+	l.anchorIfDue(e.Timestamp)
 
 	// Step 10: export to SIEM if registered.
 	activeExporterOnce.Lock()
@@ -376,6 +377,26 @@ func (l *Logger) rotate() error {
 		},
 	}); err != nil {
 		return fmt.Errorf("audit: write rotation-continued marker: %w", err)
+	}
+	return nil
+}
+
+// RetireLog moves a non-empty log at path to generation 1, shifting older
+// generations, so a chain under a different MAC key starts in an empty file.
+// The Logger must not be open on path.
+func RetireLog(path string, retain int) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) || (err == nil && info.Size() == 0) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("audit: retire log: %w", err)
+	}
+	if err := shiftGenerations(path, retain); err != nil {
+		return err
+	}
+	if err := os.Rename(path, rotatedName(path, 1)); err != nil {
+		return fmt.Errorf("audit: retire log: %w", err)
 	}
 	return nil
 }

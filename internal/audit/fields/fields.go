@@ -134,10 +134,24 @@ var safeLogFields = map[string][]string{
 		"connection", "namespace", "repository", "permissions",
 		"expires_at", "caller_kind", "reason",
 	},
-	// privileged actions: names, counts and the digest of the approved summary.
-	"presence.decision": {"presence_action", "method", "digest", "reason"},
-	"policy.change":     {"change", "connection", "caller_kind", "digest", "files"},
-	"backup.export":     {"count", "method"},
+	// brokered-action events: names, decisions, counters and the digest of an
+	// approved summary only.
+	"run": {
+		"connection", "runtime", "capability", "caller_kind", "decision", "exit", "duration_ms", "reason",
+	},
+	"call":    {"connection", "action", "caller_kind", "status", "reason"},
+	"release": {"connection", "field", "caller_kind", "reason"},
+	"connect": {"connection", "backend", "caller_kind", "reason"},
+	"set":     {"connection", "field", "backend", "caller_kind", "reason"},
+	// before and after summarise the rule, never a credential.
+	"policy.change": {
+		"change", "actor", "connection", "capability", "caller_kind", "before", "after", "digest", "files", "reason",
+	},
+	"presence.decision": {"operation", "presence_action", "method", "result", "digest", "caller_kind", "reason"},
+	"security.block":    {"command", "signals", "caller_kind"},
+	"guard.block":       {"command", "rule", "caller_kind", "reason"},
+	"backup.export":     {"destination_kind", "count", "method", "caller_kind", "reason"},
+
 	// binding changes: host sets are authorities (no credential content).
 	// attempted is the change an agent caller was refused.
 	"binding.created":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
@@ -203,6 +217,8 @@ func AllActions() []string {
 		// placeholder proxy actions.
 		"placeholder.misuse", "proxy.substituted", "egress.denied", "proxy.session",
 		"mint",
+		"run", "call", "release", "connect", "set", "policy.change",
+		"presence.decision", "security.block", "guard.block", "backup.export",
 		"run.decided", "run.exited",
 		"approval.requested", "approval.granted", "approval.denied",
 		"presence.decision", "policy.change", "backup.export",

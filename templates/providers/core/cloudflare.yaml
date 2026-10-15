@@ -54,6 +54,14 @@ redaction:
   - pattern: '[A-Za-z0-9_\-]{37}'
     replacement: "****"
 
+# Routes that create, roll or list API tokens.
+deny_routes:
+  - "/client/v4/user/tokens"
+  - "PUT /client/v4/user/tokens/*/value"
+  - "/client/v4/accounts/*/tokens"
+  - "PUT /client/v4/accounts/*/tokens/*/value"
+  - "/client/v4/accounts/*/access/service_tokens/**"
+
 test_strategy:
   kind: http_get
   endpoint: https://api.cloudflare.com/client/v4/user/tokens/verify

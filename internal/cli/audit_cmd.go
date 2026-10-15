@@ -61,6 +61,7 @@ func newAuditCmd() *cobra.Command {
 	cmd.AddCommand(newAuditTailCmd())
 	cmd.AddCommand(newAuditSinceCmd())
 	cmd.AddCommand(newAuditRetentionCmd())
+	cmd.AddCommand(newAuditExportCmd(), newAuditHeadCmd(), newAuditVerifyCmd())
 
 	return cmd
 }
@@ -83,24 +84,23 @@ func OpenAuditLogger() (*audit.Logger, func(), error) {
 		return nil, nil, fmt.Errorf("audit: load salt: %w", err)
 	}
 
-	auditDEK, olderDEKs, err := loadAuditKeys()
+	keys, err := loadAuditKeyMaterial(saltBytes, true)
 	if err != nil {
-		return nil, nil, fmt.Errorf("audit: load DEK: %w", err)
+		return nil, nil, fmt.Errorf("audit: load keys: %w", err)
 	}
 
-	l, err := audit.Open(auditPath, saltBytes, auditDEK)
+	l, err := audit.Open(auditPath, keys.seed, keys.dek)
 	if err != nil {
+		keys.zero()
 		return nil, nil, fmt.Errorf("audit: open: %w", err)
 	}
-	l.AddReadKeys(olderDEKs...)
+	l.AddReadKeys(keys.older...)
+	l.SetRetainFiles(auditRetainFiles())
+	l.SetAnchorSink(audit.OSLogAnchor)
 
 	cleanup := func() {
 		_ = l.Close()
-		// Zero the auditDEK.
-		clear(auditDEK)
-		for _, k := range olderDEKs {
-			clear(k)
-		}
+		keys.zero()
 	}
 	return l, cleanup, nil
 }
@@ -121,37 +121,6 @@ func requireAuditLogger(command string) (*audit.Logger, func(), error) {
 		return nil, nil, NewSecurityBlock("%s: the audit log cannot be opened (%v). Keylatch does not serve or change secrets without an audit trail. Run `keylatch bootstrap` (file backend) or `keylatch keyring init` (other backends), then retry.", command, err)
 	}
 	return l, cleanup, nil
-}
-
-// loadAuditKeys returns the DEK new audit events are sealed with and the
-// older DEKs earlier events may be sealed with: retired terms of the same
-// keyring and, where an install still has the legacy keyring beside the
-// bootstrap one, that keyring's DEKs.
-func loadAuditKeys() ([]byte, [][]byte, error) {
-	kr, _, krPath, err := openKeyringFromEnv()
-	if err != nil {
-		return nil, nil, err
-	}
-	defer kr.Zero()
-	dek, term, err := kr.ActiveDEK()
-	if err != nil {
-		return nil, nil, err
-	}
-	active := bytes.Clone(dek)
-	older := retiredDEKs(kr, term)
-
-	if legacy := paths.LegacyKeyringPath(os.Getenv); legacy != krPath {
-		if _, statErr := os.Stat(legacy); statErr == nil {
-			if lkr, _, _, openErr := openKeyringAt(legacy, false); openErr == nil {
-				if ldek, lterm, dekErr := lkr.ActiveDEK(); dekErr == nil {
-					older = append(older, bytes.Clone(ldek))
-					older = append(older, retiredDEKs(lkr, lterm)...)
-				}
-				lkr.Zero()
-			}
-		}
-	}
-	return active, older, nil
 }
 
 func retiredDEKs(kr *keyring.Keyring, activeTerm int) [][]byte {
@@ -239,20 +208,15 @@ func runAuditRaw(cmd *cobra.Command) error {
 		return fmt.Errorf("audit: load salt: %w", err)
 	}
 
-	auditDEK, olderDEKs, err := loadAuditKeys()
+	keys, err := loadAuditKeyMaterial(saltBytes, false)
 	if err != nil {
-		return fmt.Errorf("audit: load DEK: %w", err)
+		return fmt.Errorf("audit: load keys: %w", err)
 	}
-	defer func() {
-		clear(auditDEK)
-		for _, k := range olderDEKs {
-			clear(k)
-		}
-	}()
+	defer keys.zero()
 
 	// Delegate to VerifyChain with full AEAD mode but stream the events.
 	// Use a raw file read + decrypt loop.
-	report, err := audit.VerifyChain(auditPath, saltBytes, auditDEK, olderDEKs...)
+	report, err := audit.VerifyChain(auditPath, keys.seed, keys.dek, keys.older...)
 	if err != nil {
 		return fmt.Errorf("audit --raw: %w", err)
 	}
@@ -294,10 +258,14 @@ func runAuditVerifyChain(cmd *cobra.Command) error {
 		return fmt.Errorf("audit --verify-chain: load salt: %w", err)
 	}
 
-	// Use header-only mode (no DEK) by default.
-	// Full mode is available internally but not exposed here to avoid
-	// requiring the keyring password just for chain integrity checks.
-	report, err := audit.VerifyChain(auditPath, saltBytes, nil)
+	keys, err := loadAuditKeyMaterial(saltBytes, false)
+	if err != nil {
+		return fmt.Errorf("audit --verify-chain: load keys: %w", err)
+	}
+	defer keys.zero()
+
+	// Header-only mode: the chain is checked without opening event bodies.
+	report, err := audit.VerifyChain(auditPath, keys.seed, nil)
 	if err != nil {
 		return fmt.Errorf("audit --verify-chain: %w", err)
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/canary"
-	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -104,28 +103,12 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	if actor == "" {
 		actor = "typed_driver"
 	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = 1 * time.Hour
-	}
-
-	cap := tmpl.Provider + "." + req.Capability
-	if req.Capability == "" || req.Capability == "inject" {
-		cap = tmpl.Provider + ".*"
-	}
-
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        actor,
-		Capabilities: []string{cap},
-		TTL:          ttl,
-		Caller:       req.Caller,
-		SigningKey:   d.signingKey,
-		StorePath:    d.tokenStorePath,
-	})
+	jwtStr, revoke, err := sessionToken(d.signingKey, d.tokenStorePath, actor, req.Caller, sessionCapabilities(tmpl, req.Capability), req.TTL)
 	if err != nil {
 		receipt.PolicyDecision = "token_mint_failed"
 		return receipt, fmt.Errorf("gateway_typed driver: mint token: %w", err)
 	}
+	defer revoke()
 
 	// Step 3: build child env: gateway URL + session token. No provider API key.
 	// Strip provider keys declared in InjectionRules, then inject

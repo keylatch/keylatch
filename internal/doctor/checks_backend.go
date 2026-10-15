@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +18,37 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 )
+
+// checkBackendEnvCredentials warns for every backend whose config accepts
+// credentials from the environment instead of a stored credential_ref.
+func checkBackendEnvCredentials(env llmcontext.Lookup) Check {
+	return func(_ context.Context) Status {
+		cfg, err := config.Load(paths.Config(env))
+		if err != nil {
+			cfg = config.Default()
+		}
+		var ids []string
+		for id, b := range cfg.Backends {
+			if b.AllowEnvCredentials && b.CredentialRef == "" {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+		if len(ids) == 0 {
+			return Status{
+				Name: "backend.env_credentials", Section: "backends", OK: true,
+				Detail: "no backend accepts credentials from the environment",
+				Tags:   []string{"backend", "credentials"},
+			}
+		}
+		return Status{
+			Name: "backend.env_credentials", Section: "backends", OK: true, Warn: true,
+			Detail: "backends reading credentials from environment variables: " + strings.Join(ids, ", "),
+			Fix:    "Run 'keylatch backend login <id>', set backends.<id>.credential_ref, and remove allow_env_credentials",
+			Tags:   []string{"backend", "credentials"},
+		}
+	}
+}
 
 // checkBackendSelected checks that the configured backend is valid and
 // supported on the current platform. The allowed set is derived from

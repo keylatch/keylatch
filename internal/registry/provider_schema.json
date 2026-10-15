@@ -311,6 +311,16 @@
       "description": "Credential fields Keylatch produces at use time; slots and adapters may bind them, and they are never stored or supplied.",
       "items": { "type": "string" }
     },
+    "deny_routes": {
+      "type": "array",
+      "description": "Provider routes that create, read or list credentials or keys. The gateway refuses them, and a template that exposes such a route in an action without listing it here fails validation. Each entry is a path, optionally prefixed by an HTTP method and a space; * matches one path segment and a final ** matches the rest.",
+      "items": { "type": "string", "pattern": "^([A-Z]+ )?/" }
+    },
+    "forward_headers": {
+      "type": "array",
+      "description": "Extra inbound header names the gateway forwards to the provider. Names that look like credentials are never forwarded.",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9-]+$" }
+    },
     "env_class": {
       "type": "object",
       "additionalProperties": false,

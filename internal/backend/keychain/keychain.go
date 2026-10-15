@@ -207,16 +207,15 @@ func (k *KeychainBackend) Set(ctx context.Context, path string, value []byte, me
 	// Parse path into connection and field.
 	conn, field := k.parsePathToConnField(path)
 
-	// Add or update the generic password item.
-	_, _, _, err = k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"add-generic-password",
-			"-U",
-			"-s", "keylatch-" + conn,
-			"-a", field,
-			"-w", string(value),
-			"-k", k.opts.KeychainPath,
-		},
-		nil)
+	// Add or update the generic password item. The value goes to security
+	// on stdin, never in its argument list.
+	err = k.script(ctx, "add-generic-password",
+		sflag("-U"),
+		sflag("-s"), sval("keylatch-"+conn),
+		sflag("-a"), sval(field),
+		sflag("-X"), shex(value),
+		sflag("-k"), sval(k.opts.KeychainPath),
+	)
 	if err != nil {
 		return fmt.Errorf("keychain Set: add-generic-password: %w", err)
 	}
@@ -503,15 +502,10 @@ func (k *KeychainBackend) readUnlockPassword(ctx context.Context) (string, error
 }
 
 // unlockKeychain runs security unlock-keychain.
+// The password goes to security on stdin, never in its argument list.
 func (k *KeychainBackend) unlockKeychain(ctx context.Context, pw string) error {
-	_, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"unlock-keychain", "-p", pw, k.opts.KeychainPath},
-		nil)
-	if err != nil {
-		return fmt.Errorf("keychain: unlock: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("keychain: unlock-keychain exited %d: %s", exitCode, stderr)
+	if err := k.script(ctx, "unlock-keychain", sflag("-p"), sval(pw), sval(k.opts.KeychainPath)); err != nil {
+		return fmt.Errorf("keychain: unlock-keychain: %w", err)
 	}
 	return nil
 }

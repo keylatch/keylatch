@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
 	_ "github.com/keylatch/keylatch/internal/backend/all"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
@@ -754,7 +755,7 @@ func newRunCmd() *cobra.Command {
 			// if the key is absent. This is acceptable: without a signing key the
 			// gateway cannot have been initialized so gateway_is_running returns false.
 			env := llmcontext.DefaultLookup
-			signingKey, _ := os.ReadFile(paths.GatewaySigningKey(env))
+			signingKey, _ := LoadGatewaySigningKey(env, false)
 			tokenStorePath := paths.GatewayTokens(env)
 			pidPath := paths.GatewayPID(env)
 
@@ -798,9 +799,15 @@ func newRunCmd() *cobra.Command {
 			// unavailable gateway can never fall back into a direct
 			// secret-injection mode.
 			supported := manifest.Current()
+			auditLog, auditCleanup, auditErr := requireAuditLogger("run")
+			if auditErr != nil {
+				return auditErr
+			}
+			defer auditCleanup()
 			dr := runner.DispatchRunner{
 				Guard:   guardFn,
 				Enforce: enforce.Decide,
+				Audit:   audit.AsEmitter(auditLog),
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.
 					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),

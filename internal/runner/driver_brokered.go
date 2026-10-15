@@ -137,7 +137,7 @@ func (d *brokeredDriver) Run(ctx context.Context, req ExecRequest, tmpl registry
 	// FilterChildEnv before the subprocess sees the environment —
 	// the only KEYLATCH_* var re-injected is KEYLATCH_RUNTIME so the child
 	// process can identify the current runtime mode.
-	parentEnv := os.Environ()
+	parentEnv := ScrubChildEnv(os.Environ())
 
 	// Inject short-lived token via the first injection rule's env var.
 	// Build the final env BEFORE filtering so that the token value itself is

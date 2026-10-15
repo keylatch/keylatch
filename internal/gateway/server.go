@@ -40,17 +40,26 @@ import (
 // newProviderHTTPClient returns a tuned *http.Client for a provider.
 // One client is created per provider at server startup (gap P1): this enables
 // TLS session reuse and connection pooling across requests to the same host.
+//
+// Redirects are never followed: the injected credential belongs to the
+// validated host, so a 3xx answer is returned to the caller unchanged instead
+// of being chased with the credential attached. The dialer connects only to
+// the addresses the SSRF gate checked for the request.
 func newProviderHTTPClient() *http.Client {
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{
+		DialContext: pinnedDialContext((&net.Dialer{
 			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		}).DialContext),
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	return &http.Client{Transport: transport, Timeout: 25 * time.Second}
+	return &http.Client{
+		Transport:     transport,
+		Timeout:       25 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 // Mode describes how the gateway runs.
@@ -70,9 +79,12 @@ type VaultReader interface {
 
 // ServerOptions configures a Gateway Server.
 type ServerOptions struct {
-	Bind              string // default "127.0.0.1:7878"; NEVER "0.0.0.0" except --unsafe-bind-all + !LLM
-	PolicyPath        string
-	SigningKey        []byte // 32-byte; from gateway/signing.key
+	Bind       string // default "127.0.0.1:7878"; NEVER "0.0.0.0" except --unsafe-bind-all + !LLM
+	PolicyPath string
+	// MaxBody is the largest request body inspected and forwarded; larger
+	// bodies are rejected. Zero means DefaultMaxBody.
+	MaxBody           int64
+	SigningKey        []byte // 32-byte; unwrapped from the KEK-wrapped gateway signing key
 	AuditLogger       *audit.Logger
 	Mode              Mode
 	Env               llmcontext.Lookup
@@ -341,7 +353,7 @@ func New(opts ServerOptions) (*Server, error) {
 	// HTTP call.
 	proxy := http.Handler(http.HandlerFunc(s.gatewayHandler))
 	proxy = hostOverrideBlockerMiddleware(proxy, allowedHosts)
-	proxy = authBlockerMiddleware(proxy, false /* allowSelfAuth */)
+	proxy = authBlockerMiddleware(proxy, false /* allowSelfAuth */, opts.MaxBody)
 	mux.Handle("/", proxy)
 
 	s.httpSrv = &http.Server{
