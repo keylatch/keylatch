@@ -360,6 +360,30 @@ decrypted by hand:
 
 ---
 
+### `keylatch keys`
+
+Show and change how the vault key is protected.
+
+```
+keylatch keys status [--json]
+keylatch keys rewrap --to keystore|passphrase
+```
+
+`status` reports where the key-encryption key is held (`os-keyring`,
+`passphrase`, `plaintext-file` or `external`) and `plaintext_kek`, which is true
+while a plaintext identity file is on disk. Nothing is changed and no key
+material is shown.
+
+`rewrap` generates a fresh key (a new identity in the OS keyring, or a passphrase
+typed twice on the terminal) and re-wraps the vault's data keys under it. Before
+anything is deleted it proves that the new key alone opens the keyring and
+recovers the same keys, then reads every secret through it; only then is the
+plaintext identity overwritten with random bytes and removed. If the proof fails
+the keyring is wrapped back under the previous key. It needs a human at a
+terminal. A copy of the old plaintext identity opens nothing afterwards.
+
+---
+
 ### `keylatch test`
 
 Test a connection against the provider's validation endpoint.
@@ -802,12 +826,14 @@ keylatch ui [--port <n>] [--scope <scope>] [--demo] [--no-open] [--unsafe-bind-a
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `7890` | Port to listen on |
-| `--scope` | `admin` | Session scope: `status-only`, `setup`, `admin`, `token-minting` |
+| `--scope` | `read` | Session scope: `read` (also `status-only`), `setup`, `admin`, `token-minting`. Anything above `read` needs a human at a terminal |
 | `--demo` | | Run with stub data |
-| `--no-open` | | Print URL without opening browser |
+| `--no-open` | | Do not open the browser; only allowed when stdout is a terminal, where the URL is shown |
 | `--unsafe-bind-all` | | Bind to `0.0.0.0` (non-LLM sessions only) |
 
-In an LLM session, scope is forced to `status-only` and `--unsafe-bind-all` is ignored.
+The one-time bootstrap URL is shown only when stdout is a terminal; otherwise it
+goes only to the OS browser opener. In an LLM session, scope is forced to
+`read` and `--unsafe-bind-all` is ignored.
 
 ---
 
@@ -974,23 +1000,32 @@ Exposes 5 tools: connection status, capability check, policy evaluation, run-und
 
 ### `keylatch policy`
 
-Manage runtime access policies.
+Manage runtime access policies. The model, the connection policy document
+format and every example are in [`docs/policy.md`](policy.md).
 
 ```
-keylatch policy allow <actor> <path> [--capability <cap>] [--command <cmd>] [--ttl <duration>]
-keylatch policy list [--actor <actor>] [--json]
-keylatch policy revoke <id>
+keylatch policy init [--force]
+keylatch policy import <dir>
+keylatch policy export <dir> [--force]
+keylatch policy check <connection> --as agent|host|service|human [--runtime <r>] [--action <a>] [--json]
+keylatch policy check <actor> <connection> [-- <cmd...>] [--capability <cap>] [--json]
+keylatch policy allow <actor> <connection> [--capability <cap>] [--command <cmd>] [--ttl <duration>]
+keylatch policy deny <connection> --as agent|host|service|human
+keylatch policy list [--json]
+keylatch policy remove <rule-id>
 ```
 
-**`default_deny` defaults to `false`.** A policy file that only lists
-allow-style rules (no `"default_deny": true`) falls through to
-default-**allow** for every request that doesn't match any rule — not
-default-deny. If you're authoring a deny-only or allow-list policy (e.g.
-"only these connections/capabilities may be used, deny everything else"),
-you must set `"default_deny": true` explicitly for the policy to actually
-be fail-secure; omitting it is a common authoring mistake that silently
-allows everything unlisted. This applies to both the gateway (`keylatch
-gateway up`, below) and direct/CLI policy enforcement.
+**Policy denies by default.** `run`, `call` and every gateway request are
+denied with ``no policy for <connection>: run `keylatch policy init` `` until a
+policy allows them. A rules file (`policy.json`) that omits `default_deny`
+denies whatever no rule allows; only an explicit `"default_deny": false`
+allows. A connection policy document names the caller kinds that may use a
+connection; a kind it does not name is denied.
+
+`init` (with `--force` over an existing policy), `import`, `allow`, `deny` and
+`remove` need a human at a terminal (see [`docs/policy.md`](policy.md)); `check`
+and `export` are read-only and need none. `check` answers with the same function
+`run`, `call` and the gateway use.
 
 Two other constraints specific to a **gateway-loaded** policy
 (`gateway up`'s `PolicyPath`, see below):
@@ -1006,9 +1041,12 @@ Two other constraints specific to a **gateway-loaded** policy
 
 ### `keylatch grant`
 
-List and revoke capability grants.
+Issue, list and revoke capability grants. A grant overrides a policy denial
+only when it was issued with a presence proof, so `create` and `revoke` need a
+human at a terminal.
 
 ```
+keylatch grant create <connection> --actor <actor> [--capability <cap>] [--ttl <duration>] [--command <cmd>] [--cwd <dir>] [--max-uses <n>]
 keylatch grant list [--json]
 keylatch grant revoke <id>
 ```
