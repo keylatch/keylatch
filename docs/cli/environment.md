@@ -17,8 +17,8 @@ These variables configure the Keylatch runtime. They are read by the CLI process
 
 | Variable | Purpose | Security-sensitive | Child-env |
 |----------|---------|-------------------|-----------|
-| `KEYLATCH_MODE` | Override operating mode for process lifetime (`standard`, `telemetry`, `canary`, `custom`). Takes precedence over config file value. | No | Never |
-| `KEYLATCH_BACKEND` | Override the backend type (`file`, `keychain`, `op`, …) | No | Never |
+| `KEYLATCH_MODE` | Override operating mode for process lifetime (`standard`, `canary`, `custom`). Takes precedence over config file value. | No | Never |
+| `KEYLATCH_BACKEND` | Backend type (`file`, `op`, `bw`, …; see `keylatch backend list`). Used only when `backend` is unset in `config.json`: config wins over this variable. | No | Never |
 | `KEYLATCH_CONFIG` | Path to the main `config.json` file | No | Never |
 | `KEYLATCH_CONFIG_DIR` | Override the configuration directory (`~/.keylatch/`) | No | Never |
 | `KEYLATCH_DATA_DIR` | Override the vault data directory (`~/.keylatch/vault/`) | No | Never |
@@ -42,7 +42,7 @@ These variables configure cryptographic operations. They are **security-sensitiv
 | `KEYLATCH_KEYRING_IDENTITY_PATH` | Override the age identity file path (`~/.keylatch/keyring/identity`) | Yes | Never |
 | `KEYLATCH_INSECURE_FILE_KEK` | `1` opts into a plaintext vault identity file when no OS keyring is available (same as `bootstrap --insecure-file-kek`) and stops the move into the keyring on open | No | Never |
 | `KEYLATCH_GATEWAY_SIGNING_KEY` | Override path for the gateway signing key | Yes | Never |
-| `KEYLATCH_IPC_KEY_FD` | File descriptor for passing the daemon IPC HMAC key between processes (Unix — pipe-based, FIND2-002) | Yes | Never |
+| `KEYLATCH_IPC_KEY_FD` | File descriptor for passing the daemon IPC HMAC key between processes (Unix, pipe-based) | Yes | Never |
 | `KEYLATCH_IPC_KEY` | Windows equivalent of `KEYLATCH_IPC_KEY_FD` — the daemon IPC HMAC key passed as a hex string (Windows cannot inherit a pipe FD the same way). Set by the Tauri desktop shell (`src-tauri/src/sidecar.rs`) when spawning `keylatchd`. **Note**: the Windows desktop shell is not shipped in the current release, so this path is compile-only today — no Go-side reader currently consumes it. | Yes | Never |
 | `KEYLATCH_GRANT_ACCESSOR_KEY_PATH` | Path to the grant accessor HMAC key file | Yes | Never |
 | `KEYLATCH_PKCS11_PIN` | **SECRET.** PKCS#11 module PIN, read only when a trust root's `PINSource` is configured as `env:KEYLATCH_PKCS11_PIN`. **Blocked inside LLM sessions** — `Open()` returns `ErrLLMSessionBlocked` before reading this var if `IsLLMSession()` is true (see `internal/trust/pkcs11/pkcs11.go`). Prefer `PINSource: "prompt"` or `"keychain"`. | Yes | Never |
@@ -186,17 +186,6 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_TEAM_DIR` | Team configuration directory | No | Never |
 | `KEYLATCH_ORG_POLICY_DIR` | Org-level policy directory | No | Never |
 | `KEYLATCH_APPROVALS_DIR` | Approval records directory | No | Never |
-
----
-
-## Security-Sensitive Telemetry Variables
-
-These variables control telemetry emission and are read by the CLI process before any event is sent.
-
-| Variable | Purpose | Security-sensitive | Child-env |
-|----------|---------|-------------------|-----------|
-| `KEYLATCH_TELEMETRY_DISABLE` | Set to `1` to suppress all telemetry regardless of operating-mode configuration. This is the operator kill-switch — takes precedence over every other telemetry setting. | No | Never |
-| `KEYLATCH_TELEMETRY_URL` | Override the remote telemetry endpoint URL. Used in CI canary scans to redirect events to a local mock server. If unset, `https://telemetry.keylatch.dev/v1/events` is used. | No | Never |
 
 ---
 

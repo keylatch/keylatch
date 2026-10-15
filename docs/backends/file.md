@@ -18,7 +18,7 @@ external services or binaries are required.
 | On-disk format | `value.enc` (ciphertext) + `value.enc.nonce` + `value.enc.aad` per secret |
 | Directory mode | 0o700 |
 | File mode | 0o600 |
-| Plaintext in storage | Never — CRIT-01 closed in EPIC-03 |
+| Plaintext in storage | Never |
 
 **S-INV-1 invariant**: no credential value is ever written to disk in plaintext or
 base64 form. Every write goes through XChaCha20-Poly1305 AEAD (or AES-256-GCM
@@ -125,7 +125,7 @@ KEK source there and must be opted into. The identity file must persist between 
 `connect`/`run` steps (use a shared volume or artifact cache if needed).
 
 `KEYLATCH_PASSPHRASE` has **no effect** on the `file` backend. The passphrase
-env var is not read during bootstrap or credential access (S-FIND-12).
+env var is not read during bootstrap or credential access.
 
 ## On-disk layout
 
@@ -154,8 +154,8 @@ keylatch doctor --json    # machine-readable output
 
 ## Security invariants
 
-- **S-INV-1**: plaintext and base64 write paths removed (CRIT-01, EPIC-03).
-- **S-INV-11**: path-traversal inputs that escape the vault root are rejected.
+- Plaintext and base64 write paths do not exist.
+- Path-traversal inputs that escape the vault root are rejected.
 - **T-02-01**: `OpenWithKeyring` is the only production path; absent keyring returns exit 8.
 - **T-02-02**: `Set` uses AEAD exclusively; the base64 branch is removed.
 - **T-02-03**: `SetVersioned`/`GetVersioned` fail closed without a keyring.
