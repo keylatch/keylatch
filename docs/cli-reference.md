@@ -259,6 +259,7 @@ keylatch connect openrouter --provider-ref api_key=hashivault://secret/prod/open
 | `op://vault/item/field` | 1Password CLI | `op` v2+ | `op://Private/Anthropic/api_key` |
 | `aws-sm://region/secret[#key]` | AWS Secrets Manager | `aws` CLI v2+ | `aws-sm://us-east-1/prod/openrouter#api_key` |
 | `hashivault://mount/path[#field]` | HashiCorp Vault | `vault` CLI v1.17+ | `hashivault://secret/prod/openrouter#api_key` |
+| `bw://<org-or-personal>/<collection>/<item>/<field>` | Bitwarden | `bw` CLI | `bw://personal/-/My%20Service/password` |
 
 **Deferred resolution (EPIC-10)**: The URI is stored verbatim in the keylatch vault.
 The external PM is called at runtime (on each `keylatch run` or gateway request) —
@@ -269,7 +270,7 @@ automatically picked up on next use.
 
 | Flag | Description |
 |------|-------------|
-| `--provider-ref <field>=<uri>` | Store a field as an external reference URI (repeatable). Validation is performed locally — the external PM is not contacted at connect time. |
+| `--provider-ref <field>=<uri>` | Store a field as an external reference URI (repeatable). Validation is performed locally — the external PM is not contacted at connect time, except for `bw://`, where the item is looked up once and stored by ID. |
 | `--field <field>=<value>` | Supply a field value directly (incompatible with `--provider-ref` for the same field). |
 
 See [External Store References](./backends/external-references.md) for full documentation.
