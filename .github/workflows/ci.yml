@@ -338,12 +338,25 @@ jobs:
         run: |
           SMOKE_HOME=$(mktemp -d)
           bash scripts/ci-operator-config.sh
-          HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch bootstrap --dry-run --json
-          HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch bootstrap
+          # XDG_CONFIG_HOME would point keylatch at the runner's own config
+          # directory instead of the throwaway home.
+          kl() { env -u XDG_CONFIG_HOME HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch "$@"; }
+          kl bootstrap --dry-run --json
+          kl bootstrap
           DOCTOR_DIR=$(mktemp -d)
+          DOCTOR_JSON=$RUNNER_TEMP/doctor.json
           doctor_exit=0
-          (cd "$DOCTOR_DIR" && HOME=$SMOKE_HOME $RUNNER_TEMP/keylatch doctor --json) || doctor_exit=$?
-          if [ "$doctor_exit" -ge 2 ]; then exit "$doctor_exit"; fi
+          (cd "$DOCTOR_DIR" && kl doctor --json >"$DOCTOR_JSON") || doctor_exit=$?
+          if [ "$doctor_exit" -ge 2 ]; then
+            # The throwaway vault key may sit in a plaintext file on a runner
+            # without a keyring; doctor reports that as a failure by design.
+            unexpected=$(jq -r '[.checks[] | select(.ok == false and .name != "backend.kek") | .name] | join(",")' "$DOCTOR_JSON")
+            if [ -n "$unexpected" ]; then
+              cat "$DOCTOR_JSON"
+              echo "doctor failed: $unexpected"
+              exit "$doctor_exit"
+            fi
+          fi
           $RUNNER_TEMP/keylatch --help
 
   binary-size:
