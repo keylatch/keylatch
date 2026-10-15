@@ -31,6 +31,25 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// Every protection is attempted even when an earlier one fails, and each
+// failure is reported.
+func TestHardenAttemptsEverythingAndReportsEachFailure(t *testing.T) {
+	prevPrctl, prevLimit := prctl, setrlimit
+	t.Cleanup(func() { prctl, setrlimit = prevPrctl, prevLimit })
+
+	limitCalled := false
+	prctl = func(int, uintptr, uintptr, uintptr, uintptr) error { return syscall.EPERM }
+	setrlimit = func(int, *unix.Rlimit) error { limitCalled = true; return syscall.EPERM }
+
+	err := Harden()
+	if err == nil || !strings.Contains(err.Error(), "dumpable") || !strings.Contains(err.Error(), "core dumps") {
+		t.Fatalf("error = %v, want both failures", err)
+	}
+	if !limitCalled {
+		t.Fatal("the core limit was skipped after the first failure")
+	}
+}
+
 // A hardened process is not dumpable and writes no core file.
 func TestHardenClearsDumpableAndCoreLimit(t *testing.T) {
 	if err := Harden(); err != nil {

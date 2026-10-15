@@ -20,6 +20,37 @@ func testKEK(t *testing.T, pass string) kek.KEK {
 	return k
 }
 
+func TestLoadFailures(t *testing.T) {
+	dir := t.TempDir()
+	env := llmcontext.Lookup(func(k string) string {
+		if k == "KEYLATCH_CONFIG_DIR" {
+			return dir
+		}
+		return ""
+	})
+	k := testKEK(t, "a")
+
+	if _, err := Load(env, k, "../x"); err == nil {
+		t.Error("Load accepted an invalid reference")
+	}
+
+	// A reference that is a directory cannot be read as a credential.
+	if err := os.MkdirAll(Path(env, "dir-ref"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(env, k, "dir-ref"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("unreadable credential: %v", err)
+	}
+
+	// Wrapped bytes that are not a JSON object of fields.
+	if err := kek.WriteSecret(Path(env, "junk"), k, []byte("not json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(env, k, "junk"); err == nil {
+		t.Error("undecodable credential accepted")
+	}
+}
+
 func TestSaveLoadRoundTripIsWrapped(t *testing.T) {
 	dir := t.TempDir()
 	env := llmcontext.Lookup(func(k string) string {
