@@ -118,10 +118,10 @@ type TokenSpec struct {
 	LLMSession   bool
 	// Caller is the kind of the process the token is issued to. An agent
 	// caller makes the token an LLM-session token.
-	Caller  callerkind.Kind
-	FDNonce []byte // 32-byte ephemeral nonce from pipe
-	StorePath    string // defaults to paths.GatewayTokens(env)
-	SigningKey   []byte // 32-byte; loaded from ~/.keylatch/gateway/signing.key
+	Caller     callerkind.Kind
+	FDNonce    []byte // 32-byte ephemeral nonce from pipe
+	StorePath  string // defaults to paths.GatewayTokens(env)
+	SigningKey []byte // 32-byte; loaded from ~/.keylatch/gateway/signing.key
 
 	// Approval root parameters.
 	// ApprovalRootID is the raw root spec ID; it will be HMAC'd before embedding in JWT/Token.

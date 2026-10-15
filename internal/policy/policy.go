@@ -63,9 +63,9 @@ func isReadClassCap(cap string) bool {
 
 // Policy holds the top-level policy document.
 type Policy struct {
-	SchemaVersion    int       `json:"schema_version"`
-	Mode             Mode      `json:"mode"`
-	Rules            []Rule    `json:"rules"`
+	SchemaVersion int    `json:"schema_version"`
+	Mode          Mode   `json:"mode"`
+	Rules         []Rule `json:"rules"`
 	// DefaultDeny denies a request no rule allows. A file that omits it
 	// denies; only an explicit false allows.
 	DefaultDeny      bool      `json:"default_deny"`
