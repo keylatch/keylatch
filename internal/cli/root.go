@@ -243,6 +243,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newDestroyVersionCmd(), "advanced")
 	addCmd(root, newCheckExpiryCmd(), "advanced")
 	addCmd(root, newKeyringCmd(), "advanced")
+	addCmd(root, newKeysCmd(), "advanced")
 	addCmd(root, newMCPCmd(), "advanced")
 	addCmd(root, newTokenCmd(), "advanced")
 
