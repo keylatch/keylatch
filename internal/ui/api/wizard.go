@@ -98,7 +98,7 @@ type WizardHandlers struct {
 	// ProviderDetailSource overrides the registry for single-provider lookups (optional; nil → registry.Get).
 	ProviderDetailSource ProviderGetter
 	// Store is the connection store used by ConnectHandler and ReadinessHandler.
-	// When nil, ConnectHandler returns a validation-only stub response and
+	// When nil, ConnectHandler fails closed and
 	// ReadinessHandler reports provider_connected as false.
 	Store connections.Store
 	// GatewayPIDPath is the filesystem path to the gateway PID file. When set,
@@ -386,10 +386,10 @@ func (h *WizardHandlers) ConnectHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// When no store is wired (e.g. during unit tests or demo mode), return success
-	// so validation still passes but skip the actual write.
+	// Without a store nothing can be persisted; reporting success would hide that.
 	if h.Store == nil {
-		writeJSON(w, map[string]interface{}{"ok": true})
+		w.WriteHeader(http.StatusServiceUnavailable)
+		writeJSON(w, map[string]interface{}{"ok": false, "error": "connection storage unavailable"})
 		return
 	}
 

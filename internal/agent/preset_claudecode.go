@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +23,7 @@ type ClaudeCodePreset struct{}
 func (p *ClaudeCodePreset) Name() string { return "claude-code" }
 
 // Setup installs the Claude Code MCP server configuration.
-// Merges keylatch into ~/.claude/settings.json without overwriting other keys.
+// Merges keylatch into ~/.claude.json without overwriting other keys.
 func (p *ClaudeCodePreset) Setup(ctx context.Context, opts SetupOptions, store connections.Store) (Receipt, error) {
 	profile, err := agentsnippet.GenerateProfile(ctx, "claude-code", opts.Mode, store)
 	if err != nil {
@@ -74,8 +75,8 @@ func (p *ClaudeCodePreset) Diff(ctx context.Context, opts SetupOptions, store co
 			fmt.Fprintf(&diffLines, "+ [NEW] %s\n%s\n", f.Path, f.Content)
 		} else if string(existing) != f.Content {
 			modified = append(modified, f.Path)
-			fmt.Fprintf(&diffLines, "~ [MOD] %s\nold: %s\nnew: %s\n",
-				f.Path, strings.TrimSpace(string(existing)), strings.TrimSpace(f.Content))
+			fmt.Fprintf(&diffLines, "~ [MOD] %s\nreplace Keylatch registration with: %s\n",
+				f.Path, strings.TrimSpace(f.Content))
 		}
 	}
 
@@ -86,19 +87,34 @@ func (p *ClaudeCodePreset) Diff(ctx context.Context, opts SetupOptions, store co
 	}, nil
 }
 
-// Uninstall removes the keylatch key from ~/.claude/settings.json.
+// Uninstall removes the keylatch key from ~/.claude.json.
 func (p *ClaudeCodePreset) Uninstall(_ context.Context) error {
-	settingsPath := filepath.Join(expandHome("${HOME}"), ".claude", "settings.json")
+	settingsPath := filepath.Join(expandHome("${HOME}"), ".claude.json")
 	return removeFromMCPServers(settingsPath, "keylatch")
 }
 
 // HealthCheck runs keylatch status to verify the integration is working.
 func (p *ClaudeCodePreset) HealthCheck(_ context.Context) Status {
-	settingsPath := filepath.Join(expandHome("${HOME}"), ".claude", "settings.json")
-	if _, err := os.Stat(settingsPath); err != nil {
-		return Status{Healthy: false, Detail: "settings.json not found"}
+	settingsPath := filepath.Join(expandHome("${HOME}"), ".claude.json")
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return Status{Healthy: false, Detail: "Claude MCP configuration unavailable"}
 	}
-	return Status{Healthy: true, Detail: "settings.json exists"}
+	var config struct {
+		MCPServers map[string]struct {
+			Type    string   `json:"type"`
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return Status{Healthy: false, Detail: "Claude MCP configuration is invalid JSON"}
+	}
+	server, ok := config.MCPServers["keylatch"]
+	if !ok || (server.Type != "" && server.Type != "stdio") || server.Command != "keylatch" || (len(server.Args) != 1 && len(server.Args) != 2) || server.Args[0] != "mcp" || (len(server.Args) == 2 && server.Args[1] != "--stdio") {
+		return Status{Healthy: false, Detail: "Keylatch MCP registration missing or invalid"}
+	}
+	return Status{Healthy: true, Detail: "Keylatch MCP registered in .claude.json"}
 }
 
 // CodexPreset implements Preset for OpenAI Codex.
