@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "description": "An agent may use openrouter only through the gateway, which holds the key and sends it to the provider endpoint; it never receives the key itself. Sessions last at most 15 minutes.",
+  "connection": "openrouter",
+  "default": "deny",
+  "max_ttl": "15m",
+  "callers": {
+    "agent": { "allow": true, "runtimes": ["gateway_typed", "gateway_sdk"] },
+    "human": { "allow": true },
+    "host": "deny",
+    "service": "deny"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keylatch.dev/schemas/connection-policy.schema.json",
+  "title": "Keylatch connection policy",
+  "description": "Who may use one connection, and how. A connection with no entry for a caller kind is unusable by that kind: everything not allowed is denied. schema_version 2 is the base the policy v2 schema extends; unknown keys are rejected so that nothing a policy author writes is silently ignored.",
+  "type": "object",
+  "required": ["schema_version", "connection"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "connection": {
+      "description": "The connection this document governs. \"*\" is the fallback for connections without a document of their own.",
+      "type": "string",
+      "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._-]{0,127})$"
+    },
+    "default": {
+      "description": "What happens to a caller kind with no entry. Only deny exists.",
+      "const": "deny"
+    },
+    "capabilities": {
+      "description": "Capabilities the connection may be used for, as globs. Omitted means every capability a caller kind entry allows.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true
+    },
+    "max_ttl": {
+      "description": "Longest lifetime of a session token or child process, as a Go duration such as 15m.",
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"
+    },
+    "callers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": { "$ref": "#/$defs/callerRule" },
+        "host": { "$ref": "#/$defs/callerRule" },
+        "service": { "$ref": "#/$defs/callerRule" },
+        "human": { "$ref": "#/$defs/callerRule" }
+      }
+    }
+  },
+  "$defs": {
+    "callerRule": {
+      "oneOf": [
+        { "const": "deny" },
+        {
+          "type": "object",
+          "required": ["allow"],
+          "additionalProperties": false,
+          "properties": {
+            "allow": { "type": "boolean" },
+            "runtimes": {
+              "description": "Runtimes the caller may use. Omitted means any. A request with no runtime, such as call, is not covered by an entry that lists runtimes.",
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "exe": {
+              "description": "Executables a run may start, matched against the command exactly as written: a bare name such as python3 does not cover /tmp/x/python3. Not checked for requests without a command, such as gateway calls.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "units": {
+              "description": "systemd units a service caller must run in.",
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9:_.\\\\@-]+\\.service$" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}
