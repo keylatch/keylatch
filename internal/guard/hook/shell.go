@@ -366,7 +366,7 @@ func (a *analyzer) track(argv []string) {
 	default:
 		target := a.p.expandHome(slash(rest[0]))
 		switch {
-		case path.IsAbs(target):
+		case isAbs(target):
 			a.cwd = path.Clean(target)
 		case a.cwd != "":
 			a.cwd = path.Join(a.cwd, target)
@@ -389,7 +389,7 @@ func (a *analyzer) classify(text string, echoLike bool) named {
 	if hasGlobMeta(text) && !strings.HasPrefix(text, "-") && a.p.globDenied(text, a.cwd) {
 		n.weak = true
 	}
-	if echoLike || a.cwd == "" || text == "" || strings.HasPrefix(text, "-") || strings.ContainsAny(text, "~$"+dynMark) || path.IsAbs(slash(text)) {
+	if echoLike || a.cwd == "" || text == "" || strings.HasPrefix(text, "-") || strings.ContainsAny(text, "~$"+dynMark) || isAbs(slash(text)) {
 		return n
 	}
 	joined := path.Join(a.cwd, slash(text))

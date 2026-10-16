@@ -123,13 +123,14 @@ func agentEnv(home string, p profile, extra string) []string {
 	var env []string
 	for _, e := range os.Environ() {
 		name, _, _ := strings.Cut(e, "=")
-		if marks[name] || strings.HasPrefix(name, "KEYLATCH_") || name == "HOME" || strings.HasPrefix(name, "CLAUDE") || strings.HasPrefix(name, "CODEX") ||
+		if marks[name] || strings.HasPrefix(name, "KEYLATCH_") || name == "HOME" || name == "USERPROFILE" || strings.HasPrefix(name, "CLAUDE") || strings.HasPrefix(name, "CODEX") ||
 			strings.HasPrefix(name, "CURSOR") || strings.HasPrefix(name, "GEMINI") || name == "XDG_CONFIG_HOME" {
 			continue
 		}
 		env = append(env, e)
 	}
-	env = append(env, "HOME="+home)
+	// Windows reads the profile from USERPROFILE; a real harness runs with it set.
+	env = append(env, "HOME="+home, "USERPROFILE="+home)
 	for k, v := range p.Env {
 		env = append(env, k+"="+v)
 	}

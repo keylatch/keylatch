@@ -50,6 +50,7 @@ func DefaultEnv() Env {
 
 type policy struct {
 	home       string
+	homes      []string // every spelling of home: as given, long names, resolved
 	roots      []string
 	rootText   *regexp.Regexp
 	secretText *regexp.Regexp
@@ -77,6 +78,7 @@ func newPolicy(env Env) *policy {
 	}
 	p := &policy{home: slash(env.Home), binary: slash(env.Binary)}
 	homes := homeSpellings(p.home)
+	p.homes = homes
 
 	var roots []string
 	for _, h := range homes {
@@ -119,14 +121,31 @@ func isDrivePath(s string) bool {
 	return len(s) > 2 && s[1] == ':' && s[2] == '/'
 }
 
-// homeSpellings returns the home directory as given and with symlinks resolved.
+// expandShortNames turns Windows 8.3 short names (C:\Users\RUNNER~1) into the
+// long names a command may spell instead. It is the identity elsewhere, and a
+// variable so tests can stand in for a Windows volume.
+var expandShortNames = platformExpandShortNames
+
+// homeSpellings returns the home directory as given, with 8.3 short names
+// expanded and with symlinks resolved. Paths compare case-insensitively.
 func homeSpellings(home string) []string {
 	if home == "" {
 		return nil
 	}
 	out := []string{home}
-	if resolved, err := filepath.EvalSymlinks(home); err == nil && slash(resolved) != home {
-		out = append(out, slash(resolved))
+	add := func(s string) {
+		s = slash(s)
+		for _, have := range out {
+			if strings.EqualFold(have, s) {
+				return
+			}
+		}
+		out = append(out, s)
+	}
+	add(expandShortNames(home))
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		add(resolved)
+		add(expandShortNames(resolved))
 	}
 	return out
 }
@@ -171,12 +190,20 @@ func dedupe(in []string) []string {
 	return out
 }
 
+// windowsPaths says whether backslashes separate path segments. It is a
+// variable so the Windows spellings can be tested on every OS.
+var windowsPaths = runtime.GOOS == "windows"
+
 func slash(s string) string {
-	if runtime.GOOS == "windows" {
+	if windowsPaths {
 		s = strings.ReplaceAll(s, `\`, "/")
 	}
 	return s
 }
+
+// isAbs reports whether a slash-separated path is absolute: rooted, or
+// starting with a drive letter.
+func isAbs(s string) bool { return path.IsAbs(s) || isDrivePath(s) }
 
 var (
 	multiSlash = regexp.MustCompile(`/{2,}`)
@@ -280,12 +307,17 @@ func (p *policy) pathDenied(raw, cwd string, recursive bool) bool {
 }
 
 func (p *policy) historyFile(abs string) bool {
-	if p.home == "" || !under(abs, p.home) {
-		return false
+	for _, home := range p.homes {
+		if !under(abs, home) {
+			continue
+		}
+		rel := strings.TrimPrefix(abs[len(home):], "/")
+		first, _, _ := strings.Cut(rel, "/")
+		if historyName.MatchString(first) {
+			return true
+		}
 	}
-	rel := strings.TrimPrefix(abs[len(p.home):], "/")
-	first, _, _ := strings.Cut(rel, "/")
-	return historyName.MatchString(first)
+	return false
 }
 
 var historyName = regexp.MustCompile(`(?i)^` + historyRe + `$`)
