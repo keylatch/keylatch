@@ -2,6 +2,7 @@ package registry
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
@@ -69,6 +70,31 @@ func (c CustomBinding) Binding(name string) Binding {
 		Env:      c.Env,
 	}
 }
+
+// Template returns the connection as a template the placeholder and contained
+// tiers can serve: the declared hosts, slots and shape, with each field
+// exposed to the child under the environment variable the binding names.
+func (c CustomBinding) Template(name string, fields []string) ConnectionTemplate {
+	t := ConnectionTemplate{
+		Provider:         name,
+		DisplayName:      name,
+		Category:         CustomCategory,
+		Hosts:            c.Hosts,
+		Slots:            c.Slots,
+		PlaceholderShape: c.Shape,
+		EnvClass:         EnvClassSpec{Default: EnvProd},
+	}
+	for _, f := range fields {
+		t.SecretFields = append(t.SecretFields, SecretField{Name: f, Required: true, Sensitive: true})
+	}
+	for _, f := range slices.Sorted(maps.Keys(c.Env)) {
+		t.InjectionRules = append(t.InjectionRules, InjectionRule{EnvVar: c.Env[f], Source: f})
+	}
+	return t
+}
+
+// CustomCategory is the storage category of custom connections.
+const CustomCategory = "custom"
 
 // WidenedBy reports whether next grants more than c: a host or slot c lacks.
 func (c CustomBinding) WidenedBy(next CustomBinding) bool {

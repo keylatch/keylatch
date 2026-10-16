@@ -267,6 +267,7 @@ keylatch connect <provider> --provider-ref api_key=<uri>  # resolve from externa
 keylatch connect openrouter
 keylatch connect sentry -f auth_token=@-
 keylatch connect github --provider-ref token=op://Keylatch/github/token
+keylatch connect billing --provider custom --host api.billing.example:443 --slot header:Authorization:Bearer --env BILLING_API_KEY -f token=@- --test-url https://api.billing.example/v1/ping --expect 200
 keylatch connect openrouter --provider-ref api_key=aws-sm://us-east-1/prod/openrouter#api_key
 keylatch connect openrouter --provider-ref api_key=hashivault://secret/prod/openrouter#api_key
 ```
@@ -293,6 +294,8 @@ automatically picked up on next use.
 | `--field <field>=<value>` | Supply a field value directly (incompatible with `--provider-ref` for the same field). |
 
 See [External Store References](./backends/external-references.md) for full documentation.
+
+**Custom connections** (`--provider custom`) declare their own binding: `--host`, `--slot`, `--env`, `--placeholder-prefix`, `--placeholder-min-length`. Creating or widening one is human-only and needs presence. `--test-url <https-url>` with `--expect <status>` (default 200) then sends one request through the placeholder tier carrying only a placeholder and fails unless the status matches, so a pass shows the stored value, the slots and the hosts agree. The URL must lie inside the declared hosts, and only a human can use the flag because the request carries the credential. `keylatch explain` reads the same binding for hosts and slots.
 
 **Local-only fields**
 

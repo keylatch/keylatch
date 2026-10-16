@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/audit"
@@ -29,6 +30,11 @@ type customConnectInput struct {
 	Fields    map[string][]byte
 	// Approve asks a human to accept a creation or a widening; nil asks nobody.
 	Approve func(connections.BindingChange) error
+	// TestURL, when set, is requested through the placeholder tier after the
+	// binding is saved, and the status must equal Expect.
+	TestURL string
+	Expect  int
+	Probe   probeFunc
 }
 
 func callerKind(env llmcontext.Lookup) connections.CallerKind {
@@ -46,6 +52,8 @@ func addCustomConnectFlags(cmd *cobra.Command) {
 	f.StringArray("env", nil, "custom: environment variable the child reads, NAME or field=NAME (repeatable)")
 	f.String("placeholder-prefix", "", "custom: placeholder prefix the client library expects")
 	f.Int("placeholder-min-length", registry.DefaultCustomMinLength, "custom: placeholder minimum length")
+	f.String("test-url", "", "custom: https URL inside the hosts to request through the placeholder proxy once the binding is saved")
+	f.Int("expect", http.StatusOK, "custom: status --test-url must return")
 }
 
 func connectCustomFromFlags(c *cobra.Command, name string) error {
@@ -61,6 +69,8 @@ func connectCustomFromFlags(c *cobra.Command, name string) error {
 	in.Envs, _ = f.GetStringArray("env")
 	in.Prefix, _ = f.GetString("placeholder-prefix")
 	in.MinLength, _ = f.GetInt("placeholder-min-length")
+	in.TestURL, _ = f.GetString("test-url")
+	in.Expect, _ = f.GetInt("expect")
 
 	fieldFlags, _ := f.GetStringArray("field")
 	for _, kv := range fieldFlags {
@@ -144,6 +154,14 @@ func connectCustom(ctx context.Context, out io.Writer, st connections.Store, nam
 	if err != nil {
 		return NewUsageError("%v", err)
 	}
+	if in.TestURL != "" {
+		if kind != connections.CallerHuman {
+			return NewSecurityBlock("connect: --test-url sends a request that carries the credential and is human-only")
+		}
+		if _, err := probeTarget(in.TestURL, b.Hosts); err != nil {
+			return NewUsageError("%v", err)
+		}
+	}
 
 	change, err := connections.SaveCustom(ctx, name, connections.CustomOptions{
 		Namespace: in.Namespace,
@@ -179,6 +197,9 @@ func connectCustom(ctx context.Context, out io.Writer, st connections.Store, nam
 		emitBinding(ctx, em, audit.ActionBindingNarrowed, audit.OutcomeOK, name, kind, change, "")
 	}
 	fmt.Fprintf(out, "v %s — custom binding %s (hosts: %s)\n", name, change.Kind, strings.Join(change.HostsAfter, ", "))
+	if in.TestURL != "" {
+		return runProbe(ctx, out, st, em, name, in)
+	}
 	return nil
 }
 

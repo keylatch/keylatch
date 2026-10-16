@@ -171,3 +171,17 @@ func TestNoBindingFix(t *testing.T) {
 		t.Fatal(NoBindingFix("svc"))
 	}
 }
+
+func TestCustomBindingTemplateFeedsThePlaceholderTier(t *testing.T) {
+	tmpl := validCustom().Template("billing-internal", []string{"api_key"})
+	b, ok := tmpl.Binding()
+	if !ok || len(b.Slots) != 1 || !b.AllowsHost("api.billing.internal.example:443") {
+		t.Fatalf("binding = %+v ok=%v", b, ok)
+	}
+	if tmpl.Provider != "billing-internal" || tmpl.Category != CustomCategory || len(tmpl.SecretFields) != 1 {
+		t.Fatalf("template = %+v", tmpl)
+	}
+	if len(tmpl.InjectionRules) != 1 || tmpl.InjectionRules[0] != (InjectionRule{EnvVar: "BILLING_API_KEY", Source: "api_key"}) {
+		t.Fatalf("rules = %+v", tmpl.InjectionRules)
+	}
+}

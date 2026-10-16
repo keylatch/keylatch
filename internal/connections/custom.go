@@ -55,6 +55,9 @@ type CustomOptions struct {
 	Approve func(BindingChange) error
 }
 
+// ValidCustomName reports whether name can be the name of a custom connection.
+func ValidCustomName(name string) bool { return customNamePattern.MatchString(name) }
+
 func customPath(ns, name, leaf string) string {
 	return fmt.Sprintf("%s/custom/%s/%s", ns, name, leaf)
 }
@@ -207,6 +210,34 @@ func CustomBindingFor(ctx context.Context, st Store, ns, name string) (registry.
 		return registry.Binding{}, fmt.Errorf("custom connection %q: %w", name, registry.ErrNoBinding)
 	}
 	return b.Binding(name), nil
+}
+
+// CustomTemplate returns the template of a custom connection, built from the
+// binding and secret fields it stored.
+func CustomTemplate(ctx context.Context, st Store, ns, name string) (registry.ConnectionTemplate, error) {
+	if ns == "" {
+		ns = "default"
+	}
+	b, ok, err := loadCustom(ctx, st, ns, name)
+	if err != nil {
+		return registry.ConnectionTemplate{}, err
+	}
+	if !ok {
+		return registry.ConnectionTemplate{}, fmt.Errorf("custom connection %q: %w", name, registry.ErrNoBinding)
+	}
+	fields, _, err := CustomFields(ctx, st, ns, name)
+	if err != nil {
+		return registry.ConnectionTemplate{}, err
+	}
+	return b.Template(name, fields), nil
+}
+
+// CustomSecretPath is where a custom connection keeps the value of a field.
+func CustomSecretPath(ns, name, field string) string {
+	if ns == "" {
+		ns = "default"
+	}
+	return customPath(ns, name, field)
 }
 
 func sorted(in []string) []string {

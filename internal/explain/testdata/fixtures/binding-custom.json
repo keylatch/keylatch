@@ -1,0 +1,33 @@
+{
+  "description": "a custom connection serves the placeholder tier from the bindings it declares",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {"id": "r1", "actor": "*", "connections": ["billing-internal"], "capabilities": ["inject"]}
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "custom",
+    "hosts": ["api.billing.example:443"],
+    "binding": {
+      "source": "custom",
+      "hosts": ["api.billing.example:443"],
+      "slots": [
+        {"field": "token", "in": "header", "name": "Authorization", "hosts": ["api.billing.example:443"]},
+        {"field": "token", "in": "query", "name": "key", "hosts": ["api.billing.example:443"]}
+      ]
+    }
+  },
+  "enabled_runtimes": ["placeholder", "contained"],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "billing-internal",
+    "argv": ["node", "sync.js"],
+    "cwd": "/work/app"
+  }
+}

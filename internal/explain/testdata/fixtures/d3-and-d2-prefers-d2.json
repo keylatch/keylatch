@@ -25,14 +25,18 @@
       "api.openai.com"
     ],
     "runtimes": [
-      "gateway_typed",
-      "gateway_proxy"
+      "gateway_typed"
     ],
-    "typed_actions": true
+    "typed_actions": true,
+    "binding": {
+      "source": "template",
+      "hosts": ["api.openai.com"],
+      "slots": [{"field": "api_key", "in": "header", "name": "Authorization", "hosts": ["api.openai.com"]}]
+    }
   },
   "enabled_runtimes": [
     "gateway_typed",
-    "gateway_proxy"
+    "placeholder"
   ],
   "request": {
     "actor": "claude-code",

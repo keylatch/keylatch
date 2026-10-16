@@ -162,7 +162,7 @@ func (s *Server) planContained(ctx context.Context, kind Kind, rr *RunRequest) (
 			return deny(CodeBadRequest, exitcode.UserError, "argument contains a NUL byte")
 		}
 	}
-	tmpl, err := registry.Get(rr.Connection)
+	tmpl, err := s.template(ctx, rr.Connection)
 	if err != nil {
 		return deny(CodeNotFound, exitcode.Missing, "unknown connection %q", rr.Connection)
 	}

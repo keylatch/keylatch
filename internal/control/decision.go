@@ -13,7 +13,6 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/exitcode"
-	"github.com/keylatch/keylatch/internal/registry"
 )
 
 // Where a decided child runs.
@@ -191,7 +190,7 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 	d := decision{op: string(OpRunSession), res: res, child: childInCaller}
 	if rr != nil {
 		d.connection, d.argv, d.cwd, d.tier = rr.Connection, rr.Command, rr.CWD, rr.Tier
-		if tmpl, err := registry.Get(rr.Connection); err == nil {
+		if tmpl, err := s.template(ctx, rr.Connection); err == nil {
 			if b, ok := tmpl.Binding(); ok {
 				d.hosts = b.Hosts
 			}

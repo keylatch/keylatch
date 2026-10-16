@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "deny",
+  "tier": null,
+  "tier_name": null,
+  "runtime": null,
+  "child_location": "none",
+  "containment": {
+    "verdict": "not_applicable",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "legacy-api",
+    "executable": "node",
+    "argc": 2,
+    "argv_sha256": "5b716937b34c449d4b1dc2f5b20511a1918e5d0a3bdd7f218af9ea86d1cb38e0",
+    "cwd": "/work/app"
+  },
+  "hosts": [],
+  "scope": {
+    "rule_id": null,
+    "capabilities": [],
+    "connections": [],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "D3: no_binding: the connection declares no hosts and slots for a placeholder to be substituted into",
+    "fix: keylatch connect legacy-api --provider custom --host \u003capi-host:443\u003e --slot \"header:Authorization:Bearer\" --env \u003cENV_NAME\u003e",
+    "no delivery tier is eligible for this run"
+  ],
+  "rejected_tiers": [
+    {
+      "tier": "D1",
+      "tier_name": "typed_action",
+      "why": "typed actions run without a child process; use keylatch call"
+    },
+    {
+      "tier": "D2",
+      "tier_name": "gateway_session",
+      "why": "runtime gateway_typed is not supported in this build; runtime gateway_sdk is not supported in this build"
+    },
+    {
+      "tier": "D3",
+      "tier_name": "placeholder_substitution",
+      "why": "no_binding: the connection declares no hosts and slots for a placeholder to be substituted into",
+      "code": "no_binding",
+      "fix": "keylatch connect legacy-api --provider custom --host \u003capi-host:443\u003e --slot \"header:Authorization:Bearer\" --env \u003cENV_NAME\u003e"
+    },
+    {
+      "tier": "D4",
+      "tier_name": "protocol_adapter",
+      "why": "no delivery implementation exists in this build"
+    },
+    {
+      "tier": "D5",
+      "tier_name": "contained_raw",
+      "why": "runtime contained is not supported in this build"
+    },
+    {
+      "tier": "D6",
+      "tier_name": "uncontained_raw",
+      "why": "uncontained raw delivery is human-only"
+    }
+  ],
+  "residual_risk": "No secret is delivered and no child process is started.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true
+  }
+}

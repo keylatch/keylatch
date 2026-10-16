@@ -89,6 +89,9 @@ type Config struct {
 	SigningKey func() ([]byte, error)
 	// Contained serves tier D5. Nil refuses it.
 	Contained *ContainedConfig
+	// Custom returns the template of a connection that declares its own
+	// bindings. Without it only provider templates are served at D3 and D5.
+	Custom func(ctx context.Context, name string) (registry.ConnectionTemplate, error)
 	// Decide is the policy engine. Tier D5 is refused without it.
 	Decide func(ctx context.Context, req enforce.Request) enforce.Decision
 	// Approve obtains approval for a run that needs one. Without it such a
@@ -359,6 +362,16 @@ func (s *Server) revokeToken(id, storePath string) {
 	}
 }
 
+// template returns the provider template of a connection, or the one a custom
+// connection builds from its own bindings.
+func (s *Server) template(ctx context.Context, name string) (registry.ConnectionTemplate, error) {
+	tmpl, err := registry.Get(name)
+	if err != nil && s.cfg.Custom != nil {
+		return s.cfg.Custom(ctx, name)
+	}
+	return tmpl, err
+}
+
 // preferredTier is the strongest tier the daemon can serve for the request:
 // placeholder substitution when the template binds its credentials to hosts,
 // the gateway otherwise.
@@ -366,7 +379,7 @@ func (s *Server) preferredTier(rr *RunRequest) Tier {
 	if s.cfg.Placeholders == nil || rr.Runtime != "" {
 		return TierGateway
 	}
-	tmpl, err := registry.Get(rr.Connection)
+	tmpl, err := s.template(context.Background(), rr.Connection)
 	if err != nil {
 		return TierGateway
 	}
@@ -387,7 +400,7 @@ func (s *Server) placeholderSession(ctx context.Context, kind Kind, rr *RunReque
 		resp.Error = fmt.Sprintf("tier D3 does not take the %s runtime", rr.Runtime)
 		return resp
 	}
-	tmpl, err := registry.Get(rr.Connection)
+	tmpl, err := s.template(ctx, rr.Connection)
 	if err != nil {
 		resp.Code, resp.ExitCode = CodeNotFound, exitcode.Missing
 		resp.Error = fmt.Sprintf("unknown connection %q", rr.Connection)

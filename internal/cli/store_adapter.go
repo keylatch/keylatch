@@ -6,7 +6,10 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/registry"
 )
 
 // dispatchedStore adapts a backend.Backend to the connections.Store interface.
@@ -35,6 +38,22 @@ import (
 type dispatchedStore struct {
 	cfg config.Config
 	env llmcontext.Lookup
+}
+
+// CustomTemplates returns the lookup that builds a custom connection's
+// template from the binding it stored. It reads the binding and the field
+// names only, never a secret value.
+func CustomTemplates(env llmcontext.Lookup) func(ctx context.Context, name string) (registry.ConnectionTemplate, error) {
+	return func(ctx context.Context, name string) (registry.ConnectionTemplate, error) {
+		if !connections.ValidCustomName(name) {
+			return registry.ConnectionTemplate{}, registry.ErrNoBinding
+		}
+		cfg := config.Default()
+		if loaded, err := config.Load(paths.Config(env)); err == nil {
+			cfg = loaded
+		}
+		return connections.CustomTemplate(ctx, newDispatchedStore(cfg, env), "", name)
+	}
 }
 
 func newDispatchedStore(cfg config.Config, env llmcontext.Lookup) *dispatchedStore {

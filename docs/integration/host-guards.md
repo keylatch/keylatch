@@ -79,12 +79,15 @@ keylatch explain schema
 | `containment.verdict` | `no_secret_in_child`, `contained_by_keylatch`, `uncontained`, `not_applicable`. |
 | `approval.mode` | `none`, `ask` (a person confirms), `presence` (a person proves presence). |
 | `request.caller_kind` | `human`, `agent` or `service`, derived from the actor and from agent-session detection. |
-| `hosts` | Hosts the secret is bound to. Sorted. |
+| `hosts` | Hosts the secret is bound to. Sorted. They come from the connection's binding: the provider template's hosts, or the hosts a custom connection declared. |
+| `binding` | Present when the connection has a binding: `source` (`template` or `custom`), `hosts` and the `slots` (`field`, `in`, `name`, `hosts`) a placeholder may be substituted into. |
 | `scope` | The matching rule and its capabilities, connections and TTL (`null` when the rule sets none). |
 | `reasons`, `rejected_tiers`, `residual_risk` | Human-readable explanation. Do not parse them; use the enumerated fields. |
 | `error` | Present only when the request could not be evaluated: `unknown_connection`, `invalid_request` or `tier_unavailable`. `decision` is then `deny`. |
 
 `keylatch explain --json policy [connection]` prints `{"kind": "policy", ...}` with, per caller (`human-shell`, `llm-session` and every literal actor named in a rule) and connection, a `status` for each tier: `allowed`, `approval`, `denied` or `unavailable`. Rules limited by command or working directory are flagged `restricted`; confirm those with `explain run`.
+
+A connection with no binding cannot be served at D3. Its D3 entry in `rejected_tiers` (and its `policy` status) carries `code: "no_binding"` and a `fix`, the `keylatch connect <name> --provider custom --host <api-host:443> --slot ... --env ...` command that adds one. Tier selection then falls through to D5 with an approval, or to a deny; it never falls back to an uncontained value.
 
 `explain` does not consider temporary grants. A run that a grant would allow shows as `deny`, which is the safe direction for a guard.
 

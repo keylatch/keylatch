@@ -7,6 +7,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/control"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/mintsession"
@@ -32,7 +33,10 @@ func (r vaultResolver) value(ctx context.Context, connection, field string) ([]b
 func (r vaultResolver) Resolve(ctx context.Context, connection, field string) ([]byte, error) {
 	tmpl, err := registry.Get(connection)
 	if err != nil {
-		return nil, err
+		if !connections.ValidCustomName(connection) {
+			return nil, err
+		}
+		return vault.Get(audit.WithEmitter(ctx, r.log), connections.CustomSecretPath("", connection, field), r.cfg, r.env)
 	}
 	if tmpl.IsMinted(field) {
 		return nil, fmt.Errorf("%s.%s is minted at use time and is not stored", connection, field)

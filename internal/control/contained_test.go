@@ -855,6 +855,56 @@ func TestPlaceholderSessionCarriesACanary(t *testing.T) {
 	assert.True(t, strings.HasPrefix(canaryEnv, "klc-canary-stripe-"), "the placeholder session sets a canary beside its placeholders")
 }
 
+func customBillingTemplate(context.Context, string) (registry.ConnectionTemplate, error) {
+	return registry.CustomBinding{
+		Hosts: []string{"api.billing.example:443"},
+		Slots: []registry.Slot{{Field: "token", In: registry.SlotHeader, Name: "Authorization", Scheme: "Bearer", Hosts: []string{"api.billing.example:443"}}},
+		Shape: registry.PlaceholderShape{Prefix: "bl_", MinLength: 32},
+		Env:   map[string]string{"token": "BILLING_API_KEY"},
+	}.Template("billing-internal", []string{"token"}), nil
+}
+
+func TestPlaceholderSessionServesACustomConnectionFromItsOwnBinding(t *testing.T) {
+	w := newContainedWorld(t)
+	mgr, err := placeholder.NewManager(placeholder.Config{Resolver: fixedResolver{"token": "billing-live-value"}, Audit: w.audit})
+	require.NoError(t, err)
+	t.Cleanup(mgr.Close)
+	w.srv.cfg.Placeholders = mgr
+	w.srv.cfg.Custom = customBillingTemplate
+
+	assert.Equal(t, TierPlaceholder, w.srv.preferredTier(&RunRequest{Connection: "billing-internal"}), "a bound custom connection is served at D3 by default")
+
+	conn := w.connect(context.Background())
+	require.NoError(t, writeFrame(conn, Request{Op: OpRunSession, Run: &RunRequest{Connection: "billing-internal", Command: []string{"true"}}}))
+	var resp Response
+	require.NoError(t, readFrame(bufio.NewReader(conn), &resp, maxFrame))
+	require.True(t, resp.OK, resp.Error)
+	assert.Equal(t, TierPlaceholder, resp.Session.Tier)
+	var key string
+	for _, e := range resp.Session.Env.Set {
+		assert.NotContains(t, e.Value, "billing-live-value")
+		if e.Name == "BILLING_API_KEY" {
+			key = e.Value
+		}
+	}
+	assert.True(t, strings.HasPrefix(key, "bl_") && len(key) >= 32, "the child gets a placeholder shaped like the binding says: %q", key)
+}
+
+func TestPlaceholderSessionRefusesAnUnknownConnectionWithoutACustomLookup(t *testing.T) {
+	w := newContainedWorld(t)
+	mgr, err := placeholder.NewManager(placeholder.Config{Resolver: fixedResolver{}, Audit: w.audit})
+	require.NoError(t, err)
+	t.Cleanup(mgr.Close)
+	w.srv.cfg.Placeholders = mgr
+
+	conn := w.connect(context.Background())
+	require.NoError(t, writeFrame(conn, Request{Op: OpRunSession, Run: &RunRequest{Connection: "billing-internal", Tier: TierPlaceholder, Command: []string{"true"}}}))
+	var resp Response
+	require.NoError(t, readFrame(bufio.NewReader(conn), &resp, maxFrame))
+	assert.False(t, resp.OK)
+	assert.Equal(t, CodeNotFound, resp.Code)
+}
+
 func TestContainedRunTakesHostsAndEgressFromThePolicy(t *testing.T) {
 	w := newContainedWorld(t)
 	w.decide = func(enforce.Request) enforce.Decision {

@@ -15,6 +15,7 @@ import (
 	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/registry"
 )
 
 // SchemaVersion is the version of the JSON documents produced by this package.
@@ -78,9 +79,9 @@ type tierInfo struct {
 var tiers = []tierInfo{
 	{ID: "D1", Name: "typed_action"},
 	{ID: "D2", Name: "gateway_session", Runtimes: []string{string(policy.RuntimeGatewayTyped), string(policy.RuntimeGatewaySDK)}},
-	{ID: "D3", Name: "placeholder_substitution", Runtimes: []string{string(policy.RuntimeGatewayProxy)}},
+	{ID: "D3", Name: "placeholder_substitution", Runtimes: []string{string(policy.RuntimePlaceholder)}},
 	{ID: "D4", Name: "protocol_adapter"},
-	{ID: "D5", Name: "contained_raw"},
+	{ID: "D5", Name: "contained_raw", Runtimes: []string{string(policy.RuntimeContained)}},
 	{ID: "D6", Name: "uncontained_raw", Runtimes: []string{string(policy.RuntimeDirectClassic)}},
 }
 
@@ -91,6 +92,8 @@ var residualRisk = map[string]string{
 	"D6": "The real secret is in an uncontained process running as the user. Anything the child executes can read, store or send it; only a person at a terminal should choose this tier.",
 }
 
+const noBindingWhy = registry.NoBindingReason + ": the connection declares no hosts and slots for a placeholder to be substituted into"
+
 const residualDenied = "No secret is delivered and no child process is started."
 
 // Connection describes what is known about the connection being used.
@@ -100,6 +103,47 @@ type Connection struct {
 	Hosts        []string `json:"hosts,omitempty"`
 	Runtimes     []string `json:"runtimes,omitempty"`
 	TypedActions bool     `json:"typed_actions,omitempty"`
+	// Binding is the connection's substitution contract: the provider
+	// template's, or the one a custom connection declares. Nil means none, and
+	// the placeholder tier cannot serve the connection.
+	Binding *BindingInfo `json:"binding,omitempty"`
+}
+
+// BindingInfo is the part of a binding a reader needs: where a secret may go.
+type BindingInfo struct {
+	Source string     `json:"source"`
+	Hosts  []string   `json:"hosts"`
+	Slots  []SlotInfo `json:"slots"`
+}
+
+// SlotInfo names one request position a secret field may be substituted into.
+// Name holds the header or query name, or the user/password half of a Basic
+// credential.
+type SlotInfo struct {
+	Field string   `json:"field"`
+	In    string   `json:"in"`
+	Name  string   `json:"name,omitempty"`
+	Hosts []string `json:"hosts"`
+}
+
+// Binding sources.
+const (
+	BindingTemplate = "template"
+	BindingCustom   = "custom"
+)
+
+// BindingOf describes a binding for a report. The hosts and slots are sorted
+// so the document is deterministic.
+func BindingOf(source string, b registry.Binding) *BindingInfo {
+	info := &BindingInfo{Source: source, Hosts: sortedCopy(b.Hosts), Slots: []SlotInfo{}}
+	for _, s := range b.Slots {
+		name := s.Name
+		if s.In == registry.SlotBasic {
+			name = s.Part
+		}
+		info.Slots = append(info.Slots, SlotInfo{Field: s.Field, In: string(s.In), Name: name, Hosts: sortedCopy(s.Hosts)})
+	}
+	return info
 }
 
 // Request is the run being asked about.
@@ -172,6 +216,10 @@ type Rejected struct {
 	Tier     string `json:"tier"`
 	TierName string `json:"tier_name"`
 	Why      string `json:"why"`
+	// Code is a stable reason code when one applies, and Fix the command that
+	// removes the cause.
+	Code string `json:"code,omitempty"`
+	Fix  string `json:"fix,omitempty"`
 }
 
 // PolicyInfo summarises the policy that was consulted.
@@ -199,6 +247,7 @@ type Report struct {
 	Approval      ApprovalInfo `json:"approval"`
 	Request       RequestInfo  `json:"request"`
 	Hosts         []string     `json:"hosts"`
+	Binding       *BindingInfo `json:"binding,omitempty"`
 	Scope         Scope        `json:"scope"`
 	Reasons       []string     `json:"reasons"`
 	Rejected      []Rejected   `json:"rejected_tiers"`
@@ -296,6 +345,7 @@ func Run(in Input) Report {
 	rep.Runtime = ptr(chosen.runtime)
 	rep.ResidualRisk = residualRisk[chosen.info.ID]
 	rep.Hosts = sortedCopy(in.Connection.Hosts)
+	rep.Binding = in.Connection.Binding
 	rep.ChildLocation, rep.Containment = placement(chosen.info.ID)
 	rep.Scope = scopeOf(chosen.rule)
 
@@ -419,8 +469,17 @@ func evalRuntime(in Input, kind, rt string) (failClass, string, string, runtimeR
 		}
 		return failBuild, why, "", res
 	}
-	if !contains(in.Connection.Runtimes, rt) {
-		return failProvider, "provider does not support runtime " + rt, "", res
+	switch rt {
+	case string(policy.RuntimePlaceholder):
+		if in.Connection.Binding == nil {
+			return failProvider, noBindingWhy, registry.NoBindingFix(providerOf(in.Request.Connection)), res
+		}
+	case string(policy.RuntimeContained):
+		// The sandbox needs no provider support: any stored secret can be handed to it.
+	default:
+		if !contains(in.Connection.Runtimes, rt) {
+			return failProvider, "provider does not support runtime " + rt, "", res
+		}
 	}
 	if in.Request.LLMSession && in.Policy.Mode == policy.ModePermissive {
 		return failPolicy, "permissive policy mode cannot be used in an agent session", "set the policy mode to enforcing", res
@@ -477,7 +536,11 @@ func rejectedExcept(evals []tierEval, chosen string, requested bool) []Rejected 
 				why = "eligible but a different tier was requested"
 			}
 		}
-		out = append(out, Rejected{Tier: ev.info.ID, TierName: ev.info.Name, Why: why})
+		r := Rejected{Tier: ev.info.ID, TierName: ev.info.Name, Why: why}
+		if !ev.eligible && strings.HasPrefix(ev.why, registry.NoBindingReason) {
+			r.Code, r.Fix = registry.NoBindingReason, ev.fix
+		}
+		out = append(out, r)
 	}
 	return out
 }
@@ -510,6 +573,9 @@ func allowReasons(ch *tierEval, appr ApprovalInfo, requested string) []string {
 func denialReasons(evals []tierEval, requested string) []string {
 	var out []string
 	for _, ev := range evals {
+		if strings.HasPrefix(ev.why, registry.NoBindingReason) {
+			out = append(out, ev.info.ID+": "+ev.why, "fix: "+ev.fix)
+		}
 		if ev.class == failPolicy {
 			out = append(out, "policy: "+ev.why)
 			if ev.fix != "" {

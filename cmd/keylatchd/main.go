@@ -271,6 +271,7 @@ any agent sandbox.`,
 				cfg.Placeholders = mgr
 				cfg.Mint = mintCred
 			}
+			cfg.Custom = cli.CustomTemplates(env)
 			cfg.Decide = enforce.Decide
 			cfg.Approve = newApprover(env, emitter)
 			cfg.Contained = newContained(socket, binary, vaultResolver{cfg: loadConfig(env), env: env, log: emitter})

@@ -40,7 +40,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+              "why": "runtime placeholder is not supported in this build"
             },
             {
               "tier": "D4",
@@ -56,7 +56,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "no delivery implementation exists in this build"
+              "why": "runtime contained is not supported in this build"
             },
             {
               "tier": "D6",

@@ -1,0 +1,24 @@
+{
+  "description": "without bindings an agent run falls through to the contained tier with an approval, never to an uncontained value",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {"id": "r1", "actor": "*", "connections": ["legacy-api"], "capabilities": ["inject"], "approval": true}
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "legacy-api"
+  },
+  "enabled_runtimes": ["placeholder", "contained", "direct_classic"],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "legacy-api",
+    "argv": ["node", "sync.js"],
+    "cwd": "/work/app"
+  }
+}
