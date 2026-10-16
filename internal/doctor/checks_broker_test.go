@@ -49,7 +49,7 @@ func TestDoctorBrokerChecks(t *testing.T) {
 
 	// The daemon socket exists but nothing answers: a failure with the command to run.
 	rows = brokerRows(t, BrokerState{Installed: true, Error: "connection refused"})
-	if mode := rows["mode.deployment"]; mode.OK || !strings.Contains(mode.Fix, "systemctl start keylatchd.socket") {
+	if mode := rows["mode.deployment"]; mode.OK || mode.Fix != brokerStartHint() {
 		t.Fatalf("unreachable daemon row = %+v", mode)
 	}
 
@@ -191,11 +191,16 @@ func TestProbeBrokerTalksToTheDaemon(t *testing.T) {
 
 	runner := &tpmRunner{}
 	st := probeBroker(context.Background(), env, runner)
-	if !st.Installed || !st.Reachable || st.Version != "9.9.9" || st.Policy != "signed" || !st.TPM {
+	// Only Linux seals the device root with systemd-creds, so only Linux probes it.
+	wantTPM := runtime.GOOS == "linux"
+	if !st.Installed || !st.Reachable || st.Version != "9.9.9" || st.Policy != "signed" || st.TPM != wantTPM {
 		t.Fatalf("state = %+v", st)
 	}
-	if len(runner.args) < 2 || runner.args[1] != "has-tpm2" {
+	if wantTPM && (len(runner.args) < 2 || runner.args[1] != "has-tpm2") {
 		t.Fatalf("TPM probe ran %v", runner.args)
+	}
+	if !wantTPM && runner.args != nil {
+		t.Fatalf("a platform without systemd-creds ran %v", runner.args)
 	}
 	if st := probeBroker(context.Background(), env, &tpmRunner{code: 1}); st.TPM {
 		t.Fatal("a failing has-tpm2 means no TPM binding")

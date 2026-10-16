@@ -30,10 +30,12 @@ func runOptions(t *testing.T) (Options, *bytes.Buffer) {
 		StateRoot: t.TempDir(),
 		Socket:    filepath.Join(t.TempDir(), "broker.sock"),
 		Env:       envOf(map[string]string{"CREDENTIALS_DIRECTORY": creds}),
-		PID:       os.Getpid(),
-		Harden:    func() error { return nil },
-		Presence:  &fakePresence{},
-		Out:       out,
+		// An explicit loader keeps macOS from reaching for the System keychain.
+		Root:     func() ([]byte, error) { return keys.LoadRoot(creds) },
+		PID:      os.Getpid(),
+		Harden:   func() error { return nil },
+		Presence: &fakePresence{},
+		Out:      out,
 	}, out
 }
 
@@ -46,6 +48,7 @@ func TestRunRefusesToStartUnprotected(t *testing.T) {
 
 	o, _ = runOptions(t)
 	o.Env = envOf(nil)
+	o.Root = func() ([]byte, error) { return keys.LoadRoot("") }
 	if err := Run(context.Background(), o); err == nil || !strings.Contains(err.Error(), "broker install") {
 		t.Fatalf("no device root = %v", err)
 	}

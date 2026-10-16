@@ -189,7 +189,8 @@ func TestMacPlistsRunUnderTheServiceAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := string(b)
+	// A Windows checkout may have converted the line endings.
+	s := strings.ReplaceAll(string(b), "\r\n", "\n")
 	for _, want := range []string{
 		"<key>UserName</key>\n  <string>_keylatch</string>",
 		"<key>Label</key>\n  <string>dev.keylatch.broker</string>",

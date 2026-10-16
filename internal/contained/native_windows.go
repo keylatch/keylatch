@@ -121,7 +121,7 @@ func (n *Native) Start(spec Spec) (Child, error) {
 	return c, nil
 }
 
-func startAppContainer(spec Spec, target string, env []string, home, tmp string, undo *[]func()) (c *winChild, retErr error) {
+func startAppContainer(spec Spec, target string, env []string, home, tmp string, undo *[]func()) (_ *winChild, retErr error) {
 	var nonce [6]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, err
@@ -147,7 +147,9 @@ func startAppContainer(spec Spec, target string, env []string, home, tmp string,
 	}
 	*undo = append(*undo, func() { _ = windows.CloseHandle(job) })
 
-	c = &winChild{job: job, done: make(chan struct{})}
+	// c is a local, not a named result: `return nil, err` clears a named result
+	// before the deferred cleanup below runs.
+	c := &winChild{job: job, done: make(chan struct{})}
 	inR, inW, err := pipeEnds(false)
 	if err != nil {
 		return nil, err

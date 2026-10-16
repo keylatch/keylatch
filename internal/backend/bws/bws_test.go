@@ -49,8 +49,13 @@ func open(t *testing.T, reply func([]string) ([]byte, error)) (*Backend, *fakeRu
 	t.Helper()
 	r := &fakeRunner{reply: reply}
 	b, err := Open(Options{AccessToken: token, ProjectID: project, Runner: r, Env: func(k string) string {
-		if k == "PATH" {
+		switch k {
+		case "PATH":
 			return "/usr/bin"
+		case "SystemRoot":
+			// The one other name forwarded, and only on Windows, where the CLI
+			// cannot start without it.
+			return `C:\Windows`
 		}
 		return "must-not-leak"
 	}})
@@ -205,9 +210,14 @@ func TestTheTokenStaysOutOfArgvAndTheCallerEnvironment(t *testing.T) {
 	if !slices.Contains(c.env, "BWS_ACCESS_TOKEN="+token) {
 		t.Fatalf("env = %v", c.env)
 	}
+	allowed := []string{"BWS_ACCESS_TOKEN", "HOME", "XDG_CONFIG_HOME", "USERPROFILE", "APPDATA", "PATH", "SystemRoot"}
 	for _, e := range c.env {
-		if strings.Contains(e, "must-not-leak") {
+		name, _, _ := strings.Cut(e, "=")
+		if strings.Contains(e, "must-not-leak") || !slices.Contains(allowed, name) {
 			t.Fatalf("the caller's environment leaked: %s", e)
+		}
+		if name == "SystemRoot" && runtime.GOOS != "windows" {
+			t.Fatalf("SystemRoot is forwarded only on Windows: %s", e)
 		}
 	}
 	var home string

@@ -2,6 +2,7 @@ package winpipe
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 )
 
@@ -16,8 +17,11 @@ func TestServiceSIDMatchesWindows(t *testing.T) {
 }
 
 func TestStubsOffWindows(t *testing.T) {
-	if _, err := Listen("x", ""); err == nil {
-		t.Skip("running on Windows")
+	if runtime.GOOS == "windows" {
+		t.Skip("the stubs are compiled off Windows only")
+	}
+	if _, err := Listen("x", ""); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("Listen = %v", err)
 	}
 	if _, err := Dial("x", 0); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("Dial = %v", err)
