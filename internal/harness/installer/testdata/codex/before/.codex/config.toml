@@ -1,0 +1,6 @@
+# my codex settings
+model = "gpt-5"   # keep this comment
+
+[mcp_servers.docs]
+command = "docs-server"
+args = ["--stdio"]

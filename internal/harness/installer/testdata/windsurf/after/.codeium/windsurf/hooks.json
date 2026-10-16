@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "pre_run_command": [
+      {
+        "command": "/home/dev/bin/my-audit.sh",
+        "show_output": true
+      },
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness windsurf",
+        "show_output": false
+      }
+    ],
+    "post_run_command": [
+      {
+        "command": "/home/dev/bin/log.sh"
+      }
+    ],
+    "pre_read_code": [
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness windsurf",
+        "show_output": false
+      }
+    ],
+    "pre_write_code": [
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness windsurf",
+        "show_output": false
+      }
+    ],
+    "pre_mcp_tool_use": [
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness windsurf",
+        "show_output": false
+      }
+    ]
+  }
+}

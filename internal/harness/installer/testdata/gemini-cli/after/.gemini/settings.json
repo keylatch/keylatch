@@ -1,0 +1,44 @@
+{
+  "theme": "dark",
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "my-audit",
+            "command": "/home/dev/bin/my-audit.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "run_shell_command|read_file|read_many_files|glob|search_file_content|grep_search|list_directory|write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness gemini-cli",
+            "name": "keylatch-guard",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "other-server": {
+      "command": "npx",
+      "args": [
+        "other-server"
+      ]
+    },
+    "keylatch": {
+      "command": "/opt/keylatch/bin/keylatch",
+      "args": [
+        "mcp",
+        "--stdio"
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "my-audit": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/dev/bin/my-audit.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "keylatch-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|view_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness antigravity",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
