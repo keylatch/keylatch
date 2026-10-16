@@ -100,6 +100,23 @@ type Config struct {
 	// Approve obtains approval for a run that needs one. Without it such a
 	// run is refused.
 	Approve Approver
+	// ChildEnv is added to the environment of the verbs the daemon runs.
+	ChildEnv []string
+	// Gate is asked before the daemon acts on policy, credentials or keys for a
+	// caller. An error refuses the request.
+	Gate func(ctx context.Context, res callerkind.Result) error
+	// Ticket verifies a session ticket. Nil verifies it with the local ticket
+	// key.
+	Ticket func(raw string, p Peer) bool
+	// Extension serves operations the control protocol does not define.
+	Extension Extension
+}
+
+// Extension serves operations the control protocol does not define.
+type Extension interface {
+	// Handle answers the request in raw. It reports false for an operation it
+	// does not serve, and the server then refuses it.
+	Handle(ctx context.Context, conn *net.UnixConn, p Peer, res callerkind.Result, raw []byte) bool
 }
 
 // Server answers control socket requests.
@@ -177,16 +194,40 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 	if err != nil || peer.UID != s.uid {
 		return
 	}
+	s.ServeConn(ctx, conn, peer)
+}
+
+// ServeConn answers the request on conn from a peer the caller has already
+// identified and admitted.
+func (s *Server) ServeConn(ctx context.Context, conn *net.UnixConn, peer Peer) {
 	r := bufio.NewReader(conn)
 	var req Request
 	_ = conn.SetReadDeadline(time.Now().Add(requestTimeout))
-	if err := readFrame(r, &req, maxFrame); err != nil {
+	raw, err := readLine(r, maxFrame)
+	if err == nil {
+		err = decodeFrame(raw, &req)
+	}
+	if err != nil {
 		_ = writeFrame(conn, Response{Code: CodeBadRequest, Error: err.Error(), ExitCode: exitcode.UserError})
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
+	if peer.Verify != nil {
+		if err := peer.Verify(); err != nil {
+			_ = writeFrame(conn, Response{Code: CodeRefused, ExitCode: exitcode.SecurityBlock, Error: err.Error()})
+			return
+		}
+	}
 	res := s.classify(peer, req)
 	kind := res.Kind
+
+	if s.cfg.Gate != nil && gated(req) {
+		if err := s.cfg.Gate(ctx, res); err != nil {
+			_ = s.record(ctx, decision{op: string(req.Op), verb: req.Verb, res: res, reason: err.Error()}, audit.OutcomeDenied)
+			_ = writeFrame(conn, Response{Kind: kind, Code: CodeRefused, ExitCode: exitcode.SecurityBlock, Error: err.Error()})
+			return
+		}
+	}
 
 	switch req.Op {
 	case OpExec:
@@ -210,6 +251,9 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 	case OpKeyPolicy:
 		_ = writeFrame(conn, s.keyPolicy(ctx, kind, req.KeyPolicy))
 	default:
+		if s.cfg.Extension != nil && s.cfg.Extension.Handle(ctx, conn, peer, res, raw) {
+			return
+		}
 		resp := Response{Kind: kind, Code: CodeBadRequest, Error: fmt.Sprintf("unknown operation %q", req.Op), ExitCode: exitcode.UserError}
 		if err := s.record(ctx, decision{op: string(req.Op), res: res, reason: "unknown operation"}, audit.OutcomeDenied); err != nil {
 			resp = auditRefusal(resp, err)
@@ -224,15 +268,31 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 func (s *Server) classify(p Peer, req Request) callerkind.Result {
 	return s.cfg.Callers.Peer(callerkind.Evidence{
 		PID:              p.PID,
+		Cgroup:           p.Cgroup,
 		SharesNamespaces: callerkind.SharesNamespaces(p.PID),
 		Signals:          req.Signals,
-		TicketValid:      s.validTicket(req.Ticket),
+		TicketValid:      s.validTicket(req.Ticket, p),
 	})
 }
 
-func (s *Server) validTicket(raw string) bool {
+// gated reports whether a request acts on policy, credentials or keys, so a
+// broken policy must stop it. Read-only diagnostics stay available.
+func gated(req Request) bool {
+	switch req.Op {
+	case OpExec:
+		return slices.Contains(valueVerbs, req.Verb) || req.Verb == "call" || req.Verb == "run"
+	case OpRunSession, OpContained, OpGateway, OpProxy, OpCredential, OpKey, OpKeyPolicy:
+		return true
+	}
+	return false
+}
+
+func (s *Server) validTicket(raw string, p Peer) bool {
 	if raw == "" {
 		return false
+	}
+	if s.cfg.Ticket != nil {
+		return s.cfg.Ticket(raw, p)
 	}
 	key, err := os.ReadFile(paths.SessionTicketKey(s.cfg.Env))
 	if err != nil {

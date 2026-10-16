@@ -375,6 +375,25 @@ func ControlSocket(env Lookup) string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("keylatch-%d", os.Getuid()), "keylatchd.sock")
 }
 
+// BrokerSocket returns the socket of the system broker daemon.
+// Override: KEYLATCH_BROKER_SOCKET
+// Default: /run/keylatch/broker.sock
+func BrokerSocket(env Lookup) string {
+	if v := env("KEYLATCH_BROKER_SOCKET"); v != "" {
+		return v
+	}
+	return "/run/keylatch/broker.sock"
+}
+
+// BrokerAdopted returns the marker recording that this user's secrets were
+// moved into the system broker.
+func BrokerAdopted(env Lookup) string {
+	return filepath.Join(ConfigDir(env), "broker-adopted.json")
+}
+
+// BrokerUser is the OS account the system broker runs under.
+const BrokerUser = "keylatch"
+
 // KeyOperations returns the path of the key operation allowlist. It lives in
 // Keylatch state, which host sandboxes deny, and is changed only through the
 // daemon.

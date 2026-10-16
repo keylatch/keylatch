@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -316,25 +315,6 @@ func checkBackendTier(env llmcontext.Lookup) Check {
 		default:
 			st.OK = false
 			st.Fix = "Run `keylatch backend list` to see the supported backends."
-		}
-		return st
-	}
-}
-
-// brokerPlatforms lists the platforms that have a broker daemon. None do yet.
-func brokerPlatforms() []string { return nil }
-
-// checkInUserMode reports the deployment mode. Without a broker daemon the
-// keys are held by the user's own account.
-func checkInUserMode() Check {
-	return func(_ context.Context) Status {
-		st := Status{Name: "mode.deployment", Section: "environment", OK: true, Tags: []string{"mode"}}
-		st.Detail = "in-user mode: keys are held by your own account, so protection depends on the agent guard and policy, not on a separate OS user"
-		for _, p := range brokerPlatforms() {
-			if p == runtime.GOOS {
-				st.Warn = true
-				st.Fix = "Install the broker service to hold keys under its own OS user."
-			}
 		}
 		return st
 	}

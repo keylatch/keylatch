@@ -167,7 +167,7 @@ jobs:
   fuzz:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -182,3 +182,13 @@ jobs:
         run: go test -fuzz=FuzzAuditLineParser -fuzztime=10m ./internal/audit
       - name: fuzz guard hook
         run: go test -fuzz=FuzzHookDecision -fuzztime=10m ./internal/guard/hook
+      - name: fuzz broker requests
+        run: go test ./internal/brokerapi -run '^$' -fuzz '^FuzzBrokerRequest$' -fuzztime=10m
+      - name: fuzz control frames
+        run: go test ./internal/control -run '^$' -fuzz '^FuzzControlFrame$' -fuzztime=10m
+      - name: fuzz peer identity parsing
+        run: go test ./internal/brokerd -run '^$' -fuzz '^FuzzPeerIdentity$' -fuzztime=10m
+      - name: fuzz policy parsing
+        run: go test ./internal/policy -run '^$' -fuzz '^FuzzPolicyParse$' -fuzztime=10m
+      - name: fuzz template parsing
+        run: go test ./internal/registry -run '^$' -fuzz '^FuzzTemplateParse$' -fuzztime=10m

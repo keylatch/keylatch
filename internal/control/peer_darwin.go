@@ -8,13 +8,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Peer is the kernel-attested identity of the process on the other end of a
-// Unix socket.
-type Peer struct {
-	UID uint32
-	PID int
-}
-
 func peerOf(c *net.UnixConn) (Peer, error) {
 	raw, err := c.SyscallConn()
 	if err != nil {

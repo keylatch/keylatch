@@ -678,7 +678,7 @@ func dependent(section, name string, fn Check, needs ...string) namedCheck {
 // gatherChecks returns all checks in canonical order as namedCheck values.
 // The section field enables pre-execution category filtering.
 func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) []namedCheck {
-	return []namedCheck{
+	checks := []namedCheck{
 		// Root causes first so the checks that depend on them can be skipped.
 		rootCause("environment", causeBootstrap, checkBootstrapKeyring(env)),
 		dependent("environment", "bootstrap.config", checkBootstrapConfig(env), causeBootstrap),
@@ -698,7 +698,6 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		plain("environment", checkBackendCredentialsInEnvironment(env)),
 		plain("environment", checkLeftoverBWSession(env)),
 		plain("environment", checkOperatingMode(env)),
-		plain("environment", checkInUserMode()),
 		plain("backends", checkBackendSelected(env)),
 		plain("backends", checkBackendTier(env)),
 		plain("backends", checkBackendKeychain(probe)),
@@ -732,4 +731,5 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		// Integration-marker checks.
 		plain("environment", checkIntegrationMarkers()),
 	}
+	return append(checks, brokerChecks(env, runner, probeBroker)...)
 }

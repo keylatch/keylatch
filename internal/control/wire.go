@@ -220,21 +220,32 @@ func writeFrame(w io.Writer, v any) error {
 	return err
 }
 
-func readFrame(r *bufio.Reader, v any, limit int) error {
+func readLine(r *bufio.Reader, limit int) ([]byte, error) {
 	var line []byte
 	for {
 		chunk, isPrefix, err := r.ReadLine()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		line = append(line, chunk...)
 		if len(line) > limit {
-			return errFrameTooLarge
+			return nil, errFrameTooLarge
 		}
 		if !isPrefix {
-			break
+			return line, nil
 		}
 	}
+}
+
+func readFrame(r *bufio.Reader, v any, limit int) error {
+	line, err := readLine(r, limit)
+	if err != nil {
+		return err
+	}
+	return decodeFrame(line, v)
+}
+
+func decodeFrame(line []byte, v any) error {
 	if err := json.Unmarshal(line, v); err != nil {
 		return fmt.Errorf("control: malformed frame: %w", err)
 	}

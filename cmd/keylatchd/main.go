@@ -215,6 +215,7 @@ When run without --from-desktop-shell, behaviour is identical to
 	cmd.Flags().IntVar(&port, "port", 7890, "Port for the UI HTTP server")
 	cmd.Flags().BoolVar(&demo, "demo", false, "Run in demo mode with stub data")
 	cmd.AddCommand(newServeCmd())
+	cmd.AddCommand(newBrokerCmd())
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "warn", "log verbosity: debug|info|warn|error")
 
 	return cmd

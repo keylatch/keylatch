@@ -39,6 +39,9 @@ output (for example in a ticket or another machine) and pass it to
 'keylatch audit verify --anchor' later to detect entries removed from the end.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			if brokerInstalled(llmcontext.DefaultLookup) {
+				return brokerAuditHead(c, llmcontext.DefaultLookup)
+			}
 			keys, err := auditKeysForRead("audit head")
 			if err != nil {
 				return err

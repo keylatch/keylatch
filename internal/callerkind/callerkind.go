@@ -57,6 +57,9 @@ type Evidence struct {
 	Signals []string
 	// TicketValid reports that the client presented a valid session ticket.
 	TicketValid bool
+	// Cgroup is the peer's control group path, when the daemon pinned the
+	// process.
+	Cgroup string
 }
 
 // Classifier classifies socket peers. The zero value walks the real process
@@ -66,6 +69,13 @@ type Classifier struct {
 	// process table; in test binaries that is empty so a suite run inside an
 	// agent harness stays hermetic.
 	Chain func(pid int) []llmcontext.Process
+	// AgentScope reports that a control group belongs to a launcher-registered
+	// agent scope.
+	AgentScope func(cgroup string) bool
+	// NoHuman makes a peer without agent evidence a host. A broker daemon sets
+	// it: a human is whoever holds a presence proof for the request, and that
+	// is decided per request, never from the peer.
+	NoHuman bool
 }
 
 func (c *Classifier) chain(pid int) []llmcontext.Process {
@@ -94,11 +104,16 @@ func (c *Classifier) Peer(ev Evidence) Result {
 		r.Harness = d.ID
 		r.Reasons = append(r.Reasons, "ancestry:"+d.ID)
 	}
+	if ev.Cgroup != "" && c != nil && c.AgentScope != nil && c.AgentScope(ev.Cgroup) {
+		r.Reasons = append(r.Reasons, "agent-scope")
+	}
 	switch {
 	case len(r.Reasons) > 0:
 		r.Kind = Agent
 	case isRelay(chain):
 		r.Kind, r.Reasons = Host, []string{"relay"}
+	case c != nil && c.NoHuman:
+		r.Kind, r.Reasons = Host, []string{"no-presence-proof"}
 	case !ev.SharesNamespaces:
 		r.Kind, r.Reasons = Host, []string{"outside-namespaces"}
 	default:

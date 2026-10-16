@@ -49,6 +49,9 @@ terminal.`,
 			if err != nil {
 				return err
 			}
+			if brokerInstalled(env) {
+				return launchThroughBroker(c, env, args)
+			}
 			raw, err := issueLaunchTicket(env, id)
 			if err != nil {
 				return NewInternalError("launch: %v", err)
@@ -162,6 +165,9 @@ func readTicketKey(path string) ([]byte, error) {
 }
 
 func verifySessionTicket(env llmcontext.Lookup, raw string) (llmcontext.Ticket, error) {
+	if brokerInstalled(env) {
+		return verifyBrokerTicket(env, raw)
+	}
 	key, err := readTicketKey(paths.SessionTicketKey(env))
 	if err != nil {
 		return llmcontext.Ticket{}, fmt.Errorf("read session ticket key: %w", err)
@@ -172,7 +178,7 @@ func verifySessionTicket(env llmcontext.Lookup, raw string) (llmcontext.Ticket, 
 
 // superviseLaunch runs the harness with the terminal in the foreground, and
 // on exit stops every process it left running and takes the terminal back.
-func superviseLaunch(child *exec.Cmd) (result error) {
+func superviseLaunch(child *exec.Cmd, started ...func(*exec.Cmd) error) (result error) {
 	stop, err := startLaunchProcess(child)
 	if err != nil {
 		return fmt.Errorf("start agent: %w", err)
@@ -185,6 +191,11 @@ func superviseLaunch(child *exec.Cmd) (result error) {
 			result = errors.Join(result, fmt.Errorf("restore terminal: %w", err))
 		}
 	}()
+	for _, check := range started {
+		if err := check(child); err != nil {
+			return err
+		}
+	}
 	return child.Wait()
 }
 

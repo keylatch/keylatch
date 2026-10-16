@@ -178,6 +178,9 @@ outside its sandbox.`,
 				if len(args) > 0 {
 					return NewUsageError("policy import: --from takes no path")
 				}
+				if brokerInstalled(llmcontext.DefaultLookup) {
+					return NewUsageError("policy import: --from edits the policy files of this user, and the system broker keeps the policy; bound a policy directory and import that")
+				}
 				return runPolicyImportHost(c, from, settings, connections, dryRun)
 			}
 			if len(args) != 1 {
@@ -198,6 +201,10 @@ func runPolicyImportFiles(c *cobra.Command, source string, dryRun bool) error {
 	if err != nil {
 		return NewUsageError("policy import: %v", err)
 	}
+	brokered := brokerInstalled(llmcontext.DefaultLookup)
+	if brokered && info.IsDir() {
+		return brokerPolicyImport(c, llmcontext.DefaultLookup, source)
+	}
 	var incoming map[string]connpolicy.Document
 	if info.IsDir() {
 		incoming, err = connpolicy.ReadDir(source, false)
@@ -212,6 +219,9 @@ func runPolicyImportFiles(c *cobra.Command, source string, dryRun bool) error {
 	}
 	if err != nil {
 		return NewUsageError("policy import: %v; nothing was changed", err)
+	}
+	if brokered {
+		return brokerPolicyImportDocs(c, llmcontext.DefaultLookup, incoming)
 	}
 	return applyPolicyImport(c, incoming, fmt.Sprintf("from %s", source), dryRun)
 }
@@ -298,6 +308,9 @@ func newPolicyExportCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dir := args[0]
+			if brokerInstalled(llmcontext.DefaultLookup) {
+				return brokerPolicyExport(c, llmcontext.DefaultLookup, dir, force)
+			}
 			docs, err := (connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}).LoadAll()
 			if err != nil {
 				return fmt.Errorf("policy export: %w", err)

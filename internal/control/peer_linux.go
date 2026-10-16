@@ -7,14 +7,6 @@ import (
 	"syscall"
 )
 
-// Peer is the kernel-attested identity of the process on the other end of a
-// Unix socket.
-type Peer struct {
-	UID uint32
-	// PID is 0 when the peer lives in a PID namespace the daemon cannot see.
-	PID int
-}
-
 func peerOf(c *net.UnixConn) (Peer, error) {
 	raw, err := c.SyscallConn()
 	if err != nil {
