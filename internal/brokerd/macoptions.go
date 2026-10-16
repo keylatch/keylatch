@@ -3,6 +3,7 @@ package brokerd
 import (
 	"context"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -41,9 +42,10 @@ func (o *Options) applyMac(self string, code CodeResolver) {
 // team as the daemon's. A build without a team (development) checks the path
 // alone.
 func macHelperAdmit(self string, code CodeResolver) func(context.Context, control.Peer) error {
-	libexec := filepath.Dir(self) + "/"
+	// The paths are macOS paths wherever this runs, so slash-separated.
+	libexec := path.Dir(self) + "/"
 	return func(ctx context.Context, p control.Peer) error {
-		if !strings.HasPrefix(p.Exe, libexec) || filepath.Base(p.Exe) != "keylatch-presence" {
+		if !strings.HasPrefix(p.Exe, libexec) || path.Base(p.Exe) != "keylatch-presence" {
 			return fmt.Errorf("brokerd: %q is not the presence helper", p.Exe)
 		}
 		if code == nil {
