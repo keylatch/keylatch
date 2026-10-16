@@ -241,7 +241,8 @@ func fileExists(path string) bool {
 }
 
 // KeyringIdentityPath returns the path of the plaintext vault identity file.
-// Bootstrap writes it only with --insecure-file-kek; otherwise the identity
+// Bootstrap writes it only when the operator config sets
+// allow_insecure_file_kek; otherwise the identity
 // lives in the OS keyring and this path plus ".keyring" holds the reference.
 // At runtime the factory uses KEYLATCH_AGE_IDENTITY if set.
 //

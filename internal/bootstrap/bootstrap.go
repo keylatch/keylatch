@@ -229,7 +229,7 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 	return plan, nil
 }
 
-const insecureFileKEKWarning = "INSECURE: the vault key is stored in plaintext at %s. Any process running as your user can copy it and decrypt the vault offline. Use an OS keyring (macOS Keychain or a Secret Service such as GNOME Keyring/KWallet) and rerun `keylatch bootstrap` without --insecure-file-kek to move it there."
+const insecureFileKEKWarning = "INSECURE: the vault key is stored in plaintext at %s. Any process running as your user can copy it and decrypt the vault offline. Use an OS keyring (macOS Keychain or a Secret Service such as GNOME Keyring/KWallet) and rerun `keylatch bootstrap` with allow_insecure_file_kek removed from the config file to move it there."
 
 const noKeyringHint = "install a Secret Service provider (GNOME Keyring or KWallet) or run bootstrap from a terminal to protect the vault key with a passphrase; an operator who accepts that any process running as the user can then decrypt the vault can set allow_insecure_file_kek in the config file"
 
@@ -265,7 +265,7 @@ func planIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, force bool
 
 	case kek.IdentityInFileAcknowledged:
 		if insecure {
-			plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.Path, Mode: 0o600, Reason: "plaintext vault identity (--insecure-file-kek)", Done: true})
+			plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.Path, Mode: 0o600, Reason: "plaintext vault identity (allow_insecure_file_kek)", Done: true})
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
 			return nil
 		}
@@ -275,7 +275,7 @@ func planIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, force bool
 		if insecure {
 			if !dryRun {
 				if err := vi.Acknowledge(); err != nil {
-					return fmt.Errorf("record --insecure-file-kek: %w", err)
+					return fmt.Errorf("record the plaintext vault identity opt-in: %w", err)
 				}
 			}
 			plan.Steps = append(plan.Steps, PlanStep{Action: "acknowledge", Path: vi.InsecureMarkerPath(), Mode: 0o600, Reason: "record opt-in to the plaintext vault identity", Done: !dryRun})
@@ -293,9 +293,9 @@ func planProvisionIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, r
 				return err
 			}
 		}
-		reason := "create plaintext vault identity (--insecure-file-kek)"
+		reason := "create plaintext vault identity (allow_insecure_file_kek)"
 		if replaced {
-			reason = "force re-create plaintext vault identity (--insecure-file-kek)"
+			reason = "force re-create plaintext vault identity (allow_insecure_file_kek)"
 		}
 		plan.Steps = append(plan.Steps, PlanStep{Action: "writeFile", Path: vi.Path, Mode: 0o600, Reason: reason, Done: !dryRun})
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
