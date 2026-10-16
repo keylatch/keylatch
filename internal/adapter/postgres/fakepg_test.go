@@ -175,12 +175,10 @@ func (f *fakePG) authenticate(conn net.Conn) bool {
 	case modeMD5:
 		salt := []byte{1, 2, 3, 4}
 		_ = writeMessage(conn, 'R', authRequest(authMD5, salt...))
-		m, err := readMessage(conn)
-		pw, _, _ := cstring(m.body)
-		if err != nil || pw != md5Password(f.user, f.password, salt) {
-			f.fail(conn, "28P01", "password authentication failed")
-			return false
-		}
+		// The adapter refuses MD5, so any answer is a failure.
+		_, _ = readMessage(conn)
+		f.fail(conn, "28P01", "password authentication failed")
+		return false
 	case modeScram:
 		return f.scram(conn)
 	}

@@ -298,21 +298,18 @@ func (s *Server) answerAuth(ctx context.Context, conn net.Conn, body []byte, scr
 	switch code {
 	case authOK:
 		return nil
-	case authCleartext, authMD5:
+	case authMD5:
+		// MD5 password auth is deprecated in PostgreSQL and its hash is cheap
+		// to brute force from a captured exchange; the adapter speaks SCRAM.
+		return errors.New("postgres: the database asks for MD5 password auth; configure scram-sha-256 for this role")
+	case authCleartext:
 		pw, err := s.cfg.Password(ctx)
 		if err != nil {
 			return err
 		}
 		defer clear(pw)
-		answer := pw
-		if code == authMD5 {
-			if len(body) < 8 {
-				return errProtocol
-			}
-			answer = []byte(md5Password(s.cfg.User, string(pw), body[4:8]))
-		}
-		out := make([]byte, 0, len(answer)+1)
-		out = append(append(out, answer...), 0)
+		out := make([]byte, 0, len(pw)+1)
+		out = append(append(out, pw...), 0)
 		defer clear(out)
 		return writeMessage(conn, 'p', out)
 	case authSASL:

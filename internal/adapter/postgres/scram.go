@@ -2,13 +2,11 @@ package postgres
 
 import (
 	"crypto/hmac"
-	"crypto/md5" //nolint:gosec // G501: the protocol's MD5 password method, used only when the server asks for it
 	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -99,11 +97,4 @@ func parseAttrs(s string) map[string]string {
 		}
 	}
 	return out
-}
-
-// md5Password is the answer to an AuthenticationMD5Password request.
-func md5Password(user, password string, salt []byte) string {
-	inner := md5.Sum([]byte(password + user))                               //nolint:gosec // the protocol's MD5 method
-	outer := md5.Sum(append([]byte(hex.EncodeToString(inner[:])), salt...)) //nolint:gosec // the protocol's MD5 method
-	return "md5" + hex.EncodeToString(outer[:])
 }

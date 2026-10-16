@@ -30,7 +30,7 @@ The adapter terminates the client's login. The client authenticates with the ses
 cleartext password over loopback; any other password, including the real one, is refused, and five
 wrong attempts end the session's service. It then connects to the target, negotiates TLS and
 verifies the server certificate against the system roots, logs in as the role with the stored
-password (SCRAM-SHA-256, MD5 or cleartext, as the server asks) and relays the rest of the stream.
+password (SCRAM-SHA-256, or cleartext over TLS, as the server asks; MD5 is refused) and relays the rest of the stream.
 The password is read from the store for each connection and wiped after the login. A server that
 does not offer TLS is refused.
 
@@ -73,7 +73,7 @@ the user's `~/.docker/config.json` for the child, and the wrapper is Unix only.
 ## Testing
 
 `internal/adapter/postgres` runs the adapter against an in-process fake server that speaks
-cleartext, MD5 and SCRAM-SHA-256 with and without TLS, and against `psql` when it is installed.
+cleartext and SCRAM-SHA-256 with and without TLS, an MD5 request (refused), and against `psql` when it is installed.
 `tests/adapters` (build tag `adapters`) runs `psql` and the Node `pg` client against a real server;
 the CI job `adapters` provides one as a service container. Without the server the tests skip and
 name what is missing.

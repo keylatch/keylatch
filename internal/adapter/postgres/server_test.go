@@ -96,7 +96,7 @@ func newAdapter(t *testing.T, upstream string, mutate func(*Config)) (*Server, *
 }
 
 func TestUpstreamAuthenticationMethods(t *testing.T) {
-	for _, mode := range []string{modeScram, modeMD5, modeCleartext} {
+	for _, mode := range []string{modeScram, modeCleartext} {
 		t.Run(mode, func(t *testing.T) {
 			pg := startFakePG(t, mode, realUser, realPassword, nil)
 			srv, rep := newAdapter(t, pg.addr(), nil)
@@ -114,6 +114,18 @@ func TestUpstreamAuthenticationMethods(t *testing.T) {
 			assert.NotContains(t, c.raw.String(), "klph_session", "the client is not sent its own token back")
 		})
 	}
+}
+
+// A database that asks for MD5 password auth is refused before any password
+// is sent.
+func TestUpstreamMD5IsRefused(t *testing.T) {
+	pg := startFakePG(t, modeMD5, realUser, realPassword, nil)
+	srv, _ := newAdapter(t, pg.addr(), nil)
+	addr := serveAdapter(t, srv)
+
+	c := dialClient(t, addr, "klph", "appdb", sessionToken)
+	require.NotNil(t, c.authError)
+	assert.NotContains(t, c.raw.String(), realPassword)
 }
 
 // A real libpq client, when one is installed, speaks to the adapter in front of
