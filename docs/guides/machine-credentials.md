@@ -17,6 +17,7 @@ A build VM or a remote runner needs to call a provider as one of your connection
 
 - The domain comes from the certificate, never from the request. A request that names another namespace is refused with `cross_domain` and audited as `security.block`.
 - Every request is checked against the broker's record of the certificate, so a revoked or expired credential stops working at once, not at the next handshake.
+- Policy decides every call. A connection's policy document must list a `machine` caller (`callers: {machine: {allow: true}}`), with the certificate's domain as the namespace; a connection without one is refused. A rule that needs an approval (`ask` or `presence`) is refused too, because a remote machine cannot give one.
 - The certificate needs the `call` capability. Other capabilities in it are reserved.
 - Calls are audited as `call` with caller kind `machine`; the connection, the action and the status are recorded, never the value.
 - Issuing, revoking and changing the listener ask for your presence and are audited. A coding agent cannot run them.

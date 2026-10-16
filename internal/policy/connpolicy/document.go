@@ -38,6 +38,11 @@ var connectionRe = regexp.MustCompile(`^(\*|[A-Za-z0-9][A-Za-z0-9._-]{0,127})$`)
 // Kinds lists the caller kinds a document can mention, in a stable order.
 var Kinds = []callerkind.Kind{callerkind.Agent, callerkind.Host, callerkind.Service, callerkind.Human}
 
+// DocumentKinds adds the machine kind to Kinds: a document may allow a remote
+// machine, but the lists humans read and the --as flag stay the four local
+// kinds.
+var DocumentKinds = append(slices.Clone(Kinds), callerkind.Machine)
+
 // Document is one connection's policy.
 type Document struct {
 	SchemaVersion int      `json:"schema_version"`
@@ -376,8 +381,8 @@ func (d Document) Validate() error {
 		}
 	}
 	for kind, rule := range d.Callers {
-		if !slices.Contains(Kinds, kind) {
-			return fmt.Errorf("callers.%s is not a caller kind (agent, host, service, human)", kind)
+		if !slices.Contains(DocumentKinds, kind) {
+			return fmt.Errorf("callers.%s is not a caller kind (agent, host, service, human, machine)", kind)
 		}
 		for _, r := range rule.Runtimes {
 			if err := policy.ValidateRuntimeMode(r); err != nil {

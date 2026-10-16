@@ -107,7 +107,8 @@
         "agent": { "$ref": "#/$defs/callerRule" },
         "host": { "$ref": "#/$defs/callerRule" },
         "service": { "$ref": "#/$defs/callerRule" },
-        "human": { "$ref": "#/$defs/callerRule" }
+        "human": { "$ref": "#/$defs/callerRule" },
+        "machine": { "$ref": "#/$defs/callerRule" }
       }
     }
   },

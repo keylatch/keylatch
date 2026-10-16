@@ -3,6 +3,8 @@ package connpolicy
 import (
 	"fmt"
 	"strings"
+
+	"github.com/keylatch/keylatch/internal/callerkind"
 )
 
 // Describe renders what a document allows on one line, for diffs and the
@@ -16,6 +18,13 @@ func Describe(d Document) string {
 			parts = append(parts, fmt.Sprintf("%s=deny", k))
 		default:
 			parts = append(parts, fmt.Sprintf("%s=allow%s", k, ruleDetail(rule)))
+		}
+	}
+	if rule, ok := d.Callers[callerkind.Machine]; ok {
+		if rule.Allow {
+			parts = append(parts, "machine=allow"+ruleDetail(rule))
+		} else {
+			parts = append(parts, "machine=deny")
 		}
 	}
 	if len(d.Capabilities) > 0 {

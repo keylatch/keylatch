@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"net"
@@ -17,8 +18,10 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/brokerapi"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/gateway"
+	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/template"
@@ -188,9 +191,72 @@ func seedMachineSecret(t *testing.T, r *machineRig, domain string) {
 	}
 }
 
+// machinePolicy gives the demo connection a policy whose only caller is the
+// machine kind, with rule.
+func machinePolicy(t *testing.T, r *machineRig, rule connpolicy.CallerRule) {
+	t.Helper()
+	doc := connpolicy.Document{
+		SchemaVersion: connpolicy.SchemaVersion, Connection: machineProvider, Default: "deny",
+		Callers: map[callerkind.Kind]connpolicy.CallerRule{callerkind.Machine: rule},
+	}
+	body, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accept := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpPolicyAccept, Files: map[string][]byte{
+		"policy.json": []byte(`{"default_deny":true}`), "policy.d/" + machineProvider + ".json": body,
+	}})
+	if resp := r.h.send(t, r.uid, accept); !resp.OK {
+		t.Fatalf("policy accept = %+v", resp)
+	}
+}
+
+func TestMachineCallIsDecidedByPolicy(t *testing.T) {
+	call := func(r *machineRig) error {
+		seedMachineSecret(t, r, "apps")
+		resp, _ := r.issue(t, "ci-1", "apps", []string{"call"}, 3600)
+		p, err := r.principal(t, resp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = machineBackend{r.h.srv}.Call(context.Background(), p, gateway.MachineCall{Connection: machineProvider, Action: "list-models"})
+		return err
+	}
+	for name, setup := range map[string]func(*machineRig){
+		"no policy":      func(*machineRig) {},
+		"machine denied": func(r *machineRig) { machinePolicy(t, r, connpolicy.CallerRule{Allow: false}) },
+		"approval required": func(r *machineRig) {
+			machinePolicy(t, r, connpolicy.CallerRule{Allow: true, Approval: connpolicy.ApprovalAsk})
+		},
+	} {
+		r := newMachineRig(t)
+		setup(r)
+		if err := call(r); !errors.Is(err, gateway.ErrMachineNotFound) {
+			t.Errorf("%s: call = %v", name, err)
+		}
+		if len(r.calls) != 0 {
+			t.Errorf("%s: the provider was called", name)
+		}
+		ev, ok := r.h.rec.last(audit.ActionCall)
+		if !ok || ev.Outcome != audit.OutcomeDenied || ev.Extra["machine"] != "ci-1" || ev.Extra["serial"] == "" {
+			t.Errorf("%s: denial not audited with the certificate: %+v", name, ev)
+		}
+	}
+	r := newMachineRig(t)
+	machinePolicy(t, r, connpolicy.CallerRule{Allow: true})
+	if err := call(r); err != nil {
+		t.Fatalf("allowed call = %v", err)
+	}
+	ev, _ := r.h.rec.last(audit.ActionCall)
+	if ev.Extra["machine"] != "ci-1" || ev.Extra["serial"] == "" {
+		t.Fatalf("call event lacks the certificate: %+v", ev.Extra)
+	}
+}
+
 func TestMachineCallUsesCertificateDomain(t *testing.T) {
 	r := newMachineRig(t)
 	seedMachineSecret(t, r, "apps")
+	machinePolicy(t, r, connpolicy.CallerRule{Allow: true})
 	resp, _ := r.issue(t, "ci-1", "apps", []string{"call"}, 3600)
 	p, err := r.principal(t, resp)
 	if err != nil {
@@ -248,6 +314,7 @@ func anyString(v any) string {
 func TestMachineCallDispatchFailureAudited(t *testing.T) {
 	r := newMachineRig(t)
 	seedMachineSecret(t, r, "apps")
+	machinePolicy(t, r, connpolicy.CallerRule{Allow: true})
 	r.h.srv.cfg.CallAction = func(context.Context, string, string, string, map[string]string, string) (*runner.ActionResult, error) {
 		return nil, errors.New("upstream down")
 	}

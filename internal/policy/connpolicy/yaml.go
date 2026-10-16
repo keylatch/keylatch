@@ -115,7 +115,7 @@ func ParseYAML(data []byte) (map[string]Document, error) {
 			Hosts: c.Hosts, Capabilities: c.Capabilities, MaxTTL: c.MaxTTL, Callers: map[callerkind.Kind]CallerRule{},
 		}
 		d.Egress, d.FS = pickEgress(c.Egress, p.Defaults.Egress), mergeFS(c.FS, p.Defaults.FS)
-		for _, kind := range Kinds {
+		for _, kind := range DocumentKinds {
 			entry, ok := c.Callers[string(kind)]
 			if !ok {
 				entry, ok = p.Defaults.Caller[string(kind)]
@@ -125,8 +125,8 @@ func ParseYAML(data []byte) (map[string]Document, error) {
 			}
 		}
 		for key := range c.Callers {
-			if !slices.Contains(Kinds, callerkind.Kind(key)) {
-				return nil, fmt.Errorf("connections.%s.callers.%s is not a caller kind (agent, host, service, human)", name, key)
+			if !slices.Contains(DocumentKinds, callerkind.Kind(key)) {
+				return nil, fmt.Errorf("connections.%s.callers.%s is not a caller kind (agent, host, service, human, machine)", name, key)
 			}
 		}
 		for _, cmd := range p.Commands {

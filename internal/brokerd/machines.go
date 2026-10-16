@@ -27,6 +27,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/machinecert"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 )
@@ -275,6 +276,14 @@ func (b machineBackend) Refused(ctx context.Context, p *gateway.MachinePrincipal
 	}})
 }
 
+// audit writes the call event of a machine: which certificate called what.
+func (b machineBackend) audit(ctx context.Context, outcome audit.Outcome, rec machineRecord, c gateway.MachineCall, extra map[string]any) error {
+	extra["connection"], extra["action"] = c.Connection, c.Action
+	extra["caller_kind"] = string(callerkind.Machine)
+	extra["machine"], extra["serial"] = rec.Name, rec.Serial
+	return b.s.cfg.Audit.Emit(ctx, audit.Event{Action: audit.ActionCall, Outcome: outcome, Extra: extra})
+}
+
 func baseURLOf(tmpl registry.ConnectionTemplate) (string, error) {
 	i := strings.Index(tmpl.TestStrategy.Endpoint, "://")
 	if i < 0 {
@@ -308,6 +317,18 @@ func (b machineBackend) Call(ctx context.Context, p gateway.MachinePrincipal, c 
 	if err := part.policy.Gate(ctx, callerkind.Result{Kind: callerkind.Machine}); err != nil {
 		return gateway.MachineCallResult{}, err
 	}
+	// The policy decides every machine call like any other: the connection's
+	// document must list machine callers, and the domain is the namespace.
+	if d := enforce.New(part.env).Decide(ctx, enforce.Request{
+		Connection: c.Connection, Action: "call", Caller: callerkind.Machine, Namespace: rec.Domain, Tier: "D2",
+	}); !d.Allow || d.ApprovalRequired || d.Approval == "ask" || d.Approval == "presence" {
+		reason := d.Reason
+		if reason == "" {
+			reason = "the policy needs an approval a remote machine cannot give"
+		}
+		b.audit(ctx, audit.OutcomeDenied, rec, c, map[string]any{"reason": reason})
+		return gateway.MachineCallResult{}, gateway.ErrMachineNotFound
+	}
 	var src secretStore = part.store
 	if part.syncStore != nil {
 		src = part.syncStore
@@ -328,14 +349,14 @@ func (b machineBackend) Call(ctx context.Context, p gateway.MachinePrincipal, c 
 		do = runner.ExecuteAction
 	}
 	result, callErr := do(ctx, base, c.Connection, c.Action, c.Params, string(cred))
-	extra := map[string]any{"connection": c.Connection, "action": c.Action, "caller_kind": string(callerkind.Machine)}
 	outcome := audit.OutcomeOK
+	extra := map[string]any{}
 	if callErr != nil {
 		outcome, extra["reason"] = audit.OutcomeError, "dispatch failed"
 	} else {
 		extra["status"] = result.StatusCode
 	}
-	if err := b.s.cfg.Audit.Emit(ctx, audit.Event{Action: audit.ActionCall, Outcome: outcome, Extra: extra}); err != nil {
+	if err := b.audit(ctx, outcome, rec, c, extra); err != nil {
 		return gateway.MachineCallResult{}, err
 	}
 	if callErr != nil {

@@ -145,7 +145,7 @@ var safeLogFields = map[string][]string{
 	"run": {
 		"connection", "runtime", "capability", "caller_kind", "decision", "exit", "duration_ms", "reason",
 	},
-	"call":    {"connection", "action", "caller_kind", "status", "reason"},
+	"call":    {"connection", "action", "caller_kind", "status", "reason", "machine", "serial"},
 	"release": {"connection", "field", "unit", "caller_kind", "reason"},
 	"connect": {"connection", "backend", "caller_kind", "reason"},
 	"set":     {"connection", "field", "backend", "caller_kind", "reason"},
