@@ -14,11 +14,11 @@ The trust hierarchy from highest to lowest isolation:
 ```
 gateway_typed       (strongest isolation — gateway mediates all access)
 gateway_sdk         (SDK-compatible proxy via gateway)
-direct_brokered     (ephemeral broker tokens — no gateway required)
+minted              (scoped credential minted per command — no gateway required)
 gateway_proxy       (MITM proxy rewriting Authorization headers)
 ```
 
-All four modes are permitted in LLM sessions. Raw credential values are never returned to the agent process in any mode. `keylatch get` is always blocked in LLM sessions (exit 2, SecurityBlock).
+The gateway modes are permitted in LLM sessions. `minted` hands the command a real, scoped credential, so a connection's mint policy refuses agent sessions. Raw stored credential values are never returned to the agent process in any mode. `keylatch get` is always blocked in LLM sessions (exit 2, SecurityBlock).
 
 ---
 
@@ -66,26 +66,26 @@ All four modes are permitted in LLM sessions. Raw credential values are never re
 
 ---
 
-### `direct_brokered`
+### `minted`
 
-**What it does:** Exchanges credentials via a broker strategy that issues ephemeral tokens. The subprocess receives a short-lived token that can be exchanged for scoped access — it does not receive the raw API key. No gateway required.
+**What it does:** Mints a short-lived credential limited to one scope with the template's mint strategy, gives it to the subprocess in a clean environment and revokes it when the subprocess exits. It replaces `direct_brokered`, which exits 5 and names `minted`. No gateway required.
 
-**When to use:** Offline or low-latency scenarios where running the gateway is not practical, but direct key injection is still unacceptable.
+**When to use:** Tools that need a real provider credential in their environment (`gh`, `aws`, `terraform`) where that credential can be limited: a GitHub App installation token for one repository, or AWS STS credentials limited by a session policy. See [Runtime modes](../runtime-modes.md#minted-credentials).
 
-**Required:** Nothing external. The broker runs in-process.
+**Required:** A connection whose template declares `minted_fields` and an operator `mint` policy for it.
 
 **Security invariants:**
-- Ephemeral tokens expire on first use or by TTL.
-- Raw credential value is not injected into subprocess environment.
-- Audit log records token issuance and exchange.
+- The stored root credential is never read for the command; a template with only static fields refuses `minted`.
+- Agent sessions are refused.
+- The environment is an allowlist, not the parent environment.
+- Every mint writes an audit event without the credential, and the credential is revoked on exit.
 
 **Receipt shape:**
 ```json
 {
-  "mode": "direct_brokered",
-  "provider": "openrouter",
-  "token_id": "brk_xyz789",
-  "ttl_seconds": 300,
+  "mode": "minted",
+  "provider": "github-app",
+  "credential_shape": "provider_ephemeral",
   "exit_code": 0
 }
 ```
@@ -125,7 +125,7 @@ When Keylatch detects an active LLM session (via `CLAUDECODE`, `CLAUDE_CODE_ENTR
 |------|:--------------:|:-----------:|
 | `gateway_typed` | allowed | allowed |
 | `gateway_sdk` | allowed | allowed |
-| `direct_brokered` | allowed | allowed |
+| `minted` | allowed | refused by the mint policy |
 | `gateway_proxy` | allowed | allowed |
 
 **What gets blocked vs allowed:**
@@ -158,13 +158,13 @@ Use this decision table to choose the right mode:
 Am I in an LLM agent session?
   Yes → Does the provider template list gateway_typed or gateway_sdk?
           Yes → use gateway_typed (default) or gateway_sdk for OpenAI-compat SDKs
-          No  → use direct_brokered
+          No  → ask the owner for a placeholder session (keylatch run --tier D3)
 
   No → Do I want the strongest isolation anyway?
          Yes → gateway_typed or gateway_sdk
          No  → Is the gateway running?
                  Yes → gateway_typed
-                 No  → direct_brokered (no gateway needed)
+                 No  → minted, if the template mints (no gateway needed)
 ```
 
 Quick reference:
@@ -173,5 +173,5 @@ Quick reference:
 |-----------|----------|
 | Best isolation for AI agent | `gateway_typed` |
 | OpenAI SDK compatibility | `gateway_sdk` |
-| Offline, no gateway, reasonable isolation | `direct_brokered` |
+| A real provider credential, limited to one scope and revoked on exit | `minted` |
 | Binary tool that hard-codes endpoint | `gateway_proxy` |

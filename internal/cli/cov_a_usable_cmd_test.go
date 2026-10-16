@@ -86,12 +86,12 @@ func TestRunInstallGuard_UnknownAgent_Error(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := runInstallGuard(cmd, "totally-unknown-agent-xyz", false)
+	err := cmd.RunE(cmd, []string{"totally-unknown-agent-xyz"})
 	if err == nil {
-		t.Error("expected error for unknown agent")
+		t.Fatal("expected error for unknown agent")
 	}
-	if !strings.Contains(err.Error(), "unknown agent") {
-		t.Errorf("error must mention 'unknown agent', got: %v", err)
+	if !strings.Contains(err.Error(), "unknown harness") {
+		t.Errorf("error must mention 'unknown harness', got: %v", err)
 	}
 }
 
@@ -107,11 +107,11 @@ func TestRunInstallGuard_AliasNormalisation_ClaudeCode(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := runInstallGuard(cmd, "claude_code", false)
+	err := cmd.RunE(cmd, []string{"claude_code"})
 	// In test env, actual file-system install may fail. But it should NOT
-	// fail with "unknown agent" — the alias normalisation must work.
-	if err != nil && strings.Contains(err.Error(), "unknown agent") {
-		t.Errorf("claude_code alias must be normalised to claude-code, got unknown-agent error: %v", err)
+	// fail with "unknown harness" — the alias normalisation must work.
+	if err != nil && strings.Contains(err.Error(), "unknown harness") {
+		t.Errorf("claude_code alias must be normalised to claude-code, got unknown-harness error: %v", err)
 	}
 }
 

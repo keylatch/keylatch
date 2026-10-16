@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,14 @@ func TestBackendCredentialsConfig(t *testing.T) {
 	}
 	if err := load(`{"vault":{"credential_ref":"prod.vault-1"},"awssm":{"allow_env_credentials":true}}`); err != nil {
 		t.Fatalf("valid backends rejected: %v", err)
+	}
+	if err := load(`{"bws":{"credential_ref":"ci.bws"},"sops":{"allow_env_credentials":true}}`); err != nil {
+		t.Fatalf("the bws and sops backends take credentials: %v", err)
+	}
+	for _, id := range []string{"bws", "sops"} {
+		if !slices.Contains(RemoteBackendIDs, id) || BackendID(id) != id {
+			t.Errorf("%s is not a credentialed backend id", id)
+		}
 	}
 	for backends, want := range map[string]string{
 		`{"file":{"credential_ref":"x"}}`:              "not a backend that takes credentials",

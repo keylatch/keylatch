@@ -1,7 +1,6 @@
 // Package runtime defines RuntimeMode for keylatch credential access control.
-// The runtime modes are gateway_typed, gateway_sdk, direct_brokered and
-// gateway_proxy. direct_brokered and gateway_proxy are not available in this
-// release.
+// The runtime modes are gateway_typed, gateway_sdk, minted and gateway_proxy.
+// gateway_proxy is not available in this release.
 package runtime
 
 import "errors"
@@ -10,10 +9,15 @@ import "errors"
 type RuntimeMode string
 
 const (
-	RuntimeGatewayTyped   RuntimeMode = "gateway_typed"
-	RuntimeGatewaySDK     RuntimeMode = "gateway_sdk"
+	RuntimeGatewayTyped RuntimeMode = "gateway_typed"
+	RuntimeGatewaySDK   RuntimeMode = "gateway_sdk"
+	RuntimeGatewayProxy RuntimeMode = "gateway_proxy"
+	// RuntimeMinted runs the command with a short-lived credential minted for
+	// it and revoked when it exits.
+	RuntimeMinted RuntimeMode = "minted"
+	// RuntimeDirectBrokered is the retired name of RuntimeMinted. It is not in
+	// AllModes and every request for it is refused with a pointer to minted.
 	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
-	RuntimeGatewayProxy   RuntimeMode = "gateway_proxy"
 )
 
 // AllModes is the closed set used by the matrix builder in tests.
@@ -21,7 +25,7 @@ const (
 var AllModes = []RuntimeMode{
 	RuntimeGatewayTyped,
 	RuntimeGatewaySDK,
-	RuntimeDirectBrokered,
+	RuntimeMinted,
 	RuntimeGatewayProxy,
 }
 
@@ -29,7 +33,8 @@ var AllModes = []RuntimeMode{
 // Resolve() checks this before the supported set so removed modes return
 // ErrModeRemoved (exit 5) with a clear hint.
 var removedModes = map[string]string{
-	"direct_classic": "mode removed in v1.0.0. Use: --runtime gateway_typed",
+	"direct_classic":  "mode removed in v1.0.0. Use: --runtime gateway_typed",
+	"direct_brokered": "mode renamed. Use: --runtime minted",
 }
 
 // ErrModeRemoved is returned when the caller requests a runtime mode that was
@@ -64,7 +69,7 @@ func IsRemovedMode(mode string) (hint string, removed bool) {
 // --runtime value instead of a confusing security-block message.
 func IsRawCredentialMode(m RuntimeMode) bool {
 	switch m {
-	case RuntimeDirectBrokered:
+	case RuntimeMinted:
 		return true
 	default:
 		return false

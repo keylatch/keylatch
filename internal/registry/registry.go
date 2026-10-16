@@ -52,7 +52,7 @@ func Register(t ConnectionTemplate) error {
 	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeGatewayProxy:
 		t.RuntimeSupport.GatewaySupported = true
 		t.RuntimeSupport.RuntimeReason = "gateway mode selected"
-	case RuntimeDirectBrokered:
+	case RuntimeDirectBrokered, RuntimeMinted:
 		t.RuntimeSupport.GatewaySupported = false
 		t.RuntimeSupport.RuntimeReason = "direct brokered mode selected"
 	}

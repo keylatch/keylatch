@@ -118,6 +118,14 @@ Exit codes:
 			repair, _ := c.Flags().GetBool("repair")
 			yes, _ := c.Flags().GetBool("yes")
 
+			if agentsOnly, _ := c.Flags().GetBool("agents"); agentsOnly {
+				code, err := runDoctorAgents(c.OutOrStdout(), jsonOut)
+				if err != nil {
+					return err
+				}
+				os.Exit(code)
+			}
+
 			if sandboxOnly, _ := c.Flags().GetBool("sandbox"); sandboxOnly {
 				report := contained.Probe()
 				if err := writeSandboxReport(c.OutOrStdout(), report, jsonOut); err != nil {
@@ -207,6 +215,7 @@ Exit codes:
 	cmd.Flags().Bool("yes", false, "skip the interactive confirmation prompt for --repair (required when combined with --quiet --repair)")
 	cmd.Flags().Bool("quiet", false, "suppress table output; only exits with the appropriate code")
 	cmd.Flags().String("category", "", "comma-separated list of categories to run (e.g. environment,backends)")
+	cmd.Flags().Bool("agents", false, "report, for every supported agent harness, whether it is installed here and whether its Keylatch hook, MCP server and rules are in place")
 	cmd.Flags().Bool("sandbox", false, "report what this host lets the contained tier (D5) do: namespaces, Landlock, seccomp and cgroups")
 	// NOTE: --connection flag for gateway scoping is deferred.
 

@@ -15,7 +15,7 @@ The three available runtime modes keep the raw credential value inside the `keyl
 |------|---------------------|
 | `gateway_typed` | Subprocess receives a scoped JWT; gateway forwards to upstream with real key injected server-side |
 | `gateway_sdk` | Same as `gateway_typed` with an OpenAI-compatible base URL |
-| `direct_brokered` | Subprocess receives an ephemeral exchange token; raw key is never injected |
+| `minted` | Subprocess receives a credential minted for it and limited to one scope, revoked on exit; the stored key is never injected |
 
 In all modes, the subprocess never receives the raw provider API key.
 

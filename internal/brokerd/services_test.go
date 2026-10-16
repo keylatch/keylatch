@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,7 +174,7 @@ func TestServiceReleaseInEnrolledUnit(t *testing.T) {
 	// A system account outside the broker's user range is served for this one request only.
 	h2 := r.h
 	srv := h2.srv
-	srv.cfg.Identify = func(*net.UnixConn) (*Identity, error) {
+	srv.cfg.Identify = func(control.Conn) (*Identity, error) {
 		return &Identity{UID: 33, PID: 4242, Start: "1", Cgroup: "/system.slice/app.service", pin: okPin{}}, nil
 	}
 	call, stop := h2.serve(t)

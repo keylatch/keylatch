@@ -50,7 +50,7 @@ const (
 //     tmpl.RuntimeSupport.Supported or ErrModeNotSupported is returned
 //     (no silent downgrade).
 //  3. Provider preferred mode — tmpl.RuntimeSupport.Preferred.
-//  4. Fallback hierarchy: gateway_typed → gateway_sdk → direct_brokered → gateway_proxy.
+//  4. Fallback hierarchy: gateway_typed → gateway_sdk → minted → gateway_proxy.
 //
 // If no mode can be selected, ErrModeNotSupported is returned.
 func Resolve(_ context.Context, req ResolveRequest, tmpl registry.ConnectionTemplate) (RuntimeDecision, error) {
@@ -96,7 +96,7 @@ func Resolve(_ context.Context, req ResolveRequest, tmpl registry.ConnectionTemp
 	for _, m := range []RuntimeMode{
 		RuntimeGatewayTyped,
 		RuntimeGatewaySDK,
-		RuntimeDirectBrokered,
+		RuntimeMinted,
 		RuntimeGatewayProxy,
 	} {
 		if supported[m] {
@@ -128,7 +128,7 @@ func shapeFor(m RuntimeMode) CredentialDelivery {
 	switch m {
 	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeGatewayProxy:
 		return DeliveryKeylatchSessionToken
-	case RuntimeDirectBrokered:
+	case RuntimeMinted, RuntimeDirectBrokered:
 		return DeliveryProviderEphemeral
 	default:
 		panic(fmt.Sprintf("runtime: shapeFor: unrecognized mode %q — update shapeFor when adding to AllModes", m))

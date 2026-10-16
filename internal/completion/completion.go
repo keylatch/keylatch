@@ -14,7 +14,7 @@ import (
 var RuntimeModes = []string{
 	"gateway_typed",
 	"gateway_sdk",
-	"direct_brokered",
+	"minted",
 	"gateway_proxy",
 }
 

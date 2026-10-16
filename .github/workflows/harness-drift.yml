@@ -1,0 +1,99 @@
+name: harness-drift
+
+# Every night: install the latest published Claude Code, Codex, Gemini CLI and
+# OpenCode, write the Keylatch integration into a scratch home with
+# `keylatch agent install` (its --dry-run diff is in the log), and check that
+# the harness still reads what was written. A failure opens an issue.
+#
+# Run it by hand with break_fixture set to see a failing run: the hook file is
+# damaged after the install and `keylatch doctor --agents` must report it.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      break_fixture:
+        description: Damage the generated hook file so the run fails on purpose
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: claude-code
+            package: "@anthropic-ai/claude-code"
+            exe: claude
+            list: claude mcp list
+          - harness: codex
+            package: "@openai/codex"
+            exe: codex
+            list: codex mcp list
+          - harness: gemini-cli
+            package: "@google/gemini-cli"
+            exe: gemini
+            list: gemini mcp list
+          - harness: opencode
+            package: opencode-ai
+            exe: opencode
+            list: opencode mcp list
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - name: build keylatch
+        run: go build -o "$RUNNER_TEMP/bin/keylatch" ./cmd/keylatch
+      - name: install the latest ${{ matrix.exe }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: npm install --global "$PACKAGE@latest"
+      - name: install the integration and let the harness read it
+        env:
+          HARNESS: ${{ matrix.harness }}
+          EXE: ${{ matrix.exe }}
+          LIST_COMMAND: ${{ matrix.list }}
+          KEYLATCH_DRIFT_BREAK: ${{ inputs.break_fixture && '1' || '' }}
+        run: bash scripts/ci/harness-drift.sh "$RUNNER_TEMP/bin/keylatch" "$HARNESS" "$EXE" "$LIST_COMMAND"
+      - name: the fake-agent profiles still match the registry
+        run: go test -count=1 -tags harness ./tests/harness/... -run '^(TestFakeAgentProfiles|TestProfilesMatchTheHarnessRegistry)$'
+
+  report:
+    needs: drift
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: open an issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          open="$(gh issue list --repo "$GITHUB_REPOSITORY" --label harness-drift --state open --json number --jq 'length')"
+          if [ "$open" != 0 ]; then
+            echo "an issue is already open"
+            exit 0
+          fi
+          gh label create harness-drift --repo "$GITHUB_REPOSITORY" --color B60205 --description "A published agent harness no longer accepts the generated configuration" 2>/dev/null || true
+          gh issue create --repo "$GITHUB_REPOSITORY" --label harness-drift \
+            --title "Harness drift: a published agent no longer accepts the generated configuration" \
+            --body "The nightly harness-drift run failed: $RUN_URL. Check which harness failed, compare its current documentation with docs/harnesses, and update internal/harness."

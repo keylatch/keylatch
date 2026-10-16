@@ -15,6 +15,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -25,11 +26,11 @@ import (
 // that exists on this machine: $CLAUDE_CONFIG_DIR and ~/.claude.
 func claudeConfigDirs(env llmcontext.Lookup) []string {
 	var candidates []string
-	if d := env("CLAUDE_CONFIG_DIR"); d != "" {
-		candidates = append(candidates, d)
-	}
 	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(home, ".claude"))
+		claude, _ := harness.Lookup("claude-code")
+		candidates = append(candidates,
+			claude.Dir(harness.Env{Home: home, Getenv: env}),
+			claude.Dir(harness.Env{Home: home, Getenv: func(string) string { return "" }}))
 	}
 	seen := map[string]bool{}
 	var dirs []string

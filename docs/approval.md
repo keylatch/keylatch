@@ -143,7 +143,7 @@ Each connection can be configured with an `approval_mode` that determines when h
 | Runtime path | Default mode |
 |---|---|
 | `gateway_typed`, `gateway_sdk`, `gateway_proxy` | `trust` |
-| `direct_brokered` and value-bearing paths | `first-run` |
+| `minted` and value-bearing paths | `first-run` |
 
 ### Configuration
 

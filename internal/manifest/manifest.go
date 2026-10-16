@@ -72,6 +72,8 @@ func Current() Manifest {
 			{ID: "doppler", Category: CategoryManager, Status: Community, Note: "Doppler; no live suite"},
 			{ID: "infisical", Category: CategoryManager, Status: Community, Note: "Infisical; no live suite"},
 			{ID: "opconnect", Category: CategoryManager, Status: Community, Note: "1Password Connect server; no live suite"},
+			{ID: "bws", Category: CategoryManager, Status: Community, Note: "Bitwarden Secrets Manager, read-only, machine-account token held by Keylatch; no live suite"},
+			{ID: "sops", Category: CategoryManager, Status: Community, Note: "SOPS files encrypted to age, read-only, decrypted in memory by the daemon"},
 			{ID: "keychain", Category: CategoryManager, Status: Deprecated, Note: "macOS Keychain secrets; the Keychain stays as a key store, not as a backend"},
 			{ID: "keeper", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
 			{ID: "lastpass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
@@ -84,7 +86,8 @@ func Current() Manifest {
 			{ID: "contained", Category: CategoryRuntime, Status: Supported, Note: "tier D5 raw value in the Keylatch sandbox: user, mount, PID and network namespaces, Landlock, seccomp, cgroup v2 and proxy-only egress; Linux only, proven by the containment tests"},
 			{ID: "adapter", Category: CategoryRuntime, Status: Supported, Note: "tier D4 protocol adapters: the Postgres adapter terminates the child's login with a session token and authenticates upstream with the stored password"},
 			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect, authority and credential-boundary fixes"},
-			{ID: "direct_brokered", Category: CategoryRuntime, Status: Unavailable, Note: "excluded: no exchange strategies are wired"},
+			{ID: "minted", Category: CategoryRuntime, Status: Supported, Note: "a scoped credential minted for one command and revoked on exit; GitHub App installation tokens today, AWS STS and Vault dynamic secrets through the same path"},
+			{ID: "direct_brokered", Category: CategoryRuntime, Status: Unavailable, Note: "renamed to minted"},
 
 			// Platforms.
 			{ID: "linux", Category: CategoryPlatform, Status: Supported, Note: "Linux broker plus isolated agent environment"},

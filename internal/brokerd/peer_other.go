@@ -1,8 +1,9 @@
-//go:build !linux
+//go:build !linux && !darwin && !windows
 
 package brokerd
 
-import "net"
+import "github.com/keylatch/keylatch/internal/control"
 
-// Identify is unavailable off Linux: the system broker is Linux-only.
-func Identify(*net.UnixConn) (*Identity, error) { return nil, ErrUnsupported }
+// Identify is unavailable on this platform: the system broker runs on Linux,
+// macOS and Windows.
+func Identify(control.Conn) (*Identity, error) { return nil, ErrUnsupported }

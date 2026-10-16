@@ -22,6 +22,7 @@ import (
 	"github.com/keylatch/keylatch/internal/contained"
 	"github.com/keylatch/keylatch/internal/egress"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/redactor"
@@ -111,8 +112,8 @@ type containedPlan struct {
 func (s *Server) denyList(extra ...string) []string {
 	list := append([]string{paths.ConfigDir(s.cfg.Env)}, extra...)
 	if home, err := os.UserHomeDir(); err == nil {
-		for _, p := range []string{".ssh", ".aws", ".config/gcloud", ".kube", ".gnupg", ".config/keylatch", ".keylatch",
-			".mozilla", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware", ".claude", ".codex", ".gemini", ".docker"} {
+		for _, p := range append([]string{".ssh", ".aws", ".config/gcloud", ".kube", ".gnupg", ".config/keylatch", ".keylatch",
+			".mozilla", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware", ".docker"}, harness.ConfigDirNames()...) {
 			list = append(list, filepath.Join(home, p))
 		}
 	}
@@ -305,7 +306,7 @@ func hostList(hosts []string) string {
 
 // containedRun serves one OpContained request: it decides, starts the sandbox
 // and relays its output until the child ends.
-func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, res callerkind.Result, req Request) {
+func (s *Server) containedRun(ctx context.Context, conn Conn, r *bufio.Reader, res callerkind.Result, req Request) {
 	kind := res.Kind
 	rr := req.Run
 	d := decision{op: string(OpContained), res: res, child: childInDaemon, tier: TierContained}

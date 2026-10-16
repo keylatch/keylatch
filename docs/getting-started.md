@@ -184,8 +184,8 @@ keylatch run openrouter -- node script.js
 # SDK-compatible gateway
 keylatch run openrouter --runtime gateway_sdk -- python main.py
 
-# Direct brokered injection (trusted broker process required)
-keylatch run aws-prod --runtime direct_brokered -- ./deploy.sh
+# Scoped credential minted for the command and revoked on exit
+keylatch run aws --runtime minted -- aws s3 ls
 ```
 
 See the [CLI reference](./cli-reference.md#runtime-modes) for the full runtime mode matrix.

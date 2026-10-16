@@ -30,6 +30,8 @@ var Fields = map[string][]string{
 	"azurekv":   {"client_secret"},
 	"doppler":   {"token"},
 	"infisical": {"client_id", "client_secret"},
+	"bws":       {"access_token"},
+	"sops":      {"age_key"},
 }
 
 // Path returns where the credential for ref is stored.

@@ -91,11 +91,11 @@ Exits non-zero if any preferred mode is unavailable.`,
 					}(),
 				},
 				{
-					Name:          "direct_brokered",
-					UseWhen:       "Provider supports short-lived scoped tokens; keylatch exchanges the root credential for a scoped one before launch.",
-					SecurityLevel: "High — root credential zeroed after exchange",
-					Requires:      "Broker strategy configured",
-					Available:     true, // always locally available; broker errors surface at run-time
+					Name:          "minted",
+					UseWhen:       "Provider can mint a short-lived credential limited to one scope; keylatch mints it for the command and revokes it on exit.",
+					SecurityLevel: "High — the root credential never reaches the command",
+					Requires:      "A mint strategy for the connection",
+					Available:     true, // always locally available; mint errors surface at run-time
 				},
 				{
 					Name:          "gateway_proxy",

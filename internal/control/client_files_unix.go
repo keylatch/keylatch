@@ -5,6 +5,7 @@ package control
 import (
 	"bufio"
 	"errors"
+	"net"
 	"os"
 	"syscall"
 
@@ -41,7 +42,11 @@ func (c *Client) CallWithFiles(req brokerapi.Request, files []*os.File) (brokera
 	for i, f := range files {
 		fds[i] = int(f.Fd()) //nolint:gosec // G115: a descriptor is a small non-negative int
 	}
-	if _, _, err := conn.WriteMsgUnix([]byte{0}, syscall.UnixRights(fds...), nil); err != nil {
+	uc, ok := conn.(*net.UnixConn)
+	if !ok {
+		return brokerapi.Response{}, errors.New("control: file descriptors can only be sent over a Unix socket")
+	}
+	if _, _, err := uc.WriteMsgUnix([]byte{0}, syscall.UnixRights(fds...), nil); err != nil {
 		return brokerapi.Response{}, err
 	}
 	if r.Buffered() > 0 {

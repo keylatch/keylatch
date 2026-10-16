@@ -25,6 +25,8 @@ These variables configure the Keylatch runtime. They are read by the CLI process
 | `KEYLATCH_VAULT_PATH` | Override the file backend vault path | No | Never |
 | `KEYLATCH_NAMESPACE` | Override the default namespace (`default`) | No | Never |
 | `KEYLATCH_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | No | Never |
+| `KEYLATCH_CI_SESSION` | Path to the session record `keylatch ci exchange` wrote. While set, `run`, `call` and the MCP server refuse connections outside the record and stop at its expiry. | No | Never |
+| `KEYLATCH_CI_ID_TOKEN` | Default variable `keylatch ci exchange --provider gitlab` reads the job's ID token from (`--token-env` names another). | Yes | Never |
 | `KEYLATCH_EXPERIMENTAL` | Set to `1` to enable all experimental features, including the UI `/experimental` endpoint. Equivalent to setting `experimental_gated = true` in a custom-mode config. | No | Never |
 | ~~`KEYLATCH_EXPERIMENTAL_BACKENDS`~~ | **Deprecated — ignored.** Previously gated the (now-removed) NordPass backend stub. | No | Never |
 
@@ -173,7 +175,7 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_SESSION_TICKET` | Session ticket `keylatch launch` passes to the harness it starts. Signed, valid for 12 hours, and bound to the launching process; a valid ticket marks every descendant as an agent session. An absent, forged or foreign ticket changes nothing. | Yes | Set by `keylatch launch` only |
 | `KEYLATCH_AGENT_SESSION` | Set to `1` to mark a shell as an agent session by hand. | No | Never |
 
-> **Raw-credential access.** `keylatch get` and `keylatch run` in a raw-credential mode (`direct_brokered`, `direct_classic_sandboxed`) fail closed (exit code 2) for every session unless `allow_unverified_session: true` is set in the operator's default `config.json`: `~/.config/keylatch/config.json` on Linux, `~/.keylatch/config.json` elsewhere, with the home directory taken from the user database rather than `$HOME`. The file must belong to you and not be writable by group or others. `KEYLATCH_CONFIG`, `KEYLATCH_CONFIG_DIR` and `XDG_CONFIG_HOME` do not apply to this setting, and no environment variable or session ticket opens the gate. Gateway and proxy modes are never gated: the child receives only a scoped session token.
+> **Raw-credential access.** `keylatch get` and `keylatch run` in a raw-credential mode (`minted`, `direct_classic_sandboxed`) fail closed (exit code 2) for every session unless `allow_unverified_session: true` is set in the operator's default `config.json`: `~/.config/keylatch/config.json` on Linux, `~/.keylatch/config.json` elsewhere, with the home directory taken from the user database rather than `$HOME`. The file must belong to you and not be writable by group or others. `KEYLATCH_CONFIG`, `KEYLATCH_CONFIG_DIR` and `XDG_CONFIG_HOME` do not apply to this setting, and no environment variable or session ticket opens the gate. Gateway and proxy modes are never gated: the child receives only a scoped session token.
 
 ---
 
@@ -207,7 +209,7 @@ The runtime mode identifier `KEYLATCH_RUNTIME` is **written to** the child env (
 
 | Variable | Value in child env | Notes |
 |----------|-------------------|-------|
-| `KEYLATCH_RUNTIME` | `gateway_typed`, `gateway_sdk`, `direct_brokered`, `gateway_proxy` | Always present in child env in all runtime modes |
+| `KEYLATCH_RUNTIME` | `gateway_typed`, `gateway_sdk`, `minted`, `gateway_proxy` | Always present in child env in all runtime modes |
 
 ---
 
@@ -218,9 +220,11 @@ The runtime mode identifier `KEYLATCH_RUNTIME` is **written to** the child env (
 #   Child receives: KEYLATCH_GATEWAY_TOKEN, KEYLATCH_GATEWAY_URL, KEYLATCH_RUNTIME
 #   Stripped:       ALL other KEYLATCH_* vars
 
-# Brokered mode (direct_brokered):
-#   Child receives: KEYLATCH_RUNTIME
-#   Stripped:       ALL other KEYLATCH_* vars
+# Minted mode (minted):
+#   Child receives: PATH, HOME, USER, LOGNAME, SHELL, TERM, LANG, LC_*, TMPDIR,
+#                   the variables --extra names, the minted credential variables
+#                   the template names, KEYLATCH_RUNTIME
+#   Stripped:       everything else, including ALL other KEYLATCH_* vars
 
 # Proxy mode (gateway_proxy):
 #   Child env is rebuilt from scratch — base env is PATH, HOME, USER, TERM,

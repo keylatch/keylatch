@@ -377,12 +377,13 @@ func ControlSocket(env Lookup) string {
 
 // BrokerSocket returns the socket of the system broker daemon.
 // Override: KEYLATCH_BROKER_SOCKET
-// Default: /run/keylatch/broker.sock
+// Default: /run/keylatch/broker.sock on Linux, /var/db/keylatch/run/broker.sock
+// on macOS, the named pipe \\.\pipe\keylatch-broker on Windows.
 func BrokerSocket(env Lookup) string {
 	if v := env("KEYLATCH_BROKER_SOCKET"); v != "" {
 		return v
 	}
-	return "/run/keylatch/broker.sock"
+	return defaultBrokerSocket
 }
 
 // BrokerAdopted returns the marker recording that this user's secrets were
@@ -390,9 +391,6 @@ func BrokerSocket(env Lookup) string {
 func BrokerAdopted(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "broker-adopted.json")
 }
-
-// BrokerUser is the OS account the system broker runs under.
-const BrokerUser = "keylatch"
 
 // KeyOperations returns the path of the key operation allowlist. It lives in
 // Keylatch state, which host sandboxes deny, and is changed only through the

@@ -57,7 +57,7 @@ func makeInvalidApprovalJWT(t *testing.T, key []byte) string {
 }
 
 // 24-cell matrix test: IsLLMSession(2) × RuntimeMode(4) × ApprovalJWT(3) = 24 cells.
-// RuntimeMode(4) = gateway_typed, gateway_sdk, direct_brokered, gateway_proxy.
+// RuntimeMode(4) = gateway_typed, gateway_sdk, minted, gateway_proxy.
 const expectedCells = 2 * 4 * 3 // 24
 
 func TestGuardRuntimeMatrix(t *testing.T) {
@@ -89,7 +89,7 @@ func TestGuardRuntimeMatrix(t *testing.T) {
 					switch mode {
 					case runtime.RuntimeGatewayTyped,
 						runtime.RuntimeGatewaySDK,
-						runtime.RuntimeDirectBrokered,
+						runtime.RuntimeMinted,
 						runtime.RuntimeGatewayProxy:
 						wantBlock = false
 					default:
@@ -143,7 +143,7 @@ func TestGuardRuntimeMatrix_NoOutputWhenAllowed(t *testing.T) {
 	for _, mode := range []runtime.RuntimeMode{
 		runtime.RuntimeGatewayTyped,
 		runtime.RuntimeGatewaySDK,
-		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeMinted,
 		runtime.RuntimeGatewayProxy,
 	} {
 		block, code := cli.GuardRuntime(mode, "", llmcontext.Lookup(env), key)

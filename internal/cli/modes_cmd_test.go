@@ -36,7 +36,7 @@ func TestModesCmdTable(t *testing.T) {
 
 	assert.Contains(t, out, "gateway_typed", "table must list gateway_typed mode")
 	assert.Contains(t, out, "gateway_sdk", "table must list gateway_sdk mode")
-	assert.Contains(t, out, "direct_brokered", "table must list direct_brokered mode")
+	assert.Contains(t, out, "minted", "table must list minted mode")
 	assert.Contains(t, out, "gateway_proxy", "table must list gateway_proxy mode")
 	assert.Contains(t, out, "USE WHEN", "table must have USE WHEN header")
 	assert.Contains(t, out, "AVAILABLE", "table must have AVAILABLE header")

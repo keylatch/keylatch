@@ -102,6 +102,8 @@ A step-by-step walk-through lives in [docs/guides/secure-agent-setup.md](docs/gu
 | `doppler` | community | Doppler; no live suite |
 | `infisical` | community | Infisical; no live suite |
 | `opconnect` | community | 1Password Connect server; no live suite |
+| `bws` | community | Bitwarden Secrets Manager, read-only; machine-account token held by Keylatch; no live suite |
+| `sops` | community | SOPS files encrypted to age, read-only; decrypted in memory by the daemon |
 | `keychain` | deprecated | macOS Keychain secrets; reads the value from stdin; the Keychain stays a key store, not a backend |
 | `keeper` | deprecated | vendor CLI sessions are directly callable by an agent |
 | `lastpass` | deprecated | vendor CLI sessions are directly callable by an agent |
@@ -279,7 +281,7 @@ Features that are not finished compile only with the `experimental` build tag; s
 - [Configuration](docs/configuration.md), [Environment variables](docs/cli/environment.md)
 - [Operating modes](docs/operating-modes.md), [Runtime modes](docs/runtime-modes.md), [Proxy](docs/proxy.md), [Call](docs/call.md)
 - [Security](docs/security.md), [Threat model](docs/security/threat-model.md), [Verifying releases](docs/verifying-releases.md)
-- [Secure agent setup guide](docs/guides/secure-agent-setup.md), [The Linux broker](docs/guides/broker-linux.md), [Import secrets and rehearse recovery](docs/guides/restore-drill.md), [Sync deploy secrets](docs/guides/sync-deploy-secrets.md), [Service credentials for systemd units](docs/guides/service-credentials-systemd.md), [Machine credentials for remote guests](docs/guides/machine-credentials.md)
+- [Secure agent setup guide](docs/guides/secure-agent-setup.md), [The Linux broker](docs/guides/broker-linux.md), [The macOS and Windows broker](docs/guides/broker-macos-windows.md), [CI workload identity](docs/guides/ci-workload-identity.md), [Import secrets and rehearse recovery](docs/guides/restore-drill.md), [Sync deploy secrets](docs/guides/sync-deploy-secrets.md), [Service credentials for systemd units](docs/guides/service-credentials-systemd.md), [Machine credentials for remote guests](docs/guides/machine-credentials.md)
 - [Integration guides](docs/integration/README.md) and [per-agent guard guides](docs/integrations/)
 - [Desktop app](docs/desktop-app.md), [Desktop parity](docs/desktop-parity.md), [Telemetry](docs/telemetry.md), [Experimental features](docs/experimental.md)
 

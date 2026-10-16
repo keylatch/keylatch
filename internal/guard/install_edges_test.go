@@ -59,7 +59,7 @@ func TestUnsupportedAgentIsRefused(t *testing.T) {
 	_, err := guard.IsInstalled("nope", guard.InstallOpts{})
 	assert.ErrorContains(t, err, "unsupported agent")
 	_, _, err = guard.Uninstall("nope", guard.InstallOpts{})
-	assert.ErrorContains(t, err, "not supported")
+	assert.ErrorContains(t, err, "unsupported agent")
 }
 
 func TestInstallFailsWithoutAUsableHome(t *testing.T) {
@@ -76,7 +76,7 @@ func TestInstallFailsWithoutAUsableHome(t *testing.T) {
 			_, _, err = guard.Uninstall(agent, guard.InstallOpts{})
 			// Windows reports a path below a file as not found rather than not a
 			// directory, so uninstall finds nothing to remove there.
-			if agent != guard.AgentOpenCode && runtime.GOOS != "windows" {
+			if agent != agentOpenCode && runtime.GOOS != "windows" {
 				assert.Error(t, err)
 			}
 		})
@@ -124,18 +124,38 @@ func TestInstallFailsWhenTheBackupCannotBeWritten(t *testing.T) {
 	assert.JSONEq(t, `{"theme":"dark"}`, string(data), "the settings are untouched when the backup fails")
 }
 
-func TestUninstallKeepsScriptForAnotherAgentAndOtherHarnessEntries(t *testing.T) {
+func TestUninstallLeavesOtherHarnessEntries(t *testing.T) {
 	setHome(t, filepath.Join(t.TempDir(), "home"))
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	opts := guard.InstallOpts{KeylatchPath: "/opt/keylatch"}
-	for _, a := range []guard.Agent{guard.AgentClaudeCode, guard.AgentGemini, guard.AgentAntigravity} {
+	for _, a := range []guard.Agent{guard.AgentClaudeCode, agentGemini, agentAntigravity} {
 		_, err := guard.Install(a, opts)
 		require.NoError(t, err)
 	}
-	_, removed, err := guard.Uninstall(guard.AgentAntigravity, opts)
+	_, removed, err := guard.Uninstall(agentAntigravity, opts)
 	require.NoError(t, err)
 	assert.True(t, removed)
-	ok, err := guard.IsInstalled(guard.AgentGemini, opts)
+	ok, err := guard.IsInstalled(agentGemini, opts)
 	require.NoError(t, err)
 	assert.True(t, ok, "removing one harness leaves the others")
+}
+
+func TestUninstallKeepsTheOldScriptWhileAHookStillRunsIt(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	setHome(t, home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	script := filepath.Join(home, ".keylatch", "hooks", "block-keylatch-exfiltration.sh")
+	writeFile(t, script, "#!/bin/sh\n")
+	writeFile(t, filepath.Join(home, ".cursor", "hooks.json"),
+		`{"version":1,"hooks":{"beforeShellExecution":[{"command":"`+jsonString(t, script)+` --harness cursor"}]}}`)
+	opts := guard.InstallOpts{KeylatchPath: "/opt/keylatch"}
+	_, err := guard.Install(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+	_, _, err = guard.Uninstall(guard.AgentClaudeCode, opts)
+	require.NoError(t, err)
+	assert.FileExists(t, script, "a Cursor hook still runs the script")
+
+	_, err = guard.Install(agentCursor, opts)
+	require.NoError(t, err)
+	assert.NoFileExists(t, script, "once no hook runs it the script goes")
 }

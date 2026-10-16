@@ -23,7 +23,7 @@ No. Keylatch is a local process. In gateway modes, the gateway runs on `127.0.0.
 
 **3. What's the difference between the runtime modes?**
 
-`gateway_typed` (default) routes execution through the local Keylatch gateway. The agent process receives a short-lived token and a gateway URL — never the raw provider key. `gateway_sdk` does the same using an OpenAI-compatible SDK proxy. `direct_brokered` issues ephemeral broker tokens without requiring the gateway. `gateway_proxy` (experimental, unavailable as a run mode) would intercept HTTPS traffic through a local proxy. All three available modes are permitted in LLM sessions. See [Runtime Modes](architecture/modes.md) for the full comparison.
+`gateway_typed` (default) routes execution through the local Keylatch gateway. The agent process receives a short-lived token and a gateway URL — never the raw provider key. `gateway_sdk` does the same using an OpenAI-compatible SDK proxy. `minted` mints a scoped credential for the command and revokes it when the command exits, without requiring the gateway; a connection's mint policy refuses agent sessions. `gateway_proxy` (experimental, unavailable as a run mode) would intercept HTTPS traffic through a local proxy. The gateway modes are permitted in LLM sessions. See [Runtime Modes](architecture/modes.md) for the full comparison.
 
 ---
 
@@ -35,10 +35,10 @@ Start the gateway first:
 keylatch gateway up --detach
 ```
 
-Then retry your `keylatch run` command. If you do not want to run the gateway, use a mode that does not require it:
+Then retry your `keylatch run` command. If you do not want to run the gateway, use a connection whose template mints credentials, for example:
 
 ```bash
-keylatch run openrouter --runtime direct_brokered -- your-command
+keylatch run aws --runtime minted -- aws s3 ls
 ```
 
 Check the current gateway state with `keylatch gateway status`.

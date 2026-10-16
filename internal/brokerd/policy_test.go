@@ -4,7 +4,6 @@ package brokerd
 
 import (
 	"context"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/control"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 )
 
@@ -182,7 +182,7 @@ func TestTamperedPolicyRefusesServedRequests(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfg, "policy.json"), []byte(`{"default_deny":false}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	h.srv.cfg.Identify = func(*net.UnixConn) (*Identity, error) { return &Identity{UID: 1000, PID: 1, pin: okPin{}}, nil }
+	h.srv.cfg.Identify = func(control.Conn) (*Identity, error) { return &Identity{UID: 1000, PID: 1, pin: okPin{}}, nil }
 	call, stop := h.serve(t)
 	defer stop()
 

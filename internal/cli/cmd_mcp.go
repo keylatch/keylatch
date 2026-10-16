@@ -76,5 +76,6 @@ func newMCPCmd() *cobra.Command {
 	// --unsafe-bind-all is explicitly NOT registered here.
 	cmd.Flags().Bool("stdio", false, "use stdio transport (default)")
 	cmd.Flags().Int("port", 0, "TCP port to listen on (127.0.0.1 only)")
+	cmd.AddCommand(newMCPProxyCmd())
 	return cmd
 }

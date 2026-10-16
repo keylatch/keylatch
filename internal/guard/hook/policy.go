@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/paths"
 )
 
@@ -325,7 +326,21 @@ func globCovers(pat, root []string) bool {
 
 func hasGlobMeta(s string) bool { return strings.ContainsAny(s, "*?[") }
 
-var settingsRe = regexp.MustCompile(`(?i)(^|/)(\.claude/(settings(\.local)?\.json|hooks(/|$))|\.claude\.json$|managed-settings\.json$|\.cursor/hooks\.json$|\.codex/(hooks\.json|config\.toml)$|\.gemini/settings\.json$|\.config/opencode/opencode\.json$)`)
+var settingsRe = settingsPattern()
+
+// settingsPattern matches every file the harness registry lists as holding
+// hooks or MCP servers, at any depth.
+func settingsPattern() *regexp.Regexp {
+	var alts []string
+	for _, f := range harness.ProtectedFiles() {
+		if dir, isDir := strings.CutSuffix(f, "/"); isDir {
+			alts = append(alts, regexp.QuoteMeta(dir)+`(/|$)`)
+		} else {
+			alts = append(alts, regexp.QuoteMeta(f)+`$`)
+		}
+	}
+	return regexp.MustCompile(`(?i)(^|/)(` + strings.Join(alts, "|") + `)`)
+}
 
 // settingsFile reports whether the text names a harness settings or hook
 // file, whose edit could remove the guard.

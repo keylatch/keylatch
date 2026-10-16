@@ -93,7 +93,7 @@ github.com/keylatch/keylatch/internal/audit
 github.com/keylatch/keylatch/internal/trust/fallback
 github.com/keylatch/keylatch/internal/team
 github.com/keylatch/keylatch/internal/audit/salt
-github.com/keylatch/keylatch/internal/team/ci
+github.com/keylatch/keylatch/internal/ci/citest
 github.com/keylatch/keylatch/internal/gateway/docker
 github.com/keylatch/keylatch/internal/agentsnippet
 github.com/keylatch/keylatch/internal/config

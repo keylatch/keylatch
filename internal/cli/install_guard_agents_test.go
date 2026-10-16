@@ -43,8 +43,8 @@ func TestInstallGuard_HooksFileAgents(t *testing.T) {
 
 			data, err := os.ReadFile(filepath.Join(home, rel))
 			require.NoError(t, err)
-			assert.Contains(t, string(data), "--harness "+agent)
-			assert.FileExists(t, filepath.Join(home, ".keylatch", "hooks", "block-keylatch-exfiltration.sh"))
+			assert.Contains(t, string(data), "guard hook --harness "+agent)
+			assert.NoFileExists(t, filepath.Join(home, ".keylatch", "hooks", "block-keylatch-exfiltration.sh"), "the hook runs the Go guard, not a script")
 		})
 	}
 }

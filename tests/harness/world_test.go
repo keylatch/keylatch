@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,12 @@ import (
 var binaries struct{ keylatch, fakeagent string }
 
 func TestMain(m *testing.M) {
+	// os.Exit skips deferred calls, so the scratch binaries are removed in
+	// runHarness before the exit code is returned.
+	os.Exit(runHarness(m))
+}
+
+func runHarness(m *testing.M) int {
 	dir, err := os.MkdirTemp("", "keylatch-harness-bin")
 	if err != nil {
 		panic(err)
@@ -46,7 +53,7 @@ func TestMain(m *testing.M) {
 			panic("go build " + pkg + ": " + err.Error() + "\n" + string(b))
 		}
 	}
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // canary values planted in a world. A scenario leaks when one of them reaches
@@ -140,7 +147,11 @@ func boundedCommand(name string, args ...string) (*exec.Cmd, context.CancelFunc)
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = 10 * time.Second
-	return cmd, cancel
+	ownGroup(cmd)
+	return cmd, func() {
+		_ = killGroup(cmd)
+		cancel()
+	}
 }
 
 func (w *world) human(args ...string) (string, string, int) { return w.humanStdin("", args...) }
@@ -217,6 +228,18 @@ func (o outcome) text() string { return string(o.Stdout) + "\n" + string(o.Stder
 // agent runs one tool call as the fake agent would.
 func (w *world) agent(profile, tool string, input map[string]string, extraEnv ...string) outcome {
 	w.t.Helper()
+	return w.runAgent(false, profile, tool, input, extraEnv...)
+}
+
+// offer asks the installed hooks about a call and never runs it, for corpora
+// of commands that must not execute on the test host if a hook lets one through.
+func (w *world) offer(profile, tool string, input map[string]string) outcome {
+	w.t.Helper()
+	return w.runAgent(true, profile, tool, input)
+}
+
+func (w *world) runAgent(hooksOnly bool, profile, tool string, input map[string]string, extraEnv ...string) outcome {
+	w.t.Helper()
 	in, err := json.Marshal(input)
 	if err != nil {
 		w.t.Fatal(err)
@@ -228,7 +251,7 @@ func (w *world) agent(profile, tool string, input map[string]string, extraEnv ..
 	env = append(env, extraEnv...)
 	cmd, cancel := boundedCommand(binaries.fakeagent,
 		"--profile", profile, "--home", w.home, "--tool", tool, "--input", string(in),
-		"--env", strings.Join(env, "\n"))
+		"--env", strings.Join(env, "\n"), "--hooks-only="+strconv.FormatBool(hooksOnly))
 	defer cancel()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"
 	"slices"
 	"strconv"
 
@@ -26,19 +25,50 @@ type admin struct {
 }
 
 // Handle implements control.Extension.
-func (a *admin) Handle(ctx context.Context, conn *net.UnixConn, peer control.Peer, res callerkind.Result, raw []byte) bool {
+func (a *admin) Handle(ctx context.Context, conn control.Conn, peer control.Peer, res callerkind.Result, raw []byte) bool {
 	if _, ok := brokerapi.OpOf(raw); !ok {
 		return false
 	}
 	var resp brokerapi.Response
 	if req, err := brokerapi.Decode(raw); err != nil {
 		resp = fail(brokerapi.CodeBadRequest, exitcode.UserError, err)
+	} else if req.Op == brokerapi.OpPresenceHelper {
+		a.serveHelper(ctx, conn, peer, res)
+		return true
 	} else {
 		resp = a.dispatch(context.WithValue(ctx, connCtxKey{}, conn), peer, res, req)
 	}
 	b, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(b, '\n'))
 	return true
+}
+
+// serveHelper keeps the connection as the user's presence helper. Agents never
+// get here: a helper that an agent could register would let it intercept the
+// challenges meant for the human.
+func (a *admin) serveHelper(ctx context.Context, conn control.Conn, peer control.Peer, res callerkind.Result) {
+	reply := func(r brokerapi.Response) {
+		b, _ := json.Marshal(r)
+		_, _ = conn.Write(append(b, '\n'))
+	}
+	switch {
+	case a.s.cfg.Helpers == nil:
+		reply(fail(brokerapi.CodeUnavailable, exitcode.OperationFailed, errors.New("this broker has no presence helper support")))
+		return
+	case res.Kind == callerkind.Agent:
+		_ = a.emit(ctx, audit.ActionPresenceDecision, audit.OutcomeDenied, res, map[string]any{"operation": "presence.helper", "result": "refused", "reason": "agent session"})
+		reply(fail(brokerapi.CodeRefused, exitcode.SecurityBlock, ErrAgentPresence))
+		return
+	}
+	if v := a.s.cfg.HelperAdmit; v != nil {
+		if err := v(ctx, peer); err != nil {
+			_ = a.emit(ctx, audit.ActionPresenceDecision, audit.OutcomeDenied, res, map[string]any{"operation": "presence.helper", "result": "refused", "reason": err.Error()})
+			reply(fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err))
+			return
+		}
+	}
+	reply(brokerapi.Response{OK: true})
+	a.s.cfg.Helpers.Serve(peer.UID, conn)
 }
 
 func fail(code string, exit int, err error) brokerapi.Response {

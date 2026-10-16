@@ -10,6 +10,8 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/keylatch/keylatch/internal/control"
 )
 
 // sys is the set of kernel calls peer identification makes; tests replace it.
@@ -36,7 +38,11 @@ type system struct {
 // for the exact process that connected; older kernels fall back to
 // pidfd_open(pid), and the start time read afterwards catches a PID that was
 // recycled in between.
-func Identify(conn *net.UnixConn) (*Identity, error) {
+func Identify(c control.Conn) (*Identity, error) {
+	conn, ok := c.(*net.UnixConn)
+	if !ok && c != nil {
+		return nil, ErrUnsupported
+	}
 	uid, pid, err := sys.peerCred(conn)
 	if err != nil {
 		return nil, err

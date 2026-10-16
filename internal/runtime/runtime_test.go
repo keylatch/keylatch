@@ -43,7 +43,8 @@ func TestIsRawCredentialMode(t *testing.T) {
 		isRaw  bool
 		reason string
 	}{
-		{runtime.RuntimeDirectBrokered, true, "direct_brokered injects a provider-ephemeral credential"},
+		{runtime.RuntimeMinted, true, "minted injects a provider-ephemeral credential"},
+		{runtime.RuntimeDirectBrokered, false, "direct_brokered is retired and has no driver"},
 		{runtime.RuntimeGatewayTyped, false, "gateway_typed only ever hands over a keylatch session token"},
 		{runtime.RuntimeGatewaySDK, false, "gateway_sdk only ever hands over a keylatch session token"},
 		{runtime.RuntimeGatewayProxy, false, "gateway_proxy only ever hands over a keylatch session token"},
@@ -63,13 +64,13 @@ func TestIsRawCredentialMode_MatchesResolvedShape(t *testing.T) {
 		registry.RuntimeGatewayTyped,
 		registry.RuntimeGatewayTyped,
 		registry.RuntimeGatewaySDK,
-		registry.RuntimeDirectBrokered,
+		registry.RuntimeMinted,
 		registry.RuntimeGatewayProxy,
 	)
 	for _, m := range []runtime.RuntimeMode{
 		runtime.RuntimeGatewayTyped,
 		runtime.RuntimeGatewaySDK,
-		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeMinted,
 		runtime.RuntimeGatewayProxy,
 	} {
 		dec, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{RequestedMode: m}, tmpl)

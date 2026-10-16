@@ -45,7 +45,7 @@ func TestCurrent_BackendTiers(t *testing.T) {
 	m := manifest.Current()
 	tiers := map[manifest.Status][]string{
 		manifest.Supported:  {"bw", "op", "file"},
-		manifest.Community:  {"vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "opconnect"},
+		manifest.Community:  {"vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "opconnect", "bws", "sops"},
 		manifest.Deprecated: {"keychain", "keeper", "lastpass", "proton-pass"},
 	}
 	total := 0

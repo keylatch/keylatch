@@ -35,7 +35,7 @@ The `--runtime` flag is used with `keylatch run`.
 |------|-------------|-------------|
 | `gateway_typed` | Allowed | Default. Credential injected via local typed gateway with schema validation. |
 | `gateway_sdk` | Allowed | SDK-compatible credential exchange through the gateway. |
-| `direct_brokered` | Allowed | Direct injection via trusted broker process. |
+| `minted` | Allowed; the mint policy refuses agents | A scoped credential minted for the command and revoked on exit. |
 | `gateway_proxy` | Allowed | Credential proxy through the local gateway. |
 
 All four modes are permitted in LLM sessions. Raw credential values are never returned to the agent process in any mode. `keylatch get` is always blocked in LLM sessions (exit 2, SecurityBlock).
@@ -582,7 +582,7 @@ keylatch run openrouter -- node script.js
 keylatch run openrouter --dry-run -- node script.js
 keylatch run openrouter --dry-run --json -- node script.js
 keylatch run openrouter --runtime gateway_sdk -- python main.py
-keylatch run aws-prod --runtime direct_brokered -- ./deploy.sh
+keylatch run aws --runtime minted -- aws s3 ls
 keylatch run openrouter --clean-env -- node script.js
 keylatch run openrouter --clean-env --extra DATABASE_URL -- node script.js
 ```
@@ -601,7 +601,7 @@ Examples:
 
 ```
 error[RuntimeNotAvailable]: anthropic + gateway_typed: gateway is not running. Try: keylatch gateway up
-error[SecretNotFound]: openrouter + direct_brokered: no credential found for this connection. Try: keylatch connect openrouter --field api_key=@prompt
+error[SecretNotFound]: openrouter + gateway_typed: no credential found for this connection. Try: keylatch connect openrouter --field api_key=@prompt
 error[RuntimeNotAvailable]: openrouter + gateway_sdk: failed to mint session token. Run: keylatch doctor --category runtime
 ```
 

@@ -18,6 +18,9 @@ func TestCoreTemplatesDenyCredentialRoutes(t *testing.T) {
 		denied   []string // "METHOD /path"
 		allowed  []string
 	}{
+		{"aws",
+			[]string{"GET /latest/meta-data/iam/security-credentials/role", "PUT /latest/api/token"},
+			[]string{"GET /latest/meta-data/instance-id"}},
 		{"cloudflare",
 			[]string{"POST /client/v4/user/tokens", "GET /client/v4/user/tokens/", "PUT /client/v4/user/tokens/abc/value", "POST /client/v4/accounts/a1/tokens", "GET /client/v4/accounts/a1/access/service_tokens"},
 			[]string{"GET /client/v4/user/tokens/verify", "GET /client/v4/zones"}},

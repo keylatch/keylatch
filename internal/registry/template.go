@@ -30,6 +30,9 @@ const (
 	RuntimeGatewaySDK     RuntimeMode = "gateway_sdk"
 	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
 	RuntimeGatewayProxy   RuntimeMode = "gateway_proxy"
+	// RuntimeMinted hands the child a short-lived, scoped credential that
+	// Keylatch mints with the template's mint strategy and revokes on exit.
+	RuntimeMinted RuntimeMode = "minted"
 )
 
 // validRuntimeModes is the closed set of valid RuntimeMode values.
@@ -38,6 +41,7 @@ var validRuntimeModes = map[RuntimeMode]struct{}{
 	RuntimeGatewayTyped:   {},
 	RuntimeGatewaySDK:     {},
 	RuntimeDirectBrokered: {},
+	RuntimeMinted:         {},
 	RuntimeGatewayProxy:   {},
 }
 

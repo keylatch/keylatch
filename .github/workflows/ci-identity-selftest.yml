@@ -1,0 +1,80 @@
+name: ci-identity-selftest
+
+# Runs ./actions/setup against this repository with a throwaway trust entry:
+# the job installs a signed release, exchanges its own OIDC token and checks
+# that the session covers the one listed connection and nothing else. Set the
+# repository variable KEYLATCH_SELFTEST_VERSION to a signed release that
+# includes `keylatch ci exchange`; without it the run ends with a notice.
+on:
+  push:
+    branches: [main]
+    paths:
+      - actions/setup/**
+      - internal/ci/**
+      - internal/cli/ci_cmd.go
+      - .github/workflows/ci-identity-selftest.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exchange:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SELFTEST_VERSION: ${{ vars.KEYLATCH_SELFTEST_VERSION }}
+    steps:
+      - name: check for a release to test
+        id: gate
+        run: |
+          if [ -n "$SELFTEST_VERSION" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ci identity self-test skipped: KEYLATCH_SELFTEST_VERSION is not set"
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.gate.outputs.run == 'true'
+      - name: trust this repository on main for one test connection
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/keylatch-config.json"
+          jq -n --arg repo "$GITHUB_REPOSITORY" '{
+            version: 1, backend: "file",
+            ci: { trust: [ {
+              provider: "github-actions", audience: "keylatch-selftest",
+              repositories: [$repo], refs: ["refs/heads/main"],
+              connections: ["selftest"], max_ttl: 600
+            } ] }
+          }' > "$config"
+          chmod 600 "$config"
+          echo "KEYLATCH_CONFIG=$config" >> "$GITHUB_ENV"
+      - uses: ./actions/setup
+        if: steps.gate.outputs.run == 'true'
+        with:
+          version: ${{ vars.KEYLATCH_SELFTEST_VERSION }}
+          audience: keylatch-selftest
+      - name: the session covers the test connection only
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          test -n "$KEYLATCH_CI_SESSION"
+          [ "$(jq -r '.connections | join(",")' "$KEYLATCH_CI_SESSION")" = "selftest" ]
+          [ "$(jq -r '.repository' "$KEYLATCH_CI_SESSION")" = "$GITHUB_REPOSITORY" ]
+          if grep -q "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$KEYLATCH_CI_SESSION"; then
+            echo "::error::the session record holds the runner token"
+            exit 1
+          fi
+      - name: a token for another audience is refused
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          if keylatch ci exchange --provider github-actions --audience somebody-else; then
+            echo "::error::a token for an untrusted audience was accepted"
+            exit 1
+          fi
