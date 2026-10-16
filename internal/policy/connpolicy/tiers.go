@@ -116,7 +116,7 @@ func MatchArgv(pattern, argv []string, exe string) (ok bool) {
 	if len(pattern) == 0 || len(argv) == 0 || exe == "" {
 		return false
 	}
-	if !filepath.IsAbs(pattern[0]) || !pathGlob(pattern[0], exe) {
+	if !isAbsPattern(pattern[0]) || !pathGlob(pattern[0], exe) {
 		return false
 	}
 	rest, args := pattern[1:], argv[1:]
@@ -137,7 +137,7 @@ func MatchArgv(pattern, argv []string, exe string) (ok bool) {
 // pathGlob matches a path against a pattern whose "*" never crosses a "/" and
 // whose "**" matches any number of whole path elements.
 func pathGlob(pattern, path string) bool {
-	return globSegments(strings.Split(pattern, "/"), strings.Split(path, "/"))
+	return globSegments(strings.Split(comparablePath(pattern), "/"), strings.Split(comparablePath(path), "/"))
 }
 
 // globSegments matches path elements against pattern elements, where "**"
@@ -196,18 +196,22 @@ func ResolveExecutable(argv0, dir, pathEnv string) (string, error) {
 		return "", errors.New("empty command")
 	}
 	var candidates []string
-	if strings.Contains(argv0, "/") {
-		if filepath.IsAbs(argv0) {
-			candidates = []string{argv0}
-		} else {
-			candidates = []string{filepath.Join(dir, argv0)}
+	if hasPathSeparator(argv0) {
+		base := argv0
+		if !filepath.IsAbs(argv0) {
+			base = filepath.Join(dir, argv0)
+		}
+		for _, name := range executableNames(filepath.Base(base)) {
+			candidates = append(candidates, filepath.Join(filepath.Dir(base), name))
 		}
 	} else {
 		for _, d := range filepath.SplitList(pathEnv) {
 			if d == "" || !filepath.IsAbs(d) {
 				continue
 			}
-			candidates = append(candidates, filepath.Join(d, argv0))
+			for _, name := range executableNames(argv0) {
+				candidates = append(candidates, filepath.Join(d, name))
+			}
 		}
 	}
 	for _, c := range candidates {
@@ -215,7 +219,7 @@ func ResolveExecutable(argv0, dir, pathEnv string) (string, error) {
 		if err != nil {
 			continue
 		}
-		if info, err := os.Stat(real); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		if info, err := os.Stat(real); err == nil && info.Mode().IsRegular() && runnable(real, info) {
 			return real, nil
 		}
 	}

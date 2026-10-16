@@ -410,7 +410,7 @@ func (d Document) Validate() error {
 }
 
 func (c CommandRule) validate() error {
-	if len(c.Match) == 0 || !filepath.IsAbs(c.Match[0]) {
+	if len(c.Match) == 0 || !isAbsPattern(c.Match[0]) {
 		return errors.New("match must start with the absolute path of the executable")
 	}
 	for i, m := range c.Match {

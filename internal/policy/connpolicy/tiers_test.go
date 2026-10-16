@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func FuzzPolicyArgvMatch(f *testing.F) {
 		// A match implies the pattern's first word is an absolute path pattern,
 		// every argument before a rest wildcard fits its pattern, and a pattern
 		// without wildcards matches only itself.
-		if !filepath.IsAbs(p[0]) {
+		if !isAbsPattern(p[0]) {
 			t.Fatalf("a relative executable pattern %q matched", p[0])
 		}
 		if !pathGlob(p[0], exe) {
@@ -127,14 +128,25 @@ func TestResolveExecutable(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "bin")
 	require.NoError(t, os.Mkdir(bin, 0o755))
-	tool := filepath.Join(bin, "tool-real")
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	tool := filepath.Join(bin, "tool-real"+ext)
 	require.NoError(t, os.WriteFile(tool, []byte("#!/bin/sh\n"), 0o755))
-	require.NoError(t, os.Symlink("tool-real", filepath.Join(bin, "tool")))
+	link := filepath.Join(bin, "tool"+ext)
+	if err := os.Symlink("tool-real"+ext, link); err != nil {
+		// Creating a symlink needs a privilege Windows does not always grant.
+		require.Equal(t, "windows", runtime.GOOS, err)
+		require.NoError(t, os.WriteFile(link, []byte("#!/bin/sh\n"), 0o755))
+	}
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "data"), nil, 0o644))
-	real, err := filepath.EvalSymlinks(tool)
+	realTool, err := filepath.EvalSymlinks(tool)
+	require.NoError(t, err)
+	real, err := filepath.EvalSymlinks(link)
 	require.NoError(t, err)
 
-	got, err := ResolveExecutable("tool", dir, bin+":/nonexistent")
+	got, err := ResolveExecutable("tool", dir, bin+string(filepath.ListSeparator)+filepath.Join(dir, "nonexistent"))
 	require.NoError(t, err)
 	assert.Equal(t, real, got, "a symlink resolves to what would run")
 	got, err = ResolveExecutable("./bin/tool", dir, "")
@@ -142,13 +154,13 @@ func TestResolveExecutable(t *testing.T) {
 	assert.Equal(t, real, got)
 	got, err = ResolveExecutable(tool, "", "")
 	require.NoError(t, err)
-	assert.Equal(t, real, got)
+	assert.Equal(t, realTool, got)
 
 	for _, argv0 := range []string{"", "missing", "data", "./bin/missing", "bin"} {
 		_, err = ResolveExecutable(argv0, dir, bin)
 		assert.Error(t, err, argv0)
 	}
-	_, err = ResolveExecutable("tool", dir, "relative:"+"")
+	_, err = ResolveExecutable("tool", dir, "relative"+string(filepath.ListSeparator))
 	assert.Error(t, err, "a relative PATH entry is not searched")
 }
 
@@ -162,8 +174,12 @@ func TestVerifyPinnedRefusesWhatARootCannotVouchFor(t *testing.T) {
 
 	assert.ErrorContains(t, VerifyPinned(file, "short"), "64 hex digits")
 	assert.Error(t, VerifyPinned(filepath.Join(dir, "missing"), want))
-	// A file the test user owns is not owned by root, however well it hashes.
-	if os.Getuid() != 0 {
+	switch {
+	case runtime.GOOS == "windows":
+		// Windows reports no file owner, so nothing can be pinned there.
+		assert.ErrorContains(t, VerifyPinned(file, want), "not supported on this platform")
+	case os.Getuid() != 0:
+		// A file the test user owns is not owned by root, however well it hashes.
 		assert.ErrorContains(t, VerifyPinned(file, want), "not owned by root")
 	}
 }
