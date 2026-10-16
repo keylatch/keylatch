@@ -108,9 +108,9 @@ func harnessTable() string {
 	return b.String()
 }
 
-// targets resolves the harnesses a command acts on: the named one, or with
+// harnessTargets resolves the harnesses a command acts on: the named one, or with
 // --all every installable harness that is present on this machine.
-func targets(args []string, all bool) ([]harness.Descriptor, error) {
+func harnessTargets(args []string, all bool) ([]harness.Descriptor, error) {
 	if all {
 		if len(args) > 0 {
 			return nil, NewUsageError("name a harness or use --all, not both")
@@ -169,7 +169,7 @@ func launchOnlyUsage(w io.Writer, d harness.Descriptor) {
 }
 
 func runHarnessInstall(cmd *cobra.Command, args []string, f installFlags) error {
-	ds, err := targets(args, f.all)
+	ds, err := harnessTargets(args, f.all)
 	if err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func printInstall(w io.Writer, res installer.Result, dryRun bool) {
 }
 
 func runHarnessUninstall(cmd *cobra.Command, args []string, f installFlags) error {
-	ds, err := targets(args, f.all)
+	ds, err := harnessTargets(args, f.all)
 	if err != nil {
 		return err
 	}

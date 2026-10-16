@@ -147,7 +147,7 @@ var safeLogFields = map[string][]string{
 		"connection", "runtime", "capability", "caller_kind", "decision", "exit", "duration_ms", "reason",
 	},
 	"call":    {"connection", "action", "caller_kind", "status", "reason"},
-	"release": {"connection", "field", "caller_kind", "reason"},
+	"release": {"connection", "field", "unit", "caller_kind", "reason"},
 	"connect": {"connection", "backend", "caller_kind", "reason"},
 	"set":     {"connection", "field", "backend", "caller_kind", "reason"},
 	// before and after summarise the rule, never a credential.
@@ -168,6 +168,19 @@ var safeLogFields = map[string][]string{
 	"binding.widened":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
 	"binding.narrowed": {"connection", "caller_kind", "hosts_before", "hosts_after"},
 	"binding.refused":  {"connection", "caller_kind", "attempted", "hosts_before", "hosts_after"},
+
+	// deploy-secret sync: names, targets, environments and outcomes. presence
+	// is the digest of the request the human approved.
+	"sync.write":           {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.delete":          {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.verify":   {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.rollback": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.complete": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	// service units and machine credentials: names, scopes and expiry only.
+	"service.enroll": {"connection", "unit", "scope", "allow_transient", "caller_kind", "presence", "outcome"},
+	"service.revoke": {"connection", "unit", "caller_kind", "presence", "outcome"},
+	"machine.issue":  {"name", "domain", "caps", "serial", "not_after", "caller_kind", "presence", "outcome"},
+	"machine.revoke": {"name", "serial", "caller_kind", "presence", "outcome"},
 }
 
 // Redact filters extra map keys against the SafeLogFields allowlist for action.
@@ -237,6 +250,8 @@ func AllActions() []string {
 		// binding change actions.
 		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
 		"broker.adopt", "broker.export",
+		"sync.write", "sync.delete", "sync.rotate.verify", "sync.rotate.rollback", "sync.rotate.complete",
+		"service.enroll", "service.revoke", "machine.issue", "machine.revoke",
 	}
 }
 

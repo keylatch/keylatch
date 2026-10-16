@@ -93,6 +93,8 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"run_id": "0123456789abcdef", "files": 2,
 			// protocol adapter connection keys.
 			"adapter": "postgres", "connections": 1,
+			// service release keys.
+			"unit": "app.service",
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)

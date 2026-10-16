@@ -82,3 +82,17 @@ const (
 	ActionBindingNarrowed Action = "binding.narrowed"
 	ActionBindingRefused  Action = "binding.refused"
 )
+
+// Deploy-secret sync, service credential and machine credential events. None
+// carries a value or a hash of one.
+const (
+	ActionSyncWrite          Action = "sync.write"
+	ActionSyncDelete         Action = "sync.delete"
+	ActionSyncRotateVerify   Action = "sync.rotate.verify"
+	ActionSyncRotateRollback Action = "sync.rotate.rollback"
+	ActionSyncRotateComplete Action = "sync.rotate.complete"
+	ActionServiceEnroll      Action = "service.enroll"
+	ActionServiceRevoke      Action = "service.revoke"
+	ActionMachineIssue       Action = "machine.issue"
+	ActionMachineRevoke      Action = "machine.revoke"
+)

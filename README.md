@@ -279,7 +279,7 @@ Features that are not finished compile only with the `experimental` build tag; s
 - [Configuration](docs/configuration.md), [Environment variables](docs/cli/environment.md)
 - [Operating modes](docs/operating-modes.md), [Runtime modes](docs/runtime-modes.md), [Proxy](docs/proxy.md), [Call](docs/call.md)
 - [Security](docs/security.md), [Threat model](docs/security/threat-model.md), [Verifying releases](docs/verifying-releases.md)
-- [Secure agent setup guide](docs/guides/secure-agent-setup.md), [The Linux broker](docs/guides/broker-linux.md), [CI workload identity](docs/guides/ci-workload-identity.md)
+- [Secure agent setup guide](docs/guides/secure-agent-setup.md), [The Linux broker](docs/guides/broker-linux.md), [CI workload identity](docs/guides/ci-workload-identity.md), [Import secrets and rehearse recovery](docs/guides/restore-drill.md), [Sync deploy secrets](docs/guides/sync-deploy-secrets.md), [Service credentials for systemd units](docs/guides/service-credentials-systemd.md), [Machine credentials for remote guests](docs/guides/machine-credentials.md)
 - [Integration guides](docs/integration/README.md) and [per-agent guard guides](docs/integrations/)
 - [Desktop app](docs/desktop-app.md), [Desktop parity](docs/desktop-parity.md), [Telemetry](docs/telemetry.md), [Experimental features](docs/experimental.md)
 

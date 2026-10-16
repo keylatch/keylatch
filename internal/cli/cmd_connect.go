@@ -309,7 +309,9 @@ func newConnectCmd() *cobra.Command {
 			}
 
 			// Automatically test the connection after writing (skip if --no-test is set).
-			if noTest || allEphemeral {
+			// The broker never returns a value, so a stored connection cannot be
+			// tested from here.
+			if noTest || allEphemeral || brokerStoreActive(llmcontext.DefaultLookup) {
 				if useJSON {
 					data, _ := json.Marshal(map[string]interface{}{"connection": conn})
 					fmt.Fprintln(c.OutOrStdout(), string(data))

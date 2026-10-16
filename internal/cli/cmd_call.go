@@ -44,6 +44,8 @@ func newCallCmd() *cobra.Command {
 		namespace       string
 		account         string
 		noDaemonStart   bool
+		remote          string
+		machineKey      string
 	)
 
 	cmd := &cobra.Command{
@@ -76,6 +78,9 @@ Examples:
 			return nil
 		},
 		RunE: func(c *cobra.Command, args []string) error {
+			if remote != "" && !listActions {
+				return runRemoteCall(c, remote, machineKey, namespace, args, rawParams, useJSON)
+			}
 			ctx := c.Context()
 			cfg := loadCLIConfig(c)
 			store := newDispatchedStore(cfg, llmcontext.DefaultLookup)
@@ -250,6 +255,8 @@ Examples:
 	cmd.Flags().BoolVar(&includeHeaders, "include-headers", false, "append a trailing headers JSON line (Authorization stripped)")
 	cmd.Flags().StringVar(&namespace, "namespace", "default", "vault namespace")
 	cmd.Flags().StringVar(&account, "account", "", "account name (multi-account providers)")
+	cmd.Flags().StringVar(&remote, "remote", "", "host:port of a system broker's machine listener; the call runs there")
+	cmd.Flags().StringVar(&machineKey, "machine-key", "", "credential file written by 'keylatch machine issue' (with --remote)")
 	cmd.Flags().BoolVar(&noDaemonStart, "no-daemon-start", false, "do not auto-start keylatchd if not running")
 	return cmd
 }

@@ -41,6 +41,8 @@ const (
 	infoAuditSeal   = "keylatch/audit-seal/v1"
 	infoTokenHMAC   = "keylatch/token-hmac/v1" //nolint:gosec // G101: a domain separator
 	infoRootWrap    = "keylatch/root-wrap/v1"
+	infoSyncHMAC    = "keylatch/sync-hmac/v1"    //nolint:gosec // G101: a domain separator
+	infoServiceHMAC = "keylatch/service-hmac/v1" //nolint:gosec // G101: a domain separator
 
 	rootMinLen = 32
 	keyLen     = 32
@@ -290,6 +292,29 @@ func (h *Hierarchy) TokenKeyFor(partition string) ([]byte, error) {
 	}
 	defer clear(k)
 	return derive(k.Seed(), salt("token", partition), infoTokenHMAC), nil
+}
+
+// SyncKeyFor returns the 32-byte key the keyed hashes of one partition's sync
+// writes are computed with. The daemon alone holds it, so a value is compared
+// with what was written without a plain hash ever existing.
+func (h *Hierarchy) SyncKeyFor(partition string) ([]byte, error) {
+	k, err := h.Signer(TokenSigning)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(k)
+	return derive(k.Seed(), salt("sync", partition), infoSyncHMAC), nil
+}
+
+// ServiceKeyFor returns the 32-byte key service capabilities of one partition
+// are hashed with before they are stored.
+func (h *Hierarchy) ServiceKeyFor(partition string) ([]byte, error) {
+	k, err := h.Signer(TokenSigning)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(k)
+	return derive(k.Seed(), salt("service", partition), infoServiceHMAC), nil
 }
 
 // Rotate replaces the master key. Every wrapped child key is rewrapped, and

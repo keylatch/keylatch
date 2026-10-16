@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/backend/childstore"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/harness"
@@ -78,6 +79,8 @@ func (s *Server) exec(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, 
 	}
 
 	switch {
+	case req.Verb == "mint" && s.cfg.ChildStore != nil && !kind.Constrained():
+		// Served: the daemon's child reads the partition through its store.
 	case slices.Contains(valueVerbs, req.Verb):
 		if kind.Constrained() {
 			refuse(Response{
@@ -118,6 +121,18 @@ func (s *Server) exec(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, 
 	)
 	cmd := exec.CommandContext(ctx, s.cfg.Binary, slices.Concat(req.Global, []string{req.Verb}, req.Args)...) //nolint:gosec // G204: the binary is fixed by the daemon and the verb is allowlisted
 	cmd.Env = s.childEnv(kind)
+	if s.cfg.ChildStore != nil {
+		conn, child, perr := childstore.Pair()
+		if perr != nil {
+			finish(Response{Kind: kind, Code: CodeUnavailable, ExitCode: exitcode.OperationFailed, Error: fmt.Sprintf("run %s: %v", req.Verb, perr)}, audit.OutcomeError)
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		defer func() { _ = child.Close() }()
+		go childstore.Serve(ctx, conn, s.cfg.ChildStore)
+		cmd.ExtraFiles = []*os.File{child}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", childstore.EnvFD, childstore.ChildFD))
+	}
 	cmd.Stdout = &frameWriter{conn: conn, mu: &mu, n: &bytes, cancel: cancel}
 	cmd.Stderr = &frameWriter{conn: conn, mu: &mu, stderr: true, n: &bytes, cancel: cancel}
 	stdin, err := cmd.StdinPipe()
