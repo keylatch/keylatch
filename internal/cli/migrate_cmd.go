@@ -28,7 +28,7 @@ func newMigrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Data migration utilities",
 	}
-	cmd.AddCommand(newMigrateCipherCmd())
+	cmd.AddCommand(newMigrateCipherCmd(), newMigrateInventoryCmd(), newMigrateImportCmd(), newMigrateVerifyCmd())
 	return cmd
 }
 
