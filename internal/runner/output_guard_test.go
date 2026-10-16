@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/broker"
 	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/stretchr/testify/assert"
@@ -19,20 +17,17 @@ const guardToken = "tok-Zq8x+Yw3Rt5Uv7Bn9Cm1Dk2Fh4Gj6Lp0"
 
 func runGuarded(t *testing.T, script, dir string, scan redactor.ScanPolicy) (string, string, runner.RuntimeReceipt) {
 	t.Helper()
-	vault := newClassicMockBackend()
-	path := classicSecretPath("default", "ai", "myapi", "api_key")
-	require.NoError(t, vault.Set(context.Background(), path, []byte("root"), backend.Meta{Path: path, Backend: "stub", Version: 1}))
-	b := &stubBroker{result: broker.NewExchangeResult("myapi", "inject", 3600*1e9, broker.FreshExchange, []byte(guardToken))}
+	o := &stubOpener{cred: &stubMinted{value: guardToken}}
 
 	var out, errOut strings.Builder
-	receipt, err := runner.NewBrokeredDriver(vault, b, nil).Run(context.Background(), runner.ExecRequest{
+	receipt, err := runner.NewMintedDriver(o.open).Run(context.Background(), runner.ExecRequest{
 		ConnectionSlug: "myapi",
 		Command:        []string{"sh", "-c", script},
 		WorkingDir:     dir,
 		FileScan:       scan,
 		Stdout:         &out,
 		Stderr:         &errOut,
-	}, brokeredTmpl("myapi"))
+	}, mintedTmpl("myapi"))
 	require.NoError(t, err)
 	return out.String(), errOut.String(), receipt
 }

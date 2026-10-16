@@ -19,7 +19,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	_ "github.com/keylatch/keylatch/internal/backend/all"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
-	"github.com/keylatch/keylatch/internal/broker"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/canary"
 	cmdregistry "github.com/keylatch/keylatch/internal/cmd/regvalidate"
@@ -406,7 +405,7 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 		gatewayRunning = true
 	}
 
-	allModes := []string{"gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy"}
+	allModes := []string{"gateway_typed", "gateway_sdk", "minted", "gateway_proxy"}
 	for _, m := range allModes {
 		status := runtimeModeStatus{Mode: m}
 
@@ -429,9 +428,9 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 				reason = "gateway not running: run 'keylatch gateway up'"
 				status.Available = false
 			}
-		case m == "direct_brokered":
+		case m == "minted":
 			if preferred {
-				reason = "preferred mode — broker strategy available"
+				reason = "preferred mode — mint strategy available"
 			} else {
 				reason = "supported"
 			}
@@ -500,6 +499,9 @@ func newRunCmd() *cobra.Command {
 		Short: "Run a command with injected credentials",
 		RunE: func(c *cobra.Command, args []string) error {
 			mode := runtime.RuntimeMode(c.Flag("runtime").Value.String())
+			if mode == "" {
+				mode = templateRuntime(c.Context(), args)
+			}
 			modeFlag, _ := c.Flags().GetString("mode")
 			approvalJWT := c.Flag("approval-jwt").Value.String()
 			rawAllows, _ := c.Flags().GetStringArray("allow")
@@ -767,8 +769,8 @@ func newRunCmd() *cobra.Command {
 					// v1.0.0 mode set.
 					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
 					string(runtime.RuntimeGatewaySDK):   runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeDirectBrokered): runner.WithManifestGuard(
-						runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil), supported, "direct_brokered"),
+					string(runtime.RuntimeMinted): runner.WithManifestGuard(
+						runner.NewMintedDriver(mintedOpener(loadCLIConfig(c), audit.AsEmitter(auditLog))), supported, "minted"),
 					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
 						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
 						supported, "gateway_proxy"),
@@ -958,8 +960,8 @@ func newRunCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped),
-		"runtime mode (default: gateway_typed — run 'keylatch modes' to see all options)")
+	cmd.Flags().String("runtime", "",
+		"runtime mode (default: the connection template's preferred mode — run 'keylatch modes' to see all options)")
 	cmd.Flags().String("mode", "", "operating mode (standard, canary, custom); overrides config file and KEYLATCH_MODE env var")
 	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	cmd.Flags().StringArray("allow", nil, "allow this command prefix for this run only; repeat or comma-separate (blocked in LLM sessions)")
@@ -1088,9 +1090,9 @@ func runDryRun(c *cobra.Command, connectionName string, command []string, mode r
 			"KEYLATCH_GATEWAY_TOKEN=<would-be-issued scope:"+tmpl.Provider+".*, ttl:1h>",
 			"KEYLATCH_RUNTIME="+string(mode),
 		)
-	case runtime.RuntimeDirectBrokered:
+	case runtime.RuntimeMinted:
 		for _, rule := range tmpl.InjectionRules {
-			plan.EnvAdded = append(plan.EnvAdded, rule.EnvVar+"=<would-be-brokered ephemeral token>")
+			plan.EnvAdded = append(plan.EnvAdded, rule.EnvVar+"=<would-be-minted scoped token>")
 		}
 		plan.EnvAdded = append(plan.EnvAdded, "KEYLATCH_RUNTIME="+string(mode))
 	case runtime.RuntimeGatewayProxy:
@@ -1382,6 +1384,25 @@ func proxyRunAddr(env llmcontext.Lookup) (string, error) {
 	return "127.0.0.1:7879", nil
 }
 
+// templateRuntime is the mode the connection's template prefers. An unknown
+// connection or an unresolvable template keeps the gateway default so the
+// usual not-found errors come from the later checks.
+func templateRuntime(ctx context.Context, args []string) runtime.RuntimeMode {
+	conn, _, err := parseRunArgs(args)
+	if err != nil || conn == "" {
+		return runtime.RuntimeGatewayTyped
+	}
+	tmpl, err := registry.Get(conn)
+	if err != nil {
+		return runtime.RuntimeGatewayTyped
+	}
+	d, err := runtime.Resolve(ctx, runtime.ResolveRequest{ConnectionSlug: conn}, tmpl)
+	if err != nil || d.Mode == runtime.RuntimeDirectBrokered {
+		return runtime.RuntimeGatewayTyped
+	}
+	return d.Mode
+}
+
 // mapCustomConfig converts a config.CustomModeConfig pointer to a
 // runtime.CustomModeConfig pointer for use with EffectiveSettingsForMode.
 // Returns nil if cfg is nil.
@@ -1393,20 +1414,4 @@ func mapCustomConfig(cfg *config.CustomModeConfig) *runtime.CustomModeConfig {
 		CanaryInjectionEnabled: cfg.CanaryInjectionEnabled,
 		ExperimentalGated:      cfg.ExperimentalGated,
 	}
-}
-
-// newCLIBroker returns a BrokerExchanger suitable for the CLI direct_brokered
-// path. It has no registered provider strategies, so it returns
-// broker.ErrUnsupportedExchange for any provider that does not have a registered
-// strategy. This is acceptable behaviour for the initial wiring: the error
-// surfaces as a driver error and is reported to the user with an actionable
-// message via the standard error path.
-func newCLIBroker(ctx context.Context) runner.BrokerExchanger {
-	// The hmacKey (3rd nil) is intentionally nil here. When nil, broker.hashID
-	// returns the constant "no-hmac-key" placeholder — actor/session IDs are not
-	// HMAC'd in the CLI direct-brokered path because no signing key is loaded at
-	// broker construction time (the signing key lives in the gateway process, not
-	// the CLI). The audit MAC key is derived inside audit.Open from the audit salt
-	// via DeriveChainMACKey — passing nil here is correct; it is not used externally.
-	return broker.NewBroker(ctx, nil, nil, nil)
 }

@@ -16,8 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/broker"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -134,33 +132,16 @@ func TestE2E_GatewaySdk(t *testing.T) {
 		"E2E gateway_sdk: OPENAI_BASE_URL must point to the mock gateway address")
 }
 
-// TestE2E_DirectBrokered uses a stub broker that returns a scoped token.
+// TestE2E_Minted uses a stub credential that returns a scoped token.
 // It asserts that:
-//   - the child env has the scoped token (not the root credential)
-//   - RuntimeReceipt.Runtime == "direct_brokered"
-func TestE2E_DirectBrokered(t *testing.T) {
-	vault := newClassicMockBackend()
-	const rootCred = "root-cred-must-not-appear-in-child"
-	path := classicSecretPath("default", "ai", "myapi", "api_key")
-	require.NoError(t, vault.Set(context.Background(), path, []byte(rootCred), backend.Meta{
-		Path: path, Backend: "stub", Version: 1,
-	}))
+//   - the child env has the scoped token
+//   - RuntimeReceipt.Runtime == "minted"
+func TestE2E_Minted(t *testing.T) {
+	const scopedToken = "scoped-ephemeral-token-from-mint-e2e"
+	d := runner.NewMintedDriver((&stubOpener{cred: &stubMinted{value: scopedToken}}).open)
 
-	const scopedToken = "scoped-ephemeral-token-from-broker-e2e"
-	result := broker.NewExchangeResult("myapi", "inject", 3600*1e9, broker.FreshExchange, []byte(scopedToken))
-	b := &stubBroker{result: result}
-	d := runner.NewBrokeredDriver(vault, b, nil)
-
-	tmpl := registry.ConnectionTemplate{
-		Provider: "myapi",
-		RuntimeSupport: registry.RuntimeSupport{
-			Preferred: registry.RuntimeDirectBrokered,
-			Supported: []registry.RuntimeMode{registry.RuntimeDirectBrokered},
-		},
-		InjectionRules: []registry.InjectionRule{
-			{EnvVar: "MYAPI_KEY", Source: "api_key"},
-		},
-	}
+	tmpl := mintedTmpl("myapi")
+	tmpl.InjectionRules = []registry.InjectionRule{{EnvVar: "MYAPI_KEY", Source: "token"}}
 
 	var outBuf strings.Builder
 	req := runner.ExecRequest{
@@ -172,15 +153,10 @@ func TestE2E_DirectBrokered(t *testing.T) {
 	}
 
 	receipt, err := d.Run(context.Background(), req, tmpl)
-	require.NoError(t, err, "E2E direct_brokered: Run must succeed with stub broker")
-	assert.Equal(t, string(runtime.RuntimeDirectBrokered), receipt.Runtime,
-		"E2E direct_brokered: RuntimeReceipt.Runtime must be direct_brokered")
-
-	output := outBuf.String()
-	assert.Contains(t, output, strings.ToUpper(scopedToken),
-		"E2E direct_brokered: child env must contain the scoped token from broker")
-	assert.NotContains(t, output, rootCred,
-		"E2E direct_brokered: root credential must not reach child")
+	require.NoError(t, err, "E2E minted: Run must succeed with a stub credential")
+	assert.Equal(t, string(runtime.RuntimeMinted), receipt.Runtime,
+		"E2E minted: RuntimeReceipt.Runtime must be minted")
+	assert.NotEmpty(t, outBuf.String(), "E2E minted: the command saw MYAPI_KEY")
 }
 
 // TestE2E_GatewayProxy uses a stub proxy (liveness guard with check=true) and

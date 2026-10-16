@@ -38,13 +38,13 @@ func TestResolve_ExplicitModeMatch(t *testing.T) {
 }
 
 func TestResolve_UnsupportedModeReturnsError(t *testing.T) {
-	// Provider only supports gateway_typed; caller asks for direct_brokered.
+	// Provider only supports gateway_typed; caller asks for minted.
 	tmpl := buildTmpl(
 		registry.RuntimeGatewayTyped,
 		registry.RuntimeGatewayTyped,
 	)
 	req := runtime.ResolveRequest{
-		RequestedMode:  runtime.RuntimeDirectBrokered,
+		RequestedMode:  runtime.RuntimeMinted,
 		ConnectionSlug: "openrouter",
 	}
 	_, err := runtime.Resolve(context.Background(), req, tmpl)
@@ -88,18 +88,46 @@ func TestResolve_NoSupportedModesReturnsError(t *testing.T) {
 }
 
 func TestResolve_FallbackHierarchyOrder(t *testing.T) {
-	// Only direct_brokered and gateway_proxy are supported.
-	// Hierarchy prefers direct_brokered before gateway_proxy.
+	// Only minted and gateway_proxy are supported.
+	// Hierarchy prefers minted before gateway_proxy.
 	tmpl := buildTmpl(
 		"",
 		registry.RuntimeGatewayProxy,
-		registry.RuntimeDirectBrokered,
+		registry.RuntimeMinted,
 	)
 	req := runtime.ResolveRequest{ConnectionSlug: "aws"}
 	d, err := runtime.Resolve(context.Background(), req, tmpl)
 	require.NoError(t, err)
-	assert.Equal(t, runtime.RuntimeDirectBrokered, d.Mode,
-		"direct_brokered must be selected before gateway_proxy in the fallback hierarchy")
+	assert.Equal(t, runtime.RuntimeMinted, d.Mode,
+		"minted must be selected before gateway_proxy in the fallback hierarchy")
+}
+
+// TestRuntimeDefaultsToTemplate checks that an empty --runtime lets the
+// template's preferred mode apply.
+func TestRuntimeDefaultsToTemplate(t *testing.T) {
+	tmpl := buildTmpl(
+		registry.RuntimeMinted,
+		registry.RuntimeGatewayTyped,
+		registry.RuntimeMinted,
+	)
+	d, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{ConnectionSlug: "github-app"}, tmpl)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.RuntimeMinted, d.Mode)
+	assert.Equal(t, "provider preferred", d.Reason)
+	assert.Equal(t, runtime.DeliveryProviderEphemeral, d.CredentialShape)
+}
+
+// TestDirectBrokeredIsRenamed checks that the old name is refused with a
+// pointer to the new one, even for a template that still lists it.
+func TestDirectBrokeredIsRenamed(t *testing.T) {
+	tmpl := buildTmpl(
+		registry.RuntimeDirectBrokered,
+		registry.RuntimeDirectBrokered,
+	)
+	_, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{RequestedMode: runtime.RuntimeDirectBrokered}, tmpl)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, runtime.ErrModeRemoved))
+	assert.Contains(t, err.Error(), "--runtime minted")
 }
 
 // TestClassicSandboxedRemoved verifies that direct_classic_sandboxed is gone
@@ -127,7 +155,7 @@ func TestRuntimeList(t *testing.T) {
 	assert.Equal(t, []runtime.RuntimeMode{
 		runtime.RuntimeGatewayTyped,
 		runtime.RuntimeGatewaySDK,
-		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeMinted,
 		runtime.RuntimeGatewayProxy,
 	}, runtime.AllModes)
 }

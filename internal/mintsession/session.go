@@ -57,6 +57,11 @@ type Request struct {
 	// ceiling.
 	Permissions []string
 	Caller      mint.CallerKind
+	// RuntimeMode names the runtime the session serves in the audit line. It
+	// defaults to "placeholder". "minted" hands the token to the command
+	// itself, so the caller policy of the mint command applies, not the
+	// placeholder one.
+	RuntimeMode string
 }
 
 // Open checks the request against the connection's mint policy and returns a
@@ -109,7 +114,14 @@ func (m *Minter) Open(ctx context.Context, req Request) (*Credential, error) {
 	if len(perms) == 0 {
 		return nil, fmt.Errorf("%w: name at least one permission", ErrUsage)
 	}
-	if err := mint.CheckGitHubAppPlaceholder(policy, req.Caller, mint.Request{Repository: repo, Permissions: perms}); err != nil {
+	if req.RuntimeMode == "" {
+		req.RuntimeMode = "placeholder"
+	}
+	check := mint.CheckGitHubAppPlaceholder
+	if req.RuntimeMode == "minted" {
+		check = mint.CheckGitHubApp
+	}
+	if err := check(policy, req.Caller, mint.Request{Repository: repo, Permissions: perms}); err != nil {
 		return nil, err
 	}
 	if err := audit.Ready(m.cfg.Audit); err != nil {
@@ -117,7 +129,7 @@ func (m *Minter) Open(ctx context.Context, req Request) (*Credential, error) {
 	}
 	return &Credential{
 		cfg: m.cfg, category: tmpl.Category, connection: req.Connection, namespace: req.Namespace,
-		repo: repo, perms: perms, caller: req.Caller, lifetime: mint.MaxLifetime(policy),
+		repo: repo, perms: perms, caller: req.Caller, lifetime: mint.MaxLifetime(policy), runtimeMode: req.RuntimeMode,
 	}, nil
 }
 
@@ -132,6 +144,8 @@ type Credential struct {
 	perms      map[string]string
 	caller     mint.CallerKind
 	lifetime   time.Duration
+
+	runtimeMode string
 
 	mu      sync.Mutex
 	token   []byte
@@ -174,7 +188,7 @@ func (c *Credential) mint(ctx context.Context) error {
 	}
 	event := AuditEvent{
 		Connection: c.connection, Namespace: c.namespace, Repository: c.repo, Permissions: c.perms,
-		Caller: c.caller, RuntimeMode: "placeholder",
+		Caller: c.caller, RuntimeMode: c.runtimeMode,
 	}
 	tok, err := strategy.MintScoped(ctx, strategies.GitHubAppScope{Repository: c.repo, Permissions: c.perms}, c.lifetime)
 	if err != nil {

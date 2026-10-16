@@ -48,6 +48,8 @@ type RunOptions struct {
 type ExecRequest struct {
 	// Connection is the provider slug identifying which stored credential to use.
 	ConnectionSlug string
+	// Namespace is the vault namespace of the connection; empty is "default".
+	Namespace string
 	// Command is the argv to execute.
 	Command []string
 	// WorkingDir is the subprocess working directory ("" inherits the current dir).

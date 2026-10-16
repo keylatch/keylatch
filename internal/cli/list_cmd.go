@@ -31,7 +31,7 @@ func usableReason(conn connections.Connection, isLLM bool) (usable string, reaso
 			// LLM sessions can only use gateway/brokered modes.
 			switch rm {
 			case runtime.RuntimeGatewayTyped, runtime.RuntimeGatewaySDK,
-				runtime.RuntimeDirectBrokered, runtime.RuntimeGatewayProxy:
+				runtime.RuntimeMinted, runtime.RuntimeGatewayProxy:
 				return "yes", ""
 			}
 		} else {

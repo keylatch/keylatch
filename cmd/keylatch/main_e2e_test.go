@@ -392,7 +392,18 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 	}
 }
 
-// TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate verifies that on a
+// TestE2E_Run_DirectBrokeredIsRenamed verifies the retired runtime name exits 5
+// and points to minted.
+func TestE2E_Run_DirectBrokeredIsRenamed(t *testing.T) {
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": t.TempDir()},
+		"run", "--runtime", "direct_brokered", "openrouter", "--", "node", "x.js")
+
+	assert.Equal(t, 5, code, "stderr: %s", stderr)
+	assert.Contains(t, string(stderr), "--runtime minted")
+}
+
+// TestE2E_Run_Minted_BootstrapPrecedesSessionGate verifies that on a
 // clean (un-bootstrapped) machine a raw-credential run mode surfaces the
 // actionable BootstrapMissing error (exit 7) rather than the raw-credential
 // session gate's fail-closed message: the onboarding guards (bootstrap, then
@@ -404,11 +415,11 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 // covered end-to-end by the `get` tests above (which do not depend on
 // bootstrap) and exhaustively at the unit level in
 // internal/cli/session_enforce_test.go.
-func TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate(t *testing.T) {
+func TestE2E_Run_Minted_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"run", "--runtime", "direct_brokered", "aws-prod", "--", "./deploy.sh")
+		"run", "--runtime", "minted", "aws-prod", "--", "./deploy.sh")
 
 	assert.Equal(t, 7, code, "raw run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
@@ -430,16 +441,16 @@ func TestE2E_GuardRuntime_DirectClassicRemoved(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Run_BrokeredBootstrapPrecedesSessionGate verifies that
-// direct_brokered (a raw-credential mode) surfaces the BootstrapMissing error
+// TestE2E_Run_MintedBootstrapPrecedesSessionGate verifies that
+// minted (a raw-credential mode) surfaces the BootstrapMissing error
 // (exit 7) on a clean machine, ahead of the raw-credential session gate. The
 // session gate's raw-credential fail-closed behavior is covered by the
 // get-path e2e tests and the session_enforce unit tests.
-func TestE2E_Run_BrokeredBootstrapPrecedesSessionGate(t *testing.T) {
+func TestE2E_Run_MintedBootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"run", "--runtime", "direct_brokered",
+		"run", "--runtime", "minted",
 		"openrouter", "--", "node", "x.js")
 
 	assert.Equal(t, 7, code,
@@ -628,7 +639,7 @@ func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
-		"run", "--runtime", "direct_brokered", "openrouter", "--", "node", "x.js")
+		"run", "--runtime", "minted", "openrouter", "--", "node", "x.js")
 
 	assert.Equal(t, 7, code,
 		"raw run before bootstrap must exit 7 (BootstrapMissing) for a SignalNone session too, ahead of the session gate; stderr: %s", stderr)

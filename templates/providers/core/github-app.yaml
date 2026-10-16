@@ -29,10 +29,10 @@ storage_path_tpl: "{{.Namespace}}/code-hosting/github-app/{{.Account}}"
 trust_level: 2
 
 runtime_support:
-  preferred: direct_brokered
+  preferred: minted
   supported:
-    - direct_brokered
-  runtime_reason: "The private key is never injected into a process. An agent session receives a placeholder token that the daemon's proxy replaces with a minted installation token."
+    - minted
+  runtime_reason: "The private key is never injected into a process. A command run with --runtime minted receives an installation token limited to one repository and revoked on exit. An agent session receives a placeholder token that the daemon's proxy replaces with a minted installation token."
   gateway_supported: false
 
 minted_fields:

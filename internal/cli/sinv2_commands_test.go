@@ -202,7 +202,7 @@ func TestSINV2_AllFourGatewayModesAllowed(t *testing.T) {
 	allowedModes := []runtime.RuntimeMode{
 		runtime.RuntimeGatewayTyped,
 		runtime.RuntimeGatewaySDK,
-		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeMinted,
 		runtime.RuntimeGatewayProxy,
 	}
 	for _, mode := range allowedModes {

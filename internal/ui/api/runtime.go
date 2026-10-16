@@ -12,10 +12,10 @@ import (
 
 // uiValidRuntimeModes lists the runtime modes surfaced in the UI.
 var uiValidRuntimeModes = map[runtime.RuntimeMode]bool{
-	runtime.RuntimeGatewayTyped:   true,
-	runtime.RuntimeGatewaySDK:     true,
-	runtime.RuntimeDirectBrokered: true,
-	runtime.RuntimeGatewayProxy:   true,
+	runtime.RuntimeGatewayTyped: true,
+	runtime.RuntimeGatewaySDK:   true,
+	runtime.RuntimeMinted:       true,
+	runtime.RuntimeGatewayProxy: true,
 }
 
 // RuntimeTestHandler handles POST /api/connections/{name}/test.

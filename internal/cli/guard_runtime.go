@@ -12,10 +12,10 @@ import (
 
 // allowedInLLMSession lists runtime modes that are permitted in LLM sessions.
 var allowedInLLMSession = map[runtime.RuntimeMode]bool{
-	runtime.RuntimeGatewayTyped:   true,
-	runtime.RuntimeGatewaySDK:     true,
-	runtime.RuntimeDirectBrokered: true,
-	runtime.RuntimeGatewayProxy:   true,
+	runtime.RuntimeGatewayTyped: true,
+	runtime.RuntimeGatewaySDK:   true,
+	runtime.RuntimeMinted:       true,
+	runtime.RuntimeGatewayProxy: true,
 }
 
 // GuardRuntime enforces runtime mode restrictions for LLM sessions.
@@ -40,11 +40,11 @@ func GuardRuntime(mode runtime.RuntimeMode, approvalJWT string, env llmcontext.L
 // WriteGuardRuntimeError writes the appropriate blocked message for the given mode to w.
 func WriteGuardRuntimeError(w io.Writer, mode runtime.RuntimeMode) {
 	if strings.Contains(string(mode), "unrestricted") || !isKnownMode(mode) {
-		fmt.Fprintf(w, "[keylatch] %q is not a supported runtime mode. Use --runtime gateway_typed, gateway_sdk, direct_brokered, or gateway_proxy.", mode)
+		fmt.Fprintf(w, "[keylatch] %q is not a supported runtime mode. Use --runtime gateway_typed, gateway_sdk, minted, or gateway_proxy.", mode)
 		return
 	}
 	// Fallback for modes that are defined but not allowed in the current session.
-	fmt.Fprintf(w, "[keylatch] runtime mode %q is not permitted in this session. Use --runtime gateway_typed, gateway_sdk, direct_brokered, or gateway_proxy.", mode)
+	fmt.Fprintf(w, "[keylatch] runtime mode %q is not permitted in this session. Use --runtime gateway_typed, gateway_sdk, minted, or gateway_proxy.", mode)
 }
 
 func isKnownMode(mode runtime.RuntimeMode) bool {
