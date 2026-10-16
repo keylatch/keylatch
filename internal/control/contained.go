@@ -511,10 +511,12 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 		resp.Error = "a canary credential was sent out of the sandbox; the run was ended"
 		reason = "canary_tripped"
 	}
+	// The exit is audited before the final frame so a client that has seen
+	// the end of the run can rely on the record being there.
+	s.recordContainedExit(ctx, d, begun, resp.ExitCode, relayed.Load(), redactions.Load(), reason)
 	mu.Lock()
 	_ = writeFrame(conn, resp)
 	mu.Unlock()
-	s.recordContainedExit(ctx, d, begun, resp.ExitCode, relayed.Load(), redactions.Load(), reason)
 }
 
 func (s *Server) recordContainedExit(ctx context.Context, d decision, begun time.Time, exit int, relayed, redactions int64, reason string) {
