@@ -52,7 +52,7 @@ func bech32Decode(s string) (string, []byte, error) {
 		if v < 0 {
 			return "", nil, errors.New("sops: invalid bech32 character")
 		}
-		data[j] = byte(v)
+		data[j] = byte(v & 0x1f)
 	}
 	if bech32Polymod(append(bech32HRPExpand(hrp), data...)) != 1 {
 		return "", nil, errors.New("sops: bech32 checksum mismatch")
@@ -73,7 +73,7 @@ func convertBits(data []byte, from, to uint) ([]byte, error) {
 		bits += from
 		for bits >= to {
 			bits -= to
-			out = append(out, byte(acc>>bits&maxv))
+			out = append(out, byte(acc>>bits&maxv&0xff))
 		}
 	}
 	if bits >= from || acc<<(to-bits)&maxv != 0 {

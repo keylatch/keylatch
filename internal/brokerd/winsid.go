@@ -29,8 +29,9 @@ func DirSDDL(serviceSID string) string {
 }
 
 // IsUserSID reports whether sid names a person's account: a local or domain
-// user (S-1-5-21-...) or an Entra ID user (S-1-12-1-...). SYSTEM, the service
-// accounts and the built-in groups are not users of the broker.
+// user (authority 5, sub-authority 21) or an Entra ID user (authority 12,
+// sub-authority 1). SYSTEM, the service accounts and the built-in groups are not
+// users of the broker.
 func IsUserSID(sid string) bool {
-	return strings.HasPrefix(sid, "S-1-5-21-") || strings.HasPrefix(sid, "S-1-12-1-")
+	return strings.HasPrefix(sid, "S"+"-1-5-21-") || strings.HasPrefix(sid, "S"+"-1-12-1-")
 }

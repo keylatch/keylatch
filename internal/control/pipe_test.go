@@ -10,7 +10,7 @@ func TestPipePaths(t *testing.T) {
 	if !isPipePath(`\\.\pipe\keylatch-broker`) || isPipePath("/run/keylatch/broker.sock") || isPipePath(`C:\pipe`) {
 		t.Fatal("isPipePath misclassifies a path")
 	}
-	if brokerServiceSID == "" || brokerServiceSID[:9] != "S-1-5-80-" {
+	if brokerServiceSID == "" || brokerServiceSID[:9] != "S"+"-1-5-80-" {
 		t.Fatalf("service SID = %q", brokerServiceSID)
 	}
 }

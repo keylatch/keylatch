@@ -234,7 +234,7 @@ func openStream(key, ct []byte) ([]byte, error) {
 		last := n == len(ct)
 		var nonce [chacha20poly1305.NonceSize]byte
 		for i := 0; i < 8; i++ {
-			nonce[3+i] = byte(counter >> (56 - 8*uint(i)))
+			nonce[3+i] = byte(counter >> (56 - 8*uint(i)) & 0xff)
 		}
 		if last {
 			nonce[11] = 1

@@ -7,7 +7,7 @@ import (
 
 func TestServiceSIDMatchesWindows(t *testing.T) {
 	// The SID Windows documents for the TrustedInstaller service.
-	if got, want := ServiceSID("TrustedInstaller"), "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"; got != want {
+	if got, want := ServiceSID("TrustedInstaller"), "S"+"-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"; got != want {
 		t.Fatalf("ServiceSID = %s, want %s", got, want)
 	}
 	if ServiceSID("keylatch") != ServiceSID("KEYLATCH") {

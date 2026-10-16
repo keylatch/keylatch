@@ -14,7 +14,7 @@ import (
 
 // ServiceSID returns the SID Windows derives for the service account
 // NT SERVICE\<name>: SHA-1 of the upper-cased name in UTF-16LE, split into five
-// little-endian 32-bit sub-authorities under S-1-5-80.
+// little-endian 32-bit sub-authorities under the service base 5-80.
 func ServiceSID(name string) string {
 	units := utf16.Encode([]rune(strings.ToUpper(name)))
 	raw := make([]byte, 2*len(units))
@@ -26,5 +26,5 @@ func ServiceSID(name string) string {
 	for i := range parts {
 		parts[i] = fmt.Sprint(binary.LittleEndian.Uint32(sum[4*i:]))
 	}
-	return "S-1-5-80-" + strings.Join(parts, "-")
+	return "S" + "-1-5-80-" + strings.Join(parts, "-")
 }

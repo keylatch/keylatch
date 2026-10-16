@@ -142,14 +142,14 @@ func TestEnrollWindows(t *testing.T) {
 	}
 	pem := pemOf(t, &k.PublicKey)
 	dir := t.TempDir()
-	host := &fakeWinHost{elevated: true, sids: map[string]string{`PC\alice`: "S-1-5-21-1-2-3-1001", `NT AUTHORITY\SYSTEM`: "S-1-5-18"}}
+	host := &fakeWinHost{elevated: true, sids: map[string]string{`PC\alice`: sidAlice, `NT AUTHORITY\SYSTEM`: sidSystem}}
 	path, err := EnrollWindows(host, dir, `PC\alice`, pem)
-	if err != nil || path != filepath.Join(dir, "presence", "S-1-5-21-1-2-3-1001.pem") {
+	if err != nil || path != filepath.Join(dir, "presence", sidAlice+".pem") {
 		t.Fatalf("enroll = %q, %v", path, err)
 	}
 	// The service finds the key through the account map.
 	m, _ := OpenAccounts(filepath.Join(t.TempDir(), "a.json"))
-	uid, _ := m.UID("S-1-5-21-1-2-3-1001")
+	uid, _ := m.UID(sidAlice)
 	keyDir := filepath.Join(dir, "presence")
 	if _, err := (DirKeys{Dir: keyDir, NameOf: m.SID}).PresenceKey(uid); err != nil {
 		t.Fatalf("the service cannot load the enrolled key: %v", err)

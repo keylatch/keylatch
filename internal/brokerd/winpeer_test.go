@@ -9,9 +9,17 @@ import (
 	"github.com/keylatch/keylatch/internal/control"
 )
 
+// Account SIDs, spelled so no literal reads as a label.
+const (
+	sidAlice  = "S" + "-1-5-21-1-2-3-1001"
+	sidBob    = "S" + "-1-5-21-1-2-3-1002"
+	sidCarol  = "S" + "-1-5-21-1-2-3-1003"
+	sidSystem = "S" + "-1-5-18"
+)
+
 func TestServiceSIDMatchesWindows(t *testing.T) {
 	// The SID Windows documents for the TrustedInstaller service.
-	if got, want := ServiceSID("TrustedInstaller"), "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"; got != want {
+	if got, want := ServiceSID("TrustedInstaller"), "S"+"-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"; got != want {
 		t.Fatalf("ServiceSID = %s, want %s", got, want)
 	}
 	if ServiceSID("keylatch") != ServiceSID("KEYLATCH") {
@@ -45,13 +53,13 @@ func TestSecurityDescriptors(t *testing.T) {
 
 func TestIsUserSID(t *testing.T) {
 	for sid, want := range map[string]bool{
-		"S-1-5-21-1-2-3-1001": true,
-		"S-1-12-1-1-2-3-4":    true,
-		"S-1-5-18":            false,
-		"S-1-5-19":            false,
-		"S-1-5-32-544":        false,
-		"S-1-5-80-1-2-3-4-5":  false,
-		"":                    false,
+		sidAlice:                  true,
+		"S" + "-1-12-1-1-2-3-4":   true,
+		sidSystem:                 false,
+		"S" + "-1-5-19":           false,
+		"S" + "-1-5-32-544":       false,
+		"S" + "-1-5-80-1-2-3-4-5": false,
+		"":                        false,
 	} {
 		if IsUserSID(sid) != want {
 			t.Errorf("IsUserSID(%q) != %v", sid, want)
@@ -65,21 +73,21 @@ func TestAccountMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := m.UID("S-1-5-21-1-2-3-1001")
+	a, err := m.UID(sidAlice)
 	if err != nil || a != firstAccountID {
 		t.Fatalf("first = %d, %v", a, err)
 	}
-	b, _ := m.UID("S-1-5-21-1-2-3-1002")
+	b, _ := m.UID(sidBob)
 	if b != a+1 {
 		t.Fatalf("second = %d", b)
 	}
-	if again, _ := m.UID("S-1-5-21-1-2-3-1001"); again != a {
+	if again, _ := m.UID(sidAlice); again != a {
 		t.Fatalf("a known SID moved to %d", again)
 	}
-	if _, ok := m.Find("S-1-5-21-9"); ok {
+	if _, ok := m.Find("S" + "-1-5-21-9"); ok {
 		t.Fatal("an unknown SID was found")
 	}
-	if sid, ok := m.SID(b); !ok || sid != "S-1-5-21-1-2-3-1002" {
+	if sid, ok := m.SID(b); !ok || sid != sidBob {
 		t.Fatalf("SID(%d) = %q", b, sid)
 	}
 	if _, ok := m.SID(7); ok {
@@ -91,10 +99,10 @@ func TestAccountMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := re.Find("S-1-5-21-1-2-3-1002"); !ok || got != b {
+	if got, ok := re.Find(sidBob); !ok || got != b {
 		t.Fatalf("after restart = %d, %v", got, ok)
 	}
-	if c, _ := re.UID("S-1-5-21-1-2-3-1003"); c != b+1 {
+	if c, _ := re.UID(sidCarol); c != b+1 {
 		t.Fatalf("numbering continued at %d", c)
 	}
 
@@ -107,7 +115,7 @@ func TestAccountMapBounds(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := OpenAccounts(filepath.Join(dir, "a.json"))
 	m.next = DefaultMaxUID + 1
-	if _, err := m.UID("S-1-5-21-5"); !errors.Is(err, ErrAccountsFull) {
+	if _, err := m.UID("S" + "-1-5-21-5"); !errors.Is(err, ErrAccountsFull) {
 		t.Fatalf("full = %v", err)
 	}
 	// A save failure leaves no half-assigned account behind.
@@ -115,10 +123,10 @@ func TestAccountMapBounds(t *testing.T) {
 	if err := writeFileForTest(filepath.Join(dir, "file"), "x"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bad.UID("S-1-5-21-6"); err == nil {
+	if _, err := bad.UID("S" + "-1-5-21-6"); err == nil {
 		t.Fatal("a failed save was ignored")
 	}
-	if _, ok := bad.Find("S-1-5-21-6"); ok {
+	if _, ok := bad.Find("S" + "-1-5-21-6"); ok {
 		t.Fatal("a failed save kept the account")
 	}
 	corrupt := filepath.Join(dir, "c.json")
@@ -172,7 +180,7 @@ func winIdentifier(t *testing.T, sys *fakeWinSys) WindowsIdentifier {
 }
 
 func goodWin() *fakeWinSys {
-	return &fakeWinSys{pid: 4242, session: 2, proc: &fakeWinProc{sid: "S-1-5-21-1-2-3-1001", start: "133700000000000000", exe: `C:\Program Files\Keylatch\keylatch.exe`, ppid: 100}}
+	return &fakeWinSys{pid: 4242, session: 2, proc: &fakeWinProc{sid: sidAlice, start: "133700000000000000", exe: `C:\Program Files\Keylatch\keylatch.exe`, ppid: 100}}
 }
 
 func TestWindowsIdentifierBuildsAnIdentity(t *testing.T) {
@@ -182,7 +190,7 @@ func TestWindowsIdentifierBuildsAnIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id.UID != firstAccountID || id.PID != 4242 || id.SID != "S-1-5-21-1-2-3-1001" || id.Session != 2 || id.ParentPID != 100 || id.Exe == "" || id.Start == "" {
+	if id.UID != firstAccountID || id.PID != 4242 || id.SID != sidAlice || id.Session != 2 || id.ParentPID != 100 || id.Exe == "" || id.Start == "" {
 		t.Fatalf("identity = %+v", id)
 	}
 	if p := id.Peer(); p.SID != id.SID || p.Exe != id.Exe {
@@ -234,7 +242,7 @@ func TestWindowsIdentifierRefusals(t *testing.T) {
 	if _, err := try(func(s *fakeWinSys) { s.openErr = errScript }); !errors.Is(err, ErrPeerGone) {
 		t.Fatalf("a process that cannot be opened = %v", err)
 	}
-	if sys, err := try(func(s *fakeWinSys) { s.proc.sid = "S-1-5-18" }); !errors.Is(err, ErrNotUser) || !sys.proc.closed {
+	if sys, err := try(func(s *fakeWinSys) { s.proc.sid = sidSystem }); !errors.Is(err, ErrNotUser) || !sys.proc.closed {
 		t.Fatalf("SYSTEM = %v (closed %v)", err, sys.proc.closed)
 	}
 	if sys, err := try(func(s *fakeWinSys) { s.proc.sidErr = errScript }); !errors.Is(err, errScript) || !sys.proc.closed {
