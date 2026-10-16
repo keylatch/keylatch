@@ -104,4 +104,4 @@ The broker speaks the control socket's JSON frames, extended with the broker ope
 - The broker serves ordinary accounts, UIDs 1000 to 60000. Root and system accounts are refused.
 - Presence uses polkit. A FIDO2 security-key path is not part of this release.
 - Root on the host, and a compromised daemon, are outside the model: the daemon is the trusted computing base.
-- macOS and Windows keep in-user mode; their brokers are separate work.
+- macOS and Windows have their own broker; see [the macOS and Windows guide](broker-macos-windows.md).

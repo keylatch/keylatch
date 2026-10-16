@@ -97,5 +97,7 @@ Key-operation allowlists are not yet presence-gated.
   them.
 - The child runs as the daemon's user mapped to root inside its namespace. Files in the project
   that the daemon's user cannot write are read-only to the child.
-- macOS and Windows refuse D5 until their runtimes ship; use D3 or D4 there.
+- macOS runs D5 under a Seatbelt profile (`sandbox-exec`) and Windows in an AppContainer inside a job
+  object; neither has namespaces or seccomp, and neither supports terminal runs. See
+  [the macOS and Windows broker guide](guides/broker-macos-windows.md) for what each confines.
 - The optional `bwrap` backend and a degraded Landlock-only mode are not implemented.

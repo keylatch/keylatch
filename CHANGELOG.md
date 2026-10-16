@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The system broker runs on macOS (a launchd daemon, peer identity from the socket's peer credentials and process arguments, presence signed by a per-user Secure Enclave key enrolled at install) and on Windows (a service on a named pipe restricted to the service SID, peer identity from the pipe client's process token). `keylatch broker install` sets either up and enrolls the presence key. The request handling, partitions, key hierarchy and policy signing are the same code on every OS.
+- The contained tier (D5) runs on macOS under a Seatbelt profile and on Windows in an AppContainer inside a job object. Neither supports terminal runs. `keylatch doctor` probes the broker on both platforms. See [the macOS and Windows broker guide](docs/guides/broker-macos-windows.md).
 - `bws` backend: read-only Bitwarden Secrets Manager. Keylatch holds the machine-account token and hands it to the `bws` CLI in an otherwise empty environment.
 - `sops` backend: read-only SOPS files encrypted to age, decrypted in memory by the daemon and never written to disk.
 

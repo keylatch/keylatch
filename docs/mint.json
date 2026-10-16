@@ -41,7 +41,7 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["index", "installation", "quickstart", "guides/secure-agent-setup", "guides/broker-linux"]
+      "pages": ["index", "installation", "quickstart", "guides/secure-agent-setup", "guides/broker-linux", "guides/broker-macos-windows"]
     },
     {
       "group": "Core Concepts",
