@@ -9,10 +9,11 @@ package presence
 #include <stdlib.h>
 #include <string.h>
 
-// klAuthenticate returns 0 when the user authenticated, 1 when they did not
-// and 2 when the policy cannot be evaluated on this machine. errOut receives
-// a malloc'd description for non-zero results.
-static int klAuthenticate(const char *reason, char **errOut) {
+// klAuthenticate returns 0 when the user authenticated, 1 when they did not,
+// 2 when the policy cannot be evaluated on this machine and 3 when nobody
+// answered within seconds. errOut receives a malloc'd description for
+// non-zero results.
+static int klAuthenticate(const char *reason, int seconds, char **errOut) {
 	LAContext *ctx = [[LAContext alloc] init];
 	NSError *err = nil;
 	if (![ctx canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:&err]) {
@@ -32,7 +33,13 @@ static int klAuthenticate(const char *reason, char **errOut) {
 		}
 		dispatch_semaphore_signal(sem);
 	}];
-	dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+	if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)seconds * NSEC_PER_SEC)) != 0) {
+		// Cancels the pending prompt; the reply block then runs with an error
+		// nobody waits for.
+		[ctx invalidate];
+		*errOut = strdup("no answer to the authentication prompt");
+		return 3;
+	}
 	if (msg != nil) {
 		*errOut = strdup([msg UTF8String]);
 	}
@@ -45,8 +52,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"unsafe"
 )
+
+// promptTimeout bounds the wait for an answer: a session with no one at the
+// screen (a CI runner, an SSH login) must fail closed, not hang.
+const promptTimeout = 2 * time.Minute
 
 type localAuth struct{}
 
@@ -59,7 +71,7 @@ func (localAuth) Confirm(_ context.Context, action Action, summary string) error
 	reason := C.CString(fmt.Sprintf("approve %s: %s", action, summary))
 	defer C.free(unsafe.Pointer(reason))
 	var msg *C.char
-	rc := C.klAuthenticate(reason, &msg)
+	rc := C.klAuthenticate(reason, C.int(promptTimeout/time.Second), &msg)
 	text := ""
 	if msg != nil {
 		text = C.GoString(msg)
