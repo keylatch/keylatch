@@ -54,6 +54,8 @@ type Config struct {
 	Now     func() time.Time
 	// Sync tunes the deploy-secret sync operations.
 	Sync SyncConfig
+	// Units inspects service units for enrollment and release; nil asks systemctl.
+	Units UnitInspector
 }
 
 // GatewayPartition is what the gateway needs to serve one partition.
@@ -76,6 +78,9 @@ type Server struct {
 
 	mu    sync.Mutex
 	parts map[uint32]*partition
+
+	svcOnce sync.Once
+	svc     *serviceStore
 }
 
 type partition struct {
@@ -182,7 +187,7 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 	}
 	defer id.Close()
 	if !s.cfg.Allow(id.UID) {
-		refuse(conn, control.CodeRefused, exitcode.SecurityBlock, fmt.Sprintf("user %d may not use the broker", id.UID))
+		s.serveServiceOnly(ctx, conn, id)
 		return
 	}
 	p, err := s.partition(ctx, id.UID)

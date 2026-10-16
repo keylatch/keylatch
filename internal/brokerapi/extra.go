@@ -83,9 +83,15 @@ type ServiceResult struct {
 	// Capability is the unit-bound capability, returned once at enrollment so
 	// the client can seal it into the unit's credential file.
 	Capability []byte `json:"capability,omitempty"`
-	// Value and Field are the secret a verified service unit is released.
-	Value []byte `json:"value,omitempty"`
-	Field string `json:"field,omitempty"`
+	// Env is what a verified service unit is released: the environment
+	// variables its connection's runtime contract names.
+	Env []ServiceEnv `json:"env,omitempty"`
+}
+
+// ServiceEnv is one environment variable released to a service unit.
+type ServiceEnv struct {
+	Name  string `json:"name"`
+	Value []byte `json:"value"`
 }
 
 // MachineRequest issues, revokes or lists machine credentials.

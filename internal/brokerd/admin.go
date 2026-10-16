@@ -115,6 +115,14 @@ func (a *admin) dispatch(ctx context.Context, peer control.Peer, res callerkind.
 		return brokerapi.Response{OK: true}
 	case brokerapi.OpSyncDiff, brokerapi.OpSyncDrift, brokerapi.OpSyncApply, brokerapi.OpSyncRotate:
 		return a.syncOp(ctx, peer, res, req)
+	case brokerapi.OpServiceEnroll:
+		return a.enrollService(ctx, res, req)
+	case brokerapi.OpServiceRevoke:
+		return a.revokeService(ctx, res, req)
+	case brokerapi.OpServiceList:
+		return a.listServices(ctx)
+	case brokerapi.OpServiceRelease:
+		return a.s.releaseService(ctx, peer.UID, peer.Cgroup, res, req)
 	case brokerapi.OpSessionVerify:
 		l, ok := a.s.sessions.Lookup(req.Ticket, peer.UID)
 		if !ok {

@@ -230,6 +230,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newMigrateCmd(), "advanced")
 	addCmd(root, newDrillCmd(), "advanced")
 	addCmd(root, newSyncCmd(), "advanced")
+	addCmd(root, newServiceCmd(), "advanced")
 	addCmd(root, newRegistryCmd(), "advanced")
 	addCmd(root, newRollbackCmd(), "advanced")
 	addCmd(root, newSetCmd(), "advanced")
@@ -512,6 +513,14 @@ func newRunCmd() *cobra.Command {
 			// Order: (1) mode validation → (2) bootstrap → (3) connection.
 			// Mode validation runs first because it is pure/stateless and the
 			// E2E tests expect removed-mode errors to take priority (exit 5).
+
+			// The service runtime is served through the system broker, which
+			// answers before this code runs; reaching it means no broker did.
+			if string(mode) == runner.ServiceRuntime {
+				cliErr := NewRuntimeNotAvailable("--runtime service releases a credential to an enrolled systemd unit through the system broker, and no broker answered; see 'keylatch service enroll --help'")
+				fmt.Fprint(c.ErrOrStderr(), cliErr.Stderr())
+				os.Exit(exitcode.RuntimeNotAvailable)
+			}
 
 			// Guard 1 (mode): validate that the requested runtime mode is available.
 			// This runs first so removed-mode errors take priority over bootstrap
