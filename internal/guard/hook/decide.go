@@ -4,7 +4,6 @@
 package hook
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -29,7 +28,7 @@ type toolCall struct {
 var (
 	readTools  = map[string]bool{"Read": true, "Grep": true, "Glob": true, "NotebookRead": true}
 	writeTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
-	pathKeys   = []string{"file_path", "path", "notebook_path", "dir_path", "absolute_path"}
+	pathKeys   = []string{"file_path", "path", "notebook_path", "dir_path", "absolute_path", "filePath", "AbsolutePath", "TargetFile", "DirectoryPath"}
 )
 
 const maxPayload = 8 << 20
@@ -46,10 +45,14 @@ func Decide(payload []byte, env Env) (d Decision) {
 }
 
 func decide(payload []byte, env Env) Decision {
-	var call toolCall
-	if err := json.Unmarshal(payload, &call); err != nil {
-		return deny("the tool call payload is not valid JSON: %v", err)
+	call, err := parseNative(payload)
+	if err != nil {
+		return deny("%v", err)
 	}
+	return decideCall(call, env)
+}
+
+func decideCall(call toolCall, env Env) Decision {
 	if call.ToolName == "" {
 		return deny("the tool call names no tool")
 	}
@@ -148,26 +151,5 @@ func lastElem(s string) string {
 // is exit status 2, the reason on stderr and the deny JSON on stdout; an allow
 // writes nothing and returns 0. Any read failure is a deny.
 func Run(stdin io.Reader, stdout, stderr io.Writer, env Env) int {
-	data, err := io.ReadAll(io.LimitReader(stdin, maxPayload+1))
-	var d Decision
-	switch {
-	case err != nil:
-		d = deny("the tool call payload could not be read: %v", err)
-	case len(data) > maxPayload:
-		d = deny("the tool call payload is larger than %d bytes", maxPayload)
-	default:
-		d = Decide(data, env)
-	}
-	if !d.Deny {
-		return 0
-	}
-	reason := "[hook/keylatch] Blocked: " + d.Reason
-	fmt.Fprintln(stderr, reason)
-	out, _ := json.Marshal(map[string]any{"hookSpecificOutput": map[string]any{
-		"hookEventName":            "PreToolUse",
-		"permissionDecision":       "deny",
-		"permissionDecisionReason": reason,
-	}})
-	fmt.Fprintln(stdout, string(out))
-	return 2
+	return RunFor("claude-code", stdin, stdout, stderr, env)
 }
