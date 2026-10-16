@@ -49,6 +49,13 @@ type Winsize struct {
 	Cols uint16 `json:"cols"`
 }
 
+// HoneyFile is a decoy credential file.
+type HoneyFile struct {
+	// Path is relative to the home directory and must stay inside it.
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
 // Spec describes one contained run.
 type Spec struct {
 	// Argv is the command; Argv[0] is looked up on the PATH in Env, or used as
@@ -79,9 +86,12 @@ type Spec struct {
 	// ConnectPorts are further loopback ports the child may connect to.
 	ConnectPorts []int `json:"connect_ports,omitempty"`
 	// AllowIOUring lifts the default ban on io_uring.
-	AllowIOUring bool     `json:"allow_io_uring,omitempty"`
-	Limits       Limits   `json:"limits"`
-	TTY          *Winsize `json:"tty,omitempty"`
+	AllowIOUring bool `json:"allow_io_uring,omitempty"`
+	// Honey are decoy credential files written into the empty home before the
+	// command starts.
+	Honey  []HoneyFile `json:"honey,omitempty"`
+	Limits Limits      `json:"limits"`
+	TTY    *Winsize    `json:"tty,omitempty"`
 }
 
 // Validate checks a Spec and fills in its defaults.
@@ -108,6 +118,11 @@ func (s *Spec) Validate() error {
 	for _, p := range append(append([]string{s.Dir, s.Home}, s.ReadOnly...), s.ReadWrite...) {
 		if p != "" && (!filepath.IsAbs(p) || filepath.Clean(p) != p) {
 			return fmt.Errorf("contained: %q must be a clean absolute path", p)
+		}
+	}
+	for _, h := range s.Honey {
+		if h.Path == "" || !filepath.IsLocal(h.Path) {
+			return fmt.Errorf("contained: honey file path %q must stay inside the home directory", h.Path)
 		}
 	}
 	if s.Dir == "" {

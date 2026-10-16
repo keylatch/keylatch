@@ -43,6 +43,9 @@ func TestValidateRejects(t *testing.T) {
 		"relative read-only":  func(s *Spec) { s.ReadOnly = []string{"x"} },
 		"relative read-write": func(s *Spec) { s.ReadWrite = []string{"../x"} },
 		"relative dir":        func(s *Spec) { s.Dir = "sub" },
+		"honey escapes home":  func(s *Spec) { s.Honey = []HoneyFile{{Path: "../etc/passwd"}} },
+		"honey absolute":      func(s *Spec) { s.Honey = []HoneyFile{{Path: "/etc/passwd"}} },
+		"honey empty":         func(s *Spec) { s.Honey = []HoneyFile{{}} },
 		"port zero":           func(s *Spec) { s.ProxyPort = -1 },
 		"port too large":      func(s *Spec) { s.ConnectPorts = []int{70000} },
 	} {

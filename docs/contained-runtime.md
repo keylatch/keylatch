@@ -53,6 +53,22 @@ and writes a `contained.leak_suspected` audit event with the number of files.
 A command that holds a value can still encode it in a way no scanner recognizes, for example by
 XORing it with a constant before printing it. That is why D5 asks for approval by default.
 
+## Canaries
+
+Every contained run, and every D3 session, carries decoys: a `KEYLATCH_CANARY_<PROVIDER>` variable and,
+in a contained run, honey files in the empty home (`~/.aws/credentials`, `~/.config/gh/hosts.yml`,
+`~/.npmrc`) whose keys look real and are worthless. Nothing legitimate sends them anywhere. The
+egress proxy and the D3 proxy look for them, in any common encoding, in the request target, the
+head and (for plain HTTP and the D3 proxy's terminated TLS) the body. The first request that
+carries one is refused, the session is suspended or the contained run ended, and a `canary.tripped`
+audit event records the host and where it was seen, never the decoy. A tunnel's contents are
+opaque, so a decoy inside a pass-through TLS connection is not seen; the target name is.
+
+`keylatch scan [path...]` applies the same idea to text: it reports the lines of a file or standard
+input that hold a known credential format or a Keylatch canary, without printing them, and exits 2
+when it finds any. `--redact` writes the text with the findings replaced instead, so a hook can
+filter a prompt or a tool result before it reaches a model.
+
 ## Approval
 
 A human caller runs D5 under the connection's policy. An agent or host caller needs an approval

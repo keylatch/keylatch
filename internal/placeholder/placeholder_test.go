@@ -221,6 +221,15 @@ func newHarness(t *testing.T, opts ...option) *harness {
 
 func (h *harness) placeholder() string { return h.sess.Placeholders()["secret_key"] }
 
+// dialProxy opens a raw connection to the session's proxy listener.
+func (h *harness) dialProxy() (net.Conn, error) {
+	c, err := net.Dial("tcp", h.ln.Addr().String())
+	if err == nil {
+		_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	}
+	return c, err
+}
+
 func (h *harness) client(http2 bool) *http.Client {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(h.sess.CAPEM())

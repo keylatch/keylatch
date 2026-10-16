@@ -8,6 +8,7 @@ package egress
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +52,11 @@ type Proxy struct {
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// OnDeny is told about every refused destination.
 	OnDeny func(host, reason string)
+	// Canary reports whether bytes hold a decoy credential. A request that
+	// does is refused before it is forwarded and reported to OnCanary; a
+	// tunnel's content is opaque, so only its target is checked.
+	Canary   func([]byte) bool
+	OnCanary func(host, where string)
 
 	privateNets []netip.Prefix
 	once        sync.Once
@@ -189,11 +196,62 @@ func (p *Proxy) ServeConn(conn net.Conn) {
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
+	if where := p.canaryIn(req); where != "" {
+		host, _, _ := splitHostPort(req.Host, "443")
+		if p.OnCanary != nil {
+			p.OnCanary(host, where)
+		}
+		reply(conn, http.StatusForbidden, "keylatch: a canary credential was sent; the run is ended")
+		return
+	}
 	if req.Method == http.MethodConnect {
 		p.tunnel(conn, r, req)
 		return
 	}
 	p.plain(conn, req)
+}
+
+// maxCanaryBody bounds the request body read to look for a decoy.
+const maxCanaryBody = 1 << 20
+
+// canaryIn reports where a decoy appears in the request: its target, its head
+// or, for plain HTTP, the start of its body.
+func (p *Proxy) canaryIn(req *http.Request) string {
+	if p.Canary == nil {
+		return ""
+	}
+	hit := func(s string) bool { return p.Canary([]byte(s)) || p.Canary([]byte(unescape(s))) }
+	switch {
+	case hit(req.Host):
+		return "connect_target"
+	case req.URL != nil && hit(req.URL.String()):
+		return "url"
+	}
+	for name, values := range req.Header {
+		if hit(name) {
+			return "header_name"
+		}
+		for _, v := range values {
+			if hit(v) {
+				return "header:" + strings.ToLower(name)
+			}
+		}
+	}
+	if req.Body != nil && req.Body != http.NoBody && req.ContentLength > 0 && req.ContentLength <= maxCanaryBody {
+		data, err := io.ReadAll(io.LimitReader(req.Body, maxCanaryBody+1))
+		if err == nil && p.Canary(data) {
+			return "body"
+		}
+		req.Body = io.NopCloser(bytes.NewReader(data))
+	}
+	return ""
+}
+
+func unescape(s string) string {
+	if d, err := url.QueryUnescape(s); err == nil {
+		return d
+	}
+	return s
 }
 
 func splitHostPort(authority, defaultPort string) (host, port string, ok bool) {

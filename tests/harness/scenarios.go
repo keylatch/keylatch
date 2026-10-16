@@ -301,6 +301,7 @@ var scenarios = []scenario{
 	containmentRow("contained-forked-children-die-with-the-run", "a contained command's forked and daemonized children do not outlive the run", "TestContainedForkedChildrenDieWithTheRun"),
 	containmentRow("contained-nested-sandbox-escapes-fail", "namespace, mount, io_uring, link and /proc escapes fail inside the contained tier", "TestContainedNestedSandboxEscapesFail"),
 	containmentRow("contained-encoded-leaks-caught", "base64, hex and URL encodings of the value are redacted and files holding it are reported", "TestContainedEncodedLeaksAreCaughtAndXORIsNot"),
+	containmentRow("contained-canary-ends-the-run", "a canary credential sent out of a contained run ends the run and is audited", "TestContainedCanaryTripEndsTheRun"),
 	containmentRow("contained-agent-run-needs-approval", "an agent's contained run is refused without an approval", "TestContainedNeedsAnApprovalFromAgents"),
 	{
 		id:          "agent-mint",

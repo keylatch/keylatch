@@ -148,6 +148,21 @@ func TestSetupRootBuildsAPrivateRootAndPivots(t *testing.T) {
 		"the read-only remount keeps the flags the kernel locks")
 }
 
+func TestSetupRootWritesHoneyFilesIntoTheHome(t *testing.T) {
+	sys := &fakeSys{missing: map[string]bool{}}
+	spec := testSpec()
+	spec.Honey = []HoneyFile{{Path: ".aws/credentials", Content: "[default]\n"}, {Path: ".npmrc", Content: "//registry\n"}}
+	require.NoError(t, setupRoot(sys, spec, "/helper"))
+	assert.True(t, sys.has("write /run/user/1/r"+DefaultHome+"/.aws/credentials"))
+	assert.True(t, sys.has("write /run/user/1/r"+DefaultHome+"/.npmrc"))
+	assert.Less(t, sys.index("mount tmpfs "+"/run/user/1/r"+DefaultHome), sys.index("write /run/user/1/r"+DefaultHome+"/.npmrc"), "the home is mounted before the files land in it")
+
+	sys = &fakeSys{failOn: "write /run/user/1/r" + DefaultHome, missing: map[string]bool{}}
+	assert.Error(t, setupRoot(sys, spec, "/helper"))
+	sys = &fakeSys{failOn: "mkdir /run/user/1/r" + DefaultHome + "/.aws", missing: map[string]bool{}}
+	assert.Error(t, setupRoot(sys, spec, "/helper"))
+}
+
 func TestSetupRootReportsTheFailingStep(t *testing.T) {
 	for _, step := range []string{"mount - /", "mount tmpfs /run/user/1/r ", "mount /work/project", "mount proc", "pivot", "umount", "remove", "mkdir /run/user/1/r/.old", "chdir"} {
 		sys := &fakeSys{failOn: step, missing: map[string]bool{}}

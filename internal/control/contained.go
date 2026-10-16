@@ -18,6 +18,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/canary"
 	"github.com/keylatch/keylatch/internal/contained"
 	"github.com/keylatch/keylatch/internal/egress"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -352,7 +353,16 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 		secrets[rule.EnvVar] = v
 		values = append(values, v)
 	}
+	decoys, err := canary.NewSet(rr.Connection)
+	if err != nil {
+		refuse(refusal{CodeUnavailable, exitcode.OperationFailed, "could not prepare the sandbox: " + err.Error()})
+		return
+	}
+	for _, v := range decoys.Values {
+		values = append(values, []byte(v))
+	}
 	matcher := redactor.NewMatcher(values...)
+	decoyed := redactor.NewMatcher(stringBytes(decoys.Values)...)
 
 	runDir, err := s.newRunDir()
 	if err != nil {
@@ -374,12 +384,25 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 		return
 	}
 
+	runCtx, cancel := context.WithTimeout(ctx, plan.maxRun)
+	defer cancel()
+	var tripped atomic.Bool
 	proxy := &egress.Proxy{
 		Policy:   egress.Policy{Allow: plan.hosts},
 		Resolver: s.cfg.Contained.Resolver,
 		Dial:     s.cfg.Contained.Dial,
 		OnDeny: func(host, reason string) {
 			s.emitEgressDenied(ctx, rr.Connection, host, reason)
+		},
+		Canary: decoyed.Contains,
+		OnCanary: func(host, where string) {
+			// The first request that carries a decoy ends the run: nothing
+			// legitimate holds one, so everything after it is suspect.
+			if tripped.CompareAndSwap(false, true) {
+				// The decoy may be the host name itself; it is never logged.
+				s.emitCanaryTripped(ctx, d, string(decoyed.Redact([]byte(host))), where)
+				cancel()
+			}
 		},
 	}
 	listen := s.cfg.Contained.Listen
@@ -405,6 +428,12 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 
 	spec := plan.spec
 	spec.Env = containedEnv(rr, secrets, contained.DefaultHome)
+	for name, v := range decoys.Env {
+		spec.Env = append(spec.Env, name+"="+v)
+	}
+	for _, f := range decoys.Files {
+		spec.Honey = append(spec.Honey, contained.HoneyFile{Path: f.Path, Content: f.Content})
+	}
 	spec.EgressDir, spec.RootDir, spec.Dir = egressDir, rootDir, plan.project
 
 	snapshot, snapErr := redactor.TakeSnapshot(plan.project)
@@ -427,8 +456,6 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 		return
 	}
 
-	runCtx, cancel := context.WithTimeout(ctx, plan.maxRun)
-	defer cancel()
 	var relayed, redactions atomic.Int64
 	var wg sync.WaitGroup
 	drain := func(src io.Reader, stderr bool) {
@@ -472,6 +499,11 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 			reason = "leak_suspected"
 		}
 	}
+	if tripped.Load() {
+		resp.OK, resp.ExitCode, resp.Code = false, exitcode.SecurityBlock, CodeRefused
+		resp.Error = "a canary credential was sent out of the sandbox; the run was ended"
+		reason = "canary_tripped"
+	}
 	mu.Lock()
 	_ = writeFrame(conn, resp)
 	mu.Unlock()
@@ -503,6 +535,23 @@ func (s *Server) emitEgressDenied(ctx context.Context, connection, host, reason 
 	_ = s.cfg.Audit.Emit(ctx, audit.Event{Action: audit.ActionEgressDenied, Outcome: audit.OutcomeDenied, Extra: map[string]any{
 		"provider": connection, "host": host, "reason": reason,
 	}})
+}
+
+func (s *Server) emitCanaryTripped(ctx context.Context, d decision, host, where string) {
+	if s.cfg.Audit == nil {
+		return
+	}
+	_ = s.cfg.Audit.Emit(ctx, audit.Event{Action: audit.ActionCanaryTripped, Outcome: audit.OutcomeDenied, Extra: map[string]any{
+		"run_id": d.runID, "connection": d.connection, "caller_kind": string(d.res.Kind), "host": host, "where": where,
+	}})
+}
+
+func stringBytes(in []string) [][]byte {
+	out := make([][]byte, len(in))
+	for i, v := range in {
+		out[i] = []byte(v)
+	}
+	return out
 }
 
 func (s *Server) emitLeakSuspected(ctx context.Context, d decision, files int) {

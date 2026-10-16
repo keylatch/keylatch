@@ -171,6 +171,10 @@ func (s *Session) connect(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_target", "invalid CONNECT target")
 		return
 	}
+	if s.decoyed.Contains([]byte(r.Host)) {
+		s.trip(w, host, "connect_target")
+		return
+	}
 	if net.ParseIP(host) != nil {
 		s.denyEgress(w, host, "ip_literal")
 		return
@@ -437,6 +441,57 @@ func (s *Session) noteRedirect(from string, resp *http.Response) {
 
 // misuse blocks the request, suspends the session and records the event.
 func (s *Session) misuse(w http.ResponseWriter, host string, f finding) {
+	s.suspend(w, audit.Event{Action: audit.ActionPlaceholderMisuse, Outcome: audit.OutcomeDenied, Extra: map[string]any{
+		"provider": s.connection, "field": f.field, "host": host, "where": f.where, "session_id_hmac": s.id,
+	}}, "placeholder_misuse", "keylatch: a placeholder was sent where it is not allowed; the session is suspended")
+}
+
+// trip blocks a request that carries one of the session's canaries, suspends
+// the session and records the event. The first such request is the last.
+func (s *Session) trip(w http.ResponseWriter, host, where string) {
+	host = string(s.decoyed.Redact([]byte(host))) // the decoy may be the host name itself
+	s.suspend(w, audit.Event{Action: audit.ActionCanaryTripped, Outcome: audit.OutcomeDenied, Extra: map[string]any{
+		"connection": s.connection, "host": host, "where": where, "session_id_hmac": s.id,
+	}}, "canary_tripped", "keylatch: a canary credential was sent; the session is suspended")
+}
+
+// canaryHead reports where a canary appears in the request head.
+func (s *Session) canaryHead(r *http.Request) string {
+	hit := func(v string) bool {
+		if s.decoyed.Contains([]byte(v)) {
+			return true
+		}
+		if d, err := url.QueryUnescape(v); err == nil && d != v {
+			return s.decoyed.Contains([]byte(d))
+		}
+		return false
+	}
+	for name, values := range r.Header {
+		if hit(name) {
+			return "header_name"
+		}
+		for _, v := range values {
+			if hit(v) {
+				return "header:" + strings.ToLower(name)
+			}
+		}
+	}
+	switch {
+	case hit(r.Host):
+		return "authority"
+	case hit(r.URL.EscapedPath()):
+		return "path"
+	case hit(r.URL.RawQuery):
+		return "query"
+	case r.URL.User != nil && hit(r.URL.User.String()):
+		return "userinfo"
+	}
+	return ""
+}
+
+// suspend ends the session's usefulness: it records ev, answers the request
+// with a refusal and closes every connection of the session shortly after.
+func (s *Session) suspend(w http.ResponseWriter, ev audit.Event, code, msg string) {
 	s.mu.Lock()
 	s.suspended = true
 	conns := slices.Collect(func(yield func(net.Conn) bool) {
@@ -448,10 +503,8 @@ func (s *Session) misuse(w http.ResponseWriter, host string, f finding) {
 	})
 	s.mu.Unlock()
 
-	_ = s.emit(audit.Event{Action: audit.ActionPlaceholderMisuse, Outcome: audit.OutcomeDenied, Extra: map[string]any{
-		"provider": s.connection, "field": f.field, "host": host, "where": f.where, "session_id_hmac": s.id,
-	}})
-	writeError(w, http.StatusForbidden, "placeholder_misuse", "keylatch: a placeholder was sent where it is not allowed; the session is suspended")
+	_ = s.emit(ev)
+	writeError(w, http.StatusForbidden, code, msg)
 	time.AfterFunc(250*time.Millisecond, func() {
 		for _, c := range conns {
 			_ = c.Close()
@@ -480,6 +533,10 @@ func (s *Session) request(w http.ResponseWriter, r *http.Request, host, port str
 	authority := net.JoinHostPort(host, port)
 	if strings.Contains(r.RequestURI, "://") {
 		writeError(w, http.StatusBadRequest, "bad_request", "absolute-form request target inside a tunnel")
+		return
+	}
+	if where := s.canaryHead(r); where != "" {
+		s.trip(w, host, where)
 		return
 	}
 	if !hostMatches(r.Host, host, port) {
@@ -534,6 +591,10 @@ func (s *Session) request(w http.ResponseWriter, r *http.Request, host, port str
 	resp, err := s.transport.RoundTrip(out)
 	if err != nil {
 		if sr, ok := body.(*scanReader); ok && (sr.hit || errors.Is(err, errLeak)) {
+			if sr.canaryHit {
+				s.trip(w, host, "body")
+				return
+			}
 			s.misuse(w, host, finding{where: "body"})
 			return
 		}
@@ -567,9 +628,13 @@ func (s *Session) checkBody(w http.ResponseWriter, r *http.Request, host string)
 			s.misuse(w, host, finding{where: "body"})
 			return nil, false
 		}
+		if s.decoyed.Contains(data) {
+			s.trip(w, host, "body")
+			return nil, false
+		}
 		return bytes.NewReader(data), true
 	}
-	return &scanReader{r: r.Body, f: s.finder}, true
+	return &scanReader{r: r.Body, f: s.finder, canary: s.decoyed, canaryWindow: s.canaryWindow()}, true
 }
 
 func (s *Session) resolve(ctx context.Context, field string) (string, error) {
@@ -695,14 +760,24 @@ func (s *Session) plain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	host := strings.ToLower(r.URL.Hostname())
+	if where := s.canaryHead(r); where != "" {
+		s.trip(w, host, "plain_http:"+where)
+		return
+	}
 	if r.URL.User != nil || s.finder.inString(r.URL.String()) || s.headLeak(r) != "" {
 		s.misuse(w, host, finding{where: "plain_http"})
 		return
 	}
 	if r.ContentLength > 0 && r.ContentLength <= bufferedBody {
-		if data, err := io.ReadAll(io.LimitReader(r.Body, bufferedBody+1)); err == nil && s.finder.in(data) {
-			s.misuse(w, host, finding{where: "plain_http_body"})
-			return
+		if data, err := io.ReadAll(io.LimitReader(r.Body, bufferedBody+1)); err == nil {
+			if s.decoyed.Contains(data) {
+				s.trip(w, host, "plain_http_body")
+				return
+			}
+			if s.finder.in(data) {
+				s.misuse(w, host, finding{where: "plain_http_body"})
+				return
+			}
 		}
 	}
 	s.denyEgress(w, host, "plain_http")

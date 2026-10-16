@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/canary"
+	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -58,6 +60,10 @@ type Session struct {
 	expires    time.Time
 	timer      *time.Timer
 	onClose    func(*Session)
+	// decoys are the session's canary values. Seeing one in a request means
+	// the child sent a credential it was never given.
+	decoys  canary.Set
+	decoyed *redactor.Matcher
 
 	mu        sync.Mutex
 	conns     map[net.Conn]struct{}
@@ -132,7 +138,14 @@ func (m *Manager) Open(req OpenRequest) (*Session, error) {
 		values[i] = e.value
 	}
 
+	decoys, err := canary.NewSet(req.Template.Provider)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Session{
+		decoys:     decoys,
+		decoyed:    redactor.NewMatcher(stringsToBytes(decoys.Values)...),
 		id:         id,
 		connection: req.Template.Provider,
 		binding:    b,
@@ -208,6 +221,29 @@ func (s *Session) Placeholders() map[string]string {
 	out := make(map[string]string, len(s.entries))
 	for _, e := range s.entries {
 		out[e.field] = e.value
+	}
+	return out
+}
+
+// Canaries maps the environment variable that holds the session's decoy to
+// its value. The child gets it next to its placeholders; the proxy suspends the
+// session when the value, in any common encoding, appears in a request.
+func (s *Session) Canaries() map[string]string { return s.decoys.Env }
+
+// canaryWindow is the longest span a decoy can take once encoded, so a scan
+// that keeps this many trailing bytes sees one split across two reads.
+func (s *Session) canaryWindow() int {
+	longest := 0
+	for _, v := range s.decoys.Values {
+		longest = max(longest, len(v))
+	}
+	return longest * 4
+}
+
+func stringsToBytes(in []string) [][]byte {
+	out := make([][]byte, len(in))
+	for i, v := range in {
+		out[i] = []byte(v)
 	}
 	return out
 }

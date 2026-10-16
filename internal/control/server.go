@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -409,6 +410,9 @@ func (s *Server) placeholderSession(ctx context.Context, kind Kind, rr *RunReque
 	}
 	env := runner.PlaceholderSessionEnv(tmpl, sess.Placeholders(), "http://"+runner.GatewayAddrPlaceholder)
 	env.Set = append(env.Set, runner.GitCredentialEnv(tmpl, sess.ID())...)
+	for _, name := range slices.Sorted(maps.Keys(sess.Canaries())) {
+		env.Set = append(env.Set, runner.EnvAssign{Name: name, Value: sess.Canaries()[name]})
+	}
 	return Response{OK: true, Kind: kind, Session: &Session{
 		Tier:       TierPlaceholder,
 		Runtime:    placeholderRuntime,

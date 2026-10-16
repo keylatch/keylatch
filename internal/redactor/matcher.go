@@ -123,6 +123,9 @@ func (m *Matcher) step(state int32, b byte) int32 {
 
 // Contains reports whether data holds any secret value or encoding.
 func (m *Matcher) Contains(data []byte) bool {
+	if m.Empty() {
+		return false
+	}
 	var state int32
 	for _, b := range data {
 		state = m.step(state, b)

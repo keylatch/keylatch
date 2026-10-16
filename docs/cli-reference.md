@@ -124,6 +124,21 @@ Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.lo
 
 ---
 
+### `keylatch scan`
+
+Find credentials in text before it reaches a model or a transcript.
+
+```
+keylatch scan [--redact] [path...]
+```
+
+Reads the files, or standard input, and prints `file:line: kind` for every line that holds a credential in a
+known format (`credential`) or a Keylatch canary (`canary`). It never prints the value. Exit `2` when it finds
+anything, so a hook can stop a prompt or a tool result from leaving. With `--redact` the text is written to
+standard output with each finding replaced and the exit status is `0`.
+
+---
+
 ### `keylatch doctor`
 
 Diagnose keylatch configuration and environment.

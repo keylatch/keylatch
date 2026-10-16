@@ -167,6 +167,15 @@ func setupRoot(sys sysCalls, spec Spec, helper string) error {
 			return err
 		}
 	}
+	for _, h := range spec.Honey {
+		p := b.at(filepath.Join(spec.Home, h.Path))
+		if err := sys.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			return err
+		}
+		if err := sys.WriteFile(p, []byte(h.Content), 0o600); err != nil {
+			return err
+		}
+	}
 	if err := sys.MkdirAll(b.at("/etc"), 0o755); err != nil {
 		return err
 	}
