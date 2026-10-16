@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -366,7 +367,11 @@ func TestRotateKeysAndInstallCommands(t *testing.T) {
 	prev := brokerEuid
 	brokerEuid = func() int { return 1000 }
 	defer func() { brokerEuid = prev }()
-	if _, err := run(t, newBrokerInstallCmd()); err == nil || !strings.Contains(err.Error(), "sudo keylatch broker install") {
+	wantErr := "sudo keylatch broker install"
+	if runtime.GOOS != "linux" {
+		wantErr = "runs on Linux only"
+	}
+	if _, err := run(t, newBrokerInstallCmd()); err == nil || !strings.Contains(err.Error(), wantErr) {
 		t.Fatalf("install without root = %v", err)
 	}
 }

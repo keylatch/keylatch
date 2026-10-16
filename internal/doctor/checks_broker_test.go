@@ -156,6 +156,11 @@ func TestProbeBrokerTalksToTheDaemon(t *testing.T) {
 		t.Skipf("binding Unix sockets is not permitted here: %v", err)
 	}
 	defer func() { _ = ln.Close() }()
+	// Closing a listener unlinks its socket; keep the file so the last case sees
+	// a stale socket nobody listens on, as after a daemon crash.
+	if ul, ok := ln.(*net.UnixListener); ok {
+		ul.SetUnlinkOnClose(false)
+	}
 	reply := brokerapi.Response{OK: true, Status: &brokerapi.Status{Version: "9.9.9", Policy: "signed", Presence: "polkit"}}
 	go func() {
 		for {

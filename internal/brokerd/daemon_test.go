@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -70,6 +71,9 @@ func TestRunRefusesToStartUnprotected(t *testing.T) {
 }
 
 func TestRunServesTheActivatedSocket(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("socket activation is a systemd (Linux) mechanism")
+	}
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		t.Skipf("socket pairs are not permitted here: %v", err)
@@ -125,6 +129,9 @@ func TestRunServesTheActivatedSocket(t *testing.T) {
 }
 
 func TestRunWarnsWithoutAPresenceMethod(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("socket activation is a systemd (Linux) mechanism")
+	}
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		t.Skipf("socket pairs are not permitted here: %v", err)

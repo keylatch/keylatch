@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -107,7 +108,7 @@ func TestStoreNeverWritesPlaintext(t *testing.T) {
 		if bytes.Contains(b, []byte("super-secret-value")) {
 			t.Fatalf("%s holds the plaintext", f.Name())
 		}
-		if info, _ := f.Info(); info.Mode().Perm() != 0o600 {
+		if info, _ := f.Info(); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 			t.Fatalf("%s mode = %v", f.Name(), info.Mode().Perm())
 		}
 	}
@@ -250,6 +251,9 @@ func TestStoreValidation(t *testing.T) {
 }
 
 func TestStoreWriteFailures(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows directory modes do not block writes")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("directory permissions do not bind root")
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -88,7 +89,7 @@ func TestHierarchyDerivations(t *testing.T) {
 			}
 		}
 		info, _ := os.Stat(filepath.Join(dir, name))
-		if info.Mode().Perm() != 0o600 {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 			t.Fatalf("%s mode = %v, want 0600", name, info.Mode().Perm())
 		}
 	}
@@ -285,6 +286,9 @@ func TestLockRefusal(t *testing.T) {
 }
 
 func TestWriteFailuresSurface(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows directory modes do not block writes")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("directory permissions do not bind root")
 	}
