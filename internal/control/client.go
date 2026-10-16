@@ -76,6 +76,12 @@ func NewClient(lookup llmcontext.Lookup) (*Client, error) {
 	return c, nil
 }
 
+// BrokerInstalled reports whether the system broker's socket exists and
+// KEYLATCH_SOCKET does not name another.
+func BrokerInstalled(lookup llmcontext.Lookup) bool {
+	return lookup("KEYLATCH_SOCKET") == "" && isSocket(paths.BrokerSocket(lookup))
+}
+
 func isSocket(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode()&os.ModeSocket != 0

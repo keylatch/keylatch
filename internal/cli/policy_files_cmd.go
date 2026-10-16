@@ -162,6 +162,9 @@ the summary shown there is the diff.`,
 			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 				return NewUsageError("policy import: %q is not a directory", dir)
 			}
+			if brokerInstalled(llmcontext.DefaultLookup) {
+				return brokerPolicyImport(c, llmcontext.DefaultLookup, dir)
+			}
 			incoming, err := connpolicy.ReadDir(dir, false)
 			if err != nil {
 				return NewUsageError("policy import: %v; nothing was changed", err)
@@ -207,6 +210,9 @@ func newPolicyExportCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dir := args[0]
+			if brokerInstalled(llmcontext.DefaultLookup) {
+				return brokerPolicyExport(c, llmcontext.DefaultLookup, dir, force)
+			}
 			docs, err := (connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}).LoadAll()
 			if err != nil {
 				return fmt.Errorf("policy export: %w", err)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/vault"
@@ -13,6 +14,54 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+// readSecretValue reads a credential value from piped stdin or a hidden prompt.
+func readSecretValue(c *cobra.Command, path string) ([]byte, error) {
+	var value []byte
+	stdin := c.InOrStdin()
+	stdinFile, isFile := stdin.(*os.File)
+	var err error
+	if isFile && !term.IsTerminal(int(stdinFile.Fd())) {
+		value, err = readFieldFromStdin(stdin)
+	} else {
+		value, err = promptHidden(fmt.Sprintf("Enter value for %s", path))
+	}
+	if err != nil {
+		return nil, withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
+	}
+	if len(value) == 0 {
+		return nil, withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: value must not be empty"))
+	}
+	return value, nil
+}
+
+// brokerSet stores a value through the system broker. The metadata flags are
+// not stored by the broker, so passing one is refused rather than dropped.
+func brokerSet(c *cobra.Command, env llmcontext.Lookup, path string) error {
+	for _, f := range []string{"expires-at", "issued-at", "owner", "scope", "max-versions"} {
+		if c.Flags().Changed(f) {
+			return NewUsageError("set: --%s is not stored by the system broker yet; set the value without it", f)
+		}
+	}
+	canonical, err := vault.CanonicalPath(path)
+	if err != nil {
+		return NewUsageError("set: %v", err)
+	}
+	bc, err := brokerClient(env)
+	if err != nil {
+		return err
+	}
+	value, err := readSecretValue(c, path)
+	if err != nil {
+		return err
+	}
+	defer clear(value)
+	if _, err := brokerPrivileged(bc, "set", brokerapi.Request{Op: brokerapi.OpSecretSet, Path: canonical, Value: value}); err != nil {
+		return err
+	}
+	fmt.Fprintf(c.OutOrStdout(), "[keylatch] set: %s (system broker)\n", canonical)
+	return nil
+}
 
 // newSetCmd returns the `set` subcommand for writing a credential value.
 // Accepts --expires-at, --issued-at, --owner, --scope, --max-versions.
@@ -37,10 +86,9 @@ Example:
 
 			path := args[0]
 
-			// Check for accidental positional value argument.
-			// The command requires exactly 1 arg (the path), so extra args
-			// would have been caught by cobra.ExactArgs above. But if the
-			// user passes the value via ENV or similar, we don't block here.
+			if brokerInstalled(env) {
+				return brokerSet(c, env, path)
+			}
 
 			// Parse metadata flags.
 			expiresAtStr, _ := c.Flags().GetString("expires-at")
@@ -80,30 +128,9 @@ Example:
 			defer auditCleanup()
 			ctx = audit.WithEmitter(ctx, audit.AsEmitter(al))
 
-			// Read value from stdin or interactive prompt.
-			var value []byte
-			stdin := c.InOrStdin()
-
-			// Check if stdin is a pipe/file (non-interactive).
-			stdinFile, isFile := stdin.(*os.File)
-			if isFile && !term.IsTerminal(int(stdinFile.Fd())) {
-				// Piped stdin.
-				var err error
-				value, err = readFieldFromStdin(stdin)
-				if err != nil {
-					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
-				}
-			} else {
-				// Interactive prompt — use shared helper.
-				var err error
-				value, err = promptHidden(fmt.Sprintf("Enter value for %s", path))
-				if err != nil {
-					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
-				}
-			}
-
-			if len(value) == 0 {
-				return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: value must not be empty"))
+			value, err := readSecretValue(c, path)
+			if err != nil {
+				return err
 			}
 
 			newVersion, err := vault.RotateValue(ctx, path, value, partialMeta, cfg, env)
