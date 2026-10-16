@@ -1,18 +1,15 @@
 package doctor
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"runtime"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/keylatch/keylatch/internal/brokerapi"
+	"github.com/keylatch/keylatch/internal/control"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -39,7 +36,20 @@ type BrokerState struct {
 
 // brokerAvailable lists the platforms on which the system broker can be
 // installed.
-func brokerAvailable() bool { return runtime.GOOS == "linux" }
+func brokerAvailable() bool {
+	return runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+}
+
+// brokerStartHint says how to start the installed broker on this platform.
+func brokerStartHint() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "Run: sudo launchctl kickstart -k system/dev.keylatch.broker"
+	case "windows":
+		return "Run, as an administrator: Start-Service keylatch"
+	}
+	return "Run: sudo systemctl start keylatchd.socket, then: journalctl -u keylatchd"
+}
 
 // probeBroker inspects the broker without trusting it: it asks for status over
 // the socket and reads local files, and changes nothing.
@@ -48,30 +58,25 @@ func probeBroker(ctx context.Context, env llmcontext.Lookup, runner kexec.Comman
 	if a, ok, err := brokerapi.ReadAdopted(paths.BrokerAdopted(env)); err == nil && ok {
 		st.Adopted = a.UpstreamKey
 	}
-	sock := paths.BrokerSocket(env)
-	if info, err := os.Stat(sock); err != nil || info.Mode()&os.ModeSocket == 0 {
+	if !control.BrokerInstalled(env) {
 		return st
 	}
 	st.Installed = true
-	conn, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "unix", sock)
+	client, err := control.NewRawClient(env)
 	if err != nil {
 		st.Error = err.Error()
 		return st
 	}
-	defer func() { _ = conn.Close() }()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	if _, err := conn.Write([]byte(`{"op":"broker.status"}` + "\n")); err != nil {
-		st.Error = err.Error()
-		return st
-	}
-	line, err := bufio.NewReader(conn).ReadBytes('\n')
-	var resp brokerapi.Response
-	if err != nil || json.Unmarshal(line, &resp) != nil || !resp.OK || resp.Status == nil {
+	resp, err := client.Call(brokerapi.Request{Op: "broker.status"})
+	if err != nil || !resp.OK || resp.Status == nil {
 		st.Error = "the daemon did not answer a status request"
+		if err != nil {
+			st.Error = err.Error()
+		}
 		return st
 	}
 	st.Reachable, st.Version, st.Policy, st.Presence = true, resp.Status.Version, resp.Status.Policy, resp.Status.Presence
-	if runner != nil {
+	if runner != nil && runtime.GOOS == "linux" {
 		_, _, code, err := runner.Run(ctx, "/usr/bin/systemd-creds", []string{"has-tpm2"}, nil)
 		st.TPM = err == nil && code == 0
 	}
@@ -136,12 +141,15 @@ func modeRow(b BrokerState) Status {
 	case b.Installed:
 		st.OK = false
 		st.Detail = "daemon mode: the broker socket exists but the daemon does not answer (" + b.Error + ")"
-		st.Fix = "Run: sudo systemctl start keylatchd.socket, then: journalctl -u keylatchd"
+		st.Fix = brokerStartHint()
 	default:
 		st.Detail = "in-user mode: keys are held by your own account, so protection depends on the agent guard and policy, not on a separate OS user"
 		if brokerAvailable() {
 			st.Warn = true
 			st.Fix = "Run: sudo keylatch broker install, then: keylatch broker adopt"
+			if runtime.GOOS == "windows" {
+				st.Fix = "Run, as an administrator: keylatch broker install, then: keylatch broker adopt"
+			}
 		}
 	}
 	return st
