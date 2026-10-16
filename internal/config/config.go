@@ -54,6 +54,44 @@ type Config struct {
 	// Backends holds per-backend credential settings keyed by backend id:
 	// op, opconnect, vault, awssm, gcpsm, azurekv, doppler, infisical.
 	Backends map[string]BackendCredentials `json:"backends,omitempty"`
+
+	// CI holds the workload identities `keylatch ci exchange` accepts. Only
+	// the operator's default config file is consulted for it.
+	CI *CIConfig `json:"ci,omitempty"`
+}
+
+// CIConfig lists the CI workloads trusted to use connections.
+type CIConfig struct {
+	Trust []CITrust `json:"trust,omitempty"`
+}
+
+// CITrust names one CI workload and the connections it may use. A token must
+// match every field that is set; Audience, Repositories and Refs are required.
+type CITrust struct {
+	// Provider is "github-actions" or "gitlab".
+	Provider string `json:"provider"`
+	// Issuer overrides the provider's issuer (self-managed GitLab).
+	Issuer string `json:"issuer,omitempty"`
+	// JWKSURL overrides the key set location, which is otherwise derived from
+	// the issuer. It must be https.
+	JWKSURL string `json:"jwks_url,omitempty"`
+	// Audience is the value the job asks the CI provider to put in the token.
+	Audience string `json:"audience"`
+	// Repositories are owner/name (project path on GitLab); "*" matches one
+	// path segment.
+	Repositories []string `json:"repositories"`
+	// Refs are full refs such as refs/heads/main or refs/tags/v*. A branch
+	// and a tag of the same name are different refs.
+	Refs []string `json:"refs"`
+	// Environments restricts the deployment environment claim when set.
+	Environments []string `json:"environments,omitempty"`
+	// JobWorkflowRefs restricts the job_workflow_ref claim (the
+	// ci_config_ref_uri claim on GitLab) when set.
+	JobWorkflowRefs []string `json:"job_workflow_refs,omitempty"`
+	// Connections are the only connections the exchanged session may use.
+	Connections []string `json:"connections"`
+	// MaxTTL is the session lifetime in seconds, 1-3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
 }
 
 // ConnectionPolicy is the policy attached to one connection.
