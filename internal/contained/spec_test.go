@@ -3,6 +3,8 @@ package contained
 import (
 	"io"
 	"net"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -12,14 +14,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// hostPath turns a slash path into an absolute path on this platform.
+func hostPath(p string) string {
+	if runtime.GOOS == "windows" {
+		return `C:` + filepath.FromSlash(p)
+	}
+	return p
+}
+
 func validSpec() Spec {
-	return Spec{Argv: []string{"make", "test"}, Env: []string{"A=b"}, Project: "/work/p", EgressDir: "/run/e", RootDir: "/run/r"}
+	return Spec{Argv: []string{"make", "test"}, Env: []string{"A=b"}, Project: hostPath("/work/p"), EgressDir: hostPath("/run/e"), RootDir: hostPath("/run/r")}
 }
 
 func TestValidateFillsDefaults(t *testing.T) {
 	s := validSpec()
 	require.NoError(t, s.Validate())
-	assert.Equal(t, "/work/p", s.Dir)
+	assert.Equal(t, hostPath("/work/p"), s.Dir)
 	assert.Equal(t, DefaultHome, s.Home)
 	assert.Equal(t, DefaultProxyPort, s.ProxyPort)
 
