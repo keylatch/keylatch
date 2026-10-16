@@ -62,17 +62,27 @@ log "Temp workspace: $TMPDIR_ROOT"
 if [[ -z "$KEYLATCH_BIN" ]]; then
   log "Building keylatch binary..."
   KEYLATCH_BIN="$TMPDIR_ROOT/keylatch"
-  # The end-to-end build lets this unattended job stand in for the human
-  # presence that token creation needs; release binaries cannot.
+  # The end-to-end build can skip the OS keyring (see below); release
+  # binaries cannot.
   go build -tags keylatch_e2e -o "$KEYLATCH_BIN" ./cmd/keylatch
   log "Built: $KEYLATCH_BIN"
 fi
-export KEYLATCH_E2E_PRESENCE=approve
 # A runner's macOS login keychain can block on an unlock prompt; the operator
 # config written below lets bootstrap use a file key instead.
 if [[ "$(uname -s)" == "Darwin" ]]; then
   export KEYLATCH_E2E_NO_OS_KEYRING=1
 fi
+
+# with_presence runs a privileged keylatch command on a pseudo-terminal and
+# answers its presence prompt, the way a human at a terminal would. Presence
+# reads no environment, so a terminal is the only way through.
+with_presence() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    printf 'yes\n' | script -q /dev/null "$@" | tr -d '\r'
+  else
+    printf 'yes\n' | script -qec "$(printf '%q ' "$@")" /dev/null | tr -d '\r'
+  fi
+}
 
 [[ -x "$KEYLATCH_BIN" ]] || fail "keylatch binary not executable: $KEYLATCH_BIN"
 
@@ -181,7 +191,7 @@ pass "/health returns {status:ok}"
 # ─── token create ─────────────────────────────────────────────────────────────
 
 log "Creating gateway token..."
-TOKEN_OUTPUT=$("$KEYLATCH_BIN" gateway token create test-e2e-actor \
+TOKEN_OUTPUT=$(with_presence "$KEYLATCH_BIN" gateway token create test-e2e-actor \
   --allow "openrouter.chat.completion" \
   --ttl 1h)
 GATEWAY_TOKEN=$(echo "$TOKEN_OUTPUT" | grep '^token:' | awk '{print $2}')
@@ -206,7 +216,7 @@ pass "missing token → 401"
 # ─── capability enforcement: wrong capability → 403 ──────────────────────────
 
 log "Creating a sentry-scoped token to verify audience isolation..."
-SENTRY_TOKEN_OUTPUT=$("$KEYLATCH_BIN" gateway token create sentry-actor \
+SENTRY_TOKEN_OUTPUT=$(with_presence "$KEYLATCH_BIN" gateway token create sentry-actor \
   --allow "sentry.error_reporting" --ttl 1h)
 SENTRY_TOKEN=$(echo "$SENTRY_TOKEN_OUTPUT" | grep '^token:' | awk '{print $2}')
 
