@@ -144,6 +144,11 @@ func stateDirs(env Env, homes []string) []string {
 	for _, h := range homes {
 		dirs = append(dirs, path.Join(h, ".keylatch"), path.Join(h, ".config", "keylatch"))
 	}
+	// Only Linux reads XDG_CONFIG_HOME, but a config placed there elsewhere is
+	// still Keylatch state worth denying.
+	if xdg := env.Lookup("XDG_CONFIG_HOME"); xdg != "" {
+		dirs = append(dirs, filepath.Join(xdg, "keylatch"))
+	}
 	out := make([]string, 0, len(dirs))
 	for _, d := range dirs {
 		if d = slash(d); d != "" && d != "." && d != "/" {
