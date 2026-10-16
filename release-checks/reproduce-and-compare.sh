@@ -62,7 +62,7 @@ rebuild() {
 }
 
 compare_release() (
-  local published="$1" tag="$2" source="$3" version sums work mismatches=0
+  local published="$1" tag="$2" source="$3" version sums work mismatches=0 skipped=0
   require_tag "$tag"
   version="${tag#v}"
   sums="$published/keylatch-${version}_checksums.txt"
@@ -80,6 +80,13 @@ compare_release() (
       local rel="${member#"$unpacked"/}" want got
       want=$(sha256sum "$member" | cut -d' ' -f1)
       if go version -m "$member" >/dev/null 2>&1; then
+        # cgo macOS builds need Apple's toolchain; a Linux runner cannot redo them.
+        if go version -m "$member" | grep -q $'\tbuild\tCGO_ENABLED=1' \
+          && go version -m "$member" | grep -q $'\tbuild\tGOOS=darwin'; then
+          echo "skipped  $archive:$rel (cgo macOS build, reproduce on macOS)"
+          skipped=$((skipped + 1))
+          continue
+        fi
         local rebuilt="$work/rebuilt/${archive}/${rel}"
         mkdir -p "$(dirname "$rebuilt")"
         if ! rebuild "$member" "$source" "$rebuilt"; then
@@ -105,6 +112,10 @@ compare_release() (
   if ((mismatches > 0)); then
     echo "$tag: $mismatches archive members differ from the tagged source"
     return 1
+  fi
+  if ((skipped > 0)); then
+    echo "$tag: every archive member that can be rebuilt here reproduces; $skipped cgo macOS binaries were not rebuilt"
+    return 0
   fi
   echo "$tag: every archive member reproduces from the tagged source"
 )
