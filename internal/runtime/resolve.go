@@ -128,7 +128,7 @@ func shapeFor(m RuntimeMode) CredentialDelivery {
 	switch m {
 	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeGatewayProxy:
 		return DeliveryKeylatchSessionToken
-	case RuntimeMinted, RuntimeDirectBrokered:
+	case RuntimeMinted:
 		return DeliveryProviderEphemeral
 	default:
 		panic(fmt.Sprintf("runtime: shapeFor: unrecognized mode %q — update shapeFor when adding to AllModes", m))

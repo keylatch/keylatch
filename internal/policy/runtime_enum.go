@@ -9,14 +9,13 @@ import "fmt"
 type RuntimeMode string
 
 const (
-	RuntimeGatewayTyped   RuntimeMode = "gateway_typed"
-	RuntimeGatewaySDK     RuntimeMode = "gateway_sdk"
-	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
+	RuntimeGatewayTyped RuntimeMode = "gateway_typed"
+	RuntimeGatewaySDK   RuntimeMode = "gateway_sdk"
 	// RuntimeDirectClassic is the 0.1.0 non-sandboxed direct injection mode.
 	RuntimeDirectClassic RuntimeMode = "direct_classic"
 	RuntimeGatewayProxy  RuntimeMode = "gateway_proxy"
-	// RuntimeMinted replaces direct_brokered: a scoped credential minted for the
-	// command and revoked when it exits.
+	// RuntimeMinted is a scoped credential minted for the command and revoked
+	// when it exits; it was called direct_brokered.
 	RuntimeMinted RuntimeMode = "minted"
 	// RuntimePlaceholder is tier D3: the child holds placeholders the daemon's
 	// proxy replaces. RuntimeContained is tier D5: the child holds the real
@@ -41,17 +40,20 @@ var removedRuntimes = map[string]bool{
 // See migration table in spec §.
 func ValidateRuntimeMode(s string) error {
 	switch RuntimeMode(s) {
-	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeMinted, RuntimeDirectClassic, RuntimeGatewayProxy, RuntimePlaceholder, RuntimeContained, RuntimeAdapter:
+	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeMinted, RuntimeDirectClassic, RuntimeGatewayProxy, RuntimePlaceholder, RuntimeContained, RuntimeAdapter:
 		return nil
+	}
+	if s == "direct_brokered" {
+		return fmt.Errorf("runtime %q was renamed; use minted", s)
 	}
 	if removedRuntimes[s] {
 		return fmt.Errorf(
-			"runtime %q has been removed; see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, direct_brokered, direct_classic, or gateway_proxy",
+			"runtime %q has been removed; see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, minted, direct_classic, or gateway_proxy",
 			s,
 		)
 	}
 	return fmt.Errorf(
-		"runtime %q is not a valid runtime mode; valid values: gateway_typed, gateway_sdk, direct_brokered, direct_classic, gateway_proxy",
+		"runtime %q is not a valid runtime mode; valid values: gateway_typed, gateway_sdk, minted, direct_classic, gateway_proxy",
 		s,
 	)
 }

@@ -19,7 +19,7 @@ func TestTemplateRuntimeFollowsTheTemplate(t *testing.T) {
 	}{
 		{"mint-capable template", []string{"github-app", "gh", "api"}, runtime.RuntimeMinted},
 		{"template preferring the SDK gateway", []string{"openrouter", "curl"}, runtime.RuntimeGatewaySDK},
-		{"template still naming the retired mode", []string{"dropbox", "rclone"}, runtime.RuntimeGatewayTyped},
+		{"template preferring the proxy", []string{"dropbox", "rclone"}, runtime.RuntimeGatewayProxy},
 		{"unknown connection", []string{"no-such-connection", "x"}, runtime.RuntimeGatewayTyped},
 		{"no connection", nil, runtime.RuntimeGatewayTyped},
 	}

@@ -141,8 +141,8 @@ For the full provider catalog with template details, see [provider-template-cata
 | Name | `keylatch connect` example | Preferred runtime mode | Trust level |
 |------|---------------------------|------------------------|:-----------:|
 | Cloudflare | `keylatch connect cloudflare api_token YOUR_TOKEN` | `gateway_typed` | 0 |
-| Dropbox | `keylatch connect dropbox access_token YOUR_TOKEN` | none yet: no mint strategy is wired for it | 0 |
-| Google Workspace | `keylatch connect google_workspace oauth_credentials YOUR_CREDS` | none yet: no mint strategy is wired for it | 0 |
+| Dropbox | `keylatch connect dropbox access_token YOUR_TOKEN` | `gateway_proxy` (unavailable in this release) | 0 |
+| Google Workspace | `keylatch connect google_workspace oauth_credentials YOUR_CREDS` | `gateway_proxy` (unavailable in this release) | 0 |
 
 ---
 

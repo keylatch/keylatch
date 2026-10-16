@@ -266,7 +266,7 @@ func TestPolicyCheckMatchesEnforce(t *testing.T) {
 			target = "some-other-connection"
 		}
 		for _, kind := range connpolicy.Kinds {
-			for _, rt := range []string{"", "gateway_typed", "gateway_sdk", "direct_brokered"} {
+			for _, rt := range []string{"", "gateway_typed", "gateway_sdk", "minted"} {
 				args := []string{"policy", "check", target, "--as", string(kind), "--json"}
 				if rt != "" {
 					args = append(args, "--runtime", rt)

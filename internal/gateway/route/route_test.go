@@ -44,8 +44,8 @@ func testTemplates() []registry.ConnectionTemplate {
 		{
 			Provider: "dropbox",
 			RuntimeSupport: registry.RuntimeSupport{
-				Preferred: registry.RuntimeDirectBrokered,
-				Supported: []registry.RuntimeMode{registry.RuntimeDirectBrokered},
+				Preferred: registry.RuntimeGatewayProxy,
+				Supported: []registry.RuntimeMode{registry.RuntimeGatewayProxy},
 			},
 			// Should NOT produce gateway routes.
 		},
@@ -112,7 +112,7 @@ func TestMatch_DropboxExcluded(t *testing.T) {
 
 	_, ok := router.Match("POST", "/api/dropbox/file_read")
 	if ok {
-		t.Error("dropbox (direct_brokered) should not produce gateway routes")
+		t.Error("dropbox (gateway_proxy) should not produce gateway routes")
 	}
 }
 

@@ -98,7 +98,7 @@ run_keylatch() {
 
 log "Step 1: run before bootstrap (expect exit 7, 'bootstrap' in output)..."
 set +e
-combined_1="$("$KEYLATCH_BIN" run anthropic --runtime direct_brokered -- echo hi 2>&1)"
+combined_1="$("$KEYLATCH_BIN" run anthropic --runtime minted -- echo hi 2>&1)"
 exit_1=$?
 set -e
 
@@ -132,7 +132,7 @@ pass "step 2: bootstrap succeeded (exit 0)"
 
 log "Step 3: run after bootstrap, no connection yet (expect exit 6, 'setup' in output)..."
 set +e
-combined_3="$("$KEYLATCH_BIN" run anthropic --runtime direct_brokered -- echo hi 2>&1)"
+combined_3="$("$KEYLATCH_BIN" run anthropic --runtime minted -- echo hi 2>&1)"
 exit_3=$?
 set -e
 
@@ -168,7 +168,7 @@ pass "step 4: connect succeeded (exit 0)"
 # ─── Step 5: keylatch run after setup → exit 2 ──────────────────────────────
 
 log "Step 5: run after setup (expect exit 2)..."
-# With the connection now present, this raw (direct_brokered) run passes the
+# With the connection now present, this raw (minted) run passes the
 # bootstrap and connection guards and reaches the raw-credential session gate.
 # An opt-in written to the overridden config dir must not open it: only the
 # operator's own default config can.
@@ -176,7 +176,7 @@ cfg="$KEYLATCH_CONFIG_DIR/config.json"
 awk 'NR == 1 && /^\{/ { print "{"; print "  \"allow_unverified_session\": true,"; next } { print }' "$cfg" > "$cfg.tmp"
 mv "$cfg.tmp" "$cfg"
 set +e
-combined_5="$("$KEYLATCH_BIN" run anthropic --runtime direct_brokered --allow echo -- echo hi 2>&1)"
+combined_5="$("$KEYLATCH_BIN" run anthropic --runtime minted --allow echo -- echo hi 2>&1)"
 exit_5=$?
 set -e
 

@@ -69,7 +69,7 @@ func TestDecide(t *testing.T) {
 	}{
 		{"agent under a listed runtime", Request{Action: "inject", Runtime: "gateway_typed", Caller: callerkind.Agent}, true, ""},
 		{"agent under the other listed runtime", Request{Action: "openrouter.chat", Runtime: "gateway_sdk", Caller: callerkind.Agent}, true, ""},
-		{"agent under an unlisted runtime", Request{Action: "inject", Runtime: "direct_brokered", Caller: callerkind.Agent}, false, "only under gateway_typed, gateway_sdk, not direct_brokered"},
+		{"agent under an unlisted runtime", Request{Action: "inject", Runtime: "minted", Caller: callerkind.Agent}, false, "only under gateway_typed, gateway_sdk, not minted"},
 		{"agent without a runtime", Request{Action: "call", Caller: callerkind.Agent}, false, "no runtime"},
 		{"agent with a listed executable", Request{Action: "inject", Runtime: "gateway_typed", Caller: callerkind.Agent, Command: []string{"python3", "x.py"}}, true, ""},
 		{"agent with a listed path", Request{Action: "inject", Runtime: "gateway_typed", Caller: callerkind.Agent, Command: []string{"/usr/bin/node"}}, true, ""},

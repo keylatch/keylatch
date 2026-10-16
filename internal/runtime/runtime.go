@@ -15,9 +15,6 @@ const (
 	// RuntimeMinted runs the command with a short-lived credential minted for
 	// it and revoked when it exits.
 	RuntimeMinted RuntimeMode = "minted"
-	// RuntimeDirectBrokered is the retired name of RuntimeMinted. It is not in
-	// AllModes and every request for it is refused with a pointer to minted.
-	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
 )
 
 // AllModes is the closed set used by the matrix builder in tests.

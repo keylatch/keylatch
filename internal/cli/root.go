@@ -761,8 +761,8 @@ func newRunCmd() *cobra.Command {
 			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
 			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
 
-			// The support manifest excludes direct_brokered and gateway_proxy
-			// from the supported runtime set
+			// The support manifest excludes gateway_proxy from the supported
+			// runtime set
 			// — WithManifestGuard makes each unreachable regardless
 			// of runtime.Resolve's fallback hierarchy, so a denied or
 			// unavailable gateway can never fall back into a direct
@@ -1409,7 +1409,7 @@ func templateRuntime(ctx context.Context, args []string) runtime.RuntimeMode {
 		return runtime.RuntimeGatewayTyped
 	}
 	d, err := runtime.Resolve(ctx, runtime.ResolveRequest{ConnectionSlug: conn}, tmpl)
-	if err != nil || d.Mode == runtime.RuntimeDirectBrokered {
+	if err != nil {
 		return runtime.RuntimeGatewayTyped
 	}
 	return d.Mode

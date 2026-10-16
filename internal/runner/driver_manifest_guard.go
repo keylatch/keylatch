@@ -23,7 +23,7 @@ type manifestGuardDriver struct {
 
 // WithManifestGuard wraps inner so it only runs when m marks id Supported.
 // This is the sole containment point for runtime modes excluded from the
-// current release (e.g. direct_brokered, gateway_proxy): inner is never
+// current release (e.g. gateway_proxy): inner is never
 // invoked, and no fallback
 // path exists once ErrModeUnavailable is returned.
 func WithManifestGuard(inner Driver, m manifest.Manifest, id string) Driver {

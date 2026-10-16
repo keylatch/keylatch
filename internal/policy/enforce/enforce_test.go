@@ -95,7 +95,7 @@ func TestAgentAllowedOnlyUnderListedRuntimes(t *testing.T) {
 			t.Errorf("agent under %s denied: %s", rt, d.Reason)
 		}
 	}
-	for _, rt := range []string{"direct_brokered", "direct_classic", "gateway_proxy", ""} {
+	for _, rt := range []string{"minted", "direct_classic", "gateway_proxy", ""} {
 		if d := f.e.Decide(ctx, Request{Connection: "openrouter", Runtime: rt, Caller: callerkind.Agent}); d.Allow {
 			t.Errorf("agent under %q allowed", rt)
 		}

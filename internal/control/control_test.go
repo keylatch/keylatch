@@ -282,7 +282,7 @@ func TestRunSessionPolicy(t *testing.T) {
 		{"uncontained tier", RunRequest{Connection: "openrouter", Command: []string{"true"}, Tier: TierRaw}, CodeRefused},
 		{"unbuilt tier", RunRequest{Connection: "openrouter", Command: []string{"true"}, Tier: TierPlaceholder}, CodeUnavailable},
 		{"unknown connection", RunRequest{Connection: "nope", Command: []string{"true"}}, CodeNotFound},
-		{"wrong runtime", RunRequest{Connection: "openrouter", Command: []string{"true"}, Runtime: "direct_brokered"}, CodeBadRequest},
+		{"wrong runtime", RunRequest{Connection: "openrouter", Command: []string{"true"}, Runtime: "minted"}, CodeBadRequest},
 		{"no command", RunRequest{Connection: "openrouter"}, CodeBadRequest},
 	} {
 		resp, err := c.RunSession(tc.req)

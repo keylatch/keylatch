@@ -22,7 +22,7 @@ import (
 var schemaDeclarableModes = []registry.RuntimeMode{
 	registry.RuntimeGatewayTyped,
 	registry.RuntimeGatewaySDK,
-	registry.RuntimeDirectBrokered,
+	registry.RuntimeMinted,
 	registry.RuntimeGatewayProxy,
 }
 

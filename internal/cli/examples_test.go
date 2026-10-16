@@ -82,7 +82,7 @@ func TestExamplePolicyDocumentsDecideThroughEnforce(t *testing.T) {
 		return e.Decide(context.Background(), enforce.Request{Connection: connection, Caller: kind, Runtime: runtime, Unit: unit})
 	}
 	assert.True(t, decide("openrouter", callerkind.Agent, "gateway_typed", "").Allow)
-	assert.False(t, decide("openrouter", callerkind.Agent, "direct_brokered", "").Allow, "an agent gets the gateway runtimes only")
+	assert.False(t, decide("openrouter", callerkind.Agent, "minted", "").Allow, "an agent gets the gateway runtimes only")
 	assert.False(t, decide("openrouter", callerkind.Host, "gateway_typed", "").Allow)
 	assert.True(t, decide("stripe", callerkind.Human, "", "").Allow)
 	assert.False(t, decide("stripe", callerkind.Agent, "gateway_typed", "").Allow)

@@ -118,13 +118,13 @@ func TestRuntimeDefaultsToTemplate(t *testing.T) {
 }
 
 // TestDirectBrokeredIsRenamed checks that the old name is refused with a
-// pointer to the new one, even for a template that still lists it.
+// pointer to the new one.
 func TestDirectBrokeredIsRenamed(t *testing.T) {
 	tmpl := buildTmpl(
-		registry.RuntimeDirectBrokered,
-		registry.RuntimeDirectBrokered,
+		registry.RuntimeMinted,
+		registry.RuntimeMinted,
 	)
-	_, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{RequestedMode: runtime.RuntimeDirectBrokered}, tmpl)
+	_, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{RequestedMode: runtime.RuntimeMode("direct_brokered")}, tmpl)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, runtime.ErrModeRemoved))
 	assert.Contains(t, err.Error(), "--runtime minted")

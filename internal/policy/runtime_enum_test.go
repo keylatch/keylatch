@@ -15,7 +15,8 @@ func TestValidateRuntimeMode(t *testing.T) {
 		// Valid modes.
 		{input: "gateway_typed", wantErr: false},
 		{input: "gateway_sdk", wantErr: false},
-		{input: "direct_brokered", wantErr: false},
+		{input: "minted", wantErr: false},
+		{input: "direct_brokered", wantErr: true}, // renamed to minted
 		{input: "direct_classic", wantErr: false},
 		{input: "gateway_proxy", wantErr: false},
 		{input: "placeholder", wantErr: false},

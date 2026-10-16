@@ -113,13 +113,13 @@
       "properties": {
         "preferred": {
           "type": "string",
-          "enum": ["gateway_typed", "gateway_sdk", "direct_brokered", "minted", "gateway_proxy"]
+          "enum": ["gateway_typed", "gateway_sdk", "minted", "gateway_proxy"]
         },
         "supported": {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["gateway_typed", "gateway_sdk", "direct_brokered", "minted", "gateway_proxy"]
+            "enum": ["gateway_typed", "gateway_sdk", "minted", "gateway_proxy"]
           }
         },
         "default_runtime":  { "type": "string" },

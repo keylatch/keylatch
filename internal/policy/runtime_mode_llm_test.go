@@ -29,7 +29,7 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 	runtimes := []string{
 		"gateway_typed",
 		"gateway_sdk",
-		"direct_brokered",
+		"minted",
 		"gateway_proxy",
 	}
 
@@ -40,10 +40,10 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 		Connections:  []string{"*"},
 		Capabilities: []string{"inject"},
 		LLMSessions: map[string]string{
-			"gateway_sdk":     "deny",
-			"gateway_typed":   "allow",
-			"direct_brokered": "allow",
-			"gateway_proxy":   "allow",
+			"gateway_sdk":   "deny",
+			"gateway_typed": "allow",
+			"minted":        "allow",
+			"gateway_proxy": "allow",
 		},
 	}
 	p := policy.Policy{
@@ -86,7 +86,7 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 	injectExpectations := []expectation{
 		{runtime: "gateway_typed", wantAllow: true, wantApproval: false},
 		{runtime: "gateway_sdk", wantAllow: false, wantDenyReason: "runtime gateway_sdk denied by rule.LLMSessions"},
-		{runtime: "direct_brokered", wantAllow: true, wantApproval: false},
+		{runtime: "minted", wantAllow: true, wantApproval: false},
 		{runtime: "gateway_proxy", wantAllow: true, wantApproval: false},
 	}
 

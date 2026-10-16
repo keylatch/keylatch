@@ -14,7 +14,7 @@
       "x.example.com"
     ],
     "runtimes": [
-      "direct_brokered"
+      "minted"
     ]
   },
   "enabled_runtimes": [

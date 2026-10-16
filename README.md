@@ -119,7 +119,7 @@ Set the backend with `keylatch config set backend <name>`. `KEYLATCH_BACKEND` is
 |------|------|-------------|
 | `gateway_typed` | `--runtime gateway_typed` | Default. The child gets a session token and a gateway URL; the gateway holds the real key. |
 | `gateway_sdk` | `--runtime gateway_sdk` | Same exchange for SDKs that accept a custom base URL. |
-| `direct_brokered` | `--runtime direct_brokered` | A scoped, short-lived token from a provider that supports minting. |
+| `minted` | `--runtime minted` | A credential limited to one scope, minted for the command and revoked when it exits (GitHub App installation tokens, AWS STS sessions). |
 
 `gateway_proxy` (CONNECT interception, `keylatch proxy up`) is experimental and not a run mode you can rely on yet. See [docs/runtime-modes.md](docs/runtime-modes.md).
 

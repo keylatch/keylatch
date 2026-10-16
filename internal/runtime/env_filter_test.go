@@ -228,7 +228,7 @@ func TestEnvFilter_StripsAllKEYLATCH(t *testing.T) {
 	}
 
 	out := runtime.Filter(context.Background(), env, runtime.FilterOpts{
-		Mode: runtime.RuntimeDirectBrokered,
+		Mode: runtime.RuntimeMinted,
 	})
 
 	assert.Contains(t, out, "PATH=/usr/bin")
@@ -284,7 +284,7 @@ func TestEnvFilter_RetainsGatewayVarsInGatewayModes(t *testing.T) {
 	}
 }
 
-// TestEnvFilter_BrokeredHasNoKEYLATCH verifies that direct_brokered mode produces
+// TestEnvFilter_BrokeredHasNoKEYLATCH verifies that minted mode produces
 // a child environment with no KEYLATCH_* vars (the driver re-injects only
 // KEYLATCH_RUNTIME, which is outside the scope of Filter()).
 func TestEnvFilter_BrokeredHasNoKEYLATCH(t *testing.T) {
@@ -297,7 +297,7 @@ func TestEnvFilter_BrokeredHasNoKEYLATCH(t *testing.T) {
 	}
 
 	out := runtime.Filter(context.Background(), env, runtime.FilterOpts{
-		Mode: runtime.RuntimeDirectBrokered,
+		Mode: runtime.RuntimeMinted,
 		// No GatewayToken / GatewayURL — brokered mode does not use these.
 	})
 
@@ -409,7 +409,7 @@ func TestFilter_NoAuditWithoutEmitter(t *testing.T) {
 	env := []string{"PATH=/usr/bin", "KEYLATCH_BACKEND=file"}
 	// Should not panic.
 	out := runtime.Filter(context.Background(), env, runtime.FilterOpts{
-		Mode: runtime.RuntimeDirectBrokered,
+		Mode: runtime.RuntimeMinted,
 	})
 	assert.Contains(t, out, "PATH=/usr/bin")
 	assert.NotContains(t, out, "KEYLATCH_BACKEND=file")
@@ -448,7 +448,7 @@ func TestFilter_NonCleanEnv_EmitsOneEvent(t *testing.T) {
 	}
 
 	_ = runtime.Filter(ctx, env, runtime.FilterOpts{
-		Mode:     runtime.RuntimeDirectBrokered,
+		Mode:     runtime.RuntimeMinted,
 		CleanEnv: false,
 	})
 

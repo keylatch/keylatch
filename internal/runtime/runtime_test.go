@@ -44,7 +44,7 @@ func TestIsRawCredentialMode(t *testing.T) {
 		reason string
 	}{
 		{runtime.RuntimeMinted, true, "minted injects a provider-ephemeral credential"},
-		{runtime.RuntimeDirectBrokered, false, "direct_brokered is retired and has no driver"},
+		{runtime.RuntimeMode("direct_brokered"), false, "direct_brokered is retired and has no driver"},
 		{runtime.RuntimeGatewayTyped, false, "gateway_typed only ever hands over a keylatch session token"},
 		{runtime.RuntimeGatewaySDK, false, "gateway_sdk only ever hands over a keylatch session token"},
 		{runtime.RuntimeGatewayProxy, false, "gateway_proxy only ever hands over a keylatch session token"},
