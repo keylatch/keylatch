@@ -12,3 +12,5 @@ import (
 func Pair() (net.Conn, *os.File, error) {
 	return nil, nil, errors.New("childstore: not supported on this platform")
 }
+
+func markCloseOnExec(int) {}

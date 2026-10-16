@@ -34,3 +34,6 @@ func Pair() (net.Conn, *os.File, error) {
 	}
 	return conn, child, nil
 }
+
+// markCloseOnExec keeps a descriptor out of any program this process starts.
+func markCloseOnExec(fd int) { syscall.CloseOnExec(fd) }

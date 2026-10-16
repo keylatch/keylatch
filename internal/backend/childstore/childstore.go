@@ -29,6 +29,23 @@ const ChildFD = 3
 // maxFrame bounds one request or reply.
 const maxFrame = 1 << 20
 
+// The broker passes the descriptor without close-on-exec so this process
+// inherits it. Mark it as soon as the process starts, so the tools it runs
+// (bw, op, gh, git) never inherit a way to read the partition.
+func init() {
+	if fd, ok := descriptorFrom(os.Getenv(EnvFD)); ok {
+		markCloseOnExec(fd)
+	}
+}
+
+func descriptorFrom(raw string) (int, bool) {
+	var fd int
+	if _, err := fmt.Sscanf(raw, "%d", &fd); err != nil || fd < 3 {
+		return 0, false
+	}
+	return fd, true
+}
+
 // ErrReadOnly is returned for a write through a child's store.
 var ErrReadOnly = errors.New("childstore: the broker store is read-only here; writes go through the broker")
 
@@ -144,8 +161,8 @@ func FromEnv(lookup func(string) string) (*Store, bool, error) {
 	if raw == "" {
 		return nil, false, nil
 	}
-	var fd int
-	if _, err := fmt.Sscanf(raw, "%d", &fd); err != nil || fd < 3 {
+	fd, ok := descriptorFrom(raw)
+	if !ok {
 		return nil, true, fmt.Errorf("childstore: %s is not a descriptor", EnvFD)
 	}
 	f := os.NewFile(uintptr(fd), "keylatch-broker-store")
