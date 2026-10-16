@@ -202,6 +202,9 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 	outcome := audit.OutcomeOK
 	if resp.OK && resp.Session != nil {
 		d.tier = resp.Session.Tier
+		if d.tier == TierAdapter {
+			d.hosts = []string{rr.Target}
+		}
 		d.runID = newRunID()
 		resp.Session.RunID = d.runID
 	} else {
@@ -225,11 +228,18 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 
 // abandon closes whatever an unrecorded session opened.
 func (s *Server) abandon(resp Response) {
-	if resp.Session == nil || resp.Session.ProxyID == "" || s.cfg.Placeholders == nil {
+	if resp.Session == nil || resp.Session.ProxyID == "" {
 		return
 	}
-	if sess, ok := s.cfg.Placeholders.Get(resp.Session.ProxyID); ok {
-		sess.Close("audit_unavailable")
+	if s.cfg.Placeholders != nil {
+		if sess, ok := s.cfg.Placeholders.Get(resp.Session.ProxyID); ok {
+			sess.Close("audit_unavailable")
+		}
+	}
+	if s.cfg.Adapters != nil {
+		if sess, ok := s.cfg.Adapters.Get(resp.Session.ProxyID); ok {
+			sess.Close("audit_unavailable")
+		}
 	}
 }
 

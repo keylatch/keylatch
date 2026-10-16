@@ -48,7 +48,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "no delivery implementation exists in this build"
+              "why": "runtime adapter is not supported in this build"
             },
             {
               "tier": "D5",
@@ -111,7 +111,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "no delivery implementation exists in this build"
+              "why": "runtime adapter is not supported in this build"
             },
             {
               "tier": "D5",
@@ -174,7 +174,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "no delivery implementation exists in this build"
+              "why": "runtime adapter is not supported in this build"
             },
             {
               "tier": "D5",
@@ -237,7 +237,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "no delivery implementation exists in this build"
+              "why": "runtime adapter is not supported in this build"
             },
             {
               "tier": "D5",

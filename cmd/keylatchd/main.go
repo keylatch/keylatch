@@ -30,6 +30,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/keylatch/keylatch/internal/adapter"
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/config"
@@ -272,6 +273,12 @@ any agent sandbox.`,
 				cfg.Mint = mintCred
 			}
 			cfg.Custom = cli.CustomTemplates(env)
+			if mgr, err := adapter.NewManager(adapter.Config{Resolver: vaultResolver{cfg: loadConfig(env), env: env, log: emitter}, Audit: emitter}); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: protocol adapters unavailable: %v\n", err)
+			} else {
+				defer mgr.Close()
+				cfg.Adapters = mgr
+			}
 			cfg.Decide = enforce.Decide
 			cfg.Approve = newApprover(env, emitter)
 			cfg.Contained = newContained(socket, binary, vaultResolver{cfg: loadConfig(env), env: env, log: emitter})

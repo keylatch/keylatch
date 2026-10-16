@@ -145,6 +145,11 @@ const (
 	ActionEgressDenied      Action = "egress.denied"
 	ActionProxySession      Action = "proxy.session"
 
+	// ActionAdapterConnection records a protocol adapter connection: opened,
+	// refused for a wrong session token, or failed upstream. Extra carries the
+	// provider, adapter kind, upstream host and a short reason.
+	ActionAdapterConnection Action = "adapter.connection"
+
 	// ActionKeyOperation records a sign, verify, encrypt, decrypt or ssh
 	// signing request served from a key that never leaves the daemon.
 	// Extra holds the operation, algorithm, connection, field, caller kind and

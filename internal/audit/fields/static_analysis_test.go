@@ -91,6 +91,8 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"operation": "backup", "method": "tty", "digest": "abcdef0123456789",
 			// contained-run keys.
 			"run_id": "0123456789abcdef", "files": 2,
+			// protocol adapter connection keys.
+			"adapter": "postgres", "connections": 1,
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)

@@ -274,6 +274,7 @@ func Register(root *cobra.Command) {
 	root.AddCommand(newLaunchCmd())
 	root.AddCommand(newMintCmd())
 	root.AddCommand(newGitCredentialCmd())
+	root.AddCommand(newDockerCredentialCmd())
 	addCmd(root, newKeyCmd(), "advanced")
 	if isExperimentalEnabled() {
 		registerExperimentalAliases(experimentalGroup, root)
@@ -962,6 +963,9 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringArray("allow", nil, "allow this command prefix for this run only; repeat or comma-separate (blocked in LLM sessions)")
 	cmd.Flags().Bool("no-daemon-start", false, "do not auto-start keylatchd if it is not running")
 	cmd.Flags().String("tier", "", "delivery tier D2 to D5; served through a running keylatchd (D5 runs the command in the Keylatch sandbox with the real value)")
+	cmd.Flags().String("target", "", "D4: database host:port the connection's adapter hosts cover")
+	cmd.Flags().String("db-user", "", "D4: database role the adapter authenticates as (default postgres)")
+	cmd.Flags().String("database", "", "D4: database used when the client names none (default postgres)")
 	cmd.Flags().Bool("dry-run", false, "show what would be injected and executed without running the command")
 	cmd.Flags().Bool("json", false, "output dry-run plan as JSON (requires --dry-run)")
 	cmd.Flags().Bool("clean-env", false, "exec the child with a minimal env (PATH, HOME, USER, SHELL, TERM, LANG + injected vars)")

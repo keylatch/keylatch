@@ -38,8 +38,11 @@ func (s *Server) gateTier(ctx context.Context, kind Kind, rr *RunRequest, tier T
 		return enforce.Decision{Allow: true}, nil
 	}
 	runtime := rr.Runtime
-	if tier == TierContained {
+	switch tier {
+	case TierContained:
 		runtime = containedRuntime
+	case TierAdapter:
+		runtime = adapterRuntime
 	}
 	dec := s.cfg.Decide(ctx, enforce.Request{
 		Connection: rr.Connection, Runtime: runtime, Caller: kind,

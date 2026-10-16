@@ -73,7 +73,7 @@
     {
       "tier": "D4",
       "tier_name": "protocol_adapter",
-      "why": "no delivery implementation exists in this build"
+      "why": "runtime adapter is not supported in this build"
     },
     {
       "tier": "D5",

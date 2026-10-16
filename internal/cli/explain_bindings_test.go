@@ -53,6 +53,9 @@ func TestResolveConnectionReadsHostsAndSlotsFromBindings(t *testing.T) {
 	assert.Equal(t, tmpl.Binding.Hosts, tmpl.Hosts, "hosts come from the binding, not the allowed-hosts table")
 	assert.NotEmpty(t, tmpl.Binding.Slots)
 
+	assert.Equal(t, "postgres", resolveConnection(ctx, "supabase").Adapter, "a database connection names its protocol adapter")
+	assert.Empty(t, tmpl.Adapter)
+
 	custom := resolveConnection(ctx, "billing-internal")
 	require.True(t, custom.Known)
 	assert.Equal(t, explain.BindingCustom, custom.Binding.Source)

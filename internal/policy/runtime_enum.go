@@ -20,6 +20,9 @@ const (
 	// value inside the Keylatch sandbox.
 	RuntimePlaceholder RuntimeMode = "placeholder"
 	RuntimeContained   RuntimeMode = "contained"
+	// RuntimeAdapter is tier D4: the child talks a database protocol to the
+	// daemon's adapter, which authenticates upstream.
+	RuntimeAdapter RuntimeMode = "adapter"
 )
 
 // removedRuntimes is the set of names that have been removed.
@@ -35,7 +38,7 @@ var removedRuntimes = map[string]bool{
 // See migration table in spec §.
 func ValidateRuntimeMode(s string) error {
 	switch RuntimeMode(s) {
-	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeDirectClassic, RuntimeGatewayProxy, RuntimePlaceholder, RuntimeContained:
+	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeDirectClassic, RuntimeGatewayProxy, RuntimePlaceholder, RuntimeContained, RuntimeAdapter:
 		return nil
 	}
 	if removedRuntimes[s] {

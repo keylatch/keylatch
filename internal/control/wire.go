@@ -154,6 +154,12 @@ type RunRequest struct {
 	// name=level pairs. Empty values select what the connection's policy allows.
 	Repository  string   `json:"repository,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
+	// Target, DBUser and Database select the database of a tier D4 session:
+	// host:port the template's adapter hosts must cover, the role the adapter
+	// authenticates as, and the database used when the client names none.
+	Target   string `json:"target,omitempty"`
+	DBUser   string `json:"db_user,omitempty"`
+	Database string `json:"database,omitempty"`
 	// TTY asks for a pseudo-terminal of this size (tier D5).
 	TTY *contained.Winsize `json:"tty,omitempty"`
 	// Env lists NAME=VALUE pairs the client offers a contained child. The

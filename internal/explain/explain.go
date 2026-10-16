@@ -80,7 +80,7 @@ var tiers = []tierInfo{
 	{ID: "D1", Name: "typed_action"},
 	{ID: "D2", Name: "gateway_session", Runtimes: []string{string(policy.RuntimeGatewayTyped), string(policy.RuntimeGatewaySDK)}},
 	{ID: "D3", Name: "placeholder_substitution", Runtimes: []string{string(policy.RuntimePlaceholder)}},
-	{ID: "D4", Name: "protocol_adapter"},
+	{ID: "D4", Name: "protocol_adapter", Runtimes: []string{string(policy.RuntimeAdapter)}},
 	{ID: "D5", Name: "contained_raw", Runtimes: []string{string(policy.RuntimeContained)}},
 	{ID: "D6", Name: "uncontained_raw", Runtimes: []string{string(policy.RuntimeDirectClassic)}},
 }
@@ -88,6 +88,7 @@ var tiers = []tierInfo{
 var residualRisk = map[string]string{
 	"D2": "The child holds a scoped, short-lived gateway session token, not the provider key. It can use every action the session allows until the token expires; a misused capability is bounded by scope and audit, not prevented.",
 	"D3": "The child holds a placeholder that Keylatch swaps for the real value only toward the connection's own hosts. A misused capability on those hosts is bounded by scope and audit, not prevented.",
+	"D4": "The child holds a session token that only the adapter accepts, not the database password. It can run every statement the database role allows until the session ends; the role's grants and audit bound that, they do not prevent it.",
 	"D5": "The real secret is in the environment of a process Keylatch contains. Code running there can encode the value in ways output masking does not detect, so agent-authored code needs approval.",
 	"D6": "The real secret is in an uncontained process running as the user. Anything the child executes can read, store or send it; only a person at a terminal should choose this tier.",
 }
@@ -107,6 +108,9 @@ type Connection struct {
 	// template's, or the one a custom connection declares. Nil means none, and
 	// the placeholder tier cannot serve the connection.
 	Binding *BindingInfo `json:"binding,omitempty"`
+	// Adapter names the protocol adapter (for example "postgres") that tier D4
+	// serves the connection through; empty when there is none.
+	Adapter string `json:"adapter,omitempty"`
 }
 
 // BindingInfo is the part of a binding a reader needs: where a secret may go.
@@ -390,6 +394,8 @@ func placement(tier string) (string, Containment) {
 	switch tier {
 	case "D5":
 		return LocationKeylatch, Containment{Verdict: VerdictContained, SecretInChild: true}
+	case "D4":
+		return LocationCaller, Containment{Verdict: VerdictNoSecret}
 	case "D6":
 		return LocationHost, Containment{Verdict: VerdictUncontained, SecretInChild: true}
 	default:
@@ -473,6 +479,10 @@ func evalRuntime(in Input, kind, rt string) (failClass, string, string, runtimeR
 	case string(policy.RuntimePlaceholder):
 		if in.Connection.Binding == nil {
 			return failProvider, noBindingWhy, registry.NoBindingFix(providerOf(in.Request.Connection)), res
+		}
+	case string(policy.RuntimeAdapter):
+		if in.Connection.Adapter == "" {
+			return failProvider, "the connection declares no protocol adapter", "", res
 		}
 	case string(policy.RuntimeContained):
 		// The sandbox needs no provider support: any stored secret can be handed to it.

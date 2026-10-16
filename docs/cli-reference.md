@@ -527,6 +527,10 @@ keylatch run <connection> [--runtime <mode>] [--dry-run] [--json] [--clean-env] 
 | `--clean-env` | `false` | Minimal child environment (PATH, HOME, USER, SHELL, TERM, LANG, and injected vars) |
 | `--extra <var>` | | Preserve a specific variable when using `--clean-env`. Repeatable. |
 | `--allow <prefix>` | | Allow an extra command prefix for this run only (blocked in LLM sessions). Repeatable. |
+| `--tier <D2..D5>` | | Delivery tier, served through a running keylatchd. `D4` runs the command against a protocol adapter (see [protocol adapters](protocol-adapters.md)). |
+| `--target <host:port>` | | `D4`: the database; must match the connection's adapter hosts. |
+| `--db-user <role>` | `postgres` | `D4`: the database role the adapter logs in as. |
+| `--database <name>` | `postgres` | `D4`: the database used when the client names none. |
 
 **`--dry-run` behaviour**
 

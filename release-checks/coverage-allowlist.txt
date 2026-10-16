@@ -25,6 +25,8 @@ github.com/keylatch/keylatch/internal/mintsession/mintsessiontest
 github.com/keylatch/keylatch/internal/presence/presencetest
 # cmd/keylatch-relay — main wrapper around internal/socketrelay, which carries the tests
 github.com/keylatch/keylatch/cmd/keylatch-relay
+# cmd/docker-credential-keylatch — main wrapper around control.RunDockerCredential, which carries the tests
+github.com/keylatch/keylatch/cmd/docker-credential-keylatch
 # internal/backend/memory — in-process backend for tests; not production code
 github.com/keylatch/keylatch/internal/backend/memory
 # internal/auditverify — HMAC-chain verification helper; used internally in test assertions

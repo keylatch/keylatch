@@ -118,6 +118,8 @@ var safeLogFields = map[string][]string{
 	"proxy.substituted":  {"provider", "field", "host", "count"},
 	"egress.denied":      {"provider", "host", "reason"},
 	"proxy.session":      {"provider", "reason", "hosts", "substitutions", "session_id_hmac"},
+	// protocol adapter connections: names only, never a token or a password.
+	"adapter.connection": {"provider", "adapter", "host", "reason", "connections", "session_id_hmac"},
 
 	// broker dry-run action.
 	// command: the binary/subcommand name requested (no credential content).
@@ -220,6 +222,7 @@ func AllActions() []string {
 		"broker.dry_run_requested", "broker.token_revoked",
 		// placeholder proxy actions.
 		"placeholder.misuse", "proxy.substituted", "egress.denied", "proxy.session",
+		"adapter.connection",
 		"mint",
 		"run", "call", "release", "connect", "set", "policy.change",
 		"presence.decision", "security.block", "guard.block", "backup.export",
