@@ -41,7 +41,7 @@ func TestExamplesValidate(t *testing.T) {
 	for _, path := range append(scripts, top...) {
 		data, err := os.ReadFile(path) //nolint:gosec // G304: repository examples
 		require.NoError(t, err)
-		for _, line := range strings.Split(strings.ReplaceAll(string(data), "\\\n", " "), "\n") {
+		for _, line := range strings.Split(strings.ReplaceAll(lf(data), "\\\n", " "), "\n") {
 			line = strings.TrimSpace(line)
 			if i := strings.LastIndex(line, "| keylatch "); i >= 0 {
 				line = line[i+2:]
@@ -85,7 +85,7 @@ func TestExamplePolicyDocumentsDecideThroughEnforce(t *testing.T) {
 func TestReadmeBackendTable(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "README.md"))
 	require.NoError(t, err)
-	readme := string(data)
+	readme := lf(data)
 	m := manifest.Current()
 	for _, e := range m.ByCategory(manifest.CategoryManager) {
 		row := "| `" + e.ID + "` | " + string(e.Status) + " |"

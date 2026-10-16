@@ -44,6 +44,9 @@ func docFiles(t *testing.T, root string) []string {
 	return files
 }
 
+// lf normalises line endings, since a Windows checkout may convert them to CRLF.
+func lf(data []byte) string { return strings.ReplaceAll(string(data), "\r\n", "\n") }
+
 var (
 	fenceRE      = regexp.MustCompile("(?s)```[a-zA-Z0-9_-]*\n(.*?)```")
 	inlineRE     = regexp.MustCompile("`([^`\n]+)`")
@@ -177,7 +180,7 @@ func TestDocsContract(t *testing.T) {
 	for _, rel := range docFiles(t, root) {
 		data, err := os.ReadFile(filepath.Join(root, rel)) //nolint:gosec // G304: repository documents
 		require.NoError(t, err)
-		for _, inv := range commandsIn(string(data)) {
+		for _, inv := range commandsIn(lf(data)) {
 			if msg := checkCommand(tree, inv); msg != "" {
 				problems = append(problems, rel+": `"+inv+"`: "+msg)
 			}
@@ -197,7 +200,7 @@ func TestDocsLinksResolve(t *testing.T) {
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(root, rel)) //nolint:gosec // G304: repository documents
 		require.NoError(t, err)
-		text := fenceRE.ReplaceAllString(string(data), "")
+		text := fenceRE.ReplaceAllString(lf(data), "")
 		for _, m := range linkRE.FindAllStringSubmatch(text, -1) {
 			target := m[1]
 			if strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") {

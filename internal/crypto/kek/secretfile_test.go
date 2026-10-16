@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/crypto/kek"
@@ -44,7 +45,8 @@ func TestSecretFileRoundTripAndWrapped(t *testing.T) {
 	if err != nil || !bytes.Equal(again, created) {
 		t.Fatalf("reload: %v", err)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm()&0o077 != 0 {
+	// Windows reports no Unix permission bits; file access there is an ACL.
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("secret file mode %v", info.Mode())
 	}
 }
