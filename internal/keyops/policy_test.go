@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -58,9 +59,11 @@ func TestStoreLookup(t *testing.T) {
 	if _, err := s.Lookup("app-local", "NOPE"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown field: %v", err)
 	}
-	info, err := os.Stat(s.path)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("allowlist mode: %v %v", info, err)
+	if runtime.GOOS != "windows" { // Windows reports a fixed mode and has no permission bits to assert
+		info, err := os.Stat(s.path)
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("allowlist mode: %v %v", info, err)
+		}
 	}
 }
 
@@ -114,9 +117,11 @@ func TestStoreRejectsHandEditedFile(t *testing.T) {
 	if _, err := other.Load(); !errors.Is(err, ErrTampered) {
 		t.Fatalf("a file sealed by another installation was trusted: %v", err)
 	}
-	_ = os.Chmod(s.path, 0o644)
-	if _, err := s.Load(); err == nil {
-		t.Fatal("a world-readable allowlist was loaded")
+	if runtime.GOOS != "windows" { // permission bits are not enforced on Windows
+		_ = os.Chmod(s.path, 0o644)
+		if _, err := s.Load(); err == nil {
+			t.Fatal("a world-readable allowlist was loaded")
+		}
 	}
 }
 
