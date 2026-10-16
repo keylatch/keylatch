@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -40,6 +41,9 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 	}
 	if verb == gitCredentialVerb {
 		return runGitCredential(lookup, rest, streams), true
+	}
+	if verb == dockerCredentialVerb {
+		return RunDockerCredential(lookup, rest, streams), true
 	}
 	if !IsServedVerb(verb) && verb != KeyVerb {
 		return 0, false
@@ -113,6 +117,9 @@ type runArgs struct {
 	extra      []string
 	repository string
 	perms      []string
+	target     string
+	dbUser     string
+	database   string
 }
 
 var errRunUsage = errors.New("usage: keylatch run [--runtime <mode>] [--tier <tier>] [--repo <owner/name>] [--permission <name>=<level>]... <connection> -- <command> [args...]")
@@ -157,6 +164,19 @@ func parseRunArgs(args []string) (runArgs, error) {
 				return ra, err
 			}
 			ra.repository = v
+		case name == "--target" || name == "--db-user" || name == "--database":
+			v, err := valueOf(&i, name, a)
+			if err != nil {
+				return ra, err
+			}
+			switch name {
+			case "--target":
+				ra.target = v
+			case "--db-user":
+				ra.dbUser = v
+			default:
+				ra.database = v
+			}
 		case name == "--permission":
 			v, err := valueOf(&i, name, a)
 			if err != nil {
@@ -207,6 +227,9 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
 		return exitcode.UserError
 	}
+	if ra.tier == TierContained {
+		return runContained(ctx, c, lookup, ra, streams)
+	}
 	cwd, _ := os.Getwd()
 	resp, err := c.RunSession(RunRequest{
 		Connection:    ra.connection,
@@ -217,6 +240,9 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 		UpstreamProxy: callerProxy(lookup),
 		Repository:    ra.repository,
 		Permissions:   ra.perms,
+		Target:        ra.target,
+		DBUser:        ra.dbUser,
+		Database:      ra.database,
 	})
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: daemon: %v\n", err)
@@ -236,7 +262,7 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 	placeholder := sess.Tier == TierPlaceholder
 	var addr string
 	var stop func()
-	if placeholder {
+	if placeholder || sess.Tier == TierAdapter {
 		defer func() { _ = c.EndSession(sess.ProxyID) }()
 		addr, stop, err = c.ForwardProxy(sess.ProxyID)
 	} else {
@@ -261,8 +287,19 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 			session.Set = append(session.Set, runner.EnvAssign{Name: "KEYLATCH_SOCKET", Value: c.Socket()})
 		}
 	}
+	dockerBin, cleanDocker, err := withDockerConfig(&session, self())
+	if err != nil {
+		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
+		return exitcode.OperationFailed
+	}
+	defer cleanDocker()
+	if dockerBin != "" && !slices.ContainsFunc(session.Set, func(e runner.EnvAssign) bool { return e.Name == "KEYLATCH_SOCKET" }) {
+		session.Set = append(session.Set, runner.EnvAssign{Name: "KEYLATCH_SOCKET", Value: c.Socket()})
+	}
+	_, port, _ := net.SplitHostPort(addr)
 	for i := range session.Set {
 		session.Set[i].Value = strings.ReplaceAll(session.Set[i].Value, runner.GatewayAddrPlaceholder, addr)
+		session.Set[i].Value = strings.ReplaceAll(session.Set[i].Value, runner.AdapterPortPlaceholder, port)
 	}
 	if placeholder {
 		bundle, cleanup, warn, err := writeCABundle(lookup, sess.CAPEM)
@@ -283,6 +320,9 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 	defer cancel()
 	cmd := exec.CommandContext(ctx, ra.command[0], ra.command[1:]...) //nolint:gosec // G204: the child is the command the caller asked for, started inside the caller's own sandbox
 	cmd.Env = session.Apply(os.Environ(), ra.clean, ra.extra)
+	if dockerBin != "" {
+		cmd.Env = prependPath(cmd.Env, dockerBin)
+	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = streams.In, streams.Out, streams.ErrOut
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError

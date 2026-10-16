@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/explain"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
@@ -70,7 +71,7 @@ func newExplainRunCmd() *cobra.Command {
 			rep := explain.Run(explain.Input{
 				Policy:     pol,
 				Manifest:   manifest.Current(),
-				Connection: resolveConnection(connection),
+				Connection: resolveConnection(c.Context(), connection),
 				Document:   explainDocument(c.Context()),
 				Request: explain.Request{
 					Actor:      actorName,
@@ -103,7 +104,7 @@ func newExplainPolicyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			in := explain.PolicyInput{Policy: pol, Manifest: manifest.Current(), Resolve: resolveConnection, Document: explainDocument(c.Context())}
+			in := explain.PolicyInput{Policy: pol, Manifest: manifest.Current(), Resolve: func(name string) explain.Connection { return resolveConnection(c.Context(), name) }, Document: explainDocument(c.Context())}
 			if docs, err := (connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}).LoadAll(); err == nil {
 				in.DocumentConnections = connpolicy.Connections(docs)
 			}
@@ -177,11 +178,11 @@ func loadExplainPolicy(lookup llmcontext.Lookup) (policy.Policy, error) {
 
 // resolveConnection maps a connection name to the provider facts explain needs.
 // A name may carry an account suffix ("openrouter:dev").
-func resolveConnection(name string) explain.Connection {
+func resolveConnection(ctx context.Context, name string) explain.Connection {
 	provider, _, _ := strings.Cut(name, ":")
 	tmpl, err := registry.Get(provider)
 	if err != nil {
-		return explain.Connection{}
+		return resolveCustom(ctx, name)
 	}
 	c := explain.Connection{
 		Known:        true,
@@ -191,12 +192,42 @@ func resolveConnection(name string) explain.Connection {
 	for _, rt := range tmpl.RuntimeSupport.Supported {
 		c.Runtimes = append(c.Runtimes, string(rt))
 	}
+	if b, ok := tmpl.Binding(); ok {
+		c.Binding = explain.BindingOf(explain.BindingTemplate, b)
+		c.Hosts = c.Binding.Hosts
+		if tmpl.Adapter.Kind == registry.AdapterPostgres {
+			c.Adapter = string(tmpl.Adapter.Kind)
+		}
+		return c
+	}
 	if hosts := registry.AllowedProviderBaseURLs[tmpl.Provider]; len(hosts) > 0 {
 		c.Hosts = append(c.Hosts, hosts...)
 	} else if u, err := url.Parse(tmpl.TestStrategy.Endpoint); err == nil && u.Hostname() != "" {
 		c.Hosts = []string{u.Hostname()}
 	}
 	return c
+}
+
+// customBinding reads the binding a custom connection declared for itself. It
+// is a variable so tests can supply one without a vault.
+var customBinding = func(ctx context.Context, name string) (registry.Binding, error) {
+	st := newDispatchedStore(loadCLIConfig(nil), llmcontext.DefaultLookup)
+	return connections.CustomBindingFor(ctx, st, "", name)
+}
+
+// resolveCustom answers for a name that is not a provider: a custom
+// connection with the binding it declared. A vault that cannot be read leaves
+// the connection unknown rather than guessing.
+func resolveCustom(ctx context.Context, name string) explain.Connection {
+	if !connections.ValidCustomName(name) {
+		return explain.Connection{}
+	}
+	b, err := customBinding(ctx, name)
+	if err != nil {
+		return explain.Connection{}
+	}
+	info := explain.BindingOf(explain.BindingCustom, b)
+	return explain.Connection{Known: true, Provider: customProvider, Hosts: info.Hosts, Binding: info}
 }
 
 func writeJSON(w io.Writer, v any) error {
@@ -222,6 +253,9 @@ func writeRunText(w io.Writer, r explain.Report) error {
 	if len(r.Hosts) > 0 {
 		p("hosts:        %s", strings.Join(r.Hosts, ", "))
 	}
+	if r.Binding != nil {
+		p("binding:      %s, %d slot(s)", r.Binding.Source, len(r.Binding.Slots))
+	}
 	if r.Scope.RuleID != nil {
 		p("rule:         %s", *r.Scope.RuleID)
 	}
@@ -236,6 +270,9 @@ func writeRunText(w io.Writer, r explain.Report) error {
 		p("other tiers:")
 		for _, t := range r.Rejected {
 			p("  %s %s: %s", t.Tier, t.TierName, t.Why)
+			if t.Fix != "" {
+				p("      fix: %s", t.Fix)
+			}
 		}
 	}
 	p("residual risk: %s", r.ResidualRisk)

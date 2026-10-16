@@ -1,0 +1,24 @@
+{
+  "description": "a connection without bindings is not served by the placeholder tier and the report names the command that adds them",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {"id": "r1", "actor": "*", "connections": ["legacy-api"], "capabilities": ["inject"]}
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "legacy-api"
+  },
+  "enabled_runtimes": ["placeholder"],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "legacy-api",
+    "argv": ["node", "sync.js"],
+    "cwd": "/work/app"
+  }
+}

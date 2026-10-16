@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "allow",
+  "tier": "D4",
+  "tier_name": "protocol_adapter",
+  "runtime": "adapter",
+  "child_location": "caller",
+  "containment": {
+    "verdict": "no_secret_in_child",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "supabase",
+    "executable": "psql",
+    "argc": 1,
+    "argv_sha256": "172949f98cb31475e0979bbe14e42fb5e17b0d3f7acc1b0472263ff759cb3a93",
+    "cwd": "/work/app"
+  },
+  "hosts": [
+    "*.supabase.co:5432"
+  ],
+  "binding": {
+    "source": "template",
+    "hosts": [
+      "*.supabase.co:5432"
+    ],
+    "slots": [
+      {
+        "field": "service_role_key",
+        "in": "header",
+        "name": "apikey",
+        "hosts": [
+          "*.supabase.co"
+        ]
+      }
+    ]
+  },
+  "scope": {
+    "rule_id": "r1",
+    "capabilities": [
+      "inject"
+    ],
+    "connections": [
+      "supabase"
+    ],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "allowed by policy rule r1",
+    "requested tier D4 (protocol_adapter) via runtime adapter"
+  ],
+  "rejected_tiers": [
+    {
+      "tier": "D1",
+      "tier_name": "typed_action",
+      "why": "typed actions run without a child process; use keylatch call"
+    },
+    {
+      "tier": "D2",
+      "tier_name": "gateway_session",
+      "why": "runtime gateway_typed is not supported in this build; runtime gateway_sdk is not supported in this build"
+    },
+    {
+      "tier": "D3",
+      "tier_name": "placeholder_substitution",
+      "why": "eligible but a different tier was requested"
+    },
+    {
+      "tier": "D5",
+      "tier_name": "contained_raw",
+      "why": "eligible but a different tier was requested"
+    },
+    {
+      "tier": "D6",
+      "tier_name": "uncontained_raw",
+      "why": "uncontained raw delivery is human-only"
+    }
+  ],
+  "residual_risk": "The child holds a session token that only the adapter accepts, not the database password. It can run every statement the database role allows until the session ends; the role's grants and audit bound that, they do not prevent it.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true
+  }
+}

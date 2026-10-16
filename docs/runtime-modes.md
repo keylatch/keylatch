@@ -10,6 +10,7 @@ Keylatch has three runtime modes that decide how a credential reaches a subproce
 |------|--------|-------------|
 | `gateway_typed` | Supported | Routes execution through the local Keylatch gateway. The default. Requires `keylatch gateway up`. |
 | `gateway_sdk` | Supported | Routes execution through the gateway using the OpenAI-compatible SDK routes. Requires `keylatch gateway up`. |
+| `contained` | Supported (Linux) | Tier D5. The daemon runs the command in a Keylatch sandbox and gives it the real value; see [contained-runtime.md](contained-runtime.md). Selected with `--tier D5`, not `--runtime`. |
 | `gateway_proxy` | Unavailable | Routes HTTPS traffic through a local proxy that rewrites `Authorization` headers. Excluded from this release until its redirect, authority and credential-boundary fixes land. |
 
 `direct_brokered`, which exchanged a root credential for a scoped one inside the CLI, is also

@@ -4,11 +4,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -31,8 +34,41 @@ func main() {
 		exfil(os.Args[2])
 	case "request":
 		request(os.Args[2:])
+	case "ptrace":
+		ptrace(os.Args[2])
+	case "nested":
+		nested()
+	case "traverse":
+		traverse(os.Args[2], os.Args[3])
+	case "encode":
+		encode(os.Getenv(os.Args[2]), os.Args[3:])
 	default:
 		os.Exit(64)
+	}
+}
+
+// encode prints value in the forms a hostile child can choose, one
+// "name=output" line each. An optional file argument also receives the base64
+// form.
+func encode(value string, args []string) {
+	fmt.Println("plain=" + value)
+	fmt.Println("base64=" + base64.StdEncoding.EncodeToString([]byte(value)))
+	fmt.Println("base64url=" + base64.RawURLEncoding.EncodeToString([]byte(value)))
+	fmt.Println("hex=" + hex.EncodeToString([]byte(value)))
+	fmt.Println("url=" + url.QueryEscape(value))
+	xor := make([]byte, len(value))
+	for i := range value {
+		xor[i] = value[i] ^ 0x2a
+	}
+	fmt.Println("xor=" + hex.EncodeToString(xor))
+	half := len(value) / 2
+	fmt.Println("split-1=" + value[:half])
+	fmt.Println("split-2=" + value[half:])
+	if len(args) > 0 {
+		if err := os.WriteFile(args[0], []byte(base64.StdEncoding.EncodeToString([]byte(value))), 0o600); err != nil {
+			fmt.Println("write:", err)
+			os.Exit(1)
+		}
 	}
 }
 

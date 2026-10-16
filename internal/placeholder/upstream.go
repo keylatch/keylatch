@@ -99,6 +99,17 @@ func (u Upstream) resolve(ctx context.Context, host string) ([]net.IP, error) {
 	return ips, nil
 }
 
+// DialContext connects the way a session's proxy does: through Dial when set,
+// otherwise by resolving the name itself and refusing loopback, private,
+// link-local and metadata addresses. Protocol adapters use it so they reach
+// the same hosts and no others.
+func (u Upstream) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if u.Dial != nil {
+		return u.Dial(ctx, network, addr)
+	}
+	return u.guardedDial(ctx, network, addr)
+}
+
 func (u Upstream) guardedDial(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {

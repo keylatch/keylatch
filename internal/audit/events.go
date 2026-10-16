@@ -56,6 +56,19 @@ const (
 	ActionApprovalGranted   Action = "approval.granted"
 	ActionApprovalDenied    Action = "approval.denied"
 
+	// ActionContainedLeakSuspected records a secret value, or an encoding of
+	// it, found in files a contained run wrote. Extra carries the run id, the
+	// connection, the caller kind and the number of files; never a path
+	// content or the value.
+	ActionContainedLeakSuspected Action = "contained.leak_suspected"
+	// ActionSandboxDegraded records a run that started with part of the
+	// sandbox missing, for example without cgroup limits.
+	ActionSandboxDegraded Action = "sandbox.degraded"
+	// ActionCanaryTripped records a canary value seen where it must not be.
+	// Extra carries the session, the host and where it was seen; never the
+	// canary itself.
+	ActionCanaryTripped Action = "canary.tripped"
+
 	// binding change actions. Extra holds the connection, caller kind and the
 	// before/after host sets.
 	ActionBindingCreated  Action = "binding.created"

@@ -16,6 +16,7 @@ import (
 	"github.com/keylatch/keylatch/internal/explain"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/registry"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -163,4 +164,20 @@ func TestCallerKind(t *testing.T) {
 		assert.Equal(t, want, explain.CallerKind(actor, false), actor)
 	}
 	assert.Equal(t, explain.CallerAgent, explain.CallerKind("human-shell", true))
+}
+
+func TestBindingOfSortsAndNamesBasicParts(t *testing.T) {
+	b := registry.Binding{
+		Hosts: []string{"b.example:443", "a.example:443"},
+		Slots: []registry.Slot{
+			{Field: "pass", In: registry.SlotBasic, Part: registry.BasicPassword, Hosts: []string{"b.example:443", "a.example:443"}},
+			{Field: "token", In: registry.SlotQuery, Name: "key", Hosts: []string{"a.example:443"}},
+		},
+	}
+	got := explain.BindingOf(explain.BindingCustom, b)
+	assert.Equal(t, []string{"a.example:443", "b.example:443"}, got.Hosts)
+	assert.Equal(t, "password", got.Slots[0].Name)
+	assert.Equal(t, []string{"a.example:443", "b.example:443"}, got.Slots[0].Hosts)
+	assert.Equal(t, "key", got.Slots[1].Name)
+	assert.Equal(t, b.Hosts[0], "b.example:443", "the input is not reordered")
 }

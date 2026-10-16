@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/keylatch/keylatch/internal/redactor"
 )
 
 var markerRE = regexp.MustCompile(`klph_[a-z2-7]{26}`)
@@ -84,17 +86,26 @@ type scanReader struct {
 	f    *finder
 	tail []byte
 	hit  bool
+	// canary finds the session's decoy values, whose longest encoding is
+	// canaryWindow bytes; canaryHit tells a decoy from a placeholder.
+	canary       *redactor.Matcher
+	canaryWindow int
+	canaryHit    bool
 }
 
 func (s *scanReader) Read(p []byte) (int, error) {
 	n, err := s.r.Read(p)
 	if n > 0 {
 		win := append(s.tail, p[:n]...)
+		if s.canary.Contains(win) {
+			s.hit, s.canaryHit = true, true
+			return 0, errLeak
+		}
 		if s.f.in(win) {
 			s.hit = true
 			return 0, errLeak
 		}
-		keep := min(s.f.window-1, len(win))
+		keep := min(max(s.f.window, s.canaryWindow)-1, len(win))
 		s.tail = append([]byte(nil), win[len(win)-keep:]...)
 	}
 	return n, err

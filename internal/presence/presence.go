@@ -182,8 +182,15 @@ func SetDefault(r *Requirer) (restore func()) {
 
 // Actions the CLI gates.
 const (
-	ActionBackendLogin   Action = "backend.login"
-	ActionBackupExport   Action = "backup.export"
+	ActionBackendLogin Action = "backend.login"
+	ActionBackupExport Action = "backup.export"
+	// ActionBindingChange approves creating or widening a connection's binding,
+	// bound to the exact host sets before and after.
+	ActionBindingChange Action = "binding.change"
+	// ActionLocalOnlyWeaken approves a weaker local-only delivery mode.
+	ActionLocalOnlyWeaken Action = "local_only.weaken"
+	// ActionRunApprove approves one contained run, bound to its exact plan.
+	ActionRunApprove     Action = "run.approve"
 	ActionConfigSet      Action = "config.set"
 	ActionGatewayNoAudit Action = "gateway.no-audit"
 	ActionGatewayToken   Action = "gateway.token.create"

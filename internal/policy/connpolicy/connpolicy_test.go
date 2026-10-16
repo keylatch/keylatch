@@ -42,7 +42,7 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 		"bad connection name":   `{"schema_version": 2, "connection": "../x"}`,
 		"unknown caller kind":   `{"schema_version": 2, "connection": "a", "callers": {"root": "deny"}}`,
 		"rule string not deny":  `{"schema_version": 2, "connection": "a", "callers": {"agent": "allow"}}`,
-		"rule unknown key":      `{"schema_version": 2, "connection": "a", "callers": {"agent": {"allow": true, "tiers": ["D1"]}}}`,
+		"rule unknown key":      `{"schema_version": 2, "connection": "a", "callers": {"agent": {"allow": true, "bogus": ["D1"]}}}`,
 		"rule without allow":    `{"schema_version": 2, "connection": "a", "callers": {"agent": {"runtimes": ["gateway_typed"]}}}`,
 		"unknown runtime":       `{"schema_version": 2, "connection": "a", "callers": {"agent": {"allow": true, "runtimes": ["warp_drive"]}}}`,
 		"empty runtimes":        `{"schema_version": 2, "connection": "a", "callers": {"agent": {"allow": true, "runtimes": []}}}`,

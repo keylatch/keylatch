@@ -45,17 +45,17 @@
     {
       "tier": "D3",
       "tier_name": "placeholder_substitution",
-      "why": "runtime gateway_proxy is not supported in this build (excluded pending credential-boundary fixes)"
+      "why": "runtime placeholder is not supported in this build"
     },
     {
       "tier": "D4",
       "tier_name": "protocol_adapter",
-      "why": "no delivery implementation exists in this build"
+      "why": "runtime adapter is not supported in this build"
     },
     {
       "tier": "D5",
       "tier_name": "contained_raw",
-      "why": "no delivery implementation exists in this build"
+      "why": "runtime contained is not supported in this build"
     },
     {
       "tier": "D6",

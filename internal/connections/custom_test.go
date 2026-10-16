@@ -100,3 +100,27 @@ func TestCustomBindingFor_NoBinding(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestCustomTemplate_ExposesBindingAndFields(t *testing.T) {
+	ctx, st := context.Background(), newMockStore()
+	if _, err := SaveCustom(ctx, "billing-internal", customOpts(CallerHuman, "api.billing.example:443"), st); err != nil {
+		t.Fatal(err)
+	}
+	tmpl, err := CustomTemplate(ctx, st, "", "billing-internal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, ok := tmpl.Binding()
+	if !ok || !b.AllowsHost("api.billing.example:443") || len(tmpl.InjectionRules) != 1 || tmpl.InjectionRules[0].EnvVar != "BILLING_API_KEY" || tmpl.InjectionRules[0].Source != "api_key" {
+		t.Fatalf("template = %+v", tmpl)
+	}
+	if got := CustomSecretPath("", "billing-internal", "api_key"); got != "default/custom/billing-internal/api_key" {
+		t.Fatalf("path = %q", got)
+	}
+	if _, err := CustomTemplate(ctx, st, "", "missing"); !errors.Is(err, registry.ErrNoBinding) {
+		t.Fatalf("err = %v", err)
+	}
+	if !ValidCustomName("billing-internal") || ValidCustomName("Bad Name") {
+		t.Fatal("ValidCustomName")
+	}
+}

@@ -328,6 +328,10 @@ func ValidateBindings(t ConnectionTemplate) error {
 
 func validEnvClass(c EnvClass) bool { return c == EnvTest || c == EnvDev || c == EnvProd }
 
+// ValidateHostPattern checks a host[:port] pattern: no bare wildcard, no
+// wildcard apex and no public suffix.
+func ValidateHostPattern(p string) error { return validHostPattern(p) }
+
 func validHostPattern(p string) error {
 	h, _, ok := splitAuthority(p)
 	if !ok {

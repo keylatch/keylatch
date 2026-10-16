@@ -124,13 +124,32 @@ Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.lo
 
 ---
 
+### `keylatch scan`
+
+Find credentials in text before it reaches a model or a transcript.
+
+```
+keylatch scan [--redact] [path...]
+```
+
+Reads the files, or standard input, and prints `file:line: kind` for every line that holds a credential in a
+known format (`credential`) or a Keylatch canary (`canary`). It never prints the value. Exit `2` when it finds
+anything, so a hook can stop a prompt or a tool result from leaving. With `--redact` the text is written to
+standard output with each finding replaced and the exit status is `0`.
+
+---
+
 ### `keylatch doctor`
 
 Diagnose keylatch configuration and environment.
 
 ```
-keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--quiet]
+keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--quiet] [--sandbox]
 ```
+
+`keylatch doctor --sandbox` instead reports what the host lets the contained tier (D5) do: user, mount, PID,
+network and cgroup namespaces, seccomp, Landlock and the cgroup leaf. It exits `2` when D5 cannot run, `1`
+when only an optional layer is missing and `0` otherwise. See [contained-runtime.md](contained-runtime.md).
 
 **Exit codes:**
 - `0` — all checks passed (warnings are informational only)
@@ -248,6 +267,7 @@ keylatch connect <provider> --provider-ref api_key=<uri>  # resolve from externa
 keylatch connect openrouter
 keylatch connect sentry -f auth_token=@-
 keylatch connect github --provider-ref token=op://Keylatch/github/token
+keylatch connect billing --provider custom --host api.billing.example:443 --slot header:Authorization:Bearer --env BILLING_API_KEY -f token=@- --test-url https://api.billing.example/v1/ping --expect 200
 keylatch connect openrouter --provider-ref api_key=aws-sm://us-east-1/prod/openrouter#api_key
 keylatch connect openrouter --provider-ref api_key=hashivault://secret/prod/openrouter#api_key
 ```
@@ -274,6 +294,8 @@ automatically picked up on next use.
 | `--field <field>=<value>` | Supply a field value directly (incompatible with `--provider-ref` for the same field). |
 
 See [External Store References](./backends/external-references.md) for full documentation.
+
+**Custom connections** (`--provider custom`) declare their own binding: `--host`, `--slot`, `--env`, `--placeholder-prefix`, `--placeholder-min-length`. Creating or widening one is human-only and needs presence. `--test-url <https-url>` with `--expect <status>` (default 200) then sends one request through the placeholder tier carrying only a placeholder and fails unless the status matches, so a pass shows the stored value, the slots and the hosts agree. The URL must lie inside the declared hosts, and only a human can use the flag because the request carries the credential. `keylatch explain` reads the same binding for hosts and slots.
 
 **Local-only fields**
 
@@ -505,6 +527,10 @@ keylatch run <connection> [--runtime <mode>] [--dry-run] [--json] [--clean-env] 
 | `--clean-env` | `false` | Minimal child environment (PATH, HOME, USER, SHELL, TERM, LANG, and injected vars) |
 | `--extra <var>` | | Preserve a specific variable when using `--clean-env`. Repeatable. |
 | `--allow <prefix>` | | Allow an extra command prefix for this run only (blocked in LLM sessions). Repeatable. |
+| `--tier <D2..D5>` | | Delivery tier, served through a running keylatchd. `D4` runs the command against a protocol adapter (see [protocol adapters](protocol-adapters.md)). |
+| `--target <host:port>` | | `D4`: the database; must match the connection's adapter hosts. |
+| `--db-user <role>` | `postgres` | `D4`: the database role the adapter logs in as. |
+| `--database <name>` | `postgres` | `D4`: the database used when the client names none. |
 
 **`--dry-run` behaviour**
 

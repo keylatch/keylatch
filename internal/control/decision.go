@@ -13,7 +13,6 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/exitcode"
-	"github.com/keylatch/keylatch/internal/registry"
 )
 
 // Where a decided child runs.
@@ -36,6 +35,10 @@ type decision struct {
 	hosts      []string
 	runID      string
 	reason     string
+	// sandbox is the digest of a contained run's plan; approvalID names the
+	// approval the decision waited on.
+	sandbox    string
+	approvalID string
 }
 
 func digest(parts ...string) string {
@@ -69,6 +72,8 @@ func (s *Server) record(ctx context.Context, d decision, outcome audit.Outcome) 
 	set("harness", d.res.Harness)
 	set("run_id", d.runID)
 	set("reason", d.reason)
+	set("sandbox_sha256", d.sandbox)
+	set("approval_id", d.approvalID)
 	if len(d.argv) > 0 {
 		extra["argv_sha256"] = digest(d.argv...)
 	}
@@ -185,7 +190,7 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 	d := decision{op: string(OpRunSession), res: res, child: childInCaller}
 	if rr != nil {
 		d.connection, d.argv, d.cwd, d.tier = rr.Connection, rr.Command, rr.CWD, rr.Tier
-		if tmpl, err := registry.Get(rr.Connection); err == nil {
+		if tmpl, err := s.template(ctx, rr.Connection); err == nil {
 			if b, ok := tmpl.Binding(); ok {
 				d.hosts = b.Hosts
 			}
@@ -197,6 +202,9 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 	outcome := audit.OutcomeOK
 	if resp.OK && resp.Session != nil {
 		d.tier = resp.Session.Tier
+		if d.tier == TierAdapter {
+			d.hosts = []string{rr.Target}
+		}
 		d.runID = newRunID()
 		resp.Session.RunID = d.runID
 	} else {
@@ -220,11 +228,18 @@ func (s *Server) decideRun(ctx context.Context, res callerkind.Result, rr *RunRe
 
 // abandon closes whatever an unrecorded session opened.
 func (s *Server) abandon(resp Response) {
-	if resp.Session == nil || resp.Session.ProxyID == "" || s.cfg.Placeholders == nil {
+	if resp.Session == nil || resp.Session.ProxyID == "" {
 		return
 	}
-	if sess, ok := s.cfg.Placeholders.Get(resp.Session.ProxyID); ok {
-		sess.Close("audit_unavailable")
+	if s.cfg.Placeholders != nil {
+		if sess, ok := s.cfg.Placeholders.Get(resp.Session.ProxyID); ok {
+			sess.Close("audit_unavailable")
+		}
+	}
+	if s.cfg.Adapters != nil {
+		if sess, ok := s.cfg.Adapters.Get(resp.Session.ProxyID); ok {
+			sess.Close("audit_unavailable")
+		}
 	}
 }
 

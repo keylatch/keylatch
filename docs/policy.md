@@ -84,13 +84,84 @@ nothing a policy author writes is silently ignored.
 - `capabilities` limits what the connection may be used for, as globs.
 - `max_ttl` caps the lifetime of a session token or child process.
 
-`schema_version` 2 is the base the policy v2 schema (tiers, hosts, egress,
-filesystem and approval-by-containment) extends: the v2 schema adds keys next to
-`callers` and inside caller entries, and the document keeps the same meaning
-for the keys above.
-
 Examples are in `examples/policy.d/`: `default.json` (the fallback: humans
 only), `agent-gateway-only.json`, `service-only.json` and `human-only.json`.
+
+## Tiers, hosts, egress, filesystem and approval
+
+A document can say more than who may use a connection. Every key below is
+optional, and a document without them keeps the meaning above.
+
+```json
+{
+  "schema_version": 2,
+  "connection": "stripe-test",
+  "hosts": ["api.stripe.com", "files.stripe.com"],
+  "egress": { "allow": ["registry.npmjs.org"], "deny_private_ranges": true },
+  "fs": { "write": ["${project}"], "read": ["${project}", "${toolchain_caches}"], "deny": ["~/.ssh", "${keylatch_state}"] },
+  "commands": [
+    { "match": ["/usr/bin/pnpm", "test", "**"], "tiers": ["D3", "D4"] },
+    { "match": ["/usr/bin/make", "build"], "tiers": ["D5"], "exe_sha256": "<64 hex digits>" }
+  ],
+  "callers": {
+    "agent": { "allow": true, "tiers": ["D2", "D3", "D5"], "approval": "auto_if_contained", "ttl": "15m", "max_requests": 500 },
+    "human": { "allow": true }
+  }
+}
+```
+
+- `tiers` lists the delivery tiers (D1 action, D2 gateway, D3 placeholder, D4 adapter, D5 contained raw
+  value, D6 uncontained raw value) a kind may use. Without it an agent or host gets D1 to D4, a service D1
+  to D5 and a human D1 to D6. D6 is for humans only. A request names a tier and is denied when it is not
+  listed, with the allowed ones in the reason.
+- `approval` is `auto`, `ask`, `auto_if_contained`, `presence_for_D6` or `presence`. The default is
+  `auto_if_contained` for agents and hosts, `presence_for_D6` for humans and `auto` for services.
+  Containment is the approval for D1 to D4. D5 holds the real value, so it needs an approval unless a
+  command rule pins the exact command, and D6 always needs a human present.
+- `ttl` and `max_requests` bound a session for the kind; `max_ttl` bounds the document.
+- `hosts` narrows the hosts the connection's credential may reach. Only a host both the provider template
+  and the list name stays: the list removes hosts and never adds one.
+- `egress.allow` lists the non-secret destinations a contained run may reach beyond those hosts, for
+  example a package registry. Private, link-local and cloud metadata ranges are never reachable.
+- `fs.write`, `fs.read` and `fs.deny` bound a contained run. Paths are absolute, start with `~/` or start
+  with `${project}`, `${toolchain_caches}`, `${keylatch_state}`, `${browser_profiles}` or
+  `${harness_config}`. A run whose project is outside `fs.write`, or inside `fs.deny` or a path that holds
+  credentials, is refused. A write list that expands to nothing allows nothing.
+- `commands` pin argv patterns. `match[0]` is an absolute path pattern compared with the executable the
+  command resolves to (after `PATH` lookup and symlinks), never with the name as typed. The other entries
+  match one argument each: `*` any one argument, a final `**` the rest. A matched rule narrows `tiers` and
+  may set `approval`. With `exe_sha256` the executable must hash to the pin and, with every directory above
+  it, be owned and writable only by root; then D5 runs without an approval. A pin that no longer matches
+  denies the command rather than running it unpinned.
+
+### One file for several connections
+
+`keylatch policy import <file.yaml>` compiles a file with `defaults` (caller entries, egress, fs that every
+listed connection starts from), `connections` and `commands` (each naming the connections it applies to) into
+one document per connection. A connection lists only what differs from the defaults; its filesystem denies are
+added to the default denies and never replace them. Keys that define how a connection reaches its secret
+(`secret`, `slots`, `adapter`, `upstream`, `mint`) are refused: they belong to `keylatch connect`.
+
+### Bounding the policy by the agent's own sandbox
+
+`keylatch policy import --from claude-code|codex|gemini [--settings <file>...] [--connection <name>...]` reads
+the harness's sandbox settings and records its limits in the stored documents:
+
+| Harness | Read |
+|---|---|
+| Claude Code | `sandbox.network.allowedDomains`, `sandbox.filesystem.allowWrite/denyRead/denyWrite`, `sandbox.excludedCommands`, `permissions.deny` entries of the form `Read(path)` and `Edit(path)` |
+| Codex | `sandbox_mode`, `[sandbox_workspace_write] writable_roots` and `network_access` in `config.toml` |
+| Gemini CLI | `excludedCommands` and `network.allowedDomains` under `sandbox` or `tools.sandbox` |
+
+The import only narrows. Egress becomes the intersection of the document's list and the harness's, so a
+document with no `egress.allow` stays without destinations; a write must lie inside the harness's writable
+paths (the project is always among them); the harness's denies are added to the document's. Tiers,
+approvals and hosts are untouched. The import is repeatable and replaces the earlier one. A setting the
+importer does not recognize is not read as "no limit"; entries it cannot use are reported and skipped.
+
+It fails, naming the entries, when the harness excludes `keylatch`, a wildcard, or a program that can start
+it (a shell, `env`, `xargs`, `sudo`, an interpreter): such an entry lets an agent run Keylatch outside its
+sandbox, past the checks the daemon makes.
 
 ## Commands
 
@@ -98,6 +169,8 @@ only), `agent-gateway-only.json`, `service-only.json` and `human-only.json`.
 |---|---|---|
 | `keylatch policy init [--force]` | writes `policy.json` (no rules), `policy.d/_default.json` and `policy.examples/` | only with `--force` over an existing policy |
 | `keylatch policy import <dir>` | validates every `*.json` against the schema, prints the diff, replaces the connection policy atomically | yes; the approval shows the diff |
+| `keylatch policy import <file.yaml>` | compiles the one-file form into one document per connection, then as above | yes |
+| `keylatch policy import --from claude-code\|codex\|gemini` | records the harness's sandbox limits in the stored documents; `--dry-run` shows the diff | yes |
 | `keylatch policy export <dir>` | writes the connection policy documents to a directory | no |
 | `keylatch policy check <connection> --as agent\|host\|service\|human [--runtime <r>] [--action <a>] [--json]` | read-only dry run | no |
 | `keylatch policy allow`, `deny`, `remove` | change the rules file or a document | yes |

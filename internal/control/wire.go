@@ -12,6 +12,7 @@ import (
 	"io"
 
 	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/contained"
 	"github.com/keylatch/keylatch/internal/runner"
 )
 
@@ -48,6 +49,10 @@ const (
 	OpKey Op = "key"
 	// OpKeyPolicy lists or edits the key operation allowlist.
 	OpKeyPolicy Op = "key_policy"
+	// OpContained runs a command in a Keylatch sandbox the daemon starts, with
+	// the real value in its environment. The connection stays open for the
+	// run: output frames come back, stdin, resize and signal frames go out.
+	OpContained Op = "contained"
 )
 
 // Tier names a delivery tier.
@@ -87,10 +92,13 @@ type Request struct {
 	Exit  int    `json:"exit,omitempty"`
 }
 
-// Chunk carries client stdin to an executing verb. EOF closes it.
+// Chunk carries client input to an executing verb or contained run: stdin
+// bytes, the end of stdin, a terminal resize or a signal to deliver.
 type Chunk struct {
-	Data []byte `json:"data,omitempty"`
-	EOF  bool   `json:"eof,omitempty"`
+	Data   []byte             `json:"data,omitempty"`
+	EOF    bool               `json:"eof,omitempty"`
+	Resize *contained.Winsize `json:"resize,omitempty"`
+	Signal int                `json:"signal,omitempty"`
 }
 
 // CredentialRequest is what a git credential helper knows about the request
@@ -146,6 +154,18 @@ type RunRequest struct {
 	// name=level pairs. Empty values select what the connection's policy allows.
 	Repository  string   `json:"repository,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
+	// Target, DBUser and Database select the database of a tier D4 session:
+	// host:port the template's adapter hosts must cover, the role the adapter
+	// authenticates as, and the database used when the client names none.
+	Target   string `json:"target,omitempty"`
+	DBUser   string `json:"db_user,omitempty"`
+	Database string `json:"database,omitempty"`
+	// TTY asks for a pseudo-terminal of this size (tier D5).
+	TTY *contained.Winsize `json:"tty,omitempty"`
+	// Env lists NAME=VALUE pairs the client offers a contained child. The
+	// daemon forwards terminal settings and names the caller chose, never
+	// Keylatch configuration, the proxy or the PATH.
+	Env []string `json:"env,omitempty"`
 }
 
 // Session is what the daemon returns for an accepted run request.

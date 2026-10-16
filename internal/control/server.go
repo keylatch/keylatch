@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/adapter"
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -24,6 +26,7 @@ import (
 	"github.com/keylatch/keylatch/internal/mintsession"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/placeholder"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/policy/mint"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
@@ -85,6 +88,18 @@ type Config struct {
 	// SigningKey returns the gateway signing key session tokens are minted
 	// with. Nil means the gateway cannot be served.
 	SigningKey func() ([]byte, error)
+	// Contained serves tier D5. Nil refuses it.
+	Contained *ContainedConfig
+	// Adapters serves tier D4. Without it D4 is unavailable.
+	Adapters *adapter.Manager
+	// Custom returns the template of a connection that declares its own
+	// bindings. Without it only provider templates are served at D3 and D5.
+	Custom func(ctx context.Context, name string) (registry.ConnectionTemplate, error)
+	// Decide is the policy engine. Tier D5 is refused without it.
+	Decide func(ctx context.Context, req enforce.Request) enforce.Decision
+	// Approve obtains approval for a run that needs one. Without it such a
+	// run is refused.
+	Approve Approver
 }
 
 // Server answers control socket requests.
@@ -178,6 +193,8 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		s.exec(ctx, conn, r, res, req)
 	case OpRunSession:
 		_ = writeFrame(conn, s.decideRun(ctx, res, req.Run))
+	case OpContained:
+		s.containedRun(ctx, conn, r, res, req)
 	case OpRunExit:
 		_ = writeFrame(conn, s.runExited(ctx, req))
 	case OpGateway:
@@ -239,17 +256,33 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest, revo
 	if tier == "" {
 		tier = s.preferredTier(rr)
 	}
+	if tier == TierGateway || tier == TierPlaceholder || tier == TierAdapter {
+		dec, f := s.gateTier(ctx, kind, rr, tier, false)
+		if f == nil && needsApproval(dec.Approval, kind) && dec.Approval != "" {
+			f = s.approveSession(ctx, kind, rr, tier, dec)
+		}
+		if f != nil {
+			resp.Code, resp.ExitCode, resp.Error = f.code, f.exit, f.msg
+			return resp
+		}
+	}
 	switch tier {
 	case TierGateway:
 	case TierPlaceholder:
 		return s.placeholderSession(ctx, kind, rr)
+	case TierAdapter:
+		return s.adapterSession(ctx, kind, rr)
+	case TierContained:
+		resp.Code, resp.ExitCode = CodeBadRequest, exitcode.UserError
+		resp.Error = "tier D5 runs in the daemon's sandbox and is requested with a contained run, not a session"
+		return resp
 	case TierRaw:
 		resp.Code, resp.ExitCode = CodeRefused, exitcode.SecurityBlock
 		resp.Error = "tier D6 injects an uncontained secret and is never served over the socket"
 		return resp
 	default:
 		resp.Code, resp.ExitCode = CodeUnavailable, exitcode.RuntimeNotAvailable
-		resp.Error = fmt.Sprintf("tier %s is not available; supported tiers: %s, %s", tier, TierGateway, TierPlaceholder)
+		resp.Error = fmt.Sprintf("tier %s is not available; supported tiers: %s, %s, %s", tier, TierGateway, TierPlaceholder, TierAdapter)
 		return resp
 	}
 
@@ -334,6 +367,16 @@ func (s *Server) revokeToken(id, storePath string) {
 	}
 }
 
+// template returns the provider template of a connection, or the one a custom
+// connection builds from its own bindings.
+func (s *Server) template(ctx context.Context, name string) (registry.ConnectionTemplate, error) {
+	tmpl, err := registry.Get(name)
+	if err != nil && s.cfg.Custom != nil {
+		return s.cfg.Custom(ctx, name)
+	}
+	return tmpl, err
+}
+
 // preferredTier is the strongest tier the daemon can serve for the request:
 // placeholder substitution when the template binds its credentials to hosts,
 // the gateway otherwise.
@@ -341,7 +384,7 @@ func (s *Server) preferredTier(rr *RunRequest) Tier {
 	if s.cfg.Placeholders == nil || rr.Runtime != "" {
 		return TierGateway
 	}
-	tmpl, err := registry.Get(rr.Connection)
+	tmpl, err := s.template(context.Background(), rr.Connection)
 	if err != nil {
 		return TierGateway
 	}
@@ -362,7 +405,7 @@ func (s *Server) placeholderSession(ctx context.Context, kind Kind, rr *RunReque
 		resp.Error = fmt.Sprintf("tier D3 does not take the %s runtime", rr.Runtime)
 		return resp
 	}
-	tmpl, err := registry.Get(rr.Connection)
+	tmpl, err := s.template(ctx, rr.Connection)
 	if err != nil {
 		resp.Code, resp.ExitCode = CodeNotFound, exitcode.Missing
 		resp.Error = fmt.Sprintf("unknown connection %q", rr.Connection)
@@ -395,6 +438,10 @@ func (s *Server) placeholderSession(ctx context.Context, kind Kind, rr *RunReque
 	}
 	env := runner.PlaceholderSessionEnv(tmpl, sess.Placeholders(), "http://"+runner.GatewayAddrPlaceholder)
 	env.Set = append(env.Set, runner.GitCredentialEnv(tmpl, sess.ID())...)
+	env.Set = append(env.Set, runner.DockerCredentialEnv(tmpl, sess.ID())...)
+	for _, name := range slices.Sorted(maps.Keys(sess.Canaries())) {
+		env.Set = append(env.Set, runner.EnvAssign{Name: name, Value: sess.Canaries()[name]})
+	}
 	return Response{OK: true, Kind: kind, Session: &Session{
 		Tier:       TierPlaceholder,
 		Runtime:    placeholderRuntime,
@@ -421,8 +468,15 @@ func mintRefusal(resp Response, err error) Response {
 	return resp
 }
 
-// credential answers a git credential helper with the placeholder bound to the
-// session, for hosts the template's git adapter names and nothing else.
+// isCredentialHelper reports whether the adapter kind is served by a
+// credential helper: the git helper and the Docker credential store.
+func isCredentialHelper(kind registry.AdapterKind) bool {
+	return kind == registry.AdapterGitCredential || kind == registry.AdapterDockerCredential
+}
+
+// credential answers a credential helper (git, Docker) with the placeholder
+// bound to the session, for hosts the template's adapter names and nothing
+// else. It never has the real value to give.
 func (s *Server) credential(kind Kind, id string, req *CredentialRequest) Response {
 	resp := Response{OK: true, Kind: kind}
 	if s.cfg.Placeholders == nil || req == nil || req.Protocol != "https" {
@@ -433,7 +487,7 @@ func (s *Server) credential(kind Kind, id string, req *CredentialRequest) Respon
 		return resp
 	}
 	tmpl, err := registry.Get(sess.Connection())
-	if err != nil || tmpl.Adapter.Kind != registry.AdapterGitCredential {
+	if err != nil || !isCredentialHelper(tmpl.Adapter.Kind) {
 		return resp
 	}
 	host := strings.ToLower(req.Host)
@@ -477,19 +531,33 @@ func (s *Server) proxy(conn *net.UnixConn, r *bufio.Reader, id string, run *runS
 	if s.cfg.Placeholders != nil {
 		sess, _ = s.cfg.Placeholders.Get(id)
 	}
-	if sess == nil {
+	var ad *adapter.Session
+	if sess == nil && s.cfg.Adapters != nil {
+		ad, _ = s.cfg.Adapters.Get(id)
+	}
+	if sess == nil && ad == nil {
 		_ = writeFrame(conn, Response{Code: CodeNotFound, ExitCode: exitcode.Missing, Error: "no such placeholder session"})
 		return
 	}
 	if err := writeFrame(conn, Response{OK: true}); err != nil {
 		return
 	}
-	sess.Serve(&bufferedConn{Conn: conn, r: r, run: run})
+	bc := &bufferedConn{Conn: conn, r: r, run: run}
+	if ad != nil {
+		ad.Serve(bc)
+		return
+	}
+	sess.Serve(bc)
 }
 
 func (s *Server) endSession(kind Kind, id string) Response {
 	if s.cfg.Placeholders != nil {
 		if sess, ok := s.cfg.Placeholders.Get(id); ok {
+			sess.Close("run_ended")
+		}
+	}
+	if s.cfg.Adapters != nil {
+		if sess, ok := s.cfg.Adapters.Get(id); ok {
 			sess.Close("run_ended")
 		}
 	}

@@ -52,6 +52,16 @@ func Load(ctx context.Context, namespace, provider string, store Store) (*Connec
 // it. Changes that weaken delivery require a human caller. The new mode is
 // validated against the connection class.
 func SetLocalOnly(ctx context.Context, namespace, provider, field string, mode localonly.Mode, human bool, store Store) error {
+	return SetLocalOnlyApproved(ctx, namespace, provider, field, mode, human, nil, store)
+}
+
+// ModeApprover decides whether a human accepts a weaker delivery mode. It sees
+// the mode before and after, so the approval names exactly the change.
+type ModeApprover func(old, next localonly.Mode) error
+
+// SetLocalOnlyApproved is SetLocalOnly that also asks approve, when it is not
+// nil, before a change that weakens delivery is written.
+func SetLocalOnlyApproved(ctx context.Context, namespace, provider, field string, mode localonly.Mode, human bool, approve ModeApprover, store Store) error {
 	if namespace == "" {
 		namespace = "default"
 	}
@@ -67,8 +77,15 @@ func SetLocalOnly(ctx context.Context, namespace, provider, field string, mode l
 		return err
 	}
 	old := conn.LocalOnly[field]
-	if localonly.Weakens(old, mode) && !human {
-		return ErrHumanOnly
+	if localonly.Weakens(old, mode) {
+		if !human {
+			return ErrHumanOnly
+		}
+		if approve != nil {
+			if err := approve(old, mode); err != nil {
+				return err
+			}
+		}
 	}
 	next := map[string]localonly.Mode{}
 	for k, v := range conn.LocalOnly {

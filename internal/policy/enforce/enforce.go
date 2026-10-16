@@ -53,6 +53,9 @@ type Request struct {
 	Unit        string
 	ApprovalJWT string
 	Namespace   string
+	// Tier is the delivery tier asked for (D1 to D6); empty for requests that
+	// do not pick one.
+	Tier string
 }
 
 // Decision is the verdict and where it came from.
@@ -69,7 +72,32 @@ type Decision struct {
 	GrantID string
 	// MaxTTL caps the lifetime of anything issued for the request; zero is no cap.
 	MaxTTL time.Duration
+	// Approval is what the request needs before it runs: "auto", "ask" or
+	// "presence"; empty when the request named no tier.
+	Approval string
+	// Tiers are the delivery tiers the caller kind may use here, and Pinned is
+	// set when a verified pinned command matched.
+	Tiers  []string
+	Pinned bool
+	// MaxRequests caps the requests a placeholder session serves; zero is no cap.
+	MaxRequests int
+	// Hosts is the document's own host list, to intersect with the template's.
+	Hosts []string
+	// EgressAllow lists the non-secret destinations contained children may
+	// reach, FSRead and FSWrite the paths they may read and write (variables
+	// unexpanded) and FSDeny the paths no run may be given; empty means the
+	// policy sets none. HostWrite limits writes to the host sandbox's paths when
+	// HostWriteRestricted is set.
+	EgressAllow         []string
+	FSRead              []string
+	FSWrite             []string
+	FSDeny              []string
+	HostWrite           []string
+	HostWriteRestricted bool
 }
+
+// sandboxPath is the PATH commands resolve against in a contained run.
+const sandboxPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 // Enforcer reads the policy a request is decided against.
 type Enforcer struct {
@@ -215,14 +243,24 @@ func unreadable(connection string, err error) Decision {
 }
 
 func fromDocument(doc connpolicy.Document, req Request, source string) Decision {
-	cd := doc.Decide(connpolicy.Request{
+	creq := connpolicy.Request{
 		Action:  req.Action,
 		Runtime: req.Runtime,
 		Caller:  req.Caller,
 		Command: req.Command,
 		Unit:    req.Unit,
-	})
-	d := Decision{Allow: cd.Allow, Reason: cd.Reason, Source: source, MaxTTL: cd.MaxTTL}
+		Tier:    req.Tier,
+	}
+	if len(req.Command) > 0 && len(doc.Commands) > 0 {
+		creq.Exe, _ = connpolicy.ResolveExecutable(req.Command[0], req.CWD, sandboxPath)
+	}
+	cd := doc.Decide(creq)
+	d := Decision{
+		Allow: cd.Allow, Reason: cd.Reason, Source: source, MaxTTL: cd.MaxTTL,
+		Approval: cd.Approval, Tiers: cd.Tiers, Pinned: cd.Pinned, MaxRequests: cd.MaxRequests, Hosts: cd.Hosts,
+		EgressAllow: cd.Egress, FSRead: cd.FSRead, FSWrite: cd.FSWrite, FSDeny: cd.FSDeny,
+		HostWrite: cd.HostWrite, HostWriteRestricted: cd.HostWriteRestricted,
+	}
 	if !d.Allow {
 		d.SafeFix = "change the connection's policy with `keylatch policy import`"
 	}

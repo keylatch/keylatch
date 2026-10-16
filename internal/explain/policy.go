@@ -6,6 +6,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/registry"
 )
 
 // Tier statuses reported for a caller.
@@ -39,6 +40,8 @@ type TierStatus struct {
 	Runtime    string `json:"runtime"`
 	Restricted bool   `json:"restricted"`
 	Why        string `json:"why"`
+	Code       string `json:"code,omitempty"`
+	Fix        string `json:"fix,omitempty"`
 }
 
 // ConnectionPolicy is the effective policy for one connection.
@@ -46,6 +49,7 @@ type ConnectionPolicy struct {
 	Connection string       `json:"connection"`
 	Known      bool         `json:"known"`
 	Hosts      []string     `json:"hosts"`
+	Binding    *BindingInfo `json:"binding,omitempty"`
 	Tiers      []TierStatus `json:"tiers"`
 }
 
@@ -123,7 +127,7 @@ func Effective(in PolicyInput) PolicyReport {
 		llm := kind == CallerAgent
 		for _, name := range conns {
 			facts := in.Resolve(name)
-			cn := ConnectionPolicy{Connection: name, Known: facts.Known, Hosts: sortedCopy(facts.Hosts), Tiers: []TierStatus{}}
+			cn := ConnectionPolicy{Connection: name, Known: facts.Known, Hosts: sortedCopy(facts.Hosts), Binding: facts.Binding, Tiers: []TierStatus{}}
 			ein := Input{
 				Policy:     relaxed,
 				Manifest:   in.Manifest,
@@ -154,6 +158,9 @@ func tierStatus(ev tierEval, known bool, restricted map[string]bool) TierStatus 
 		ts.Status = StatusDenied
 	default:
 		ts.Status = StatusUnavailable
+	}
+	if !ev.eligible && known && strings.HasPrefix(ev.why, registry.NoBindingReason) {
+		ts.Code, ts.Fix = registry.NoBindingReason, ev.fix
 	}
 	if ev.eligible {
 		ts.Runtime = ev.runtime

@@ -75,6 +75,24 @@ builds:
       - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
       - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
 
+  # docker-credential-keylatch is the Docker credential helper behind
+  # "credsStore": "keylatch". It prints placeholders, never real credentials.
+  - id: docker-credential-keylatch
+    main: ./cmd/docker-credential-keylatch
+    binary: docker-credential-keylatch
+    tags:
+      - production
+      - release
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+
 archives:
   - id: default
     ids: [keylatch, keylatchd]

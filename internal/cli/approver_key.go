@@ -76,6 +76,12 @@ func printApprovalSummary(w io.Writer, ar *approval.ApprovalRequest) {
 	if ar.Note != "" {
 		fmt.Fprintf(w, "  note:          %s\n", displaySafe(ar.Note))
 	}
+	if ar.Plan != "" {
+		fmt.Fprintf(w, "  plan:\n")
+		for _, line := range strings.Split(ar.Plan, "\n") {
+			fmt.Fprintf(w, "    %s\n", displaySafe(line))
+		}
+	}
 	fmt.Fprintf(w, "  requested:     %s\n", ar.CreatedAt.UTC().Format(time.RFC3339))
 	fmt.Fprintf(w, "  expires:       %s\n", ar.ExpiresAt.UTC().Format(time.RFC3339))
 }

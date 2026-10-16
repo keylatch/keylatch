@@ -24,7 +24,46 @@ func Describe(d Document) string {
 	if d.MaxTTL != "" {
 		parts = append(parts, "max_ttl="+d.MaxTTL)
 	}
+	if len(d.Hosts) > 0 {
+		parts = append(parts, "hosts="+strings.Join(d.Hosts, ","))
+	}
+	if d.Egress != nil && len(d.Egress.Allow) > 0 {
+		parts = append(parts, "egress="+strings.Join(d.Egress.Allow, ","))
+	}
+	if d.FS != nil {
+		for _, f := range []struct {
+			name  string
+			paths []string
+		}{{"fs.read", d.FS.Read}, {"fs.write", d.FS.Write}, {"fs.deny", d.FS.Deny}} {
+			if len(f.paths) > 0 {
+				parts = append(parts, f.name+"="+strings.Join(f.paths, ","))
+			}
+		}
+	}
+	for _, c := range d.Commands {
+		parts = append(parts, "command="+strings.Join(c.Match, " ")+commandDetail(c))
+	}
+	if h := d.Host; h != nil {
+		parts = append(parts, fmt.Sprintf("host=%s(egress:%d write:%d deny:%d)", h.Source, len(h.EgressAllow), len(h.FSWrite), len(h.FSDeny)))
+	}
 	return strings.Join(parts, " ")
+}
+
+func commandDetail(c CommandRule) string {
+	var parts []string
+	if len(c.Tiers) > 0 {
+		parts = append(parts, "tiers="+strings.Join(c.Tiers, ","))
+	}
+	if c.Approval != "" {
+		parts = append(parts, "approval="+c.Approval)
+	}
+	if c.ExeSHA256 != "" {
+		parts = append(parts, "pinned")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(parts, " ") + "]"
 }
 
 func ruleDetail(r CallerRule) string {
@@ -37,6 +76,18 @@ func ruleDetail(r CallerRule) string {
 	}
 	if len(r.Units) > 0 {
 		parts = append(parts, "units="+strings.Join(r.Units, ","))
+	}
+	if len(r.Tiers) > 0 {
+		parts = append(parts, "tiers="+strings.Join(r.Tiers, ","))
+	}
+	if r.Approval != "" {
+		parts = append(parts, "approval="+r.Approval)
+	}
+	if r.TTL != "" {
+		parts = append(parts, "ttl="+r.TTL)
+	}
+	if r.MaxRequests > 0 {
+		parts = append(parts, fmt.Sprintf("max_requests=%d", r.MaxRequests))
 	}
 	if len(parts) == 0 {
 		return ""

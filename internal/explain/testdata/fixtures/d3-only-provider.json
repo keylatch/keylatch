@@ -25,12 +25,14 @@
       "files.stripe.com",
       "api.stripe.com"
     ],
-    "runtimes": [
-      "gateway_proxy"
-    ]
+    "binding": {
+      "source": "template",
+      "hosts": ["api.stripe.com", "files.stripe.com"],
+      "slots": [{"field": "api_key", "in": "header", "name": "Authorization", "hosts": ["api.stripe.com", "files.stripe.com"]}]
+    }
   },
   "enabled_runtimes": [
-    "gateway_proxy"
+    "placeholder"
   ],
   "request": {
     "actor": "claude-code",
