@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -38,11 +39,20 @@ func TestResolveAllowedCommand(t *testing.T) {
 		{"directory pattern escape", []string{"sh scripts/"}, []string{"sh", "scripts/../evil.sh"}, false},
 		{"directory pattern elsewhere", []string{"sh scripts/"}, []string{"sh", "other/run.sh"}, false},
 		{"wildcard argument", []string{"sh * -x"}, []string{"sh", "anything", "-x"}, true},
-		{"absolute name must be argv0", []string{sh + " "}, []string{sh, "-c", "true"}, true},
 		{"absolute name, bare argv0", []string{sh + " "}, []string{"sh"}, false},
 		{"empty allowlist", nil, []string{"sh"}, false},
 		{"empty command", []string{"sh "}, nil, false},
 		{"blank entry", []string{"   "}, []string{"sh"}, false},
+	}
+	// Allowlist entries are split on whitespace, so an executable whose path
+	// contains a space (C:\Program Files\...) cannot be named by absolute path.
+	if !strings.ContainsAny(sh, " \t") {
+		cases = append(cases, struct {
+			name    string
+			entries []string
+			argv    []string
+			want    bool
+		}{"absolute name must be argv0", []string{sh + " "}, []string{sh, "-c", "true"}, true})
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

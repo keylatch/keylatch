@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,10 +19,14 @@ func (auditGateway) Running() bool { return true }
 // A session token keeps the caller's LLM classification, has a bounded number
 // of uses, a short life, and is revoked as soon as the child exits.
 func TestRunTokenRevokedOnExit(t *testing.T) {
+	trueBin, err := exec.LookPath("true")
+	if err != nil {
+		t.Skip("no true on PATH")
+	}
 	t.Setenv("CREDENTIALS_LLM_SESSION", "audit")
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	d := NewGatewayTypedDriver(auditGateway{}, make([]byte, 32), path)
-	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "audit"})
+	_, err = d.Run(context.Background(), ExecRequest{Command: []string{trueBin}}, registry.ConnectionTemplate{Provider: "audit"})
 	if err != nil {
 		t.Fatal(err)
 	}

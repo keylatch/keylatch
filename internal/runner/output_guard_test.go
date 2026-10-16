@@ -44,7 +44,7 @@ func TestOutputGuardCatchesEncodedLeaks(t *testing.T) {
 		"base64-pad":  `printf 'user:%s!' "$TEST_API_KEY" | base64`,
 		"hex":         `printf '%s' "$TEST_API_KEY" | od -An -v -tx1 | tr -d ' \n'`,
 		"hex-upper":   `printf '%s' "$TEST_API_KEY" | od -An -v -tx1 | tr -d ' \n' | tr a-f A-F`,
-		"url":         `printf '%s' "$TEST_API_KEY" | od -An -v -tx1 | tr -d '\n' | sed 's/ /%/g'`,
+		"url":         `printf '%s' "$TEST_API_KEY" | od -An -v -tx1 | tr -d '\n' | tr -s ' ' '%'`,
 		"stderr":      `printf '%s' "$TEST_API_KEY" >&2`,
 		"split-write": `printf '%s' "${TEST_API_KEY%"${TEST_API_KEY#??????}"}"; sleep 0.05; printf '%s' "${TEST_API_KEY#??????}"`,
 	}
