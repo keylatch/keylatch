@@ -18,6 +18,7 @@ import (
 	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/policy/hostimport"
 	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/spf13/cobra"
 )
@@ -149,54 +150,144 @@ func runPolicyCheckAs(c *cobra.Command, args []string, o policyCheckOptions) err
 }
 
 func newPolicyImportCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "import <dir>",
-		Short: "Replace the connection policy with the documents in a directory",
-		Long: `Validate every *.json file in <dir> against the connection policy schema,
-show what would change, and replace the connection policy with them. Nothing
-changes if any file is invalid. The replacement needs a human at a terminal:
-the summary shown there is the diff.`,
-		Args: cobra.ExactArgs(1),
+	var (
+		from        string
+		settings    []string
+		connections []string
+		dryRun      bool
+	)
+	cmd := &cobra.Command{
+		Use:   "import <dir|file.yaml> | --from claude-code|codex|gemini",
+		Short: "Replace the connection policy from documents, or bound it by an agent's sandbox",
+		Long: `With a directory, validate every *.json file in it against the connection policy
+schema, show what would change, and replace the connection policy with them. With
+a YAML file, compile the one-file form (defaults, connections, commands) into one
+document per connection. Nothing changes if any file is invalid. The replacement
+needs a human at a terminal: the summary shown there is the diff.
+
+With --from, read the sandbox settings of an agent harness (--settings names the
+files; the harness's own are used otherwise) and record its limits in the policy:
+the domains it allows, the paths it can write and the paths it denies. The import
+only narrows: egress becomes the intersection of the policy's list and the
+harness's, writes must stay inside the harness's writable paths, and its denies are
+added. It fails when the harness runs keylatch, or a program that can start it,
+outside its sandbox.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			dir := args[0]
-			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-				return NewUsageError("policy import: %q is not a directory", dir)
+			if from != "" {
+				if len(args) > 0 {
+					return NewUsageError("policy import: --from takes no path")
+				}
+				return runPolicyImportHost(c, from, settings, connections, dryRun)
 			}
-			incoming, err := connpolicy.ReadDir(dir, false)
-			if err != nil {
-				return NewUsageError("policy import: %v; nothing was changed", err)
+			if len(args) != 1 {
+				return NewUsageError("policy import: name a directory or a YAML file, or use --from")
 			}
-			if len(incoming) == 0 {
-				return NewUsageError("policy import: no *.json files in %q", dir)
-			}
-
-			store := connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}
-			current, err := store.LoadAll()
-			if err != nil {
-				fmt.Fprintf(c.ErrOrStderr(), "policy import: the existing policy is unreadable and will be replaced: %v\n", err)
-				current = map[string]connpolicy.Document{}
-			}
-			lines := connpolicy.Diff(current, incoming)
-			if len(lines) == 0 {
-				fmt.Fprintln(c.OutOrStdout(), "policy import: no changes")
-				return nil
-			}
-			diff := "  " + strings.Join(lines, "\n  ")
-			fmt.Fprintf(c.OutOrStdout(), "Changes:\n%s\n", diff)
-
-			proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "import", "",
-				"Import %d connection policy document(s) from %s:\n%s", len(incoming), dir, diff)
-			if err != nil {
-				return err
-			}
-			if err := store.Replace(incoming); err != nil {
-				return fmt.Errorf("policy import: %w", err)
-			}
-			recordPolicyChange(c.Context(), audit.OutcomeOK, "import", "", proof.Digest, "")
-			fmt.Fprintf(c.OutOrStdout(), "policy import: %d document(s) imported\n", len(incoming))
-			return nil
+			return runPolicyImportFiles(c, args[0], dryRun)
 		},
 	}
+	cmd.Flags().StringVar(&from, "from", "", "read the sandbox limits of claude-code, codex or gemini")
+	cmd.Flags().StringArrayVar(&settings, "settings", nil, "settings file to read with --from (repeatable)")
+	cmd.Flags().StringArrayVar(&connections, "connection", nil, "connection to bound with --from (repeatable; default every connection)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show the changes and stop")
+	return cmd
+}
+
+func runPolicyImportFiles(c *cobra.Command, source string, dryRun bool) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return NewUsageError("policy import: %v", err)
+	}
+	var incoming map[string]connpolicy.Document
+	if info.IsDir() {
+		incoming, err = connpolicy.ReadDir(source, false)
+		if err == nil && len(incoming) == 0 {
+			return NewUsageError("policy import: no *.json files in %q", source)
+		}
+	} else {
+		var data []byte
+		if data, err = os.ReadFile(source); err == nil { //nolint:gosec // G304: the caller names the policy file to import
+			incoming, err = connpolicy.ParseYAML(data)
+		}
+	}
+	if err != nil {
+		return NewUsageError("policy import: %v; nothing was changed", err)
+	}
+	return applyPolicyImport(c, incoming, fmt.Sprintf("from %s", source), dryRun)
+}
+
+// applyPolicyImport shows the diff against the stored policy, asks a human to
+// approve it and replaces the policy.
+func applyPolicyImport(c *cobra.Command, incoming map[string]connpolicy.Document, what string, dryRun bool) error {
+	store := connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}
+	current, err := store.LoadAll()
+	if err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "policy import: the existing policy is unreadable and will be replaced: %v\n", err)
+		current = map[string]connpolicy.Document{}
+	}
+	lines := connpolicy.Diff(current, incoming)
+	if len(lines) == 0 {
+		fmt.Fprintln(c.OutOrStdout(), "policy import: no changes")
+		return nil
+	}
+	diff := "  " + strings.Join(lines, "\n  ")
+	fmt.Fprintf(c.OutOrStdout(), "Changes:\n%s\n", diff)
+	if dryRun {
+		return nil
+	}
+
+	proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "import", "",
+		"Import %d connection policy document(s) %s:\n%s", len(incoming), what, diff)
+	if err != nil {
+		return err
+	}
+	if err := store.Replace(incoming); err != nil {
+		return fmt.Errorf("policy import: %w", err)
+	}
+	recordPolicyChange(c.Context(), audit.OutcomeOK, "import", "", proof.Digest, "")
+	fmt.Fprintf(c.OutOrStdout(), "policy import: %d document(s) imported\n", len(incoming))
+	return nil
+}
+
+func runPolicyImportHost(c *cobra.Command, host string, settings, only []string, dryRun bool) error {
+	home, _ := os.UserHomeDir()
+	dir, _ := os.Getwd()
+	files := settings
+	if len(files) == 0 {
+		files = hostimport.DefaultFiles(host, home, dir)
+	}
+	bounds, err := hostimport.Load(host, files)
+	if err != nil {
+		return NewUsageError("policy import: %v", err)
+	}
+	if bad := hostimport.LintExcluded(bounds.Excluded); len(bad) > 0 {
+		return NewPolicyDeny("policy import: host.sandbox.keylatch_excluded: %s runs these commands outside its sandbox, which lets an agent reach Keylatch without the daemon's checks: %s. Remove them from the settings and import again",
+			host, strings.Join(bad, "; "))
+	}
+	for _, w := range bounds.Warnings {
+		fmt.Fprintf(c.ErrOrStderr(), "policy import: %s\n", w)
+	}
+	store := connpolicy.Store{Dir: paths.PolicyDir(llmcontext.DefaultLookup)}
+	current, err := store.LoadAll()
+	if err != nil {
+		return fmt.Errorf("policy import: %w", err)
+	}
+	if len(current) == 0 {
+		return NewUsageError("policy import: there is no connection policy to bound; run `keylatch policy init`")
+	}
+	for _, name := range only {
+		if _, ok := current[name]; !ok {
+			return NewUsageError("policy import: no connection policy for %q", name)
+		}
+	}
+	bounded := make(map[string]connpolicy.Document, len(current))
+	for name, doc := range current {
+		if len(only) == 0 || slices.Contains(only, name) {
+			doc = doc.WithHost(bounds.HostBounds)
+		}
+		bounded[name] = doc
+	}
+	return applyPolicyImport(c, bounded, fmt.Sprintf("bounded by the %s sandbox settings (%s)", host, strings.Join(bounds.Files, ", ")), dryRun)
 }
 
 func newPolicyExportCmd() *cobra.Command {

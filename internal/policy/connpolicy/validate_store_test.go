@@ -70,7 +70,7 @@ func TestCallerRuleJSON(t *testing.T) {
 		t.Fatalf("allow marshals to %s, %v", b, err)
 	}
 	var r CallerRule
-	for _, bad := range []string{`"allow"`, `{"allow": true, "tiers": []}`, `5`} {
+	for _, bad := range []string{`"allow"`, `{"allow": true, "bogus": []}`, `5`} {
 		if err := json.Unmarshal([]byte(bad), &r); err == nil {
 			t.Errorf("%s accepted", bad)
 		}

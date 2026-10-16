@@ -833,3 +833,131 @@ func TestPlaceholderSessionCarriesACanary(t *testing.T) {
 	}
 	assert.True(t, strings.HasPrefix(canaryEnv, "klc-canary-stripe-"), "the placeholder session sets a canary beside its placeholders")
 }
+
+func TestContainedRunTakesHostsAndEgressFromThePolicy(t *testing.T) {
+	w := newContainedWorld(t)
+	w.decide = func(enforce.Request) enforce.Decision {
+		return enforce.Decision{Allow: true, Approval: "auto", Hosts: []string{"api.stripe.com"}, EgressAllow: []string{"registry.npmjs.org"}}
+	}
+	res := w.runRaw(w.request(), nil)
+	require.True(t, res.final.OK, res.final.Error)
+	decided := w.events(audit.ActionRunDecided)
+	require.Len(t, decided, 1)
+	assert.Equal(t, []string{"api.stripe.com", "registry.npmjs.org"}, decided[0].Extra["hosts"], "files.stripe.com is removed by the policy's host list")
+}
+
+func TestContainedRunHonoursFilesystemLimitsFromThePolicy(t *testing.T) {
+	for name, tc := range map[string]struct {
+		dec    func(w *containedWorld) enforce.Decision
+		reason string
+	}{
+		"project inside ${project}": {func(*containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", FSWrite: []string{"${project}"}}
+		}, ""},
+		"write list that expands to nothing": {func(*containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", FSWrite: []string{"${browser_profiles}"}}
+		}, "does not allow writes"},
+		"host sandbox cannot write here": {func(*containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", HostWriteRestricted: true, HostWrite: []string{"/somewhere/else"}}
+		}, "host sandbox does not allow writes"},
+		"host sandbox writes the project": {func(*containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", HostWriteRestricted: true, HostWrite: []string{"${project}"}}
+		}, ""},
+		"host sandbox allows nothing": {func(*containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", HostWriteRestricted: true}
+		}, "host sandbox does not allow writes"},
+		"policy denies the project itself": {func(*containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", FSDeny: []string{"${project}"}}
+		}, "not available to contained runs"},
+		"policy denies a parent of the project": {func(w *containedWorld) enforce.Decision {
+			return enforce.Decision{Allow: true, Approval: "auto", FSDeny: []string{filepath.Dir(w.project)}}
+		}, "not available to contained runs"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newContainedWorld(t)
+			w.decide = func(enforce.Request) enforce.Decision { return tc.dec(w) }
+			res := w.runRaw(w.request(), nil)
+			if tc.reason == "" {
+				require.True(t, res.final.OK, res.final.Error)
+				return
+			}
+			assert.False(t, res.final.OK)
+			assert.Contains(t, res.final.Error, tc.reason)
+			assert.Zero(t, w.launcher.started())
+		})
+	}
+}
+
+func TestSessionTiersAskThePolicyEngine(t *testing.T) {
+	newSessionWorld := func(t *testing.T, dec func(enforce.Request) enforce.Decision) *containedWorld {
+		w := newContainedWorld(t)
+		mgr, err := placeholder.NewManager(placeholder.Config{Resolver: fixedResolver{"secret_key": containedSecret}, Audit: w.audit})
+		require.NoError(t, err)
+		t.Cleanup(mgr.Close)
+		w.srv.cfg.Placeholders = mgr
+		w.decide = dec
+		return w
+	}
+	session := func(w *containedWorld, tier Tier) Response {
+		conn := w.connect(context.Background())
+		require.NoError(t, writeFrame(conn, agentRequest(Request{Op: OpRunSession, Run: &RunRequest{Connection: "stripe", Tier: tier, Command: []string{"true"}}})))
+		var resp Response
+		require.NoError(t, readFrame(bufio.NewReader(conn), &resp, maxFrame))
+		return resp
+	}
+
+	w := newSessionWorld(t, func(r enforce.Request) enforce.Decision {
+		if r.Tier == "D3" {
+			return enforce.Decision{Reason: "agents get D2 only here"}
+		}
+		return enforce.Decision{Allow: true, Approval: "auto"}
+	})
+	denied := session(w, TierPlaceholder)
+	assert.False(t, denied.OK)
+	assert.Equal(t, exitcode.PolicyDeny, denied.ExitCode)
+	assert.Contains(t, denied.Error, "agents get D2 only here")
+	assert.Equal(t, "D3", w.decided[0].Tier)
+
+	w = newSessionWorld(t, func(enforce.Request) enforce.Decision { return enforce.Decision{Allow: true, Approval: "ask"} })
+	needs := session(w, TierPlaceholder)
+	assert.False(t, needs.OK)
+	assert.Equal(t, exitcode.ApprovalRequired, needs.ExitCode)
+	assert.Contains(t, needs.Error, "approval refused")
+	approve := w.srv.cfg.Approve
+	w.srv.cfg.Approve = nil
+	assert.Contains(t, session(w, TierPlaceholder).Error, "cannot collect one")
+	w.srv.cfg.Approve = approve
+
+	w.approve = func(r ApprovalRequest) (string, error) {
+		assert.Equal(t, TierPlaceholder, r.Tier)
+		assert.Equal(t, []string{"true"}, r.Argv)
+		return "apr-3", nil
+	}
+	ok := session(w, TierPlaceholder)
+	assert.True(t, ok.OK, ok.Error)
+	require.Len(t, w.asked, 2)
+
+	w.approve = func(ApprovalRequest) (string, error) { return "", errors.New("no") }
+	refused := session(w, TierPlaceholder)
+	assert.Equal(t, exitcode.ApprovalRequired, refused.ExitCode)
+	assert.Contains(t, refused.Error, "approval refused: no")
+}
+
+func TestNeedsApproval(t *testing.T) {
+	assert.True(t, needsApproval("ask", KindHuman))
+	assert.True(t, needsApproval("presence", KindHuman))
+	assert.False(t, needsApproval("auto", KindAgent))
+	assert.True(t, needsApproval("", KindAgent), "a policy that says nothing leaves a constrained caller needing one")
+	assert.False(t, needsApproval("", KindHuman))
+}
+
+func TestExpandPaths(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	vars := map[string][]string{"project": {"/work/p"}, "toolchain_caches": {"/c/a", "/c/b"}}
+	got := expandPaths([]string{"${project}", "${project}/sub", "${toolchain_caches}", "${unknown}", "~/x", "/abs//dir/", "relative", "${broken"}, vars)
+	want := []string{"/abs/dir", "/c/a", "/c/b", "/work/p", "/work/p/sub"}
+	if home != "" {
+		want = append(want, filepath.Join(home, "x"))
+	}
+	assert.ElementsMatch(t, want, got)
+}

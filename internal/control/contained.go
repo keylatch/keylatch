@@ -23,7 +23,7 @@ import (
 	"github.com/keylatch/keylatch/internal/egress"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/paths"
-	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/registry"
 )
@@ -103,8 +103,8 @@ type containedPlan struct {
 // the policy or the caller asks for: Keylatch state and run directories, SSH
 // keys, cloud and container credentials, browser profiles and the agents' own
 // configuration.
-func (s *Server) denyList() []string {
-	list := []string{paths.ConfigDir(s.cfg.Env)}
+func (s *Server) denyList(extra ...string) []string {
+	list := append([]string{paths.ConfigDir(s.cfg.Env)}, extra...)
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, p := range []string{".ssh", ".aws", ".config/gcloud", ".kube", ".gnupg", ".config/keylatch", ".keylatch",
 			".mozilla", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware", ".claude", ".codex", ".gemini", ".docker"} {
@@ -167,15 +167,9 @@ func (s *Server) planContained(ctx context.Context, kind Kind, rr *RunRequest) (
 	if len(tmpl.MintedFields) > 0 {
 		return deny(CodeRefused, exitcode.PolicyDeny, "connection %q mints its credential, which only tier D3 delivers", rr.Connection)
 	}
-	if s.cfg.Decide == nil {
-		return deny(CodeRefused, exitcode.PolicyDeny, "tier D5 needs a policy engine and this daemon has none")
-	}
-	dec := s.cfg.Decide(ctx, enforce.Request{
-		Connection: rr.Connection, Runtime: containedRuntime, Caller: kind,
-		Command: rr.Command, CWD: rr.CWD, Tier: string(TierContained),
-	})
-	if !dec.Allow {
-		return deny(CodeRefused, exitcode.PolicyDeny, "policy denies %s: %s", TierContained, dec.Reason)
+	dec, f := s.gateTier(ctx, kind, rr, TierContained, true)
+	if f != nil {
+		return nil, f
 	}
 	if rr.CWD == "" {
 		return deny(CodeBadRequest, exitcode.UserError, "the working directory is required")
@@ -187,7 +181,9 @@ func (s *Server) planContained(ctx context.Context, kind Kind, rr *RunRequest) (
 	if info, err := os.Stat(project); err != nil || !info.IsDir() || project == "/" {
 		return deny(CodeRefused, exitcode.PolicyDeny, "%s cannot be the project of a contained run", project)
 	}
-	for _, d := range s.denyList() {
+	vars := s.pathVars(project)
+	policyDeny := expandPaths(dec.FSDeny, vars)
+	for _, d := range s.denyList(policyDeny...) {
 		if resolved, err := realPath(d); err == nil {
 			d = resolved
 		}
@@ -195,17 +191,22 @@ func (s *Server) planContained(ctx context.Context, kind Kind, rr *RunRequest) (
 			return deny(CodeRefused, exitcode.PolicyDeny, "%s is not available to contained runs", project)
 		}
 	}
-	if len(dec.FSWrite) > 0 && !slices.ContainsFunc(dec.FSWrite, func(w string) bool { return within(project, w) }) {
+	// A write list that expands to nothing allows nothing; it does not lift the
+	// limit.
+	if len(dec.FSWrite) > 0 && !connpolicy.WithinAny(project, expandPaths(dec.FSWrite, vars)) {
 		return deny(CodeRefused, exitcode.PolicyDeny, "policy does not allow writes under %s", project)
 	}
-	readOnly, err := s.readOnlyPaths(cc, dec.FSRead)
+	if dec.HostWriteRestricted && !connpolicy.WithinAny(project, expandPaths(dec.HostWrite, vars)) {
+		return deny(CodeRefused, exitcode.PolicyDeny, "the host sandbox does not allow writes under %s", project)
+	}
+	readOnly, err := s.readOnlyPaths(cc, expandPaths(dec.FSRead, vars), policyDeny)
 	if err != nil {
 		return deny(CodeRefused, exitcode.PolicyDeny, "%v", err)
 	}
 
 	var hosts []string
 	if b, ok := tmpl.Binding(); ok {
-		hosts = append(hosts, b.Hosts...)
+		hosts = connpolicy.IntersectHostsIfAny(b.Hosts, dec.Hosts)
 	}
 	hosts = append(hosts, dec.EgressAllow...)
 	slices.Sort(hosts)
@@ -227,14 +228,14 @@ func (s *Server) planContained(ctx context.Context, kind Kind, rr *RunRequest) (
 
 // readOnlyPaths is the daemon's list of toolchain caches plus the policy's read
 // paths, each resolved and checked against the deny list.
-func (s *Server) readOnlyPaths(cc *ContainedConfig, policyRead []string) ([]string, error) {
+func (s *Server) readOnlyPaths(cc *ContainedConfig, policyRead, policyDeny []string) ([]string, error) {
 	var out []string
 	for _, p := range slices.Concat(cc.ReadOnly, policyRead) {
 		resolved, err := realPath(p)
 		if err != nil {
 			continue
 		}
-		for _, d := range s.denyList() {
+		for _, d := range s.denyList(policyDeny...) {
 			if r, err := realPath(d); err == nil {
 				d = r
 			}
@@ -618,10 +619,7 @@ func (s *Server) feedContained(r *bufio.Reader, child contained.Child, cancel co
 // Agent and host callers need one unless the policy approves the exact command
 // in advance; the approval is bound to argv, tier, hosts and lifetime.
 func (s *Server) approveContained(ctx context.Context, kind Kind, rr *RunRequest, plan *containedPlan, d *decision) *refusal {
-	if !kind.Constrained() && plan.approval != "ask" {
-		return nil
-	}
-	if plan.approval == "auto" {
+	if !needsApproval(plan.approval, kind) {
 		return nil
 	}
 	if s.cfg.Approve == nil {

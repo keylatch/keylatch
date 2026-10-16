@@ -173,7 +173,7 @@ func TestPolicyImportAtomic(t *testing.T) {
 
 	// One valid and one invalid file: nothing changes.
 	dir := writeExampleDir(t, "agent-gateway-only.json", "service-only.json")
-	if err := os.WriteFile(filepath.Join(dir, "broken.json"), []byte(`{"schema_version": 2, "connection": "x", "callers": {"agent": {"allow": true, "tiers": ["D1"]}}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "broken.json"), []byte(`{"schema_version": 2, "connection": "x", "callers": {"agent": {"allow": true, "bogus": ["D1"]}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := runCLI(t, "policy", "import", dir)

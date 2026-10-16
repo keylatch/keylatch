@@ -250,6 +250,16 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest, revo
 	if tier == "" {
 		tier = s.preferredTier(rr)
 	}
+	if tier == TierGateway || tier == TierPlaceholder {
+		dec, f := s.gateTier(ctx, kind, rr, tier, false)
+		if f == nil && needsApproval(dec.Approval, kind) && dec.Approval != "" {
+			f = s.approveSession(ctx, kind, rr, tier, dec)
+		}
+		if f != nil {
+			resp.Code, resp.ExitCode, resp.Error = f.code, f.exit, f.msg
+			return resp
+		}
+	}
 	switch tier {
 	case TierGateway:
 	case TierPlaceholder:
