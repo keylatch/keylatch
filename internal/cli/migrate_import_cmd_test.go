@@ -159,12 +159,20 @@ func TestImportRefusesAPlanThatLeavesItsMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forged := strings.Replace(string(data), filepath.ToSlash(filepath.Join(f.dir, "app.env")), "/etc/hostname", 1)
-	if forged == string(data) {
+	var plan migrate.Plan
+	if err := json.Unmarshal(data, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) == 0 || !strings.HasPrefix(plan.Items[0].Ref, "env:") {
 		t.Fatalf("the plan names no env file: %s", data)
 	}
+	plan.Items[0].Ref = "env:/etc/hostname#TOKEN_A"
+	forged, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bad := filepath.Join(f.dir, "forged.json")
-	if err := os.WriteFile(bad, []byte(forged), 0o600); err != nil {
+	if err := os.WriteFile(bad, forged, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runMigrateCLI(t, "", "import", "--plan", bad, "--map", f.mapFile, "--to", "bw"); err == nil || f.store.puts != 0 {

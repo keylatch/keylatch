@@ -42,7 +42,8 @@ func credentialPath(scope, connection string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, userCredstore, file), nil
+	// Still a systemd path: slash form on every system.
+	return path.Join(filepath.ToSlash(home), userCredstore, file), nil
 }
 
 // sealCredential seals capability into the unit's credential file with
