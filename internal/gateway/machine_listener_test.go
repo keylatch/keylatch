@@ -283,3 +283,24 @@ func TestMachineListenerServeAndStop(t *testing.T) {
 	bad := &MachineListener{cfg: MachineListenerConfig{Addr: "127.0.0.1:1", Listen: func(string, string) (net.Listener, error) { return nil, errors.New("in use") }}}
 	assert.Error(t, bad.Serve(context.Background()))
 }
+
+func TestMachineListenerAsksForItsCertificateOnEveryHandshake(t *testing.T) {
+	w := newMachineWorld(t)
+	asked := 0
+	l, err := NewMachineListener(MachineListenerConfig{
+		Addr: "127.0.0.1:7443", ClientCAs: w.pool, Backend: w,
+		GetCertificate: func() (*tls.Certificate, error) { asked++; return &w.server, nil },
+	})
+	require.NoError(t, err)
+	cfg := l.TLSConfig()
+	require.NotNil(t, cfg.GetCertificate)
+	require.Empty(t, cfg.Certificates)
+	for i := 0; i < 2; i++ {
+		got, err := cfg.GetCertificate(&tls.ClientHelloInfo{})
+		require.NoError(t, err)
+		assert.Equal(t, &w.server, got)
+	}
+	assert.Equal(t, 2, asked)
+	_, err = NewMachineListener(MachineListenerConfig{Addr: "127.0.0.1:7443", ClientCAs: w.pool, Backend: w})
+	assert.Error(t, err, "a listener with no certificate source")
+}

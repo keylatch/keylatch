@@ -91,9 +91,13 @@ type MachineListenerConfig struct {
 	Addr          string
 	AllowWildcard bool
 	// ClientCAs holds the machine CA and nothing else.
-	ClientCAs  *x509.CertPool
-	ServerCert tls.Certificate
-	Backend    MachineBackend
+	ClientCAs *x509.CertPool
+	// ServerCert is the listener's certificate. GetCertificate, when set,
+	// replaces it and is asked on every handshake, so a certificate can be
+	// renewed while the listener runs.
+	ServerCert     tls.Certificate
+	GetCertificate func() (*tls.Certificate, error)
+	Backend        MachineBackend
 	// Listen binds the address; nil uses net.Listen.
 	Listen func(network, addr string) (net.Listener, error)
 }
@@ -110,7 +114,7 @@ func NewMachineListener(cfg MachineListenerConfig) (*MachineListener, error) {
 	if err := ValidateMachineAddr(cfg.Addr, cfg.AllowWildcard); err != nil {
 		return nil, err
 	}
-	if cfg.ClientCAs == nil || cfg.Backend == nil || len(cfg.ServerCert.Certificate) == 0 {
+	if cfg.ClientCAs == nil || cfg.Backend == nil || (len(cfg.ServerCert.Certificate) == 0 && cfg.GetCertificate == nil) {
 		return nil, errors.New("gateway: the machine listener needs a CA, a server certificate and a backend")
 	}
 	return &MachineListener{cfg: cfg}, nil
@@ -119,12 +123,17 @@ func NewMachineListener(cfg MachineListenerConfig) (*MachineListener, error) {
 // TLSConfig is the listener's TLS configuration: version 1.3 only, a client
 // certificate from the machine CA required.
 func (l *MachineListener) TLSConfig() *tls.Config {
-	return &tls.Config{
-		MinVersion:   tls.VersionTLS13,
-		Certificates: []tls.Certificate{l.cfg.ServerCert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    l.cfg.ClientCAs,
+	c := &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  l.cfg.ClientCAs,
 	}
+	if get := l.cfg.GetCertificate; get != nil {
+		c.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return get() }
+	} else {
+		c.Certificates = []tls.Certificate{l.cfg.ServerCert}
+	}
+	return c
 }
 
 var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)

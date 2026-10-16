@@ -437,28 +437,90 @@ func wildcardAllowedBefore(addr string) bool {
 	return gateway.ValidateMachineAddr(addr, false) != nil && gateway.ValidateMachineAddr(addr, true) == nil
 }
 
+const (
+	serverCertLife  = 90 * 24 * time.Hour
+	serverCertRenew = 30 * 24 * time.Hour
+)
+
+// interfaceAddrs lists the addresses of this host's interfaces; tests replace it.
+var interfaceAddrs = net.InterfaceAddrs
+
+// listenerHosts are the names and addresses the listener's certificate holds.
+// A specific bind address is its own name. A wildcard bind has no single name,
+// so the certificate carries the host name and every address of the machine a
+// guest could reach it on; a guest still has to dial one of them.
+func listenerHosts(addr string) []string {
+	host, _, _ := net.SplitHostPort(addr)
+	hosts := []string{"localhost", "127.0.0.1", "::1"}
+	if ip := net.ParseIP(host); host != "" && (ip == nil || !ip.IsUnspecified()) && strings.Trim(host, "0.:xX") != "" {
+		return append(hosts, host)
+	}
+	if name, err := os.Hostname(); err == nil && name != "" {
+		hosts = append(hosts, name)
+	}
+	if addrs, err := interfaceAddrs(); err == nil {
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok && n.IP.IsGlobalUnicast() {
+				hosts = append(hosts, n.IP.String())
+			}
+		}
+	}
+	return hosts
+}
+
+// certSource issues the listener's server certificate and reissues it once it
+// is within a month of expiring, so a listener that runs for a long time keeps
+// presenting a valid one.
+type certSource struct {
+	s     *Server
+	hosts []string
+
+	mu   sync.Mutex
+	cert *tls.Certificate
+	end  time.Time
+}
+
+func (c *certSource) get() (*tls.Certificate, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.s.cfg.Now()
+	if c.cert != nil && now.Add(serverCertRenew).Before(c.end) {
+		return c.cert, nil
+	}
+	ca, caKey, _, err := c.s.machineCA()
+	if err != nil {
+		return nil, err
+	}
+	defer clear(caKey)
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	end := now.Add(serverCertLife)
+	der, err := machinecert.IssueServer(ca, caKey, pub, c.hosts, now, end)
+	if err != nil {
+		return nil, err
+	}
+	c.cert, c.end = &tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, end
+	return c.cert, nil
+}
+
 func (s *Server) newMachineListener(addr string, allowWildcard bool) (*gateway.MachineListener, error) {
 	ca, caKey, _, err := s.machineCA()
 	if err != nil {
 		return nil, err
 	}
-	defer clear(caKey)
-	host, _, _ := net.SplitHostPort(addr)
-	pub, key, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	now := s.cfg.Now()
-	der, err := machinecert.IssueServer(ca, caKey, pub, []string{host, "localhost"}, now, now.Add(365*24*time.Hour))
-	if err != nil {
-		return nil, err
-	}
+	clear(caKey)
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
+	src := &certSource{s: s, hosts: listenerHosts(addr)}
+	if _, err := src.get(); err != nil {
+		return nil, err
+	}
 	return gateway.NewMachineListener(gateway.MachineListenerConfig{
 		Addr: addr, AllowWildcard: allowWildcard, ClientCAs: pool,
-		ServerCert: tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key},
-		Backend:    machineBackend{s},
-		Listen:     s.cfg.MachineListen,
+		GetCertificate: src.get,
+		Backend:        machineBackend{s},
+		Listen:         s.cfg.MachineListen,
 	})
 }
