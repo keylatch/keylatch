@@ -117,6 +117,9 @@ jobs:
           KEYLATCH_BACKEND: file
         run: go test -short -coverprofile=coverage.out ./... -race -count=1 -timeout 300s
       - name: Check coverage threshold
+        # Linux runs every code path; the platform-specific packages cover
+        # less on macOS and Windows by construction.
+        if: runner.os == 'Linux'
         run: bash release-checks/coverage-threshold.sh coverage.out
       - name: Upload coverage artifact
         if: always()
