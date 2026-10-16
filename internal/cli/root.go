@@ -231,6 +231,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newDrillCmd(), "advanced")
 	addCmd(root, newSyncCmd(), "advanced")
 	addCmd(root, newServiceCmd(), "advanced")
+	addCmd(root, newMachineCmd(), "advanced")
 	addCmd(root, newRegistryCmd(), "advanced")
 	addCmd(root, newRollbackCmd(), "advanced")
 	addCmd(root, newSetCmd(), "advanced")

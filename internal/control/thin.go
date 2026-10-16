@@ -32,7 +32,7 @@ var globalValueFlags = []string{"--log-level"}
 // and the verb is one it serves. It reports false when the caller should act
 // on local state instead.
 func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, streams IO) (exitCode int, handled bool) {
-	if lookup(LocalEnv) == "1" || slices.ContainsFunc(args, func(a string) bool { return a == "-h" || a == "--help" }) {
+	if lookup(LocalEnv) == "1" || slices.ContainsFunc(args, func(a string) bool { return a == "-h" || a == "--help" || a == "--remote" || strings.HasPrefix(a, "--remote=") }) {
 		return 0, false
 	}
 	global, verb, rest, ok := splitVerb(args)
