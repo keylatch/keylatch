@@ -1,6 +1,7 @@
 package guard_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,6 +22,15 @@ const userSettings = `{
   ]
  }
 }`
+
+// jsonString returns s escaped for use inside a JSON string literal, so a
+// Windows path's backslashes survive the payload.
+func jsonString(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	require.NoError(t, err)
+	return string(b[1 : len(b)-1])
+}
 
 func claudeHome(t *testing.T) (home, bin string) {
 	t.Helper()

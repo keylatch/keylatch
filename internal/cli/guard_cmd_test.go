@@ -66,7 +66,7 @@ func TestGuardHookFailsClosed(t *testing.T) {
 	}{
 		"unparsable command": {bashCall(t, "echo 'oops"), []string{"guard", "hook", "--harness", "claude-code"}},
 		"not json":           {"{", []string{"guard", "hook", "--harness", "claude-code"}},
-		"unknown harness":    {bashCall(t, "ls"), []string{"guard", "hook", "--harness", "codex"}},
+		"unknown harness":    {bashCall(t, "ls"), []string{"guard", "hook", "--harness", "emacs"}},
 		"no harness":         {bashCall(t, "ls"), []string{"guard", "hook"}},
 	} {
 		_, errOut, code := runCLI(t, c.stdin, c.args...)
@@ -117,11 +117,11 @@ func TestInstallGuardClaudeFlags(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.NotContains(t, out, "Hook written", "an upgrade with nothing to change writes nothing")
 
-	_, errOut, code := runCLI(t, "", "install-guard", "cursor", "--dry-run")
+	out, _, code = runCLI(t, "", "install-guard", "cursor", "--dry-run")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "guard hook --harness cursor")
+	assert.NoFileExists(t, filepath.Join(home, ".cursor", "hooks.json"), "a dry run writes nothing")
+	_, errOut, code := runCLI(t, "", "install-guard", "codex", "--config-dir", extra)
 	assert.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "claude-code only")
-	_, _, code = runCLI(t, "", "install-guard", "gemini", "--upgrade")
-	assert.NotEqual(t, 0, code)
-	_, _, code = runCLI(t, "", "install-guard", "codex", "--config-dir", extra)
-	assert.NotEqual(t, 0, code)
 }

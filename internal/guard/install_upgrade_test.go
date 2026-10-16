@@ -18,6 +18,9 @@ func setHome(t *testing.T, home string) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("COPILOT_HOME", "")
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("GEMINI_CLI_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 }
 
 func readJSON(t *testing.T, path string) map[string]any {
@@ -42,34 +45,39 @@ func mustMarshal(t *testing.T, v any) []byte {
 	return b
 }
 
-func TestInstall_HookCommandSurvivesSpaceInHome(t *testing.T) {
-	payloads := map[guard.Agent]string{
-		guard.AgentCursor:      `{"hook_event_name":"beforeShellExecution","command":"keylatch get x y","cwd":"/work"}`,
-		guard.AgentAntigravity: `{"toolCall":{"name":"run_command","args":{"CommandLine":"keylatch get x y"}}}`,
-		guard.AgentGemini:      `{"tool_name":"run_shell_command","tool_input":{"command":"keylatch get x y"}}`,
+// hookCommands collects every hook command in v that runs a Keylatch guard,
+// the Go guard or the script of an earlier release.
+func hookCommands(v any, out *[]string) {
+	switch t := v.(type) {
+	case string:
+		if strings.Contains(t, "block-keylatch-exfiltration.sh") || strings.Contains(t, " guard hook --harness ") {
+			*out = append(*out, t)
+		}
+	case []any:
+		for _, e := range t {
+			hookCommands(e, out)
+		}
+	case map[string]any:
+		for _, e := range t {
+			hookCommands(e, out)
+		}
 	}
-	for _, agent := range []guard.Agent{guard.AgentCodex, guard.AgentGemini, guard.AgentCursor, guard.AgentCopilot, guard.AgentAntigravity} {
+}
+
+func TestInstall_HookCommandSurvivesSpaceInBinaryPath(t *testing.T) {
+	for _, agent := range []guard.Agent{agentCodex, agentGemini, agentCursor, agentCopilot, agentAntigravity} {
 		t.Run(string(agent), func(t *testing.T) {
 			setHome(t, filepath.Join(t.TempDir(), "h o me"))
-			path, err := guard.Install(agent, guard.InstallOpts{})
+			bin := filepath.Join(t.TempDir(), "k bin", "keylatch")
+			path, err := guard.Install(agent, guard.InstallOpts{KeylatchPath: bin})
 			require.NoError(t, err)
 
 			var commands []string
 			hookCommands(readJSON(t, path), &commands)
 			require.NotEmpty(t, commands)
-			assert.Contains(t, commands[0], `"`)
-
-			payload, ok := payloads[agent]
-			if !ok {
-				payload = `{"tool_name":"Bash","tool_input":{"command":"keylatch get x y"}}`
-			}
-			code, stdout, stderr := runHook(t, commands[0], payload)
-			assert.NotEqual(t, 127, code, "hook command must find the script: %s", stderr)
-			if agent == guard.AgentAntigravity {
-				assert.Contains(t, stdout, `"decision":"deny"`)
-			} else {
-				assert.Equal(t, 2, code, "stderr: %s", stderr)
-			}
+			assert.True(t, strings.HasPrefix(commands[0], `"`), "the binary path is quoted: %s", commands[0])
+			assert.Contains(t, commands[0], filepath.ToSlash(bin)[strings.Index(filepath.ToSlash(bin), "k bin"):])
+			assert.True(t, strings.HasSuffix(commands[0], " guard hook --harness "+string(agent)))
 		})
 	}
 }
@@ -112,13 +120,14 @@ func TestInstall_ClaudeCodeReplacesBareCommand(t *testing.T) {
 func TestInstall_RemovesOldPerAgentGuards(t *testing.T) {
 	cases := []struct {
 		agent  guard.Agent
+		old    string
 		config string
 		legacy func(t *testing.T, home string) string
 	}{
-		{guard.AgentCodex, ".codex/hooks.json", func(t *testing.T, home string) string {
+		{agentCodex, "codex", ".codex/hooks.json", func(t *testing.T, home string) string {
 			return `{"hooks":[{"event":"PreToolUse","matcher":".*","hooks":[{"type":"command","command":"` + jsonString(t, filepath.Join(home, ".keylatch", "guards", "codex-guard.sh")) + `"}]}]}`
 		}},
-		{guard.AgentGemini, ".gemini/settings.json", func(t *testing.T, home string) string {
+		{agentGemini, "gemini", ".gemini/settings.json", func(t *testing.T, home string) string {
 			return `{"theme":"dark","hooks":[{"event":"BeforeTool","type":"command","command":"` + jsonString(t, filepath.Join(home, ".keylatch", "hooks", "gemini-guard.sh")) + `"}]}`
 		}},
 	}
@@ -127,8 +136,8 @@ func TestInstall_RemovesOldPerAgentGuards(t *testing.T) {
 			home := filepath.Join(t.TempDir(), "home")
 			setHome(t, home)
 			oldScripts := []string{
-				filepath.Join(home, ".keylatch", "hooks", string(tc.agent)+"-guard.sh"),
-				filepath.Join(home, ".keylatch", "guards", string(tc.agent)+"-guard.sh"),
+				filepath.Join(home, ".keylatch", "hooks", tc.old+"-guard.sh"),
+				filepath.Join(home, ".keylatch", "guards", tc.old+"-guard.sh"),
 			}
 			for _, p := range oldScripts {
 				writeFile(t, p, "#!/bin/sh\n")
@@ -139,7 +148,7 @@ func TestInstall_RemovesOldPerAgentGuards(t *testing.T) {
 			writeFile(t, config, tc.legacy(t, home))
 
 			for range 2 {
-				_, err := guard.Install(tc.agent, guard.InstallOpts{})
+				_, err := guard.Install(tc.agent, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
 				require.NoError(t, err)
 			}
 
@@ -153,7 +162,7 @@ func TestInstall_RemovesOldPerAgentGuards(t *testing.T) {
 				assert.NoFileExists(t, p)
 			}
 			assert.FileExists(t, other, "another agent's old script stays until that agent is upgraded")
-			if tc.agent == guard.AgentGemini {
+			if tc.agent == agentGemini {
 				assert.Contains(t, string(data), `"theme"`)
 			}
 		})
@@ -168,7 +177,7 @@ func TestInstall_CursorRemovesOldSettingsEntry(t *testing.T) {
 	settings := filepath.Join(home, ".cursor", "settings.json")
 	writeFile(t, settings, `{"editor":"x","hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"`+jsonString(t, oldScript)+`"}]}]}}`)
 
-	_, err := guard.Install(guard.AgentCursor, guard.InstallOpts{})
+	_, err := guard.Install(agentCursor, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(settings)
@@ -183,7 +192,8 @@ func TestInstall_CursorRemovesOldSettingsEntry(t *testing.T) {
 func TestInstall_GeminiUpgradeWidensMatcher(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	setHome(t, home)
-	path, err := guard.Install(guard.AgentGemini, guard.InstallOpts{})
+	opts := guard.InstallOpts{KeylatchPath: "/opt/keylatch"}
+	path, err := guard.Install(agentGemini, opts)
 	require.NoError(t, err)
 
 	cfg := readJSON(t, path)
@@ -191,9 +201,15 @@ func TestInstall_GeminiUpgradeWidensMatcher(t *testing.T) {
 	group["matcher"] = "run_shell_command|read_file|read_many_files"
 	require.NoError(t, os.WriteFile(path, mustMarshal(t, cfg), 0o600))
 
-	_, err = guard.Install(guard.AgentGemini, guard.InstallOpts{})
+	_, err = guard.Install(agentGemini, opts)
 	require.NoError(t, err)
 	groups := readJSON(t, path)["hooks"].(map[string]any)["BeforeTool"].([]any)
+	assert.Equal(t, "run_shell_command|read_file|read_many_files", groups[0].(map[string]any)["matcher"], "without --upgrade the entry is left alone")
+
+	opts.Upgrade = true
+	_, err = guard.Install(agentGemini, opts)
+	require.NoError(t, err)
+	groups = readJSON(t, path)["hooks"].(map[string]any)["BeforeTool"].([]any)
 	require.Len(t, groups, 1)
 	matcher := groups[0].(map[string]any)["matcher"].(string)
 	for _, tool := range []string{"read_many_files", "glob", "search_file_content"} {

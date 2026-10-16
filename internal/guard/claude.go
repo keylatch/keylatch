@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/keylatch/keylatch/internal/harness"
 )
 
 // ClaudeChange is the outcome of installing the guard into one Claude Code
@@ -26,21 +28,23 @@ type ClaudeChange struct {
 // when ProjectDir is set, otherwise ~/.claude, $CLAUDE_CONFIG_DIR when set, and
 // every ConfigDirs entry.
 func ClaudeSettingsPaths(opts InstallOpts) ([]string, error) {
+	d, _ := harness.Lookup(string(AgentClaudeCode))
 	if opts.ProjectDir != "" {
-		return []string{filepath.Join(opts.ProjectDir, ".claude", "settings.json")}, nil
+		return []string{d.Layout(harness.Env{Project: opts.ProjectDir}).Hook}, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
 	}
-	dirs := append([]string{filepath.Join(home, ".claude"), os.Getenv("CLAUDE_CONFIG_DIR")}, opts.ConfigDirs...)
+	defaultDir := d.Dir(harness.Env{Home: home, Getenv: func(string) string { return "" }})
+	dirs := append([]string{defaultDir, d.Dir(harness.Env{Home: home})}, opts.ConfigDirs...)
 	seen := map[string]bool{}
 	var out []string
-	for _, d := range dirs {
-		if d = strings.TrimSpace(d); d == "" {
+	for _, dir := range dirs {
+		if dir = strings.TrimSpace(dir); dir == "" {
 			continue
 		}
-		p := filepath.Join(filepath.Clean(d), "settings.json")
+		p := filepath.Join(filepath.Clean(dir), filepath.FromSlash(d.Hook.File))
 		if !seen[p] {
 			seen[p] = true
 			out = append(out, p)

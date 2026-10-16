@@ -1,18 +1,16 @@
-// Package guard embeds the agent guard scripts shipped with keylatch.
-// The embedded scripts are written to disk and wired into agent tool-call hooks
-// by the `keylatch install-guard` command.
+// Package guard installs the agent exfiltration guard. The guard itself is the
+// Go decider in internal/guard/hook, which each harness runs as
+// `keylatch guard hook --harness <id>`; internal/harness knows where every
+// harness keeps its hook, MCP and rules files. The shell script embedded here
+// is the standalone variant under contrib/agent-guards: the installers read the
+// credential locations it protects, and Claude Code's uninstall removes the
+// copies earlier releases wrote.
 package guard
 
 import _ "embed"
 
-// GuardScript is the pre-tool-use hook script shared by every shell-hook
-// harness; the hook command selects the payload and deny contract with
-// --harness.
+// GuardScript is the shell variant of the guard; the hook command selects the
+// payload and deny contract with --harness.
 //
 //go:embed scripts/block-keylatch-exfiltration.sh
 var GuardScript []byte
-
-// OpenCodeScript is the TypeScript plugin for OpenCode.
-//
-//go:embed scripts/opencode-guard.ts
-var OpenCodeScript []byte
