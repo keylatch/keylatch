@@ -119,10 +119,9 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 		return err
 	}
 
-	// Path-traversal guard.
-	dir := filepath.Join(fb.dir, filepath.FromSlash(path))
-	if !strings.HasPrefix(dir, filepath.Clean(fb.dir)+string(filepath.Separator)) {
-		return fmt.Errorf("file backend: path escapes vault root")
+	dir, err := fb.secretDir(path)
+	if err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -232,7 +231,11 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	}
 
 	// Only read value.enc on explicit Get; List/GetMeta never read it.
-	encPath := filepath.Join(fb.dir, filepath.FromSlash(path), "value.enc")
+	dir, err := fb.secretDir(path)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	encPath := filepath.Join(dir, "value.enc")
 	ct, err := os.ReadFile(encPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -287,6 +290,20 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	return plaintext, meta, nil
 }
 
+// secretDir returns the directory holding the secret at path, refusing any
+// path that would resolve outside the vault root.
+func (fb *FileBackend) secretDir(path string) (string, error) {
+	if strings.Contains(path, "..") {
+		return "", fmt.Errorf("file backend: path escapes vault root")
+	}
+	root := filepath.Clean(fb.dir)
+	dir := filepath.Clean(filepath.Join(root, filepath.FromSlash(path)))
+	if !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+		return "", fmt.Errorf("file backend: path escapes vault root")
+	}
+	return dir, nil
+}
+
 // Delete removes the path directory and updates the manifest.
 // Returns ErrNotFound if the path is not present.
 func (fb *FileBackend) Delete(ctx context.Context, path string) error {
@@ -294,9 +311,9 @@ func (fb *FileBackend) Delete(ctx context.Context, path string) error {
 	defer fb.mu.Unlock()
 
 	// Path-traversal guard: must run before manifest lookup.
-	dir := filepath.Join(fb.dir, filepath.FromSlash(path))
-	if !strings.HasPrefix(filepath.Clean(dir), filepath.Clean(fb.dir)+string(filepath.Separator)) {
-		return fmt.Errorf("file backend: path escapes vault root")
+	dir, err := fb.secretDir(path)
+	if err != nil {
+		return err
 	}
 
 	release, err := fb.lockVault()
