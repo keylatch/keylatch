@@ -3,6 +3,7 @@ package guard_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/guard"
@@ -73,7 +74,9 @@ func TestInstallFailsWithoutAUsableHome(t *testing.T) {
 			_, err := guard.Install(agent, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
 			assert.Error(t, err)
 			_, _, err = guard.Uninstall(agent, guard.InstallOpts{})
-			if agent != guard.AgentOpenCode {
+			// Windows reports a path below a file as not found rather than not a
+			// directory, so uninstall finds nothing to remove there.
+			if agent != guard.AgentOpenCode && runtime.GOOS != "windows" {
 				assert.Error(t, err)
 			}
 		})
