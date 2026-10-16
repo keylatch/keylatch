@@ -42,7 +42,7 @@ func (ExecRunner) Run(ctx context.Context, stdin []byte, name string, args ...st
 const (
 	sysusersDest = "usr/lib/sysusers.d/keylatch.conf"
 	polkitDest   = "usr/share/polkit-1/actions/dev.keylatch.policy"
-	credDest     = "etc/keylatch/root.cred"
+	credDest     = "etc/keylatch/root.cred" //nolint:gosec // G101: a file path, not a credential
 	unitDir      = "etc/systemd/system"
 	packagedDir  = "usr/lib/systemd/system"
 	rootCredLen  = 32
