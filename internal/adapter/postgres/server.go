@@ -96,7 +96,7 @@ func (s *Server) report(reason string) {
 
 // Serve handles one client connection and closes it.
 func (s *Server) Serve(ctx context.Context, client net.Conn) {
-	defer func() { _ = client.Close() }()
+	defer closeGracefully(client)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	_ = client.SetDeadline(time.Now().Add(handshakeTimeout))
@@ -130,6 +130,18 @@ func (s *Server) Serve(ctx context.Context, client net.Conn) {
 	s.report(ReasonConnected)
 	_ = client.SetDeadline(time.Time{})
 	relay(ctx, client, up)
+}
+
+// closeGracefully ends the write side, then drains briefly before closing.
+// Closing a TCP socket with unread input makes Windows send a reset, which
+// discards replies the client has not read yet, such as an error message.
+func closeGracefully(c net.Conn) {
+	if tc, ok := c.(*net.TCPConn); ok {
+		_ = tc.CloseWrite()
+		_ = tc.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		_, _ = io.CopyN(io.Discard, tc, 64<<10)
+	}
+	_ = c.Close()
 }
 
 // clientStartup answers SSL and GSS requests, serves a cancel request and
