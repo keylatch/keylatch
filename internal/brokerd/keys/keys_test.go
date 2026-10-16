@@ -57,6 +57,14 @@ func TestHierarchyDerivations(t *testing.T) {
 	if bytes.Equal(tok, signer.Seed()) {
 		t.Fatal("the token MAC key must not be the signing seed")
 	}
+	a, _ := h.TokenKeyFor("1000")
+	b, _ := h.TokenKeyFor("1001")
+	if bytes.Equal(a, b) || bytes.Equal(a, tok) || bytes.Equal(b, tok) {
+		t.Fatal("a token minted for one partition must not verify under another's key")
+	}
+	if again, _ := h.TokenKeyFor("1000"); !bytes.Equal(a, again) {
+		t.Fatal("a partition's token key must be stable")
+	}
 
 	// Reopening with the same root reproduces every key.
 	h.Close()

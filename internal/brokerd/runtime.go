@@ -36,9 +36,9 @@ func OpenAudit(dir string, h *keys.Hierarchy) (*audit.Logger, error) {
 // daemon: a loopback listener of the daemon's own user, serving secrets from
 // the partition's store and authenticating tokens with the daemon's key. The
 // address is private to the daemon; clients reach it only through the socket.
-func Gateway(h *keys.Hierarchy, logger *audit.Logger) func(context.Context, GatewayPartition) (string, error) {
+func Gateway(logger *audit.Logger) func(context.Context, GatewayPartition) (string, error) {
 	return func(ctx context.Context, p GatewayPartition) (string, error) {
-		key, err := h.TokenKey()
+		key, err := p.TokenKey()
 		if err != nil {
 			return "", err
 		}

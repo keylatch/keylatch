@@ -166,6 +166,68 @@ func TestPresenceSubjectIsThePeer(t *testing.T) {
 	}
 }
 
+// blockingPresence waits until released or its context ends.
+type blockingPresence struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (*blockingPresence) Name() string { return "blocking" }
+
+func (b *blockingPresence) Verify(ctx context.Context, _ Subject, _, _ string) error {
+	b.started <- struct{}{}
+	select {
+	case <-b.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestPresencePromptsDoNotStackAndTimeOut(t *testing.T) {
+	m := &blockingPresence{started: make(chan struct{}, 4), release: make(chan struct{})}
+	h := newHarness(t, func(c *Config) { c.Presence = m })
+
+	first := make(chan brokerapi.Response, 1)
+	go func() {
+		first <- h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpPresenceBegin, Target: &setReq})
+	}()
+	<-m.started
+
+	// A second prompt for the same user while one waits is refused without asking again.
+	second := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpPresenceBegin, Target: &setReq})
+	if second.OK || !strings.Contains(second.Error, "already open") || len(m.started) != 0 {
+		t.Fatalf("second prompt = %+v (prompts started: %d)", second, len(m.started))
+	}
+	// Another user is not held up by it.
+	other := make(chan brokerapi.Response, 1)
+	go func() {
+		other <- h.send(t, 1001, brokerapi.Request{Op: brokerapi.OpPresenceBegin, Target: &setReq})
+	}()
+	<-m.started
+
+	close(m.release)
+	if resp := <-first; !resp.OK {
+		t.Fatalf("first prompt = %+v", resp)
+	}
+	if resp := <-other; !resp.OK {
+		t.Fatalf("other user's prompt = %+v", resp)
+	}
+
+	// An unanswered prompt gives up, and the user can ask again.
+	slow := &blockingPresence{started: make(chan struct{}, 1), release: make(chan struct{})}
+	h.srv.presence.Method, h.srv.presence.Timeout = slow, 20*time.Millisecond
+	resp := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpPresenceBegin, Target: &setReq})
+	if resp.OK {
+		t.Fatalf("an unanswered prompt = %+v", resp)
+	}
+	close(slow.release)
+	h.srv.presence.Method = &fakePresence{}
+	if resp := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpPresenceBegin, Target: &setReq}); !resp.OK {
+		t.Fatalf("a prompt after a timeout = %+v", resp)
+	}
+}
+
 func TestPolkitSubjectIsPeer(t *testing.T) {
 	var gotBin string
 	var gotArgs []string

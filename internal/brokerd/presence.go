@@ -165,11 +165,42 @@ func (p *Proofs) Consume(id string, uid uint32, digest string) error {
 	return nil
 }
 
+// PromptTimeout bounds how long the daemon waits for the human to answer.
+const PromptTimeout = 2 * time.Minute
+
+// ErrPromptOpen means a presence prompt for this user is already waiting for an
+// answer. One at a time keeps a process from burying the human in dialogs.
+var ErrPromptOpen = errors.New("brokerd: a presence prompt is already open for this user")
+
 // Presence is the daemon's own verification of human presence.
 type Presence struct {
 	Method PresenceMethod
 	Proofs *Proofs
 	Audit  audit.Emitter
+	// Timeout overrides PromptTimeout.
+	Timeout time.Duration
+
+	mu   sync.Mutex
+	open map[uint32]bool
+}
+
+func (p *Presence) claim(uid uint32) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.open[uid] {
+		return false
+	}
+	if p.open == nil {
+		p.open = map[uint32]bool{}
+	}
+	p.open[uid] = true
+	return true
+}
+
+func (p *Presence) release(uid uint32) {
+	p.mu.Lock()
+	delete(p.open, uid)
+	p.mu.Unlock()
 }
 
 // MethodName names the method, or "none" when the daemon cannot verify presence.
@@ -208,7 +239,18 @@ func (p *Presence) Begin(ctx context.Context, s Subject, res callerkind.Result, 
 		record("unavailable", "no presence method")
 		return brokerapi.Proof{}, ErrPresenceUnavailable
 	}
-	if err := p.Method.Verify(ctx, s, action, summary); err != nil {
+	if !p.claim(s.UID) {
+		record("refused", "a prompt is already open")
+		return brokerapi.Proof{}, ErrPromptOpen
+	}
+	defer p.release(s.UID)
+	timeout := p.Timeout
+	if timeout <= 0 {
+		timeout = PromptTimeout
+	}
+	vctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if err := p.Method.Verify(vctx, s, action, summary); err != nil {
 		record("denied", err.Error())
 		return brokerapi.Proof{}, err
 	}

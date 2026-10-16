@@ -49,6 +49,7 @@ unit up.`,
 				Env:         os.Getenv,
 				PID:         os.Getpid(),
 				Harden:      proc.Harden,
+				Unsetenv:    os.Unsetenv,
 				RequireLock: true,
 				Out:         cmd.OutOrStdout(),
 			})

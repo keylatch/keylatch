@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -84,9 +85,19 @@ func TestRunServesTheActivatedSocket(t *testing.T) {
 	env["CREDENTIALS_DIRECTORY"] = creds
 	o.Env = envOf(env)
 
+	// The device root's location and the activation variables must not reach the
+	// verbs the daemon runs.
+	var unset []string
+	o.Unsetenv = func(name string) error { unset = append(unset, name); return nil }
+
 	// The adopted descriptor is a connected socket, so accepting on it fails at
 	// once; reaching that point means every earlier step succeeded.
 	err = Run(context.Background(), o)
+	for _, want := range []string{"CREDENTIALS_DIRECTORY", "LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES"} {
+		if !slices.Contains(unset, want) {
+			t.Errorf("%s was left in the daemon's environment: unset %v", want, unset)
+		}
+	}
 	if err == nil {
 		t.Fatal("Serve on a connected socket must fail")
 	}

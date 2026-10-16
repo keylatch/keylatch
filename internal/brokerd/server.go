@@ -59,6 +59,8 @@ type GatewayPartition struct {
 	ConfigDir string
 	Store     *brokerstore.Store
 	Env       func(string) string
+	// TokenKey returns the key this partition's session tokens are authenticated with.
+	TokenKey func() ([]byte, error)
 }
 
 // Server is the system broker.
@@ -224,8 +226,9 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 	}
 	env := &partEnv{vals: map[string]string{"KEYLATCH_CONFIG_DIR": cfgDir}}
 	childEnv := []string{"KEYLATCH_CONFIG_DIR=" + cfgDir}
+	tokenKey := func() ([]byte, error) { return s.cfg.Keys.TokenKeyFor(uidString(uid)) }
 	if s.cfg.Gateway != nil {
-		addr, err := s.cfg.Gateway(ctx, GatewayPartition{UID: uid, ConfigDir: cfgDir, Store: store, Env: env.lookup})
+		addr, err := s.cfg.Gateway(ctx, GatewayPartition{UID: uid, ConfigDir: cfgDir, Store: store, Env: env.lookup, TokenKey: tokenKey})
 		if err != nil {
 			slog.Warn("gateway unavailable for partition", "uid", uid, "error", err)
 		} else {
@@ -240,7 +243,7 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 		Binary:     s.cfg.Binary,
 		Audit:      s.cfg.Audit,
 		Callers:    s.callers,
-		SigningKey: s.cfg.Keys.TokenKey,
+		SigningKey: tokenKey,
 		ChildEnv:   childEnv,
 		Gate:       pol.Gate,
 		Ticket:     s.sessions.VerifyTicket,

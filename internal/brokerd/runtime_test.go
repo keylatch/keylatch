@@ -3,6 +3,7 @@
 package brokerd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -176,7 +177,8 @@ func TestGatewayFactoryServesPartition(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	addr, err := Gateway(h, logger)(ctx, GatewayPartition{UID: 1000, ConfigDir: filepath.Join(srv.srv.PartitionDir(1000), "config"), Store: p.store, Env: p.env})
+	tokenKey := func() ([]byte, error) { return h.TokenKeyFor("1000") }
+	addr, err := Gateway(logger)(ctx, GatewayPartition{UID: 1000, ConfigDir: filepath.Join(srv.srv.PartitionDir(1000), "config"), Store: p.store, Env: p.env, TokenKey: tokenKey})
 	if err != nil {
 		if strings.Contains(err.Error(), "operation not permitted") || strings.Contains(err.Error(), "did not start") {
 			t.Skipf("loopback listeners are not permitted here: %v", err)
@@ -277,6 +279,25 @@ func TestPolicyStoreFailures(t *testing.T) {
 	}
 	if _, err := p.policy.Export(); err == nil {
 		t.Fatal("Export without a signature must fail")
+	}
+}
+
+func TestPartitionTokenKeysDiffer(t *testing.T) {
+	keysByUID := map[uint32][]byte{}
+	h := newHarness(t, func(c *Config) {
+		c.Gateway = func(_ context.Context, p GatewayPartition) (string, error) {
+			k, err := p.TokenKey()
+			keysByUID[p.UID] = k
+			return "127.0.0.1:4999", err
+		}
+	})
+	for _, uid := range []uint32{1000, 1001} {
+		if _, err := h.srv.partition(context.Background(), uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(keysByUID[1000]) != 32 || bytes.Equal(keysByUID[1000], keysByUID[1001]) {
+		t.Fatal("a token minted for one user's gateway must not verify at another's")
 	}
 }
 

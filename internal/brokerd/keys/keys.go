@@ -274,16 +274,22 @@ func (h *Hierarchy) Public(name Name) (ed25519.PublicKey, error) {
 	return k.Public().(ed25519.PublicKey), nil
 }
 
-// TokenKey returns the 32-byte key gateway session tokens are authenticated
-// with. It is derived from the token-signing key, so the signing seed is never
-// used directly as a MAC key.
-func (h *Hierarchy) TokenKey() ([]byte, error) {
+// TokenKey returns the 32-byte key the daemon's own session tickets are
+// authenticated with.
+func (h *Hierarchy) TokenKey() ([]byte, error) { return h.TokenKeyFor("") }
+
+// TokenKeyFor returns the 32-byte key gateway session tokens of one partition
+// are authenticated with. Every partition has its own, so a token minted for
+// one user's gateway is worthless at another's, even though the gateways listen
+// on loopback ports any local user can reach. The key is derived from the
+// token-signing key, so the signing seed is never used directly as a MAC key.
+func (h *Hierarchy) TokenKeyFor(partition string) ([]byte, error) {
 	k, err := h.Signer(TokenSigning)
 	if err != nil {
 		return nil, err
 	}
 	defer clear(k)
-	return derive(k.Seed(), nil, infoTokenHMAC), nil
+	return derive(k.Seed(), salt("token", partition), infoTokenHMAC), nil
 }
 
 // Rotate replaces the master key. Every wrapped child key is rewrapped, and

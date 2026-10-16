@@ -31,6 +31,10 @@ type Options struct {
 	PID int
 	// Harden makes the process undumpable; it must succeed.
 	Harden func() error
+	// Unsetenv removes a variable from the process environment (os.Unsetenv in
+	// production), so the verbs the daemon runs do not inherit the location of
+	// the device root credential or the socket activation variables.
+	Unsetenv func(string) error
 	// RequireLock makes failing to lock key pages fatal.
 	RequireLock bool
 	// Presence overrides the presence method (polkit when installed).
@@ -62,6 +66,15 @@ func Run(ctx context.Context, o Options) error {
 	}
 	h, err := keys.Open(filepath.Join(o.StateRoot, "keys"), root, o.RequireLock)
 	clear(root)
+	scrub := func(names ...string) {
+		if o.Unsetenv == nil {
+			return
+		}
+		for _, n := range names {
+			_ = o.Unsetenv(n)
+		}
+	}
+	scrub("CREDENTIALS_DIRECTORY")
 	if err != nil {
 		return fmt.Errorf("keylatchd: %w", err)
 	}
@@ -90,7 +103,7 @@ func Run(ctx context.Context, o Options) error {
 		Audit:     audit.AsEmitter(logger),
 		AuditHead: logger.Head,
 		Presence:  presence,
-		Gateway:   Gateway(h, logger),
+		Gateway:   Gateway(logger),
 	})
 	if err != nil {
 		return err
@@ -99,6 +112,7 @@ func Run(ctx context.Context, o Options) error {
 		return fmt.Errorf("keylatchd: finish the interrupted key rotation: %w", err)
 	}
 	ln, err := Listen(o.Socket, o.Env, o.PID)
+	scrub("LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES")
 	if err != nil {
 		return err
 	}
