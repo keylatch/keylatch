@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -220,7 +221,12 @@ func TestInitRefusesToRunOutsideANamespace(t *testing.T) {
 
 func TestForwarderReachesTheEgressSocket(t *testing.T) {
 	n := requireNamespaces(t)
-	w := newWorld(t, "sh", "-c", `exec 3<>/dev/tcp/127.0.0.1/3128; echo ping >&3; read -r line <&3; echo "got:$line"`)
+	// /dev/tcp is a bash feature; dash-based sh cannot open it.
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not installed")
+	}
+	w := newWorld(t, bash, "-c", `exec 3<>/dev/tcp/127.0.0.1/3128; echo ping >&3; read -r line <&3; echo "got:$line"`)
 	l, err := net.Listen("unix", filepath.Join(w.egress, EgressSocket))
 	if err != nil {
 		t.Skipf("this host does not let tests create Unix sockets: %v", err)
