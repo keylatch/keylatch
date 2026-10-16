@@ -173,3 +173,5 @@ jobs:
         run: go test -fuzz=FuzzAADSerializer -fuzztime=10m ./internal/vault/meta/...
       - name: fuzz audit
         run: go test -fuzz=FuzzAuditLineParser -fuzztime=10m ./internal/audit
+      - name: fuzz guard hook
+        run: go test -fuzz=FuzzHookDecision -fuzztime=10m ./internal/guard/hook

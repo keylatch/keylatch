@@ -52,8 +52,9 @@ test-containment:
 test-canary-meta:
 	go test -tags meta -race -count=1 ./internal/canary/...
 
-## test-hook: run agent-guard hook tests (the last two run the guard without jq)
+## test-hook: run the Go guard tests and the shell agent-guard hook tests (the last two run the guard without jq)
 test-hook:
+	go test -count=1 ./internal/guard/...
 	bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh --verbose
 	bash contrib/agent-guards/harness-contract.test.sh
 	bash contrib/agent-guards/deny-corpus.test.sh
