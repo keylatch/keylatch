@@ -45,6 +45,23 @@ Every decision on the socket writes one value-free event, whether it allows or r
 Argv and cwd appear only as SHA-256 digests; tokens, placeholders and credentials never appear. When the audit
 log cannot record a decision, the daemon refuses it: `keylatchd serve` does not start without an audit log.
 
+## The system broker socket
+
+On Linux, `sudo keylatch broker install` adds a second daemon, `keylatchd broker`, under the `keylatch` OS user
+(see [the broker guide](guides/broker-linux.md)). It listens on `/run/keylatch/broker.sock` (`KEYLATCH_BROKER_SOCKET`),
+which systemd creates with mode 0666: any local user may connect, and the daemon decides who is admitted.
+
+The protocol is the one above, with broker operations added. For each connection the daemon reads the peer's uid, pid and a
+pidfd from the kernel, the process start time and the control group, admits only ordinary users, and serves the
+user from a private partition under `/var/lib/keylatch/users/<uid>/`. It checks the pidfd again once it has read the
+request, so a request that arrives from a recycled PID is refused.
+
+When the socket exists, the client prefers it to the user-level socket (unless `KEYLATCH_SOCKET` names one), accepts it
+only when it is owned by root (socket activation) or by `keylatch`, and refuses to fall back to local key files if
+nothing answers. The caller kinds differ from the user-level daemon: a peer with no agent evidence is `host`, because
+`human` means a presence proof bound to the request, and a peer inside a registered agent scope or carrying a
+daemon-signed ticket is `agent`.
+
 ## `keylatch-relay`
 
 Some harness sandboxes cannot reach a Unix socket at all. For those, `keylatch-relay` is a separate, tiny binary

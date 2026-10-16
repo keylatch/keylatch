@@ -2,15 +2,22 @@
 
 ## What Keylatch protects, and what it does not
 
-Until v0.11.0, Keylatch keeps keys out of model context and out of casual agent reach. The
-broker daemon that makes keys unreachable arrives in v0.11.0.
+Keylatch runs in one of two modes, and `keylatch doctor` says which.
 
-Today Keylatch runs in **in-user mode**: the vault, its key-encryption key and the audit log live
-under your own user account. The agent exfiltration guard, the LLM-session checks and the policy
-make direct access by an agent hard and visible. They are **not a security boundary**: an agent
-that runs as you can still read files you own, use credentials your shell exports, and call the
-tools your shell can call. [docs/security/threat-model.md](docs/security/threat-model.md) states
-the protection each mode gives and the risks that remain.
+**In-user mode** keeps keys out of model context and out of casual agent reach: the vault, its
+key-encryption key and the audit log live under your own user account. The agent exfiltration guard,
+the LLM-session checks and the policy make direct access by an agent hard and visible. They are
+**not a security boundary**: an agent that runs as you can still read files you own, use credentials
+your shell exports, and call the tools your shell can call.
+
+**Broker mode** (Linux with systemd; `sudo keylatch broker install`, then `keylatch broker adopt`) runs
+`keylatchd` under its own OS user. It holds the key hierarchy, the secret store, the policy and the audit
+log; your account, and so an agent running as you, cannot read them. Privileged changes need a proof of
+presence the daemon verifies itself, and an agent gets capabilities, never keys. A compromised daemon and
+root on the host are outside what it defends. See [docs/guides/broker-linux.md](docs/guides/broker-linux.md).
+
+[docs/security/threat-model.md](docs/security/threat-model.md) states the protection each mode gives and
+the risks that remain.
 
 ## Reporting a Vulnerability
 

@@ -180,6 +180,47 @@ every embedded template.
 Gap: user-installed community templates are not signed, so a well-formed but
 semantically malicious template is accepted.
 
+## The Linux broker
+
+With the system broker installed (see the [broker guide](../guides/broker-linux.md)),
+the keys, the secret store, the policy and the audit log belong to the `keylatch`
+OS user, and clients reach them over `/run/keylatch/broker.sock`. In-user mode
+stays available and is described above; `keylatch doctor` reports which mode is
+active and warns while a Linux machine runs in-user mode. The claims below are
+about the broker only, and each links to the test that holds it.
+
+| Claim | Tests |
+|---|---|
+| Each user's secrets live in their own partition, and a record moved to another user, path or version does not open. | [`TestPeerUIDPartitioning`](../../internal/brokerd/server_test.go), [`TestStoreAADChecked`](../../internal/backend/brokerstore/store_test.go) |
+| Keys are never written unwrapped, sit in locked memory, and a master key rotation rewraps every key without re-encrypting a value. | [`TestHierarchyDerivations`](../../internal/brokerd/keys/keys_test.go), [`TestKeysMlocked`](../../internal/brokerd/keys/keys_test.go), [`TestBMKRotationRewraps`](../../internal/brokerd/keys/keys_test.go), [`TestRewrapKeepsCiphertext`](../../internal/backend/brokerstore/store_test.go) |
+| A request from a process that is no longer the one that connected (a recycled PID) is refused; the peer's control group is read from the kernel. | [`TestPidReuseRejected`](../../internal/brokerd/peer_linux_test.go), [`TestCgroupResolved`](../../internal/brokerd/identity_test.go) |
+| A privileged request without a presence proof is refused even from a client that skips the prompt; a proof is single use, bound to the request digest and the user, and expires. An agent session cannot ask. | [`TestPrivilegedRefusedWithoutProof`](../../internal/brokerd/presence_test.go), [`TestProofReplayRefused`](../../internal/brokerd/presence_test.go), [`TestProofBoundToDigest`](../../internal/brokerd/presence_test.go), [`TestPolkitSubjectIsPeer`](../../internal/brokerd/presence_test.go) |
+| Policy the daemon accepted is signed with its own key; a stored policy that is edited, added to or unsigned is ignored, the daemon denies and records `security.block`; importing a bundle from another host needs presence. | [`TestPolicySignedOnAccept`](../../internal/brokerd/policy_test.go), [`TestTamperedPolicyIgnored`](../../internal/brokerd/policy_test.go), [`TestImportNeedsPresence`](../../internal/brokerd/policy_test.go) |
+| Processes of a launcher-registered agent scope are `agent` without any environment signal; a process that leaves the scope is `host`, never `human` or `service`. | [`TestLaunchedAgentClassified`](../../internal/brokerd/sessions_test.go), [`TestEscapedProcessIsHostNotHuman`](../../internal/brokerd/sessions_test.go) |
+| Adopting an in-user install moves every secret and checks a keyed hash of each before revoking tokens and shredding key material; a mismatch leaves the in-user install untouched; export restores it. | [`TestBrokerInstallAndAdopt`](../../internal/brokerd/adopt_test.go), [`TestAdoptVerifiesKeyedHashes`](../../internal/brokerd/adopt_test.go), [`TestExportToUserRoundTrip`](../../internal/brokerd/adopt_test.go) |
+| The service runs with a strict filesystem view, no capabilities, a system call filter and a score under 2.0 in `systemd-analyze security`; the socket is activated by systemd. | [`TestBrokerServiceIsHardened`](../../packaging/linux/units_test.go), [`TestBrokerdSystemdHardening`](../../tests/integration/broker_hardening_test.go) |
+| The wire protocol decodes strictly and survives arbitrary input. | [`FuzzBrokerRequest`](../../internal/brokerapi/fuzz_test.go), [`FuzzControlFrame`](../../internal/control/fuzz_test.go), [`FuzzPeerIdentity`](../../internal/brokerd/identity_test.go) |
+
+Values reach a command only through brokered tiers: the gateway the daemon hosts
+for each user (the provider key is added by the daemon, never handed to the child)
+and the placeholder proxy. No client verb returns a stored value to a caller the
+daemon classifies as `agent` or `host`, and with no presence proof the daemon
+classifies nobody as `human`.
+
+Residual risks of the broker:
+
+- **The daemon is the trusted computing base.** A compromised `keylatchd`, or root
+  on the host, defeats it. It is minimized by the unit's hardening, locked memory,
+  a non-dumpable process, one small socket protocol and fuzzing.
+- **Presence is as strong as the polkit agent.** The prompt asks for the user's own
+  password every time (`auth_self`, never retained), shown by the desktop session
+  for the process that asked. A host without polkit refuses privileged requests.
+- **An agent that hides is `host`.** It reaches only connections whose policy
+  allows `host`, within their ceilings. Allow `host` only where that is acceptable.
+- **Upstream keys that lived in your account before adoption** could have been
+  read by a process of that account. Doctor lists them with "rotate recommended".
+- **A device root without a TPM** is protected by the host key alone; doctor warns.
+
 ## What Keylatch does NOT defend against
 
 | Threat | Why |

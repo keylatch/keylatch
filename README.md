@@ -1,8 +1,8 @@
 # Keylatch
 
-**Keylatch keeps API keys out of model context and out of casual agent reach.** It stores credentials in an encrypted backend (1Password, Bitwarden, or an encrypted file) and injects them into subprocesses at run time. The broker daemon that makes keys unreachable to a same-user agent arrives in v0.11.0.
+**Keylatch keeps API keys out of model context and out of casual agent reach.** It stores credentials in an encrypted backend (1Password, Bitwarden, or an encrypted file) and injects them into subprocesses at run time. On Linux with systemd, the broker daemon keeps the keys under a separate OS user: agents get capabilities, never keys.
 
-> **In-user mode is not a security boundary.** Today Keylatch runs as the same user as your agent. Detection, the guard hook and the policy file raise the cost of leaking a key; a determined agent running as you can still read what you can read. See [SECURITY.md](SECURITY.md) and [docs/security.md](docs/security.md) for what is and is not protected.
+> **In-user mode is not a security boundary.** Without the broker, Keylatch runs as the same user as your agent. Detection, the guard hook and the policy file raise the cost of leaking a key; a determined agent running as you can still read what you can read. On Linux, `sudo keylatch broker install` and `keylatch broker adopt` move the keys out of your account (see [the broker guide](docs/guides/broker-linux.md)). See [SECURITY.md](SECURITY.md) and [docs/security.md](docs/security.md) for what is and is not protected.
 
 ```
 Encrypted store (1Password / Bitwarden / file)
@@ -279,7 +279,7 @@ Features that are not finished compile only with the `experimental` build tag; s
 - [Configuration](docs/configuration.md), [Environment variables](docs/cli/environment.md)
 - [Operating modes](docs/operating-modes.md), [Runtime modes](docs/runtime-modes.md), [Proxy](docs/proxy.md), [Call](docs/call.md)
 - [Security](docs/security.md), [Threat model](docs/security/threat-model.md), [Verifying releases](docs/verifying-releases.md)
-- [Secure agent setup guide](docs/guides/secure-agent-setup.md)
+- [Secure agent setup guide](docs/guides/secure-agent-setup.md), [The Linux broker](docs/guides/broker-linux.md)
 - [Integration guides](docs/integration/README.md) and [per-agent guard guides](docs/integrations/)
 - [Desktop app](docs/desktop-app.md), [Desktop parity](docs/desktop-parity.md), [Telemetry](docs/telemetry.md), [Experimental features](docs/experimental.md)
 

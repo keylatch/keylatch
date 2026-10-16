@@ -52,6 +52,10 @@ missing as a result.
 | `audit.chain` | The audit log's hash chain does not verify. |
 | `backend.tier` | The selected backend is community or deprecated (warning), or unknown. |
 | `backend.bw_session_file` | A cached Bitwarden session file is on disk (warning). |
-| `mode.deployment` | Reports the in-user deployment mode. |
+| `mode.deployment` | Reports the deployment mode: daemon mode passes; in-user mode warns on Linux, where the system broker is available; a broker socket that does not answer fails. |
+| `broker.version` | The daemon and the client report different versions (warning). |
+| `broker.tpm` | The broker's device root has no TPM binding (warning). |
+| `broker.leftovers` | In-user key material remains while the broker is installed (warning). |
+| `broker.adopted` | Upstream keys that sat in your account before adoption: rotate recommended (warning). |
 
 Every `fix` is a command to run. None names a path inside the repository.

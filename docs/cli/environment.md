@@ -83,7 +83,8 @@ In gateway modes, the child process receives `KEYLATCH_GATEWAY_TOKEN` and `KEYLA
 
 | Variable | Purpose | Security-sensitive | Child-env |
 |----------|---------|-------------------|-----------|
-| `KEYLATCH_SOCKET` | Control socket path. Default: `$XDG_RUNTIME_DIR/keylatch/keylatchd.sock`, else `<tmp>/keylatch-<uid>/keylatchd.sock` | No | Never |
+| `KEYLATCH_SOCKET` | Control socket path. Default: `$XDG_RUNTIME_DIR/keylatch/keylatchd.sock`, else `<tmp>/keylatch-<uid>/keylatchd.sock`. Naming one makes the client ignore the system broker | No | Never |
+| `KEYLATCH_BROKER_SOCKET` | System broker socket. Default: `/run/keylatch/broker.sock`. The client uses it when it exists and `KEYLATCH_SOCKET` is unset | No | Never |
 | `KEYLATCH_SSH_AGENT_SOCKET` | ssh-agent endpoint served by `keylatchd serve`. Default: `ssh-agent.sock` next to the control socket | No | Never |
 | `KEYLATCH_LOCAL` | `1` makes the client act on local state instead of asking the daemon. The daemon sets it for the verbs it runs for a caller; it never widens what a caller may do | No | Never |
 
