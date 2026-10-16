@@ -99,7 +99,7 @@ func ruleDetail(r CallerRule) string {
 // in connection order. Equal sets give no lines.
 func Diff(before, after map[string]Document) []string {
 	var lines []string
-	seen := make(map[string]bool, len(before)+len(after))
+	seen := make(map[string]bool)
 	for _, c := range append(Connections(before), Connections(after)...) {
 		if seen[c] {
 			continue
