@@ -132,7 +132,6 @@ github.com/keylatch/keylatch/internal/cmd/registry
 github.com/keylatch/keylatch/internal/backend/awssm
 github.com/keylatch/keylatch/internal/policy/match
 github.com/keylatch/keylatch/internal/trust/challenge
-github.com/keylatch/keylatch/internal/guard
 # --- Newly surfaced by statement-weighted coverage (C1 fix) ---
 # These packages were previously hidden by the unweighted function-average method.
 # Statement-weighted totals expose them as genuinely below 85% at baseline.
