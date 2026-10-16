@@ -12,7 +12,6 @@ package op
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -208,13 +207,11 @@ func (b *OnePasswordBackend) verifyField(ctx context.Context, connection, field 
 	if err != nil {
 		return fmt.Errorf("op Set: read back %q: %w", connection, err)
 	}
-	want := sha256.Sum256(value)
 	for _, f := range item.Fields {
 		if f.Label != field {
 			continue
 		}
-		got := sha256.Sum256([]byte(f.Value))
-		if subtle.ConstantTimeCompare(got[:], want[:]) == 1 {
+		if subtle.ConstantTimeCompare([]byte(f.Value), value) == 1 {
 			return nil
 		}
 		break
