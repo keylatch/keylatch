@@ -327,7 +327,7 @@ func (b machineBackend) Call(ctx context.Context, p gateway.MachinePrincipal, c 
 		if reason == "" {
 			reason = "the policy needs an approval a remote machine cannot give"
 		}
-		b.audit(ctx, audit.OutcomeDenied, rec, c, map[string]any{"reason": reason})
+		_ = b.audit(ctx, audit.OutcomeDenied, rec, c, map[string]any{"reason": reason})
 		return gateway.MachineCallResult{}, gateway.ErrMachineNotFound
 	}
 	var src secretStore = part.store

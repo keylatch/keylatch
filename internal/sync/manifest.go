@@ -295,7 +295,7 @@ func validateLinkPath(at, p string) error {
 	}
 	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
 		if seg == ".." {
-			return fmt.Errorf("%s: must not contain ..", at)
+			return fmt.Errorf("%s: must not use .. segments", at)
 		}
 	}
 	if strings.ContainsRune(p, 0) {
