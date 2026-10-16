@@ -1,3 +1,5 @@
+//go:build experimental
+
 package fallback_test
 
 import (

@@ -56,7 +56,7 @@
               "status": "unavailable",
               "runtime": "",
               "restricted": false,
-              "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+              "why": "no delivery implementation exists in this build"
             },
             {
               "tier": "D6",

@@ -126,8 +126,8 @@ const (
 	ActionCanaryInjected Action = "canary.injected"
 
 	// sandbox actions.
-	// ActionSandboxLaunched records a successful sandbox launch via
-	// direct_classic_sandboxed mode. Extra.executable_sha256 holds the verified
+	// ActionSandboxLaunched records a successful sandbox launch.
+	// Extra.executable_sha256 holds the verified
 	// hash; Extra.executable holds the path (not the value).
 	ActionSandboxLaunched Action = "sandbox.launched"
 	// ActionSandboxLaunchRefused records a refused sandbox launch due to a hash

@@ -38,7 +38,6 @@ func checkOperatingMode(env llmcontext.Lookup) Check {
 		var customCfg *klruntime.CustomModeConfig
 		if cfg.Custom != nil {
 			customCfg = &klruntime.CustomModeConfig{
-				TelemetryEnabled:       cfg.Custom.TelemetryEnabled,
 				CanaryInjectionEnabled: cfg.Custom.CanaryInjectionEnabled,
 				ExperimentalGated:      cfg.Custom.ExperimentalGated,
 			}
@@ -47,9 +46,8 @@ func checkOperatingMode(env llmcontext.Lookup) Check {
 		settings := klruntime.EffectiveSettingsForMode(resolved, customCfg)
 
 		detail := fmt.Sprintf(
-			"active=%s, telemetry=%s, canary_injection=%s, experimental_gated=%s",
+			"active=%s, canary_injection=%s, experimental_gated=%s",
 			resolved,
-			boolOnOff(settings.TelemetryEnabled),
 			boolOnOff(settings.CanaryInjectionEnabled),
 			boolOnOff(settings.ExperimentalGated),
 		)

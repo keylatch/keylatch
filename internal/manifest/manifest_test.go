@@ -28,7 +28,7 @@ func TestCurrent_EveryEntryHasValidFields(t *testing.T) {
 		assert.NotEmpty(t, e.ID)
 		assert.NotEmpty(t, e.Note, "entry %q must document its disposition", e.ID)
 		switch e.Status {
-		case manifest.Supported, manifest.Unavailable, manifest.Experimental:
+		case manifest.Supported, manifest.Preview, manifest.Community, manifest.Deprecated, manifest.Unavailable, manifest.Experimental:
 		default:
 			t.Errorf("entry %q has unknown status %q", e.ID, e.Status)
 		}
@@ -40,30 +40,51 @@ func TestCurrent_EveryEntryHasValidFields(t *testing.T) {
 	}
 }
 
-// TestCurrent_ManagerCohort locks in the two supported managers; concurrent
-// manager support depends on exactly these two being enabled.
-func TestCurrent_ManagerCohort(t *testing.T) {
+// TestCurrent_BackendTiers encodes the backend support policy table.
+func TestCurrent_BackendTiers(t *testing.T) {
 	m := manifest.Current()
-	assert.True(t, m.Enabled("op"))
-	assert.True(t, m.Enabled("bw"))
-
-	for _, id := range []string{"vaultwarden", "opconnect", "keeper", "proton-pass", "lastpass", "keychain", "file"} {
-		assert.False(t, m.Enabled(id), "manager %q must not be enabled", id)
-		assert.Equal(t, manifest.Unavailable, m.Status(id))
+	tiers := map[manifest.Status][]string{
+		manifest.Supported:  {"bw", "op", "file"},
+		manifest.Community:  {"vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "opconnect"},
+		manifest.Deprecated: {"keychain", "keeper", "lastpass", "proton-pass"},
 	}
+	total := 0
+	for status, ids := range tiers {
+		for _, id := range ids {
+			assert.Equal(t, status, m.Status(id), "backend %q", id)
+			total++
+		}
+	}
+	assert.Len(t, m.ByCategory(manifest.CategoryManager), total, "every manager entry must appear in the policy table")
 }
 
-// TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy,
-// direct_brokered and direct_classic_sandboxed stay unreachable, with no
-// fallback into a direct secret-injection mode.
+// TestCurrent_OnlySupportedAndPreviewAreEnabled proves community and
+// deprecated backends are listed but never enabled by the manifest.
+func TestCurrent_OnlySupportedAndPreviewAreEnabled(t *testing.T) {
+	m := manifest.Current()
+	for _, id := range []string{"op", "bw", "file", "linux", "macos", "windows"} {
+		assert.True(t, m.Enabled(id), "%q must be enabled", id)
+	}
+	for _, id := range []string{"opconnect", "keeper", "proton-pass", "lastpass", "keychain", "vault"} {
+		assert.False(t, m.Enabled(id), "backend %q must not be enabled", id)
+	}
+	assert.Equal(t, manifest.Preview, m.Status("macos"))
+	assert.Equal(t, manifest.Preview, m.Status("windows"))
+}
+
+// TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy and
+// direct_brokered stay unreachable, with no fallback into a direct
+// secret-injection mode. The classic sandboxed runtime no longer exists.
 func TestCurrent_RuntimeCohort(t *testing.T) {
 	m := manifest.Current()
 	assert.True(t, m.Enabled("gateway_typed"))
 	assert.True(t, m.Enabled("gateway_sdk"))
 
-	for _, id := range []string{"gateway_proxy", "direct_brokered", "direct_classic_sandboxed"} {
+	for _, id := range []string{"gateway_proxy", "direct_brokered"} {
 		assert.False(t, m.Enabled(id), "runtime %q must not be enabled", id)
 	}
+	_, tracked := m.Lookup("direct_classic_sandboxed")
+	assert.False(t, tracked, "direct_classic_sandboxed was removed")
 }
 
 // TestCurrent_ExcludedFeatures locks in every explicitly excluded feature.

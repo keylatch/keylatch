@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package pkcs11 implements a trust.RootOfTrust adapter backed by PKCS#11 tokens.
 // Module path validation via a SHA-256 allowlist is enforced before any session is opened.
 package pkcs11

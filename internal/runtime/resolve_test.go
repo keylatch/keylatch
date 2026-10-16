@@ -102,26 +102,34 @@ func TestResolve_FallbackHierarchyOrder(t *testing.T) {
 		"direct_brokered must be selected before gateway_proxy in the fallback hierarchy")
 }
 
-// TestResolve_ClassicSandboxedNotRemoved verifies that direct_classic_sandboxed
-// is no longer a removed mode.
-// Requesting it on a template that does not list it in Supported returns
-// ErrModeNotSupported (not ErrModeRemoved).
-func TestResolve_ClassicSandboxedNotRemoved(t *testing.T) {
+// TestClassicSandboxedRemoved verifies that direct_classic_sandboxed is gone
+// without an alias: it is not a runtime mode and a request for it is not served.
+func TestClassicSandboxedRemoved(t *testing.T) {
+	for _, m := range runtime.AllModes {
+		assert.NotEqual(t, "direct_classic_sandboxed", string(m))
+	}
 	tmpl := buildTmpl(
 		registry.RuntimeGatewayTyped,
 		registry.RuntimeGatewayTyped,
 	)
 	req := runtime.ResolveRequest{
-		RequestedMode:  runtime.RuntimeDirectClassicSandboxed,
+		RequestedMode:  runtime.RuntimeMode("direct_classic_sandboxed"),
 		ConnectionSlug: "legacy",
 	}
 	_, err := runtime.Resolve(context.Background(), req, tmpl)
 	require.Error(t, err)
-	// Must be ErrModeNotSupported (provider doesn't list it), NOT ErrModeRemoved.
-	assert.True(t, errors.Is(err, runtime.ErrModeNotSupported),
-		"direct_classic_sandboxed is active; template that omits it returns ErrModeNotSupported")
-	assert.False(t, errors.Is(err, runtime.ErrModeRemoved),
-		"direct_classic_sandboxed must not return ErrModeRemoved — it is no longer removed")
+	assert.True(t, errors.Is(err, runtime.ErrModeNotSupported))
+	assert.False(t, errors.Is(err, runtime.ErrModeRemoved), "no removal alias is kept")
+}
+
+// TestRuntimeList locks the runtime modes that exist.
+func TestRuntimeList(t *testing.T) {
+	assert.Equal(t, []runtime.RuntimeMode{
+		runtime.RuntimeGatewayTyped,
+		runtime.RuntimeGatewaySDK,
+		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeGatewayProxy,
+	}, runtime.AllModes)
 }
 
 // TestResolve_RemovedDirectClassicReturnsErrModeRemoved verifies that

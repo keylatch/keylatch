@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package ci implements CI/CD OIDC identity verification.
 //
 // Security invariants:

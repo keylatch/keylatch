@@ -20,7 +20,6 @@ import (
 	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
-	"github.com/keylatch/keylatch/internal/telemetry"
 )
 
 // errorResponse is the machine-readable gateway error format.
@@ -169,14 +168,13 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			outcome = audit.OutcomeDenied
 			return
 		}
-		// direct_classic_sandboxed in LLM sessions requires two-person approval.
-		// If the token was minted with ApprovalRootHMAC set (sandboxed approval path)
-		// but TwoPerson is false, block the request. token.Mint now rejects any
-		// hardware approval claim outright, so ApprovalRootHMAC is never
-		// set on a minted token; this check is retained as defense in depth.
+		// A token carrying an approval root in an LLM session requires
+		// two-person approval. token.Mint now rejects any hardware approval
+		// claim outright, so ApprovalRootHMAC is never set on a minted token;
+		// this check is retained as defense in depth.
 		if t.ApprovalRootHMAC != "" && !t.TwoPerson {
 			writeError(w, http.StatusForbidden, "llm_session_requires_two_person_approval",
-				"direct_classic_sandboxed in an LLM session requires two-person approval")
+				"an approval root in an LLM session requires two-person approval")
 			s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
 				"error": "llm_session_requires_two_person_approval",
 			})
@@ -459,7 +457,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		redactedBody = redact.LabelUntrustedContent(redactedBody, rt.UntrustedContentSource)
 	}
 
-	// Step 12: Audit log and telemetry.
+	// Step 12: Audit log.
 	durationMS := time.Since(start).Milliseconds()
 	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, map[string]any{
 		"provider":    rt.Provider,
@@ -467,11 +465,6 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		"status_code": resp.StatusCode,
 		"duration_ms": durationMS,
 	})
-	sink := s.telemetrySink
-	if sink == nil {
-		sink = telemetry.NoopSink{}
-	}
-	telemetry.GatewayRequestCompleted(ctx, sink, rt.Provider, "allowed", durationMS)
 	outcome = audit.OutcomeOK
 
 	// Step 13: Write redacted response to client.

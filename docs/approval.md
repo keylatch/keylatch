@@ -150,7 +150,7 @@ Each connection can be configured with an `approval_mode` that determines when h
 Set `approval_mode` in your connection YAML:
 
 ```yaml
-# ~/.keylatch/config.yaml (per-connection override)
+# per-connection override
 connections:
   openrouter:
     approval_mode: prompt   # require approval every time

@@ -79,31 +79,12 @@ Replacing an existing policy with --force needs a human at a terminal.`,
 				digest = proof.Digest
 			}
 
-			if err := os.MkdirAll(pathDir(policyPath), 0o700); err != nil {
-				return fmt.Errorf("mkdir: %w", err)
-			}
-			now := time.Now().UTC()
-			p := policy.Policy{
-				SchemaVersion: 1,
-				Mode:          policy.ModeEnforcing,
-				DefaultDeny:   true,
-				Rules:         []policy.Rule{},
-				CreatedAt:     now,
-				UpdatedAt:     now,
-			}
-			if err := policy.Save(policyPath, p); err != nil {
+			if err := saveDefaultDenyPolicy(policyPath); err != nil {
 				return err
 			}
 
-			fallback, err := exampleDocuments("default.json")
+			examplesDir, err := installPolicyDocuments(policyPath, policyDir)
 			if err != nil {
-				return err
-			}
-			if err := (connpolicy.Store{Dir: policyDir}).Replace(fallback); err != nil {
-				return err
-			}
-			examplesDir := filepath.Join(filepath.Dir(policyPath), "policy.examples")
-			if err := writeExamples(examplesDir); err != nil {
 				return err
 			}
 
@@ -114,6 +95,36 @@ Replacing an existing policy with --force needs a human at a terminal.`,
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "replace an existing policy (needs a human at a terminal)")
 	return cmd
+}
+
+// installPolicyDocuments writes the fallback connection policy document and
+// the examples beside the rules file, and returns the examples directory.
+func installPolicyDocuments(policyPath, policyDir string) (examplesDir string, err error) {
+	fallback, err := exampleDocuments("default.json")
+	if err != nil {
+		return "", err
+	}
+	if err := (connpolicy.Store{Dir: policyDir}).Replace(fallback); err != nil {
+		return "", err
+	}
+	examplesDir = filepath.Join(filepath.Dir(policyPath), "policy.examples")
+	return examplesDir, writeExamples(examplesDir)
+}
+
+// saveDefaultDenyPolicy writes an enforcing, default-deny rules file with no rules.
+func saveDefaultDenyPolicy(policyPath string) error {
+	if err := os.MkdirAll(pathDir(policyPath), 0o700); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	now := time.Now().UTC()
+	return policy.Save(policyPath, policy.Policy{
+		SchemaVersion: 1,
+		Mode:          policy.ModeEnforcing,
+		DefaultDeny:   true,
+		Rules:         []policy.Rule{},
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
 }
 
 // newPolicyAllowCmd appends an allow rule to the policy.

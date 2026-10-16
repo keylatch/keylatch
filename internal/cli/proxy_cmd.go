@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -21,10 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ErrProxyUnsupported is returned by both proxy startup forms (`proxy up`
-// and `gateway up --with-proxy`) when gateway_proxy is excluded from the
-// current build's manifest. Neither path binds a listener
-// or writes a PID file in that case — no fake-healthy state is published.
+// ErrProxyUnsupported is returned by `proxy up` when gateway_proxy is excluded
+// from the current build's manifest. It binds no listener and writes no PID
+// file in that case — no fake-healthy state is published.
 var ErrProxyUnsupported = errors.New("proxy: gateway_proxy is not supported in this release")
 
 // proxyPIDPath returns the proxy PID file path.
@@ -414,62 +412,4 @@ func newProxyStatusCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&useJSON, "json", false, "output as JSON")
 	return cmd
-}
-
-// startProxyWithGateway starts the proxy alongside the gateway.
-// Used by `gateway up --with-proxy`.
-//
-// It returns a done channel that is closed once the cleanup goroutine has
-// finished closing the listener and removing the PID file. Callers that need
-// to wait for a clean shutdown (e.g. tests) should receive on the done channel
-// after cancelling ctx.
-func startProxyWithGateway(ctx context.Context, port int, pidPath string) (<-chan struct{}, error) {
-	// gateway_proxy is unavailable — refuse before any
-	// listener/PID-file side effect so no caller can observe a fake-healthy
-	// proxy.
-	if !manifest.Current().Enabled("gateway_proxy") {
-		return nil, ErrProxyUnsupported
-	}
-
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, fmt.Errorf("proxy (--with-proxy): listen %s: %w", addr, err)
-	}
-
-	if err := gateway.WritePID(pidPath, os.Getpid()); err != nil {
-		ln.Close() //nolint:errcheck
-		return nil, fmt.Errorf("proxy (--with-proxy): write PID: %w", err)
-	}
-
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-
-	// Cleanup goroutine: close listener and remove PID file when ctx is done.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		<-ctx.Done()
-		ln.Close()                 //nolint:errcheck
-		gateway.RemovePID(pidPath) //nolint:errcheck
-	}()
-
-	// Accept goroutine: accept and immediately close connections (stub).
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			conn.Close() //nolint:errcheck
-		}
-	}()
-
-	// Signal done once cleanup completes.
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	return done, nil
 }

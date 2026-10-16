@@ -38,27 +38,8 @@ EXCLUDED_PATHS=(
 
 DOC_PATHS=(README.md SECURITY.md docs/)
 
-# Docs that still carry labels; each is rewritten by the docs accuracy work
-# and must be removed from this list when it is.
-DOC_EXCEPTIONS=(
-  docs/architecture/audit-log.md
-  docs/architecture/broker.md
-  docs/architecture/decisions/ADR-001-cosign-keyless-templates.md
-  docs/architecture/decisions/ADR-002-experimental-env-unified.md
-  docs/architecture/registry-signing.md
-  docs/backends/external-references.md
-  docs/backends/file.md
-  docs/backends/index.md
-  docs/cli/environment.md
-  docs/cli-reference.md
-  docs/desktop-parity.md
-  docs/experimental.md
-  docs/man/keylatch-proxy.1
-  docs/runtime-modes.md
-  docs/sandbox.md
-  docs/security.md
-  SECURITY.md
-)
+# Docs that still carry labels; remove an entry when its document is rewritten.
+DOC_EXCEPTIONS=()
 
 # Tokens that match a pattern but are not labels: chip names, SVG path data.
 ALLOWED_TOKENS='Apple M[0-9]|\bM[0-9]{1,2} (chip|Mac|Max|Pro)\b|\bd="[Mm][0-9]'

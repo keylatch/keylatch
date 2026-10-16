@@ -64,7 +64,7 @@ func TestUninstallKeepsOtherHooks(t *testing.T) {
 }
 
 func TestUninstallUnsupportedAgent(t *testing.T) {
-	if _, _, err := Uninstall(AgentWindsurf, InstallOpts{}); err == nil {
-		t.Fatal("windsurf has no hook to remove, expected an error")
+	if _, _, err := Uninstall(AgentCopilot, InstallOpts{}); err == nil {
+		t.Fatal("copilot has no hook to remove, expected an error")
 	}
 }

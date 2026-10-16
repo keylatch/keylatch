@@ -1,3 +1,5 @@
+//go:build experimental
+
 package team_test
 
 import (

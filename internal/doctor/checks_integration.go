@@ -24,7 +24,6 @@ type agentMarker struct {
 var agentMarkers = []agentMarker{
 	{".claude/settings.json", "claude-code", "docs/integration/agents/claude-code.md"},
 	{"CLAUDE.md", "claude-code", "docs/integration/agents/claude-code.md"},
-	{".windsurf/hooks", "windsurf", "docs/integration/agents/windsurf.md"},
 	{".cursor/rules", "cursor", "docs/integration/agents/cursor.md"},
 	{"AGENTS.md", "generic", "docs/integration/agents/generic.md"},
 	{".gemini/config.yml", "gemini", "docs/integration/agents/gemini.md"},

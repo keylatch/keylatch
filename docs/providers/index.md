@@ -148,4 +148,4 @@ For the full provider catalog with template details, see [provider-template-cata
 
 ## Adding a provider
 
-See [Authoring Provider Templates](../dev/authoring-providers.md) for the YAML schema, trust level guide, and PR workflow.
+See [Provider Templates](../provider-templates.md) for the YAML schema and [CONTRIBUTING.md](../../CONTRIBUTING.md) for the PR workflow.

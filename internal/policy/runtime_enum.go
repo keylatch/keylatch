@@ -25,13 +25,6 @@ var removedRuntimes = map[string]bool{
 	"hosted_gateway": true,
 }
 
-// plannedRuntimes is the set of names that are declared but not yet available.
-// They are accepted by the parser (to avoid confusing "unknown" errors) but
-// the driver returns ErrModeNotAvailable at runtime.
-var plannedRuntimes = map[string]bool{
-	"direct_classic_sandboxed": true, // planned for 0.2.0
-}
-
 // ValidateRuntimeMode returns nil for a valid runtime mode.
 // It returns a descriptive error for removed names and unknown strings.
 // See migration table in spec §.
@@ -43,12 +36,6 @@ func ValidateRuntimeMode(s string) error {
 	if removedRuntimes[s] {
 		return fmt.Errorf(
 			"runtime %q has been removed; see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, direct_brokered, direct_classic, or gateway_proxy",
-			s,
-		)
-	}
-	if plannedRuntimes[s] {
-		return fmt.Errorf(
-			"runtime %q is not available in this release (planned for 0.2.0); use '--runtime direct_classic' instead",
 			s,
 		)
 	}

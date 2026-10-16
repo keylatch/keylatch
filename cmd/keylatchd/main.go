@@ -40,7 +40,6 @@ import (
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/sidecar/ipc"
-	_ "github.com/keylatch/keylatch/internal/trust/all"
 	"github.com/keylatch/keylatch/internal/ui"
 	"github.com/spf13/cobra"
 )

@@ -93,23 +93,6 @@ func TestCheckIntegrationMarkers_MarkerWithConfig(t *testing.T) {
 	assert.Contains(t, status.Detail, "integration config found")
 }
 
-// TestCheckIntegrationMarkers_WindsurfMarker verifies detection of a Windsurf marker.
-func TestCheckIntegrationMarkers_WindsurfMarker(t *testing.T) {
-	tmp := t.TempDir()
-	chdir(t, tmp)
-
-	// Create a Windsurf marker directory
-	require.NoError(t, os.MkdirAll(filepath.Join(tmp, ".windsurf", "hooks"), 0o750))
-
-	check := doctor.ExportCheckIntegrationMarkers()
-	status := check(context.Background())
-
-	assert.True(t, status.OK)
-	assert.False(t, status.Warn, "informational, not a warning")
-	assert.Contains(t, status.Detail, "windsurf")
-	assert.Contains(t, status.Fix, "keylatch init integration --agent windsurf")
-}
-
 // TestCheckIntegrationMarkers_CursorMarker verifies detection via .cursor/rules.
 func TestCheckIntegrationMarkers_CursorMarker(t *testing.T) {
 	tmp := t.TempDir()

@@ -1,3 +1,5 @@
+//go:build experimental
+
 package fido2_test
 
 import (

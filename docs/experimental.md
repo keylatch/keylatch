@@ -3,97 +3,51 @@ title: Experimental Features
 since: 1.0.0
 ---
 
-# Experimental Features
+# Experimental features
 
-Experimental features are opt-in and not covered by the stable API guarantee. They may change or
-be removed without a minor-version bump. Features graduate to stable when they ship in a release
-and the gating check is removed.
-
-## Enabling experimental mode
-
-Set the environment variable:
+Unfinished features are compiled only when you build Keylatch yourself with the `experimental`
+build tag. Release binaries, packages and container images never include them. Everything the tag
+enables is **unsupported**: it may change or disappear in any release, and parts of it do nothing
+yet.
 
 ```sh
-KEYLATCH_EXPERIMENTAL=1 keylatch <command>
+go build -tags experimental ./cmd/keylatch
 ```
 
-Or persist it via custom mode config so you do not need the env var every session:
+## What the tag enables
 
-```yaml
-# ~/.keylatch/config.yaml  (mode: custom)
-custom:
-  experimental_gated: true
+| Area | What you get |
+|------|--------------|
+| `keylatch team` | Team identity, membership and role commands. |
+| `keylatch trust`, `keylatch shared-secret` | Root-of-trust enrolment and shared-secret commands. The enrolment ceremonies are not implemented and exit with code 10 (not implemented). |
+| `keylatch backend vault` | Vault Transit root-of-trust key wrapping (not the `vault` secret backend). |
+| Root-of-trust adapters | FIDO2, GnuPG smartcard, PKCS#11, Secure Enclave, SSH agent and Vault Transit adapters, registered at start-up. |
+| Team services | Approval workflows, SSO and OIDC identity, SCIM provisioning, break-glass access, CI identity, access reviews, org policy bundles and audit export. |
+| Team admin UI routes | The admin route group and approval inbox stream. |
+
+Code that Keylatch's own commands share, such as the root-of-trust types used by the key ring and
+by policy, is part of every build.
+
+## Release builds
+
+The release pipeline builds with the tags `embedded_ui,production,release` and never
+`experimental`. The `release` tag also leaves out the test-only helpers
+`internal/broker/testing.go` and `internal/ui/testing.go`. A test builds both variants and checks
+the symbol table of the release binary:
+
+```sh
+go test -count=1 ./internal/release/... -run '^TestReleaseBinaryHasNoExperimentalSymbols$'
 ```
 
-Both methods are equivalent for CLI commands and backend gating. The env var takes precedence as
-a per-process override.
+## Testing the experimental code
 
-> **Note**: The UI server's `/v1/config/experimental` endpoint responds to `KEYLATCH_EXPERIMENTAL=1`
-> only and does not yet honor `custom.experimental_gated`. This is a known limitation. See the
-> feature table below for details.
-
-> **Deprecated**: `KEYLATCH_EXPERIMENTAL_BACKENDS=1` was previously used to gate the (now
-> removed) NordPass backend stub. It is now **ignored**. Update any shell profiles or CI
-> scripts to use `KEYLATCH_EXPERIMENTAL=1` instead.
-
----
-
-## Current experimental features
-
-| Feature | Gate | Status | Notes |
-|---------|------|--------|-------|
-| UI `/v1/config/experimental` endpoint | `KEYLATCH_EXPERIMENTAL=1` only | Active | Returns `{"experimental": true}` when `KEYLATCH_EXPERIMENTAL=1`. **Known limitation**: this endpoint reads the env var directly and does not consult `custom.experimental_gated`. Users relying solely on custom mode config will see `{"experimental": false}`. Setting `KEYLATCH_EXPERIMENTAL=1` alongside `custom.experimental_gated: true` works correctly. |
-| Beta runtime modes | `KEYLATCH_EXPERIMENTAL=1` | Planned | Future additions will be listed here when they enter beta |
-
-> **Removed**: the NordPass backend stub (`internal/backend/nordpass`) was never wired into
-> `internal/backend/all` or the backend catalog, so it could never actually be selected even
-> with `KEYLATCH_EXPERIMENTAL=1` set. The package has been removed rather than half-wired; a
-> future NordPass backend would need a confirmed CLI/API contract and full catalog wiring.
-
-> **Not implemented**: `keylatch trust enroll <type>` (all five root types —
-> secure-enclave, ssh-agent, pkcs11, gpg-card, fido2) and `keylatch trust
-> approve <challenge-id>` (the signing step, once past a real challenge
-> lookup) are registered CLI commands with unimplemented ceremonies. They
-> are hidden from `trust --help`, still directly runnable, and exit
-> `NotImplemented` (code 10) with a message pointing here. `trust list`,
-> `trust doctor`, and `trust challenge` are backed by working code and stay
-> visible. `trust revoke`/`trust allowlist add` are registered but do not
-> yet persist any state — treat them as placeholders. Unlike the removed
-> NordPass stub, these commands are not gated behind `KEYLATCH_EXPERIMENTAL`
-> — they were never functional to begin with, so there is no working
-> behavior to opt into.
-
----
-
-## Graduation policy
-
-When an experimental feature ships as stable:
-
-1. The gating check (`IsExperimentalEnabled`) is removed from the feature's code path.
-2. A CHANGELOG entry states: `stabilized: <feature name>`.
-3. The feature is removed from the table above.
-4. The `docs/` page for the feature (if any) is updated to drop the experimental notice.
-
-Features that are removed without graduating are marked **Dropped** in the CHANGELOG.
-
----
-
-## Integration with custom mode (EPIC-17)
-
-`EffectiveSettings.ExperimentalGated` is set to `true` when:
-
-- `KEYLATCH_EXPERIMENTAL=1` is present in the process environment, **or**
-- The resolved operating mode is `custom` and `custom.experimental_gated = true` in config.
-
-Callers that need to check the gate should use:
-
-```go
-import "github.com/keylatch/keylatch/internal/cli"
-
-if cli.IsExperimentalEnabled(settings) {
-    // feature is active
-}
+```sh
+go build -tags experimental ./...
+go test -count=1 -tags experimental ./internal/team/... ./internal/trust/...
 ```
 
-Do **not** read `KEYLATCH_EXPERIMENTAL` directly — use `IsExperimentalEnabled` so the custom-mode
-path is always respected.
+## Graduation
+
+A feature graduates when its files lose the `//go:build experimental` line, its stub registration
+is deleted and the changelog says `stabilized: <feature>`. A feature that is dropped is removed
+from the tree and noted in the changelog.

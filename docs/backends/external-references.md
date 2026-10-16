@@ -1,7 +1,6 @@
 ---
 title: External Store References
 since: 0.9.0
-epic: EPIC-10
 ---
 
 # External Store References
@@ -296,11 +295,10 @@ Each field can use a different source. A field set by both `--field` and `--prov
 
 ## Updating a reference URI
 
-Re-run `keylatch connect` with `--replace`:
+Re-run `keylatch connect` with the new reference; it replaces the stored one:
 
 ```bash
 keylatch connect anthropic \
-  --replace \
   --provider-ref api_key=op://Private/Anthropic/new-key
 ```
 
@@ -314,7 +312,7 @@ Or use the UI at `keylatch ui` → Connections → Edit.
 keylatch doctor
 ```
 
-The `External Stores (EPIC-10)` section shows the binary check result for each scheme found in your connections. If no `--provider-ref` connections are configured, the section is skipped.
+The `External Stores` section shows the binary check result for each scheme found in your connections. If no `--provider-ref` connections are configured, the section is skipped.
 
 ---
 

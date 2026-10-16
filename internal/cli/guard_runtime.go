@@ -11,15 +11,11 @@ import (
 )
 
 // allowedInLLMSession lists runtime modes that are permitted in LLM sessions.
-// v1.0.0: all remaining modes are allowed (direct_classic permanently removed).
-// direct_classic_sandboxed is allowed — the OS sandbox provides the
-// isolation boundary; credential values are never returned to the LLM session.
 var allowedInLLMSession = map[runtime.RuntimeMode]bool{
-	runtime.RuntimeGatewayTyped:           true,
-	runtime.RuntimeGatewaySDK:             true,
-	runtime.RuntimeDirectBrokered:         true,
-	runtime.RuntimeGatewayProxy:           true,
-	runtime.RuntimeDirectClassicSandboxed: true,
+	runtime.RuntimeGatewayTyped:   true,
+	runtime.RuntimeGatewaySDK:     true,
+	runtime.RuntimeDirectBrokered: true,
+	runtime.RuntimeGatewayProxy:   true,
 }
 
 // GuardRuntime enforces runtime mode restrictions for LLM sessions.
@@ -38,8 +34,6 @@ func GuardRuntime(mode runtime.RuntimeMode, approvalJWT string, env llmcontext.L
 	}
 
 	// Unknown or unrestricted mode — deny defensively.
-	// Note: direct_classic and direct_classic_sandboxed are removed in v1.0.0
-	// and will not reach this path (Resolve() returns ErrModeRemoved first).
 	return true, exitcode.SecurityBlock
 }
 

@@ -19,7 +19,7 @@ This installs a shell wrapper in `~/.zshrc` / `~/.bashrc` that intercepts copilo
 - `keylatch get` (without `--masked`)
 - `security find-password` / `security find-generic-password`
 - `op read`, `bw get`
-- `cat ~/.keylatch/config.yaml`
+- `cat ~/.keylatch/config.json`
 - Direct reads of `~/.keylatch/keylatch.keychain-db`
 
 ## Verify

@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/cmderr"
@@ -238,17 +237,6 @@ Examples:
 			if result.StatusCode < 200 || result.StatusCode >= 300 {
 				os.Exit(exitcode.UserError)
 			}
-
-			// Push receipt to keylatchd dashboard (best-effort).
-			receipt := runner.RuntimeReceipt{
-				Provider:        connectionName,
-				Capability:      actionName,
-				Runtime:         string(tmpl.RuntimeSupport.Preferred),
-				PolicyDecision:  "approved",
-				CredentialShape: "provider_root",
-				TTL:             time.Hour,
-			}
-			pushReceiptToUI(ctx, receipt)
 
 			_ = account // reserved for multi-account future use
 			return nil

@@ -11,9 +11,9 @@ Set the active backend:
 
 ```bash
 keylatch config set backend <name>
-# or
-export KEYLATCH_BACKEND=<name>
 ```
+
+`KEYLATCH_BACKEND=<name>` selects a backend only while `backend` is unset in `config.json`; the config value wins. `keylatch backend list` prints every backend with its support tier.
 
 ---
 
@@ -67,16 +67,16 @@ invariants.
 
 ---
 
-### `keychain` — macOS Keychain
+### `keychain` — macOS Keychain (deprecated)
 
-Uses the macOS Security framework. Entries are protected by the login keychain and may require Touch ID or password. Survives reboots without re-entry.
+Deprecated: the macOS Keychain stays as a key store for the file backend's vault identity, not as a credential backend, and the backend will be removed. It is macOS only and reads the value from stdin, never from an argument.
 
 ```bash
 keylatch config set backend keychain
-keylatch connect openrouter api_key YOUR_KEY
+printf '%s' "$OPENROUTER_KEY" | keylatch connect openrouter -f api_key=@-
 ```
 
-macOS only. iCloud Keychain sync is not enabled — local keychain only.
+Migrate to `op`, `bw` or `file`. iCloud Keychain sync is not enabled — local keychain only.
 
 ---
 
@@ -167,16 +167,9 @@ keylatch connect openrouter --provider-ref api_key=aws-sm://us-east-1/openrouter
 keylatch connect openrouter --provider-ref api_key=hashivault://secret/openrouter#api_key
 ```
 
-### Option 2 — system keyring (macOS / Linux with libsecret)
+### Option 2 — file backend with `allow_insecure_file_kek`
 
-Switch to the `keychain` (macOS) backend so the OS keyring manages the secret.
-Most CI runners that target macOS support this out of the box via the login
-keychain unlocked at session start.
-
-```bash
-export KEYLATCH_BACKEND=keychain
-keylatch connect openrouter api_key "$OPENROUTER_KEY"
-```
+On a runner with no OS keyring and no terminal, `keylatch bootstrap` keeps the vault identity in a plaintext file next to the vault only when `allow_insecure_file_kek` is set in the operator's own config file (the default config path under the account's home); no flag or environment variable can set it. Any process on the runner can decrypt the vault, so use it only for throwaway runners, and expect `keylatch doctor` to fail on `backend.kek` there.
 
 ### Recommendation
 
@@ -185,7 +178,7 @@ For ephemeral CI pipelines (GitHub Actions, GitLab CI, CircleCI) the
 vault file in the runner at all — credentials are fetched from a managed secret
 store on demand and never written to disk by keylatch.
 
-**Note**: `KEYLATCH_PASSPHRASE` has no effect on the `file` backend (S-FIND-12).
+**Note**: `KEYLATCH_PASSPHRASE` has no effect on the `file` backend.
 The passphrase env var is not read during bootstrap or credential access.
 
 ---

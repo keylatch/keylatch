@@ -12,8 +12,11 @@ builds:
   - id: keylatch
     main: ./cmd/keylatch
     binary: keylatch
+    # Never add `experimental`: it compiles unfinished team and trust features.
     tags:
       - embedded_ui
+      - production
+      - release
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -33,8 +36,11 @@ builds:
   - id: keylatchd
     main: ./cmd/keylatchd
     binary: keylatchd
+    # Never add `experimental`: it compiles unfinished team and trust features.
     tags:
       - embedded_ui
+      - production
+      - release
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]

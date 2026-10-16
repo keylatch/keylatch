@@ -130,11 +130,6 @@ func shapeFor(m RuntimeMode) CredentialDelivery {
 		return DeliveryKeylatchSessionToken
 	case RuntimeDirectBrokered:
 		return DeliveryProviderEphemeral
-	case RuntimeDirectClassicSandboxed:
-		// Sandboxed mode injects credentials directly but inside an OS
-		// sandbox (bwrap/sandbox-exec). Delivery shape is provider_root because
-		// the raw credential is injected into the sandboxed env, not brokered.
-		return DeliveryProviderRoot
 	default:
 		panic(fmt.Sprintf("runtime: shapeFor: unrecognized mode %q — update shapeFor when adding to AllModes", m))
 	}

@@ -12,11 +12,8 @@ import (
 )
 
 func TestAllModesCount(t *testing.T) {
-	// direct_classic_sandboxed reinstated as a new sibling mode.
-	// direct_classic remains permanently removed.
-	// Five modes: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy,
-	// direct_classic_sandboxed.
-	assert.Len(t, runtime.AllModes, 5, "AllModes must contain exactly 5 runtime modes")
+	// Four modes: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy.
+	assert.Len(t, runtime.AllModes, 4, "AllModes must contain exactly 4 runtime modes")
 }
 
 func TestAllModesUnique(t *testing.T) {
@@ -47,7 +44,6 @@ func TestIsRawCredentialMode(t *testing.T) {
 		reason string
 	}{
 		{runtime.RuntimeDirectBrokered, true, "direct_brokered injects a provider-ephemeral credential"},
-		{runtime.RuntimeDirectClassicSandboxed, true, "direct_classic_sandboxed injects the provider_root credential into a sandboxed env"},
 		{runtime.RuntimeGatewayTyped, false, "gateway_typed only ever hands over a keylatch session token"},
 		{runtime.RuntimeGatewaySDK, false, "gateway_sdk only ever hands over a keylatch session token"},
 		{runtime.RuntimeGatewayProxy, false, "gateway_proxy only ever hands over a keylatch session token"},
@@ -61,11 +57,7 @@ func TestIsRawCredentialMode(t *testing.T) {
 // TestIsRawCredentialMode_MatchesResolvedShape cross-checks IsRawCredentialMode
 // against the CredentialShape Resolve() actually assigns for the four modes
 // known to the registry package, so the two classifications can never
-// silently drift for those modes. (direct_classic_sandboxed is intentionally
-// excluded here: it is not part of registry.RuntimeMode/the Resolve()
-// fallback hierarchy — it is only ever selected directly via the CLI
-// --runtime flag, bypassing Resolve() entirely; see internal/cli/root.go's
-// DispatchRunner wiring.)
+// silently drift for those modes.
 func TestIsRawCredentialMode_MatchesResolvedShape(t *testing.T) {
 	tmpl := buildTmpl(
 		registry.RuntimeGatewayTyped,

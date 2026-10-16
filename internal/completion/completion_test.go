@@ -96,5 +96,5 @@ func TestGenerate_Zsh_RuntimeSubcommands(t *testing.T) {
 
 	assert.Contains(t, out, "runtime", "zsh completion should mention 'runtime' subcommand")
 	assert.Contains(t, out, "proxy", "zsh completion should mention 'proxy' subcommand")
-	assert.Contains(t, out, "sandbox", "zsh completion should mention 'sandbox' subcommand")
+	assert.NotContains(t, out, "sandbox", "the removed sandbox command must not be completed")
 }

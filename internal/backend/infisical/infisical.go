@@ -4,7 +4,6 @@
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
 //   - Access token is cached and refreshed on 401.
-//   - runner.OK is checked before returning plaintext.
 package infisical
 
 import (
@@ -20,7 +19,6 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -217,10 +215,6 @@ func (b *InfisicalBackend) doRequest(ctx context.Context, method, endpoint strin
 // Get retrieves a secret from Infisical.
 // GET /api/v3/secrets/raw/<name>?workspaceId=<w>&environment=<e>&secretPath=<p>
 func (b *InfisicalBackend) Get(ctx context.Context, name string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	endpoint := fmt.Sprintf("%s/api/v3/secrets/raw/%s?workspaceId=%s&environment=%s&secretPath=%s",
 		b.opts.BaseURL,
 		url.PathEscape(name),

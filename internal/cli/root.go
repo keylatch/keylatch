@@ -23,7 +23,6 @@ import (
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/canary"
 	cmdregistry "github.com/keylatch/keylatch/internal/cmd/regvalidate"
-	cmdtrust "github.com/keylatch/keylatch/internal/cmd/trust"
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/connections"
@@ -39,7 +38,6 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
-	_ "github.com/keylatch/keylatch/internal/trust/all"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -142,7 +140,6 @@ func NewRootCommand() *cobra.Command {
 	root.AddGroup(&cobra.Group{ID: "start", Title: "Getting Started"})
 	root.AddGroup(&cobra.Group{ID: "daily", Title: "Daily Use"})
 	root.AddGroup(&cobra.Group{ID: "gateway", Title: "Gateway"})
-	root.AddGroup(&cobra.Group{ID: "team", Title: "Team"})
 	root.AddGroup(&cobra.Group{ID: "advanced", Title: "Advanced"})
 
 	Register(root)
@@ -198,11 +195,9 @@ func Register(root *cobra.Command) {
 
 	// --- Daily Use ---
 	addCmd(root, newGetCmd(), "daily")
-	addCmd(root, newGetMaskedCmd(), "daily")
 	addCmd(root, newListCmdImpl(), "daily")
 	addCmd(root, newStatusCmd(), "daily")
 	addCmd(root, newRunCmd(), "daily")
-	addCmd(root, newShareCmd(), "daily")
 	addCmd(root, newAllowCmd(), "daily")
 	addCmd(root, newDisconnectCmd(), "daily")
 	// keylatch inject was removed in v1.0.0. Running it returns cobra's "unknown command" error.
@@ -214,8 +209,8 @@ func Register(root *cobra.Command) {
 	// --- Gateway ---
 	addCmd(root, newGatewayCmd(), "gateway")
 
-	// --- Team ---
-	addCmd(root, newTeamCmd(), "team")
+	// --- Team and trust (experimental builds only) ---
+	registerExperimentalFeatures(root)
 
 	// --- Advanced (everything else) ---
 	addCmd(root, newPolicyCmd(), "advanced")
@@ -231,15 +226,9 @@ func Register(root *cobra.Command) {
 	addCmd(root, newCryptoCmd(), "advanced")
 	addCmd(root, newHealthCmd(), "advanced")
 	addCmd(root, newMigrateCmd(), "advanced")
-	addCmd(root, newProjectsCmd(), "advanced")
-	addCmd(root, newReceiptsCmd(), "advanced")
 	addCmd(root, newRegistryCmd(), "advanced")
 	addCmd(root, newRollbackCmd(), "advanced")
-	addCmd(root, newRulesCmd(), "advanced")
-	addCmd(root, newSessionsCmd(), "advanced")
 	addCmd(root, newSetCmd(), "advanced")
-	// Trust and shared-secret commands are now registered from internal/cmd/trust.
-	cmdtrust.RegisterCommands(root, "advanced")
 	addCmd(root, newVersionsCmd(), "advanced")
 	addCmd(root, newDestroyVersionCmd(), "advanced")
 	addCmd(root, newCheckExpiryCmd(), "advanced")
@@ -274,7 +263,6 @@ func Register(root *cobra.Command) {
 	// Registered unconditionally so shell completion and invocation work without
 	// KEYLATCH_EXPERIMENTAL=1.
 	root.AddCommand(newProxyCmdFull())
-	root.AddCommand(newSandboxCmd())
 	root.AddCommand(newCallCmd())
 	root.AddCommand(newBrokerCmd())
 
@@ -296,9 +284,6 @@ func Register(root *cobra.Command) {
 
 	// Backup command.
 	addCmd(root, newBackupCmd(), "advanced")
-
-	// `verify` — cosign signature verification.
-	addCmd(root, newVerifyCmd(), "advanced")
 
 	// runtime group is now implemented.
 	addCmd(root, newRuntimeCmd(), "advanced")
@@ -417,8 +402,7 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 		gatewayRunning = true
 	}
 
-	// v1.0.0 mode set (direct_classic_sandboxed reinstated).
-	allModes := []string{"gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy", "direct_classic_sandboxed"}
+	allModes := []string{"gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy"}
 	for _, m := range allModes {
 		status := runtimeModeStatus{Mode: m}
 
@@ -448,19 +432,6 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 				reason = "supported"
 			}
 			status.Available = true
-		case m == "direct_classic_sandboxed":
-			// sandbox availability depends on platform primitive.
-			sandboxAvail, sandboxReason, _ := sandboxModeAvailability()
-			if sandboxAvail {
-				reason = "sandbox primitive available: " + sandboxReason
-				if preferred {
-					reason += " (preferred mode)"
-				}
-				status.Available = true
-			} else {
-				reason = "sandbox not available: " + sandboxReason + " — run 'keylatch sandbox doctor'"
-				status.Available = false
-			}
 		default:
 			reason = "unknown mode"
 			status.Available = false
@@ -481,7 +452,6 @@ func newGetCmd() *cobra.Command {
 		Use:   "get <service> <key>",
 		Short: "Retrieve a credential value",
 	}
-	cmd.Flags().Bool("masked", false, "return masked value (safe in LLM sessions)")
 
 	// notImplementedGetHandler is value-bearing but not yet implemented.
 	// GuardLLMSession (applied by AsValueBearing, below) wraps this handler
@@ -490,8 +460,7 @@ func newGetCmd() *cobra.Command {
 	// never reaches this inner handler at all — no escape hatch applies.
 	//
 	// Once GuardLLMSession has passed, the raw-credential gate still applies:
-	// `get` (non-masked) always returns a raw value. See
-	// RequireRawCredentialOptIn.
+	// `get` always returns a raw value. See RequireRawCredentialOptIn.
 	notImpl := Handler(func(_ context.Context, hArgs HandlerArgs) (Result, error) {
 		if verErr := RequireRawCredentialOptIn(true, configAllowsUnverifiedSession()); verErr != nil {
 			fmt.Fprintf(hArgs.Stderr, "%v\n", verErr)
@@ -503,19 +472,6 @@ func newGetCmd() *cobra.Command {
 	vbh := AsValueBearing(notImpl)
 
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		masked, _ := c.Flags().GetBool("masked")
-		if masked {
-			// --masked is NOT guarded — it never outputs raw credentials.
-			// get --masked is a safe path.
-			stdout := c.OutOrStdout()
-			if len(args) >= 2 {
-				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
-			} else {
-				fmt.Fprintf(stdout, "**** = ****\n")
-			}
-			return nil
-		}
-
 		hArgs := handlerArgsFromCmd(c, args)
 		res, err := vbh.Invoke(c.Context(), hArgs)
 		if err != nil {
@@ -527,24 +483,6 @@ func newGetCmd() *cobra.Command {
 		return nil
 	}
 	return cmd
-}
-
-// newGetMaskedCmd returns the `get-masked` subcommand — NOT guarded.
-// get-masked is a safe path.
-func newGetMaskedCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "get-masked <service> <key>",
-		Short: "Retrieve a masked credential (safe in LLM sessions)",
-		RunE: func(c *cobra.Command, args []string) error {
-			stdout := c.OutOrStdout()
-			if len(args) >= 2 {
-				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
-			} else {
-				fmt.Fprintf(stdout, "**** = ****\n")
-			}
-			return nil
-		},
-	}
 }
 
 // newRunCmd returns the `run` subcommand with --runtime and --approval-jwt flags.
@@ -577,6 +515,19 @@ func newRunCmd() *cobra.Command {
 				cliErr := NewRuntimeNotAvailable("runtime mode %q has been removed: %s", mode, hint)
 				fmt.Fprint(c.ErrOrStderr(), cliErr.Stderr())
 				os.Exit(exitcode.RuntimeNotAvailable)
+			}
+
+			// A mode that does not exist (including every removed runtime) is a
+			// usage error; suggest the closest match on a typo.
+			if !isKnownMode(mode) {
+				suggestion := suggestMode(string(mode))
+				if suggestion != "" {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q. Did you mean %q?\n", mode, suggestion)
+				} else {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q.\n", mode)
+				}
+				fmt.Fprintln(c.ErrOrStderr(), "  Run 'keylatch modes' to see all available modes.")
+				os.Exit(exitcode.UserError)
 			}
 
 			// --dry-run mode must bypass all infrastructure guards because it
@@ -646,18 +597,6 @@ func newRunCmd() *cobra.Command {
 			if verErr := RequireRawCredentialOptIn(runtime.IsRawCredentialMode(mode), configAllowsUnverifiedSession()); verErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "%v\n", verErr)
 				os.Exit(exitcode.SecurityBlock)
-			}
-
-			// Validate mode early and suggest closest match on typo.
-			if !isKnownMode(mode) {
-				suggestion := suggestMode(string(mode))
-				if suggestion != "" {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q. Did you mean %q?\n", mode, suggestion)
-				} else {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q.\n", mode)
-				}
-				fmt.Fprintln(c.ErrOrStderr(), "  Run 'keylatch modes' to see all available modes.")
-				os.Exit(exitcode.UserError)
 			}
 
 			// signingKey is nil here: the gateway signing key is not loaded at
@@ -793,8 +732,8 @@ func newRunCmd() *cobra.Command {
 			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
 			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
 
-			// The support manifest excludes direct_brokered, gateway_proxy and
-			// direct_classic_sandboxed from the supported runtime set
+			// The support manifest excludes direct_brokered and gateway_proxy
+			// from the supported runtime set
 			// — WithManifestGuard makes each unreachable regardless
 			// of runtime.Resolve's fallback hierarchy, so a denied or
 			// unavailable gateway can never fall back into a direct
@@ -818,9 +757,6 @@ func newRunCmd() *cobra.Command {
 					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
 						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
 						supported, "gateway_proxy"),
-					// direct_classic_sandboxed reinstated.
-					string(runtime.RuntimeDirectClassicSandboxed): runner.WithManifestGuard(
-						runner.NewClassicSandboxedDriver(nil), supported, "direct_classic_sandboxed"),
 				},
 			}
 
@@ -881,8 +817,6 @@ func newRunCmd() *cobra.Command {
 			}
 			receipt, runErr := dr.Run(ctx, req)
 			elapsed := time.Since(start)
-			// Best-effort push to keylatchd dashboard (ignored if not running).
-			pushReceiptToUI(ctx, receipt)
 
 			_ = storagePath
 			if runErr != nil {
@@ -1011,8 +945,8 @@ func newRunCmd() *cobra.Command {
 	}
 	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped),
 		"runtime mode (default: gateway_typed — run 'keylatch modes' to see all options)")
-	cmd.Flags().String("mode", "", "operating mode (standard, telemetry, canary, custom); overrides config file and KEYLATCH_MODE env var")
-	cmd.Flags().String("approval-jwt", "", "approval JWT for direct_classic_sandboxed mode")
+	cmd.Flags().String("mode", "", "operating mode (standard, canary, custom); overrides config file and KEYLATCH_MODE env var")
+	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	cmd.Flags().StringArray("allow", nil, "allow this command prefix for this run only; repeat or comma-separate (blocked in LLM sessions)")
 	cmd.Flags().Bool("no-daemon-start", false, "do not auto-start keylatchd if it is not running")
 	cmd.Flags().Bool("dry-run", false, "show what would be injected and executed without running the command")
@@ -1316,7 +1250,7 @@ func newCallCmdStub() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped), "runtime mode")
-	cmd.Flags().String("approval-jwt", "", "approval JWT for direct_classic_sandboxed mode")
+	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	return cmd
 }
 
@@ -1437,7 +1371,6 @@ func mapCustomConfig(cfg *config.CustomModeConfig) *runtime.CustomModeConfig {
 		return nil
 	}
 	return &runtime.CustomModeConfig{
-		TelemetryEnabled:       cfg.TelemetryEnabled,
 		CanaryInjectionEnabled: cfg.CanaryInjectionEnabled,
 		ExperimentalGated:      cfg.ExperimentalGated,
 	}

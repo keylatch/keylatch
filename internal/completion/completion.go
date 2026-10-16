@@ -11,13 +11,10 @@ import (
 
 // RuntimeModes is the closed set of valid --runtime flag values.
 // Mirrors runtime.AllModes but kept here to avoid an import cycle.
-// direct_classic is the 0.1.0 non-sandboxed mode; direct_classic_sandboxed is planned for 0.2.0.
 var RuntimeModes = []string{
 	"gateway_typed",
 	"gateway_sdk",
 	"direct_brokered",
-	"direct_classic",
-	"direct_classic_sandboxed",
 	"gateway_proxy",
 }
 

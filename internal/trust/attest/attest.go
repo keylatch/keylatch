@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package attest implements FIDO2/WebAuthn attestation verification and
 // PKCS#11/Apple Secure Enclave format extensions.
 package attest

@@ -31,8 +31,11 @@ What that promise means depends on the mode:
 ## Attackers
 
 Each "handled" claim links to the test that backs it. The attacker scenario
-table (`tests/harness/scenarios.go`) is not in this tree yet; when it lands the
-links move to its rows.
+table ([`tests/harness/scenarios.go`](../../tests/harness/scenarios.go)) runs fake
+agents against the built binary: rows still open are marked `wantLeak`, and each
+blocked row that a unit test holds in place names that test (`policy-allow-everything`,
+`wildcard-gateway-token`, `agent-gateway-token-for-llm-route`,
+`ui-no-open-url-capture`).
 
 | Attacker | In-user mode (this release) | Broker daemon |
 |---|---|---|
@@ -170,8 +173,9 @@ A community template carries a malicious `injection_rules` entry, an overridden
 
 Templates are validated against a strict JSON Schema on load and unknown fields are
 rejected; `storage_path_tpl` is confined to the `~/.keylatch/` namespace;
-`allowed_command_prefixes` is enforced for every `run`; community templates need
-explicit opt-in and CI validates every embedded template.
+`allowed_command_prefixes` is enforced for every `run`; community templates load
+only from the local provider directory (`keylatch registry reload`) and CI validates
+every embedded template.
 
 Gap: user-installed community templates are not signed, so a well-formed but
 semantically malicious template is accepted.

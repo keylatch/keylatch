@@ -1,22 +1,19 @@
 // Package runtime defines RuntimeMode for keylatch credential access control.
-// v1.0.0 base set: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy.
-// direct_classic_sandboxed reinstated as a new sibling mode backed by
-// bwrap (Linux) / sandbox-exec (macOS). direct_classic remains permanently removed.
+// The runtime modes are gateway_typed, gateway_sdk, direct_brokered and
+// gateway_proxy. direct_brokered and gateway_proxy are not available in this
+// release.
 package runtime
 
 import "errors"
 
 // RuntimeMode identifies how the CLI interacts with credentials.
-// v1.0.0 set: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy,
-// plus direct_classic_sandboxed.
 type RuntimeMode string
 
 const (
-	RuntimeGatewayTyped           RuntimeMode = "gateway_typed"
-	RuntimeGatewaySDK             RuntimeMode = "gateway_sdk"
-	RuntimeDirectBrokered         RuntimeMode = "direct_brokered"
-	RuntimeGatewayProxy           RuntimeMode = "gateway_proxy"
-	RuntimeDirectClassicSandboxed RuntimeMode = "direct_classic_sandboxed"
+	RuntimeGatewayTyped   RuntimeMode = "gateway_typed"
+	RuntimeGatewaySDK     RuntimeMode = "gateway_sdk"
+	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
+	RuntimeGatewayProxy   RuntimeMode = "gateway_proxy"
 )
 
 // AllModes is the closed set used by the matrix builder in tests.
@@ -26,13 +23,11 @@ var AllModes = []RuntimeMode{
 	RuntimeGatewaySDK,
 	RuntimeDirectBrokered,
 	RuntimeGatewayProxy,
-	RuntimeDirectClassicSandboxed,
 }
 
 // removedModes maps removed mode names to actionable hint strings.
 // Resolve() checks this before the supported set so removed modes return
 // ErrModeRemoved (exit 5) with a clear hint.
-// Note: direct_classic_sandboxed is NOT in this map — it is active.
 var removedModes = map[string]string{
 	"direct_classic": "mode removed in v1.0.0. Use: --runtime gateway_typed",
 }
@@ -69,7 +64,7 @@ func IsRemovedMode(mode string) (hint string, removed bool) {
 // --runtime value instead of a confusing security-block message.
 func IsRawCredentialMode(m RuntimeMode) bool {
 	switch m {
-	case RuntimeDirectBrokered, RuntimeDirectClassicSandboxed:
+	case RuntimeDirectBrokered:
 		return true
 	default:
 		return false

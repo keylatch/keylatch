@@ -33,8 +33,7 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 		"gateway_proxy",
 	}
 
-	// Policy: deny LLM in direct_classic_sandboxed (no key = approval_required),
-	// deny gateway_sdk, allow others.
+	// Policy: deny gateway_sdk in LLM sessions, allow others.
 	ruleWithLLMSessions := policy.Rule{
 		ID:           "llm-runtime-rule",
 		Actor:        "*",
@@ -45,7 +44,6 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 			"gateway_typed":   "allow",
 			"direct_brokered": "allow",
 			"gateway_proxy":   "allow",
-			// direct_classic_sandboxed absent → approval_required
 		},
 	}
 	p := policy.Policy{
@@ -90,8 +88,6 @@ func TestRuntimeModeLLM_S817(t *testing.T) {
 		{runtime: "gateway_sdk", wantAllow: false, wantDenyReason: "runtime gateway_sdk denied by rule.LLMSessions"},
 		{runtime: "direct_brokered", wantAllow: true, wantApproval: false},
 		{runtime: "gateway_proxy", wantAllow: true, wantApproval: false},
-		// direct_classic_sandboxed is planned for 0.2.0 — denied immediately in 0.1.0.
-		{runtime: "direct_classic_sandboxed", wantAllow: false, wantDenyReason: "0.2.0"},
 	}
 
 	for _, actor := range actors {

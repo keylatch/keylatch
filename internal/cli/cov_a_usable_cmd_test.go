@@ -52,7 +52,7 @@ func TestUsableReason_UnknownProvider_InLLMSession(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// install_guard_cmd.go — runInstallGuardList, runInstallGuard (windsurf/antigravity paths)
+// install_guard_cmd.go — runInstallGuardList, runInstallGuard (antigravity path)
 // ---------------------------------------------------------------------------
 
 func TestRunInstallGuardList(t *testing.T) {
@@ -76,23 +76,6 @@ func TestRunInstallGuardList(t *testing.T) {
 	}
 	if !strings.Contains(out, "cursor") {
 		t.Errorf("install-guard --list must include 'cursor', got: %q", out)
-	}
-}
-
-func TestRunInstallGuard_Windsurf_PrintsInstructions(t *testing.T) {
-	t.Parallel()
-	cmd := newInstallGuardCmd()
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	if err := runInstallGuard(cmd, "windsurf", false); err != nil {
-		t.Fatalf("runInstallGuard windsurf error: %v", err)
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "CREDENTIALS_LLM_SESSION=windsurf") {
-		t.Errorf("windsurf instructions must contain CREDENTIALS_LLM_SESSION=windsurf, got: %q", out)
 	}
 }
 
@@ -283,7 +266,6 @@ func TestAgentDocSlug_KnownAgents(t *testing.T) {
 	}{
 		{"claude-code", "claude-code"},
 		{"gemini", "gemini"},
-		{"windsurf", "windsurf"},
 		{"cursor", "cursor"},
 		{"other-agent", "generic"},
 		{"", "generic"},

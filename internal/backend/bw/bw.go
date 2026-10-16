@@ -24,7 +24,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // compile-time interface check.
@@ -178,13 +177,7 @@ func (b *BitwardenBackend) Capabilities() []backend.Capability {
 // Get returns the plaintext bytes for a canonical path via `bw get item`.
 // BW_SESSION is injected as a subprocess env var. Uses single-flight
 // collapse and 60-second metadata cache.
-//
-// Checks runner.OK before returning plaintext.
 func (b *BitwardenBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	connection, field, err := parsePath(path)
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("bw Get: %w", err)

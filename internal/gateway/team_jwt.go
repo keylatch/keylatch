@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package gateway — team JWT claim helpers.
 //
 // Security invariants:

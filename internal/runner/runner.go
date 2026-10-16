@@ -25,8 +25,7 @@ var ErrUnknownRuntime = errors.New("runner: no driver registered for runtime mod
 var ErrGuardDenied = errors.New("runner: guard denied execution")
 
 // ErrModeNotAvailable is returned by a placeholder Driver registered for a mode
-// that is declared but not yet implemented in this release (e.g.
-// direct_classic_sandboxed in 0.1.0).
+// that is declared but not yet implemented in this release.
 var ErrModeNotAvailable = errors.New("runner: runtime mode not available in this release")
 
 // Connection describes a named credential connection and the commands
@@ -78,7 +77,7 @@ type ExecRequest struct {
 	// before the allowlist check in DispatchRunner. Use for CLI --allow flag.
 	ExtraAllowedPrefixes []string
 	// FeatureFlags carries per-request feature gate flags. Drivers may require
-	// specific flags to be true before executing (e.g. "direct_classic_sandboxed").
+	// specific flags to be true before executing.
 	FeatureFlags map[string]bool
 	// CleanEnv, when true, instructs the driver to start the child process with
 	// a minimal environment rather than inheriting os.Environ(). The minimal set

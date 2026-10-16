@@ -35,7 +35,10 @@ xchacha20-poly1305 encrypted tar archive derived from a backup passphrase.
 
 A human must approve the export at a terminal, and the passphrase is read
 from that terminal only: it is never taken from the command line, a file or a
-pipe. The output file is safe to store off-site.`,
+pipe. The output file is safe to store off-site.
+
+There is no restore command: the archive header carries the Argon2id salt and
+parameters, so a backup decrypts by hand (see docs/cli-reference.md).`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			ctx := c.Context()
 			env := llmcontext.DefaultLookup
@@ -132,7 +135,7 @@ var backupStore = func(cfg config.Config, env llmcontext.Lookup) backupCredStore
 }
 
 // backupHeader is serialised as the first entry in the backup archive.
-// It carries the argon2id salt and parameters so restore can re-derive the KEK.
+// It carries the argon2id salt and parameters so the KEK can be re-derived.
 type backupHeader struct {
 	Version   int    `json:"version"`
 	Timestamp string `json:"timestamp"`

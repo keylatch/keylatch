@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package team implements team identity, membership, RBAC, and shared-secret coordination.
 //
 // Security invariants:

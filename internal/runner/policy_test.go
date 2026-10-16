@@ -1,7 +1,6 @@
 package runner_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -9,12 +8,6 @@ import (
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/stretchr/testify/assert"
 )
-
-// TestOK_ReturnsTrue verifies that runner.OK always returns true.
-func TestOK_ReturnsTrue(t *testing.T) {
-	assert.True(t, runner.OK(context.Background()),
-		"runner.OK must return true")
-}
 
 func TestPolicyDeniedErrorMatchesSentinels(t *testing.T) {
 	deny := &runner.PolicyDeniedError{Decision: enforce.Decision{Reason: "no policy for openai: run `keylatch policy init`"}}

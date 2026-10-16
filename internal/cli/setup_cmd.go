@@ -21,8 +21,10 @@ import (
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/doctor"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/guard"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -62,9 +64,18 @@ var validURISegment = regexp.MustCompile(`^[A-Za-z0-9_\-\.]+$`)
 
 // setupHeadlessResult is written to stderr as JSON when --headless is used.
 type setupHeadlessResult struct {
-	OK      bool   `json:"ok"`
-	Backend string `json:"backend,omitempty"`
-	Error   string `json:"error,omitempty"`
+	OK      bool                `json:"ok"`
+	Backend string              `json:"backend,omitempty"`
+	Policy  string              `json:"policy,omitempty"`
+	Doctor  *setupDoctorSummary `json:"doctor,omitempty"`
+	Error   string              `json:"error,omitempty"`
+}
+
+// setupDoctorSummary is the doctor verdict setup ends with.
+type setupDoctorSummary struct {
+	OK   bool `json:"ok"`
+	Fail int  `json:"fail"`
+	Warn int  `json:"warn"`
 }
 
 // setupSecurityBlockMessage builds the stderr message printed when
@@ -83,19 +94,17 @@ func setupSecurityBlockMessage(env llmcontext.Lookup) string {
 	return b.String()
 }
 
-// platformBackend returns the recommended backend name and a human-readable
-// description for the current OS.
-func platformBackend() (name, desc string) {
-	switch runtime.GOOS {
-	case "darwin":
-		return "keychain", "macOS Keychain"
-	case "linux":
-		return "file", "encrypted file (~/.keylatch/)"
-	case "windows":
-		return "file", "encrypted file (~/.keylatch/)"
-	default:
-		return "file", "encrypted file (~/.keylatch/)"
+// recommendedBackend returns the backend setup proposes and a short
+// description. It prefers a password manager that is already installed
+// (Bitwarden, then 1Password) and otherwise the encrypted file store.
+func recommendedBackend(lookPath func(string) (string, error)) (name, desc string) {
+	if _, err := lookPath("bw"); err == nil {
+		return "bw", "Bitwarden CLI (detected)"
 	}
+	if _, err := lookPath("op"); err == nil {
+		return "op", "1Password CLI (detected)"
+	}
+	return "file", "encrypted file (~/.keylatch/) with the key held in the OS keystore"
 }
 
 // newSetupCmd returns the `keylatch setup` wizard command.
@@ -265,10 +274,13 @@ Exit codes:
 	cmd.Flags().Bool("non-interactive", false, "fail instead of prompting when required fields are missing")
 	cmd.Flags().Bool("from-env", false, "read field values from KEYLATCH_<FIELD_NAME> environment variables")
 	cmd.Flags().StringArray("stdin-field", nil, "supply a field value as key=value (may be repeated)")
-	cmd.Flags().Bool("advanced", false, "show all backend options and advanced configuration (audit dir, signing key, ports, telemetry)")
+	cmd.Flags().Bool("advanced", false, "show all backend options and advanced configuration (audit dir, signing key, ports)")
 	cmd.Flags().Bool("no-daemon-start", false, "skip gateway start in step 3 (useful in CI or restricted environments)")
 	cmd.Flags().String("config", "", "path to keylatch.yaml config file")
-	cmd.Flags().String("telemetry", "", "telemetry setting: on|off")
+	cmd.Flags().String("server", "", "Bitwarden server URL for a self-hosted or Vaultwarden server (bw backend, https only)")
+	cmd.Flags().String("organization-id", "", "Bitwarden organization ID (bw backend)")
+	cmd.Flags().String("namespace", "", "default vault namespace")
+	cmd.Flags().Bool("install-guard", false, "headless: also install the Claude Code exfiltration guard")
 	return cmd
 }
 
@@ -278,31 +290,109 @@ Exit codes:
 func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 	selectedBackend, _ := c.Flags().GetString("backend")
 	if selectedBackend == "" {
-		selectedBackend = "file"
+		selectedBackend, _ = recommendedBackend(exec.LookPath)
 	}
 	if canonical, ok := backend.CanonicalName(selectedBackend); ok {
 		selectedBackend = canonical
 	}
 
-	writeHeadlessResult := func(ok bool, backend string, errMsg string) {
-		res := setupHeadlessResult{OK: ok, Backend: backend, Error: errMsg}
+	write := func(res setupHeadlessResult) {
 		b, _ := json.Marshal(res)
 		fmt.Fprintln(c.ErrOrStderr(), string(b))
 	}
+	fail := func(code int, msg string) error {
+		write(setupHeadlessResult{Backend: selectedBackend, Error: msg})
+		os.Exit(code)
+		return nil
+	}
 
-	_, err := bootstrap.Run(ctx, bootstrap.Options{
+	server, _ := c.Flags().GetString("server")
+	if server != "" && selectedBackend != "bw" {
+		return fail(exitcode.UserError, "--server applies to the bw backend only")
+	}
+	orgID, _ := c.Flags().GetString("organization-id")
+	if orgID != "" && selectedBackend != "bw" {
+		return fail(exitcode.UserError, "--organization-id applies to the bw backend only")
+	}
+	if server != "" && !strings.HasPrefix(server, "https://") {
+		return fail(exitcode.UserError, "--server must be an https:// URL")
+	}
+
+	if _, err := bootstrap.Run(ctx, bootstrap.Options{
 		DryRun:          false,
 		Backend:         selectedBackend,
 		Env:             llmcontext.DefaultLookup,
 		InsecureFileKEK: insecureFileKEKAllowed(),
-	})
-	if err != nil {
-		writeHeadlessResult(false, selectedBackend, err.Error())
-		os.Exit(exitcode.OperationFailed)
-		return nil
+	}); err != nil {
+		return fail(exitcode.OperationFailed, err.Error())
 	}
 
-	writeHeadlessResult(true, selectedBackend, "")
+	namespace, _ := c.Flags().GetString("namespace")
+	if err := applySetupOptions(c, selectedBackend, server, orgID, namespace); err != nil {
+		return fail(exitcode.OperationFailed, err.Error())
+	}
+
+	res := setupHeadlessResult{OK: true, Backend: selectedBackend}
+	switch created, err := ensureDefaultPolicy(); {
+	case err != nil:
+		return fail(exitcode.OperationFailed, "write default policy: "+err.Error())
+	case created:
+		res.Policy = "created"
+	default:
+		res.Policy = "kept"
+	}
+
+	if installGuard, _ := c.Flags().GetBool("install-guard"); installGuard {
+		if _, err := guard.Install(guard.AgentClaudeCode, guard.InstallOpts{}); err != nil {
+			return fail(exitcode.OperationFailed, "install guard: "+err.Error())
+		}
+	}
+
+	report, err := doctor.Run(ctx, doctor.Options{Env: llmcontext.DefaultLookup, Verbose: true})
+	if err != nil {
+		return fail(exitcode.OperationFailed, "doctor: "+err.Error())
+	}
+	sum := &setupDoctorSummary{OK: report.OverallOK}
+	for _, s := range report.Checks {
+		switch {
+		case s.Skipped:
+		case !s.OK:
+			sum.Fail++
+		case s.Warn:
+			sum.Warn++
+		}
+	}
+	res.Doctor = sum
+	write(res)
+	return nil
+}
+
+// applySetupOptions stores the options a headless setup was given: the vault
+// server and organization for Bitwarden, and the default namespace.
+func applySetupOptions(c *cobra.Command, selectedBackend, server, orgID, namespace string) error {
+	cfgPath := paths.Config(llmcontext.DefaultLookup)
+	cfg, err := loadConfigOrWarn(c, cfgPath)
+	if err != nil {
+		return err
+	}
+	cfg.Backend = selectedBackend
+	if namespace != "" {
+		cfg.DefaultNamespace = namespace
+	}
+	if selectedBackend == "bw" && (server != "" || orgID != "") {
+		if cfg.BW == nil {
+			cfg.BW = &config.BWConfig{Bin: "bw"}
+		}
+		if server != "" {
+			cfg.BW.Server = server
+		}
+		if orgID != "" {
+			cfg.BW.OrganizationID = orgID
+		}
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
 	return nil
 }
 
@@ -348,7 +438,7 @@ func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 		return configuredBackend, nil
 	}
 
-	recommended, recDesc := platformBackend()
+	recommended, recDesc := recommendedBackend(exec.LookPath)
 	fmt.Fprintf(c.OutOrStdout(), "  Recommended backend: %s (%s)\n", recommended, recDesc)
 	fmt.Fprintln(c.OutOrStdout())
 
@@ -378,7 +468,6 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	}
 
 	chosen := recommended
-	telemetrySetting := ""
 	// explicitFlagOverride: --backend is an unambiguous, deliberate choice
 	// (not an accidental Enter-through) — it bypasses the switch
 	// confirmation below, matching prior behavior for non-interactive/CI
@@ -389,13 +478,8 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	case explicitFlagOverride:
 		chosen = flagBackend
 		fmt.Fprintf(c.OutOrStdout(), "  Using --backend=%s\n", chosen)
-		// Honour --telemetry off flag even in non-advanced mode.
-		if tf, _ := c.Flags().GetString("telemetry"); strings.ToLower(tf) == "off" {
-			telemetrySetting = "off"
-		}
 	case advanced:
-		// Advanced mode: show all 10 backend options and telemetry prompt.
-		chosen, telemetrySetting = setupPromptAdvancedBackend(c, recommended)
+		chosen = setupPromptAdvancedBackend(c, recommended)
 	case configuredBackend != "":
 		// Resume: default to *keeping* the configured backend, not the OS
 		// recommendation.
@@ -551,19 +635,6 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 
 	if err := persistSetupBackend(c, chosen); err != nil {
 		return "", err
-	}
-
-	// Persist telemetry setting to config when the user explicitly opted in or out.
-	if telemetrySetting != "" {
-		cfgPath := paths.Config(llmcontext.DefaultLookup)
-		cfg, loadErr := config.Load(cfgPath)
-		if loadErr == nil {
-			cfg.Telemetry.Enabled = strings.ToLower(telemetrySetting) == "on"
-			if cfg.Telemetry.Enabled {
-				cfg.Telemetry.Sink = "local"
-			}
-			_ = config.Save(cfgPath, cfg) // best-effort — setup is still successful
-		}
 	}
 
 	fmt.Fprintf(c.OutOrStdout(), "  Backend %q configured.\n\n", chosen)
@@ -775,8 +846,7 @@ func setupPromptBasicBackend(c *cobra.Command, recommended string) string {
 }
 
 // setupPromptAdvancedBackend shows all available backend options (--advanced mode).
-// Returns the chosen backend slug and the resolved telemetry setting ("on", "off", or "").
-func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, string) {
+func setupPromptAdvancedBackend(c *cobra.Command, recommended string) string {
 	fmt.Fprintln(c.OutOrStdout(), "  Advanced backend options:")
 	fmt.Fprintln(c.OutOrStdout(), "    1)  file            — encrypted file in ~/.keylatch/")
 	fmt.Fprintln(c.OutOrStdout(), "    2)  keychain        — macOS Keychain (macOS only)")
@@ -797,27 +867,6 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	// Advanced port, audit, and key configuration are owned by dedicated
 	// commands once setup has created the baseline config.
 
-	// Telemetry opt-in: --telemetry off skips prompt; otherwise ask (default NO).
-	telemetryFlag, _ := c.Flags().GetString("telemetry")
-	chosenTelemetry := telemetryFlag
-	if strings.ToLower(telemetryFlag) == "off" {
-		chosenTelemetry = "off"
-	} else if telemetryFlag == "" {
-		fmt.Fprintln(c.OutOrStdout())
-		fmt.Fprintf(c.OutOrStdout(), "    Allow anonymous usage stats? This sends 7 anonymised metrics\n")
-		fmt.Fprintf(c.OutOrStdout(), "    (no keys, no values) to help improve Keylatch. (y/N): ")
-		ans := strings.ToLower(strings.TrimSpace(readLine()))
-		if ans == "y" || ans == "yes" {
-			chosenTelemetry = "on"
-		} else {
-			chosenTelemetry = "off"
-		}
-	}
-	if chosenTelemetry != "" {
-		fmt.Fprintf(c.OutOrStdout(), "  Telemetry: %s\n", chosenTelemetry)
-	}
-	fmt.Fprintln(c.OutOrStdout())
-
 	advancedMap := map[string]string{
 		"1": "file", "2": "keychain", "3": "op", "4": "bw",
 		"5": "proton-pass", "6": "keeper", "7": "lastpass",
@@ -830,28 +879,27 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) (string, s
 	chosen, ok := advancedMap[choice]
 	if !ok {
 		fmt.Fprintf(c.OutOrStdout(), "  Using recommended backend %q.\n", recommended)
-		return recommended, chosenTelemetry
+		return recommended
 	}
 
 	canonical, ok := backend.CanonicalName(chosen)
 	if !ok {
 		fmt.Fprintf(c.ErrOrStderr(), "  Error: backend %q is not available in this build.\n", chosen)
 		fmt.Fprintf(c.OutOrStdout(), "  Using recommended backend %q.\n", recommended)
-		return recommended, chosenTelemetry
+		return recommended
 	}
 
-	return canonical, chosenTelemetry
+	return canonical
 }
 
 // setupStepModeChoice prompts the user to select an operating mode.
 //
-// Basic (non-advanced) prompt shows standard and telemetry.
-// If the user picks "advanced", all four modes are shown.
+// Basic (non-advanced) prompt shows standard only.
+// If the user picks "advanced", all modes are shown.
 // The selected mode is persisted via `keylatch config set mode <choice>`.
 func setupStepModeChoice(c *cobra.Command, advanced bool) {
 	fmt.Fprintln(c.OutOrStdout(), "Operating mode:")
-	fmt.Fprintln(c.OutOrStdout(), "  standard   — no telemetry, no canary injection (default)")
-	fmt.Fprintln(c.OutOrStdout(), "  telemetry  — enable anonymous usage telemetry")
+	fmt.Fprintln(c.OutOrStdout(), "  standard   — no canary injection (default)")
 
 	if advanced {
 		fmt.Fprintln(c.OutOrStdout(), "  canary     — inject canary tokens for leak detection")
@@ -870,12 +918,11 @@ func setupStepModeChoice(c *cobra.Command, advanced bool) {
 		return
 	}
 
-	// If the user typed "advanced" in basic mode, re-prompt with all four modes.
+	// If the user typed "advanced" in basic mode, re-prompt with all modes.
 	if answer == "advanced" && !advanced {
 		fmt.Fprintln(c.OutOrStdout(), "  All modes:")
-		fmt.Fprintln(c.OutOrStdout(), "    standard   — no telemetry, no canary injection")
-		fmt.Fprintln(c.OutOrStdout(), "    telemetry  — enable anonymous usage telemetry")
-		fmt.Fprintln(c.OutOrStdout(), "    canary     — inject canary tokens for leak detection")
+		fmt.Fprintln(c.OutOrStdout(), "    standard   — no canary injection")
+		fmt.Fprintln(c.OutOrStdout(), "    canary    — inject canary tokens for leak detection")
 		fmt.Fprintln(c.OutOrStdout(), "    custom     — configure individual flags (edit config.json)")
 		fmt.Fprintln(c.OutOrStdout())
 		fmt.Fprintf(c.OutOrStdout(), "  Choose mode [standard]: ")
@@ -1092,8 +1139,14 @@ func setupStep5OpenApp(c *cobra.Command) {
 	printSetupSuccess(c)
 }
 
-// printSetupSuccess prints the final success banner.
+// docsURL is the one domain setup points people to.
+const docsURL = "https://keylatch.dev"
+
+// printSetupSuccess finishes setup: it makes sure a default-deny policy
+// exists, offers the agent guard, shows what `keylatch doctor` reports, and
+// prints the next steps.
 func printSetupSuccess(c *cobra.Command) {
+	setupSafeDefaults(c)
 	fmt.Fprintln(c.OutOrStdout(), "You're set up!")
 	fmt.Fprintln(c.OutOrStdout())
 	fmt.Fprintln(c.OutOrStdout(), "Next steps:")
@@ -1101,7 +1154,62 @@ func printSetupSuccess(c *cobra.Command) {
 	fmt.Fprintln(c.OutOrStdout(), "  keylatch run <provider> -- <command>         run a command with credentials injected")
 	fmt.Fprintln(c.OutOrStdout(), "  keylatch doctor                              health check anytime")
 	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintln(c.OutOrStdout(), "Docs: https://docs.keylatch.io")
+	fmt.Fprintf(c.OutOrStdout(), "Docs: %s\n", docsURL)
+}
+
+// ensureDefaultPolicy creates the default-deny policy when none exists and
+// reports whether it did. An existing policy is never replaced.
+func ensureDefaultPolicy() (created bool, err error) {
+	env := llmcontext.DefaultLookup
+	policyPath, policyDir := paths.Policy(env), paths.PolicyDir(env)
+	_, rulesErr := os.Stat(policyPath)
+	_, docsErr := os.Stat(policyDir)
+	if rulesErr == nil || docsErr == nil {
+		return false, nil
+	}
+	if err := saveDefaultDenyPolicy(policyPath); err != nil {
+		return false, err
+	}
+	_, err = installPolicyDocuments(policyPath, policyDir)
+	return err == nil, err
+}
+
+// setupSafeDefaults applies the defaults every set-up machine should have and
+// ends with the doctor report.
+func setupSafeDefaults(c *cobra.Command) {
+	out := c.OutOrStdout()
+	fmt.Fprintln(out, "Safe defaults")
+	fmt.Fprintln(out)
+
+	switch created, err := ensureDefaultPolicy(); {
+	case err != nil:
+		fmt.Fprintf(c.ErrOrStderr(), "  Could not write the default policy: %v\n", err)
+	case created:
+		fmt.Fprintln(out, "  Policy: created a default-deny policy; no caller may use a connection until you allow it.")
+	default:
+		fmt.Fprintln(out, "  Policy: kept your existing policy.")
+	}
+
+	fmt.Fprintf(out, "  Install the Claude Code guard now? (y/N): ")
+	if ans := strings.ToLower(strings.TrimSpace(readLine())); ans == "y" || ans == "yes" {
+		if _, err := guard.Install(guard.AgentClaudeCode, guard.InstallOpts{}); err != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "  Could not install the guard: %v\n  Install it later with: keylatch install-guard claude-code\n", err)
+		} else {
+			fmt.Fprintln(out, "  Guard: installed for Claude Code.")
+		}
+	} else {
+		fmt.Fprintln(out, "  Guard: skipped. Install it later with: keylatch install-guard claude-code")
+	}
+	fmt.Fprintln(out)
+
+	fmt.Fprintln(out, "Running keylatch doctor...")
+	report, err := doctor.Run(c.Context(), doctor.Options{Env: llmcontext.DefaultLookup})
+	if err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "  doctor: %v\n", err)
+		return
+	}
+	printDoctorReport(c, report)
+	fmt.Fprintln(out)
 }
 
 // setupPromptStorageBranch asks whether the user wants local AEAD storage or an

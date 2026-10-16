@@ -24,16 +24,15 @@ type Config struct {
 	DataDir          string `json:"data_dir,omitempty"` // file backend root; default ~/.keylatch/vault
 	DefaultNamespace string `json:"default_namespace"`  // e.g. "default" or "personal"
 	// NOTE: DefaultProviderRef is written here; keylatch run will read it to auto-populate --provider-ref.
-	DefaultProviderRef string          `json:"default_provider_ref,omitempty"` // provider-ref URI stored by setup reference branch
-	Gateway            *GatewayConfig  `json:"gateway,omitempty"`              // absent in 0.5
-	OP                 *OPConfig       `json:"op,omitempty"`                   // absent in 0.5
-	BW                 *BWConfig       `json:"bw,omitempty"`
-	Audit              AuditConfig     `json:"audit"`
-	UI                 UIConfig        `json:"ui"`
-	Telemetry          TelemetryConfig `json:"telemetry"`
+	DefaultProviderRef string         `json:"default_provider_ref,omitempty"` // provider-ref URI stored by setup reference branch
+	Gateway            *GatewayConfig `json:"gateway,omitempty"`              // absent in 0.5
+	OP                 *OPConfig      `json:"op,omitempty"`                   // absent in 0.5
+	BW                 *BWConfig      `json:"bw,omitempty"`
+	Audit              AuditConfig    `json:"audit"`
+	UI                 UIConfig       `json:"ui"`
 	// Operating mode selection.
-	// Valid values: "standard" | "telemetry" | "canary" | "custom". Default: "standard".
-	Mode   string            `json:"mode,omitempty"`   // operating mode (standard/telemetry/canary/custom)
+	// Valid values: "standard" | "canary" | "custom". Default: "standard".
+	Mode   string            `json:"mode,omitempty"`   // operating mode (standard/canary/custom)
 	Custom *CustomModeConfig `json:"custom,omitempty"` // custom mode feature overrides
 
 	// AllowUnverifiedSession lets `keylatch get` and `keylatch run` in
@@ -89,7 +88,6 @@ type GitHubAppMintPolicy struct {
 // CustomModeConfig holds per-feature flags for operating mode "custom".
 // It mirrors runtime.CustomModeConfig but uses JSON tags for config persistence.
 type CustomModeConfig struct {
-	TelemetryEnabled       bool `json:"telemetry_enabled"`
 	CanaryInjectionEnabled bool `json:"canary_injection_enabled"`
 	ExperimentalGated      bool `json:"experimental_gated"`
 }
@@ -177,7 +175,9 @@ type BWConfig struct {
 	Server     string `json:"server,omitempty"` // Vaultwarden URL; empty for Bitwarden Cloud
 	Folder     string `json:"folder,omitempty"`
 	Collection string `json:"collection,omitempty"`
-	Bin        string `json:"bin"`
+	// OrganizationID is the Bitwarden organization the vault belongs to.
+	OrganizationID string `json:"organization_id,omitempty"`
+	Bin            string `json:"bin"`
 
 	// Forward-compat team-mode fields. Not interpreted in single-user mode.
 	ServiceAccountTokenRef string `json:"service_account_token_ref,omitempty"`
@@ -200,13 +200,6 @@ func (c *BWConfig) Validate() error {
 		return ErrBWMutualExclusion{}
 	}
 	return nil
-}
-
-// TelemetryConfig controls anonymous usage telemetry. Default: disabled.
-// All emitted events are non-sensitive — no secret values, no file paths.
-type TelemetryConfig struct {
-	Enabled bool   `json:"enabled"`
-	Sink    string `json:"sink,omitempty"` // "local" or "remote"
 }
 
 // AuditConfig controls audit logging.

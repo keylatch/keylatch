@@ -80,7 +80,7 @@ var tiers = []tierInfo{
 	{ID: "D2", Name: "gateway_session", Runtimes: []string{string(policy.RuntimeGatewayTyped), string(policy.RuntimeGatewaySDK)}},
 	{ID: "D3", Name: "placeholder_substitution", Runtimes: []string{string(policy.RuntimeGatewayProxy)}},
 	{ID: "D4", Name: "protocol_adapter"},
-	{ID: "D5", Name: "contained_raw", Runtimes: []string{"direct_classic_sandboxed"}},
+	{ID: "D5", Name: "contained_raw"},
 	{ID: "D6", Name: "uncontained_raw", Runtimes: []string{string(policy.RuntimeDirectClassic)}},
 }
 

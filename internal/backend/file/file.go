@@ -18,7 +18,6 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/aad"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 	vpath "github.com/keylatch/keylatch/internal/vault/path"
 )
@@ -214,13 +213,7 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 // Get reads value.enc, decrypts via AEAD, and returns plaintext bytes.
 // Returns ErrNotFound if path is not in the manifest.
 // Requires a keyring — returns ErrBootstrapRequired if no keyring is configured.
-// Checks runner.OK before returning plaintext.
 func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	// Check LLM/runner approval before returning plaintext.
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	// Require keyring: no plaintext read path in v1.0.0.
 	if fb.keyring == nil {
 		return nil, backend.Meta{}, backend.ErrBootstrapRequired

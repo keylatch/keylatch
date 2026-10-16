@@ -227,8 +227,6 @@ func newGatewayUpCmd() *cobra.Command {
 		detach        bool
 		unsafeBindAll bool
 		listenAddr    string
-		withProxy     bool
-		proxyPort     int
 		budgetPerHour float64
 		budgetPerDay  float64
 		force         bool
@@ -438,33 +436,6 @@ func newGatewayUpCmd() *cobra.Command {
 
 			fmt.Fprintf(c.OutOrStdout(), "gateway: listening on %s\n", bind)
 
-			// --with-proxy: start the proxy alongside the gateway.
-			// W5: check both PID liveness AND stored port to determine whether the
-			// running proxy is already on the requested port.
-			if withProxy {
-				proxyPidPath := proxyPIDPath(env)
-				proxyStatePth := proxyStatePathFromDir(paths.ConfigDir(env))
-				proxyAlreadyRunning := false
-				if _, pidRunning := gateway.IsRunning(proxyPidPath); pidRunning {
-					// Check if the running proxy is on the same port.
-					if st, stErr := readProxyState(proxyStatePth); stErr == nil && st.Port == proxyPort {
-						proxyAlreadyRunning = true
-					}
-					// If port differs, fall through and start on the requested port.
-				}
-				if proxyAlreadyRunning {
-					fmt.Fprintf(c.OutOrStdout(), "gateway: proxy already running on the same port — skipping proxy start\n")
-				} else {
-					if _, proxyErr := startProxyWithGateway(ctx, proxyPort, proxyPidPath); proxyErr != nil {
-						// Proxy failed to start — roll back gateway.
-						fmt.Fprintf(c.ErrOrStderr(), "gateway up: proxy start failed (%v) — rolling back gateway\n", proxyErr)
-						cancel()
-						return fmt.Errorf("gateway up --with-proxy: %w", proxyErr)
-					}
-					fmt.Fprintf(c.OutOrStdout(), "gateway: proxy started on 127.0.0.1:%d\n", proxyPort)
-				}
-			}
-
 			return srv.Serve(ctx)
 		},
 	}
@@ -472,8 +443,6 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&detach, "detach", false, "run gateway as a background process")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "allow non-loopback bind (non-LLM sessions only)")
 	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7878 (Docker; non-LLM sessions only; overrides KEYLATCH_GATEWAY_LISTEN)")
-	cmd.Flags().BoolVar(&withProxy, "with-proxy", false, "also start the CONNECT proxy alongside the gateway")
-	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().BoolVar(&noAudit, "no-audit", false, "start without an audit log (needs a human at the terminal; foreground only)")

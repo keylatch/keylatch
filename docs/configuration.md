@@ -5,16 +5,24 @@ description: Full reference for config.json configuration keys.
 
 # Configuration
 
-Keylatch reads its configuration from `~/.keylatch/config.json` (or the path
-set by `KEYLATCH_CONFIG`). All keys are optional — Keylatch applies safe
-defaults when a key is absent.
+Keylatch reads its configuration from `config.json` in the configuration
+directory (or the path set by `KEYLATCH_CONFIG`). All keys are optional —
+Keylatch applies safe defaults when a key is absent.
+
+| Platform | Configuration directory |
+|----------|-------------------------|
+| Linux | `$XDG_CONFIG_HOME/keylatch`, else `~/.config/keylatch` |
+| macOS, Windows | `~/.keylatch` (`%USERPROFILE%\.keylatch` on Windows) |
+
+`KEYLATCH_CONFIG_DIR` overrides the directory on every platform. `keylatch paths`
+prints the resolved locations.
 
 ## Key reference
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `backend` | string | `file` | Credential storage backend. One of `file`, `keychain`, `op`, `bw`, `proton-pass`, `keeper`, `lastpass`, `vault`, `aws-sm`, `op-connect`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`. |
-| `mode` | string | `standard` | **Operating mode** — controls telemetry, canary injection, and experimental gates. One of `standard`, `telemetry`, `canary`, `custom`. See [Operating Modes](./operating-modes.md) for the full reference. |
+| `mode` | string | `standard` | **Operating mode** — controls canary injection and experimental gates. One of `standard`, `canary`, `custom`. See [Operating Modes](./operating-modes.md) for the full reference. |
 | `audit.enabled` | bool | `true` | Whether to write a tamper-evident audit log. Disabling is not recommended in production. |
 | `audit.retain_days` | int | `365` | Number of days to retain rotated audit log files. Valid range: 1–3650. Rotated files older than this threshold are deleted by the retention sweep. `audit.retention_days` is the older name for the same setting and is still read; `retain_days` wins when both are set. |
 | `audit.retain_files` | int | `20` | Number of rotated audit log files kept (`audit.log.1` … `audit.log.N`, each up to 5 MiB). The oldest is removed on rotation. |

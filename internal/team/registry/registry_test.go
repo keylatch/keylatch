@@ -1,3 +1,5 @@
+//go:build experimental
+
 package registry_test
 
 import (

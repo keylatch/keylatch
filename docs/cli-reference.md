@@ -23,7 +23,7 @@
 | `7` | BootstrapMissing | `keylatch bootstrap` has not been run |
 | `8` | InsecureArgv | A sensitive value was passed via argv (shell history leak) |
 | `9` | InternalError | Unexpected internal failure |
-| `10` | NotImplemented | Command is registered but its implementation is a stub (e.g. `keylatch trust enroll`/`trust approve`) |
+| `10` | NotImplemented | Reserved; no release command returns it |
 
 ---
 
@@ -91,7 +91,7 @@ Detects the project language (Go: `go.mod`, Python: `pyproject.toml`/`requiremen
 
 | Flag | Description |
 |------|-------------|
-| `--agent` | AI agent to integrate with (required). One of: `claude-code`, `gemini`, `windsurf`, `cursor`, `generic` |
+| `--agent` | AI agent to integrate with (required). One of: `claude-code`, `gemini`, `cursor`, `generic` |
 
 **Example:**
 
@@ -171,7 +171,7 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
 - `backend.kek` — fails with "plaintext KEK on disk" whenever a plaintext vault identity file is in use, whether or not `allow_insecure_file_kek` permits it, or remains beside a keyring item; warns when the identity comes from `KEYLATCH_AGE_IDENTITY`
 
 **Integration check (I3):**
-- `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.windsurf/hooks`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.
+- `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.
 
 **Optional-feature checks (informational, not warnings):** `gateway.running` (gateway not started), `plaintext_retention` (runtime monitor / `keylatch ui` not started), and `connections.configured` (no connections added yet) report `[ok]` with an informational detail rather than `[warn]` when the corresponding optional feature simply hasn't been enabled — none of these force doctor's exit code away from `0`.
 
@@ -261,7 +261,7 @@ keylatch connect openrouter --provider-ref api_key=hashivault://secret/prod/open
 | `hashivault://mount/path[#field]` | HashiCorp Vault | `vault` CLI v1.17+ | `hashivault://secret/prod/openrouter#api_key` |
 | `bw://<org-or-personal>/<collection>/<item>/<field>` | Bitwarden | `bw` CLI | `bw://personal/-/My%20Service/password` |
 
-**Deferred resolution (EPIC-10)**: The URI is stored verbatim in the keylatch vault.
+**Deferred resolution**: The URI is stored verbatim in the keylatch vault.
 The external PM is called at runtime (on each `keylatch run` or gateway request) —
 the plaintext is never written to disk. Credential rotation in the upstream PM is
 automatically picked up on next use.
@@ -344,13 +344,13 @@ the Argon2id salt and parameters needed to re-derive the KEK from the passphrase
 **Example**
 
 ```bash
+# At a terminal: a human approves the export and types the passphrase
 keylatch backup --output /mnt/secure/backup.enc
 ```
 
 **Decryption**
 
-There is no restore command yet. Backups are self-contained, so a backup can be
-decrypted by hand:
+There is no `restore` command. Backups are self-contained and decrypt by hand. To decrypt a backup:
 
 1. Read `keylatch-backup/header.json` from the archive for the Argon2id salt and
    parameters.
@@ -597,24 +597,10 @@ error[RuntimeNotAvailable]: openrouter + gateway_sdk: failed to mint session tok
 
 ### `keylatch get`
 
-Retrieve a credential value. **Blocked in LLM sessions (exit 2).** The unmasked path is not yet implemented — exits 5 (`OperationFailed`) outside LLM sessions.
+Retrieve a credential value. **Blocked in LLM sessions (exit 2).** Reading a raw value is not implemented: outside LLM sessions the command exits 5 (`OperationFailed`). Use `keylatch run` or `keylatch call` so the value never reaches the agent.
 
 ```
-keylatch get <service> <key> [--masked]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--masked` | Return masked value (`****`) — fully implemented, safe in all sessions including LLM |
-
----
-
-### `keylatch get-masked`
-
-Retrieve a masked credential value (`****`). Safe in LLM sessions. Equivalent to `keylatch get <service> <key> --masked`.
-
-```
-keylatch get-masked <service> <key>
+keylatch get <service> <key>
 ```
 
 ---
@@ -1189,129 +1175,6 @@ keylatch broker revoke --all
 keylatch broker revoke --all --yes
 keylatch broker revoke --all --yes --json
 keylatch broker revoke --all --actor alice --yes
-```
-
----
-
-### `keylatch trust`
-
-Root-of-trust management. **Experimental — not yet functional** for
-hardware enrolment and approval; see [Experimental Features](./experimental.md).
-
-Working today:
-
-```
-keylatch trust list              # List registered root-of-trust adapter types
-keylatch trust doctor            # Probe all registered adapters
-keylatch trust challenge         # Issue a pending approval challenge, print its ID
-```
-
-**Not implemented** (exit code 10, `NotImplemented`) — hidden from
-`trust --help` but still directly runnable, printing a message pointing at
-the tracking state:
-
-```
-keylatch trust enroll secure-enclave | ssh-agent | pkcs11 | gpg-card | fido2
-keylatch trust approve <challenge-id>   # challenge lookup/expiry check is real;
-                                         # the signing step itself is a stub
-```
-
-**Registered but no-op** (exits 0 without persisting anything —
-`revoke`/`allowlist add` do not yet read or write any state; treat both as
-placeholders, not functioning commands):
-
-```
-keylatch trust revoke <root-id>
-keylatch trust allowlist add <module-path>
-keylatch trust allowlist list
-```
-
----
-
-### `keylatch team`
-
-Team governance commands (requires team mode).
-
-```
-keylatch team status
-keylatch team policy baseline
-keylatch team actors list
-keylatch team access-review
-```
-
----
-
-### `keylatch receipts`
-
-View run receipts. Receipts are value-free audit records emitted for every policy-gated execution. Credential values never appear in receipt output (S-RM-9).
-
-#### `keylatch receipts list`
-
-```
-keylatch receipts list [--limit N] [--json]
-```
-
-List run receipts from the local file store.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--limit N` | `50` | Maximum number of receipts to show |
-| `--json` | — | Output as a JSON array |
-
-**Example — table output:**
-
-```
-TIMESTAMP                ACTOR       CONNECTION    CAPABILITY  DECISION  EXIT
-2026-05-18T12:00:00Z     alice       anthropic     messages    allowed   0
-2026-05-18T11:59:00Z     alice       openai        embed       allowed   0
-```
-
-**Example — JSON output:**
-
-```bash
-keylatch receipts list --json --limit 10
-```
-
-```json
-[
-  {
-    "actor": "alice",
-    "connection": "anthropic",
-    "capability": "messages",
-    "policy_decision": "allowed",
-    "exit_code": 0,
-    "timestamp": "2026-05-18T12:00:00Z"
-  }
-]
-```
-
-#### `keylatch receipts tail`
-
-```
-keylatch receipts tail [--follow]
-```
-
-Tail run receipts.
-
-| Flag | Description |
-|------|-------------|
-| `--follow`, `-f` | Follow live events via SSE from keylatchd |
-
-**Without `--follow`**: prints the latest 10 receipts from the local file store and exits.
-
-**With `--follow`**: connects to the keylatchd SSE endpoint (`/v1/receipts/stream`) and prints each incoming receipt as a newline-delimited JSON object. Press Ctrl-C to stop.
-
-The gateway address is read from `KEYLATCH_UI_ADDR` (default `127.0.0.1:7890`).
-
-**Example:**
-
-```bash
-keylatch receipts tail --follow
-```
-
-```json
-{"runtime":"gateway_typed","provider":"anthropic","capability":"messages","policy_decision":"allowed","credential_shape":"bearer","exit_code":0}
-{"runtime":"gateway_typed","provider":"openai","capability":"embed","policy_decision":"allowed","credential_shape":"bearer","exit_code":0}
 ```
 
 ---

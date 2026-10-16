@@ -21,12 +21,6 @@ var CursorScript []byte
 //go:embed scripts/aider-guard.sh
 var AiderScript []byte
 
-// WindsurfScript is the guard script for Windsurf (manual use only;
-// Windsurf does not yet expose a hook API).
-//
-//go:embed scripts/windsurf-guard.sh
-var WindsurfScript []byte
-
 // CodexScript is the PreToolUse hook script for Codex CLI.
 //
 //go:embed scripts/codex-guard.sh

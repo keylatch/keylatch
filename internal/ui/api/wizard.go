@@ -543,7 +543,7 @@ func (h *WizardHandlers) checkGatewayHealth() (ok bool, message string) {
 }
 
 // checkAgentConfigured returns true when at least one known AI agent config file exists.
-// Checked paths cover Claude Code, Codex, Cursor, and Windsurf.
+// Checked paths cover Claude Code, Codex and Cursor.
 func checkAgentConfigured() (ok bool, message string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -553,8 +553,6 @@ func checkAgentConfigured() (ok bool, message string) {
 		home + "/.claude/settings.json",
 		home + "/.codex/config.json",
 		home + "/.cursor/settings.json",
-		home + "/.config/windsurf/settings.json",
-		home + "/.codeium/windsurf/settings.json",
 	}
 	for _, p := range knownPaths {
 		if _, statErr := os.Stat(p); statErr == nil {

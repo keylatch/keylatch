@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package fallback implements the ordered fallback chain for Root of Trust resolution.
 // It evaluates a list of RootSpec entries in order, applying skip rules, and returns
 // the first RootOfTrust that satisfies an Operation's requirements.

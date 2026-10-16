@@ -16,7 +16,6 @@ const (
 	AgentClaudeCode  Agent = "claude-code"
 	AgentCursor      Agent = "cursor"
 	AgentAider       Agent = "aider"
-	AgentWindsurf    Agent = "windsurf"
 	AgentCodex       Agent = "codex"
 	AgentCopilot     Agent = "copilot"
 	AgentGemini      Agent = "gemini"
@@ -29,7 +28,6 @@ var SupportedAgents = []Agent{
 	AgentClaudeCode,
 	AgentCursor,
 	AgentAider,
-	AgentWindsurf,
 	AgentCodex,
 	AgentCopilot,
 	AgentGemini,
@@ -42,7 +40,6 @@ var AgentHookMechanism = map[Agent]string{
 	AgentClaudeCode:  "PreToolUse (settings.json)",
 	AgentCursor:      "PreToolUse (settings.json)",
 	AgentAider:       "pre-tool-use-hook (.aider.conf.yml)",
-	AgentWindsurf:    "not supported — gateway mode recommended",
 	AgentCodex:       "PreToolUse (hooks.json)",
 	AgentCopilot:     "shell wrapper (patches shell rc)",
 	AgentGemini:      "BeforeTool (settings.json)",
@@ -71,7 +68,7 @@ type InstallResult struct {
 // returns nil without modifying anything.
 //
 // On success it returns the path to the settings file that was modified (empty for
-// agents that use message-only responses like Windsurf and Antigravity).
+// agents that use message-only responses like Antigravity).
 func Install(agent Agent, opts InstallOpts) (settingsPath string, err error) {
 	switch agent {
 	case AgentClaudeCode:
@@ -80,8 +77,6 @@ func Install(agent Agent, opts InstallOpts) (settingsPath string, err error) {
 		return installCursor(opts)
 	case AgentAider:
 		return installAider(opts)
-	case AgentWindsurf:
-		return installWindsurf(opts)
 	case AgentCodex:
 		return installCodex(opts)
 	case AgentCopilot:
@@ -200,7 +195,7 @@ func IsInstalled(agent Agent, opts InstallOpts) (bool, error) {
 		_, err = os.Stat(pluginDir)
 		return err == nil, nil
 
-	case AgentWindsurf, AgentCopilot, AgentAntigravity:
+	case AgentCopilot, AgentAntigravity:
 		// These agents rely on env-var-only Layer 1 guard.
 		return os.Getenv(harness.LegacyManualLabel) != "", nil
 
@@ -316,12 +311,6 @@ func installAider(opts InstallOpts) (string, error) {
 		return "", fmt.Errorf("install-guard: write aider config: %w", err)
 	}
 	return confPath, nil
-}
-
-func installWindsurf(_ InstallOpts) (string, error) {
-	// Windsurf does not currently expose a hook API for tool interception.
-	// Return an informational message via a sentinel path.
-	return "", fmt.Errorf("windsurf: hook API not yet available — for manual guard instructions see keylatch.dev/integrations/windsurf. Use gateway mode for strongest protection: keylatch proxy start")
 }
 
 func installCodex(opts InstallOpts) (string, error) {
@@ -533,8 +522,6 @@ func scriptContent(agent Agent) ([]byte, error) {
 		return CursorScript, nil
 	case AgentAider:
 		return AiderScript, nil
-	case AgentWindsurf:
-		return WindsurfScript, nil
 	case AgentCodex:
 		return CodexScript, nil
 	case AgentCopilot:

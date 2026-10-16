@@ -37,7 +37,7 @@ var (
 	ErrTokenExhausted     = errors.New("token: max uses reached")
 	ErrFDNonceMismatch    = errors.New("token: fd nonce mismatch")
 	ErrTokenNotFound      = errors.New("token: not found")
-	ErrInvalidRuntime     = errors.New("token: direct_classic_sandboxed is not a gateway runtime")
+	ErrInvalidRuntime     = errors.New("token: runtime is not a gateway runtime")
 	ErrTokenPersistFailed = errors.New("token: persist failed")
 	// ErrStoreTampered means the token record does not match its MAC: the store
 	// was edited, or written without the signing key.

@@ -65,7 +65,7 @@
     {
       "tier": "D5",
       "tier_name": "contained_raw",
-      "why": "runtime direct_classic_sandboxed is not supported in this build (excluded)"
+      "why": "no delivery implementation exists in this build"
     }
   ],
   "residual_risk": "The real secret is in an uncontained process running as the user. Anything the child executes can read, store or send it; only a person at a terminal should choose this tier.",
