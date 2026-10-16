@@ -309,7 +309,9 @@ func TestCancelRequestsAreForwardedOnlyForBackendsOfThisSession(t *testing.T) {
 	assert.Empty(t, pg.seenCancels(), "a key this session never handed out is dropped")
 	cancel(4242, 777)
 	rep.waitFor(t, ReasonCancel)
-	require.Len(t, pg.seenCancels(), 1)
+	// The adapter reports once it has written the packet; the database reads it
+	// a moment later.
+	require.Eventually(t, func() bool { return len(pg.seenCancels()) == 1 }, 5*time.Second, 10*time.Millisecond)
 	assert.Equal(t, []byte{0, 0, 0x10, 0x92, 0, 0, 0x03, 0x09}, pg.seenCancels()[0])
 }
 
