@@ -60,7 +60,7 @@ keylatch launch -- claude
 ```
 
 - `set` and `policy import` change policy or secrets, so the daemon asks for presence first. The text in the prompt is built by the daemon from the request, not supplied by the client, and the proof is bound to that request: it works once, within 60 seconds, for that request only.
-- `run`, `call`, `status`, `list`, `doctor`, `describe`, `explain` and `policy check` are served by the daemon. `get`, `export`, `backup` and `mint` to a terminal are not available through the broker.
+- `run`, `call`, `status`, `list`, `doctor`, `describe`, `explain` and `policy check` are served by the daemon. `get`, `export` and `backup` are not available through the broker; `mint` is served by the daemon for a human caller.
 - `launch` registers a new agent session with the daemon and starts the harness in a transient systemd scope, `keylatch-agent-<id>.scope`. The daemon classifies every process in that scope as an agent from its control group alone, so clearing the environment does not hide it. A process that leaves the scope (for example with `systemd-run --user --scope`) is classified as `host`, never `human` or `service`.
 
 If the broker socket exists but the daemon does not answer, Keylatch says so and stops. It does not fall back to local key files, which are not where the keys are any more.
@@ -99,7 +99,7 @@ The broker speaks the control socket's JSON frames, extended with the broker ope
 ## Limits of this release
 
 - The `file` backend's metadata flags on `set` (`--expires-at`, `--owner`, and so on) are not stored by the broker; `set` refuses them instead of dropping them.
-- Secrets reach a command through `run`: the daemon hosts a gateway for each partition, reads the partition's store itself and issues the session token. The other served verbs (`call`, `status`, `list`, `describe`, `explain`, `doctor`) run as the `keylatch` user against the partition's configuration, and the broker store is not yet a backend for that child, so `call` does not reach stored secrets through the broker in this release; use `run`.
+- Secrets reach a command through `run` (the daemon hosts a gateway for each partition and issues the session token) and through the verbs the daemon runs for the user (`call`, `mint`, `status`, `list`, `describe`, `explain`, `doctor`). Those run as the `keylatch` user against the partition's configuration and read the partition's store over a descriptor the daemon passes them; they can read and list, never write. In the CLI, `connect`, `disconnect` and deletes write through the daemon's presence-gated operations, and stored values are never returned to the CLI process, so `connect` skips its live test.
 - The broker decides every run against the partition's signed policy with the same policy engine the in-user daemon uses. It serves tier D2. Tiers D3 (placeholders), D4 (protocol adapters) and D5 (contained runtime) are served by the in-user daemon (`keylatchd serve`) and are refused as unavailable through the broker; set `KEYLATCH_SOCKET` to the in-user daemon's socket to use them.
 - The broker serves ordinary accounts, UIDs 1000 to 60000. Root and system accounts are refused.
 - Presence uses polkit. A FIDO2 security-key path is not part of this release.
