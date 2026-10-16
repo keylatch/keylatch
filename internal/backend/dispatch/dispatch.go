@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/childstore"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -74,6 +75,16 @@ func Open(ctx context.Context, cfg config.Config, env llmcontext.Lookup) (backen
 
 // selectBackend performs the actual backend resolution (called once via Once).
 func selectBackend(ctx context.Context, cfg config.Config, env llmcontext.Lookup) (backend.Backend, error) {
+	// A verb the system broker runs for a user reads that user's partition
+	// through the descriptor the broker passed.
+	if env != nil {
+		if st, ok, err := childstore.FromEnv(env); ok {
+			if err != nil {
+				return nil, err
+			}
+			return st, nil
+		}
+	}
 	// Resolution order: cfg.Backend → env("KEYLATCH_BACKEND") → "file"
 	name := cfg.Backend
 	if name == "" && env != nil {

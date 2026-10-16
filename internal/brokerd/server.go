@@ -272,6 +272,7 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 		Callers:    s.callers,
 		SigningKey: tokenKey,
 		ChildEnv:   childEnv,
+		ChildStore: store,
 		Decide:     enforce.New(env.lookup).Decide,
 		Gate:       pol.Gate,
 		Ticket:     s.sessions.VerifyTicket,
