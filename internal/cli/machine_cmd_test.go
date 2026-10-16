@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -65,17 +66,20 @@ func (f *machineFixture) run(t *testing.T, args ...string) error {
 // the client sent.
 func (f *machineFixture) issuing(t *testing.T) {
 	t.Helper()
-	f.broker.answer = func(req brokerapi.Request) brokerapi.Response {
-		if req.Op != brokerapi.OpMachineIssue {
-			return brokerapi.Response{OK: true}
-		}
-		m := req.Machine
-		der, _, err := machinecert.IssueClient(f.ca, f.caKey, ed25519.PublicKey(m.PublicKey), machinecert.Claims{Name: m.Name, Domain: m.Domain, Caps: m.Caps, NotAfter: time.Now().Add(time.Duration(m.TTLSeconds) * time.Second)}, time.Now())
-		if err != nil {
-			t.Error(err)
-		}
-		return brokerapi.Response{OK: true, Machine: &brokerapi.MachineResult{Certificate: machinecert.PEM(der), CA: machinecert.PEM(f.ca.Raw)}}
+	f.broker.answer = func(req brokerapi.Request) brokerapi.Response { return f.issueAnswer(t, req) }
+}
+
+func (f *machineFixture) issueAnswer(t *testing.T, req brokerapi.Request) brokerapi.Response {
+	t.Helper()
+	if req.Op != brokerapi.OpMachineIssue {
+		return brokerapi.Response{OK: true}
 	}
+	m := req.Machine
+	der, _, err := machinecert.IssueClient(f.ca, f.caKey, ed25519.PublicKey(m.PublicKey), machinecert.Claims{Name: m.Name, Domain: m.Domain, Caps: m.Caps, NotAfter: time.Now().Add(time.Duration(m.TTLSeconds) * time.Second)}, time.Now())
+	if err != nil {
+		t.Error(err)
+	}
+	return brokerapi.Response{OK: true, Machine: &brokerapi.MachineResult{Certificate: machinecert.PEM(der), CA: machinecert.PEM(f.ca.Raw)}}
 }
 
 func TestMachineIssueWritesBundleAndNeverSendsThePrivateKey(t *testing.T) {
@@ -350,5 +354,81 @@ func TestRemoteCallUnreadableReply(t *testing.T) {
 	defer func() { remoteHTTP = prev }()
 	if err := f.run(t, "call", "--remote", srv.Listener.Addr().String(), "--machine-key", key, "mach-demo", "list-models"); err == nil {
 		t.Fatal("an unreadable reply succeeded")
+	}
+}
+
+func TestMachineIssueRefusesASymlinkAndNeverFollowsIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	f := newMachineFixture(t)
+	f.issuing(t)
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "guest.pem")
+	if err := os.Symlink(victim, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.run(t, "machine", "issue", "--domain", "apps", "--name", "ci-1", "--out", link); err == nil {
+		t.Fatal("issue wrote through a symlink")
+	}
+	if got, _ := os.ReadFile(victim); string(got) != "keep" {
+		t.Fatalf("the symlink's target was changed: %q", got)
+	}
+	dangling := filepath.Join(dir, "dangling.pem")
+	if err := os.Symlink(filepath.Join(dir, "created-by-attacker"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.run(t, "machine", "issue", "--domain", "apps", "--name", "ci-2", "--out", dangling); err == nil {
+		t.Fatal("issue followed a dangling symlink")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "created-by-attacker")); err == nil {
+		t.Fatal("a file was created through a dangling symlink")
+	}
+	for _, r := range f.broker.requests {
+		if r.Op == brokerapi.OpMachineIssue {
+			t.Fatal("a credential was issued although the file could not be created")
+		}
+	}
+}
+
+func TestMachineIssueRevokesWhenTheFileCannotBeWritten(t *testing.T) {
+	f := newMachineFixture(t)
+	f.issuing(t)
+	prev := writeBundle
+	writeBundle = func(*os.File, []byte) error { return errors.New("no space left on device") }
+	defer func() { writeBundle = prev }()
+	out := filepath.Join(t.TempDir(), "guest.pem")
+	err := f.run(t, "machine", "issue", "--domain", "apps", "--name", "ci-1", "--out", out)
+	if err == nil || !strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("issue = %v", err)
+	}
+	var ops []brokerapi.Op
+	for _, r := range f.broker.requests {
+		if r.Op == brokerapi.OpMachineIssue || r.Op == brokerapi.OpMachineRevoke {
+			ops = append(ops, r.Op)
+		}
+	}
+	if len(ops) != 2 || ops[1] != brokerapi.OpMachineRevoke {
+		t.Fatalf("broker operations = %v", ops)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Fatal("a partial credential file was left")
+	}
+
+	// When the revoke cannot be made either, the message says how to do it.
+	f.broker.requests = nil
+	f.broker.answer = func(req brokerapi.Request) brokerapi.Response {
+		if req.Op == brokerapi.OpMachineRevoke {
+			return brokerapi.Response{Code: brokerapi.CodeUnavailable, Error: "down"}
+		}
+		return f.issueAnswer(t, req)
+	}
+	err = f.run(t, "machine", "issue", "--domain", "apps", "--name", "ci-2", "--out", out)
+	if err == nil || !strings.Contains(err.Error(), "keylatch machine revoke ci-2") {
+		t.Fatalf("revoke failure = %v", err)
 	}
 }

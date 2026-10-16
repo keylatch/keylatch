@@ -3,8 +3,10 @@ package cli
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -17,6 +19,13 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/machinecert"
 )
+
+// writeBundle writes the credential file's content; tests replace it to
+// simulate a full disk.
+var writeBundle = func(f *os.File, b []byte) error {
+	_, err := f.Write(b)
+	return err
+}
 
 func requireHumanMachine(what string) error {
 	if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
@@ -60,9 +69,23 @@ func newMachineIssueCmd() *cobra.Command {
 			if out == "" {
 				return NewUsageError("machine issue: --out is required")
 			}
-			if _, err := os.Stat(out); err == nil {
-				return NewUsageError("machine issue: %s exists; remove it or choose another file", out)
+			// The file is created first, exclusively and without following a
+			// symlink, so the credential never lands somewhere another file
+			// pointed at and nothing is issued when it cannot be written.
+			f, err := os.OpenFile(filepath.Clean(out), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: the destination is the caller's own argument
+			if err != nil {
+				if errors.Is(err, os.ErrExist) {
+					return NewUsageError("machine issue: %s exists; remove it or choose another file", out)
+				}
+				return withExitCode(exitcode.OperationFailed, fmt.Errorf("machine issue: %w", err))
 			}
+			issued := false
+			defer func() {
+				_ = f.Close()
+				if !issued {
+					_ = os.Remove(out)
+				}
+			}()
 			bc, err := brokerClient(llmcontext.DefaultLookup)
 			if err != nil {
 				return err
@@ -87,9 +110,17 @@ func newMachineIssueCmd() *cobra.Command {
 			}
 			defer clear(keyPEM)
 			bundle := append(append(append([]byte(nil), keyPEM...), resp.Machine.Certificate...), resp.Machine.CA...)
-			if err := os.WriteFile(out, bundle, 0o600); err != nil {
-				return withExitCode(exitcode.OperationFailed, fmt.Errorf("machine issue: %w", err))
+			defer clear(bundle)
+			if err := writeBundle(f, bundle); err != nil {
+				// The broker already recorded the certificate; withdraw it so
+				// no credential exists that nobody holds.
+				_, rerr := brokerPrivileged(bc, "machine revoke", brokerapi.Request{Op: brokerapi.OpMachineRevoke, Machine: &brokerapi.MachineRequest{Name: name}})
+				if rerr != nil {
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("machine issue: write %s: %w; the broker still lists %q, revoke it with 'keylatch machine revoke %s'", out, err, name, name))
+				}
+				return withExitCode(exitcode.OperationFailed, fmt.Errorf("machine issue: write %s: %w; the credential was revoked", out, err))
 			}
+			issued = true
 			fmt.Fprintf(c.OutOrStdout(), "issued %s for domain %s (%s), valid %s; credential file %s\n", name, domain, strings.Join(caps, ","), ttl, out)
 			return nil
 		},
