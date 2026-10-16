@@ -307,7 +307,7 @@ func validateEnvFilePath(at, p string, repo RepoChecker) error {
 	return nil
 }
 
-// Environments lists the environments a target accepts in a variable's `to`.
+// AllowedEnvs lists the environments a target accepts in a variable's `to`.
 func (t Target) AllowedEnvs() []string {
 	switch t.Type {
 	case TypeVercel:

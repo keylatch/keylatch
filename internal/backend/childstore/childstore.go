@@ -55,7 +55,7 @@ type reply struct {
 
 // Serve answers requests on conn until it closes or ctx ends.
 func Serve(ctx context.Context, conn net.Conn, src Source) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	go func() {
 		<-ctx.Done()
 		_ = conn.Close()
@@ -149,7 +149,7 @@ func FromEnv(lookup func(string) string) (*Store, bool, error) {
 		return nil, true, fmt.Errorf("childstore: %s is not a descriptor", EnvFD)
 	}
 	f := os.NewFile(uintptr(fd), "keylatch-broker-store")
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	conn, err := net.FileConn(f)
 	if err != nil {
 		return nil, true, fmt.Errorf("childstore: %w", err)

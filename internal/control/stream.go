@@ -127,8 +127,8 @@ func (s *Server) exec(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, 
 			finish(Response{Kind: kind, Code: CodeUnavailable, ExitCode: exitcode.OperationFailed, Error: fmt.Sprintf("run %s: %v", req.Verb, perr)}, audit.OutcomeError)
 			return
 		}
-		defer conn.Close()
-		defer child.Close()
+		defer func() { _ = conn.Close() }()
+		defer func() { _ = child.Close() }()
 		go childstore.Serve(ctx, conn, s.cfg.ChildStore)
 		cmd.ExtraFiles = []*os.File{child}
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", childstore.EnvFD, childstore.ChildFD))

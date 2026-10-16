@@ -42,7 +42,7 @@ echo "reply:$reply"
 
 func socketPair(t *testing.T) (server, client *net.UnixConn) {
 	t.Helper()
-	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
+	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
