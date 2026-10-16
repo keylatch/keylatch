@@ -202,7 +202,9 @@ func TestMergePreservesComments(t *testing.T) {
 }
 
 func TestApplyBacksUpAndIsAtomic(t *testing.T) {
-	dir := t.TempDir()
+	// macOS temp directories sit behind a symlink; compare against the real path.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	path := filepath.Join(dir, "nested", "settings.json")
 
 	edit := func(old []byte) ([]byte, error) { return merge.EditJSON(old, addServer) }

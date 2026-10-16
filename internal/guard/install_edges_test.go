@@ -62,6 +62,15 @@ func TestUnsupportedAgentIsRefused(t *testing.T) {
 	assert.ErrorContains(t, err, "unsupported agent")
 }
 
+// clearConfigDirEnv unsets the variables that move a harness's configuration
+// directory away from the home directory; a CI runner may set some of them.
+func clearConfigDirEnv(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "COPILOT_HOME", "GEMINI_CLI_HOME", "XDG_CONFIG_HOME"} {
+		t.Setenv(name, "")
+	}
+}
+
 func TestInstallFailsWithoutAUsableHome(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "afile")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
@@ -69,8 +78,7 @@ func TestInstallFailsWithoutAUsableHome(t *testing.T) {
 		t.Run("home is a file/"+string(agent), func(t *testing.T) {
 			t.Setenv("HOME", file)
 			t.Setenv("USERPROFILE", file)
-			t.Setenv("COPILOT_HOME", "")
-			t.Setenv("CLAUDE_CONFIG_DIR", "")
+			clearConfigDirEnv(t)
 			_, err := guard.Install(agent, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
 			assert.Error(t, err)
 			_, _, err = guard.Uninstall(agent, guard.InstallOpts{})
@@ -83,7 +91,7 @@ func TestInstallFailsWithoutAUsableHome(t *testing.T) {
 		t.Run("home unset/"+string(agent), func(t *testing.T) {
 			t.Setenv("HOME", "")
 			t.Setenv("USERPROFILE", "")
-			t.Setenv("CLAUDE_CONFIG_DIR", "")
+			clearConfigDirEnv(t)
 			_, err := guard.Install(agent, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
 			assert.Error(t, err)
 			_, err = guard.IsInstalled(agent, guard.InstallOpts{})
