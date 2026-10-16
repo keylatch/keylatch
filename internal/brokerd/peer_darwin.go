@@ -72,8 +72,10 @@ func (darwinSystem) PeerToken(c control.Conn) (auditToken, error) {
 	var tok auditToken
 	err := rawSocket(c, func(fd int) error {
 		n := uint32(unsafe.Sizeof(tok))
-		_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), unix.SOL_LOCAL, unix.LOCAL_PEERTOKEN,
-			uintptr(unsafe.Pointer(&tok)), uintptr(unsafe.Pointer(&n)), 0)
+		// x/sys has no binary getsockopt wrapper: GetsockoptString stops at the
+		// first NUL, which an audit token is full of.
+		_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), unix.SOL_LOCAL, unix.LOCAL_PEERTOKEN, //nolint:staticcheck // SA1019: no wrapper exists
+			uintptr(unsafe.Pointer(&tok)), uintptr(unsafe.Pointer(&n)), 0) //nolint:gosec // G103: the kernel fills tok
 		if errno != 0 {
 			return errno
 		}
