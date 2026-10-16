@@ -189,6 +189,10 @@ const (
 	ActionBindingChange Action = "binding.change"
 	// ActionLocalOnlyWeaken approves a weaker local-only delivery mode.
 	ActionLocalOnlyWeaken Action = "local_only.weaken"
+	// ActionApprove and ActionDeny decide one pending approval request, bound
+	// to the request the human was shown.
+	ActionApprove Action = "approval.approve"
+	ActionDeny    Action = "approval.deny"
 	// ActionRunApprove approves one contained run, bound to its exact plan.
 	ActionRunApprove     Action = "run.approve"
 	ActionConfigSet      Action = "config.set"

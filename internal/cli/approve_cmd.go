@@ -73,17 +73,19 @@ key derived from that passphrase; unsigned approvals are never accepted.`,
 			}
 			printApprovalSummary(c.ErrOrStderr(), ar)
 
-			// A contained run holds the real value, so the human must be present
-			// and the approval covers the exact plan that was shown.
+			// The human must be present and the approval covers exactly what was
+			// shown; a contained run holds the real value, so it has its own action.
+			action := presence.ActionApprove
 			if strings.HasPrefix(ar.Capability, "run:") {
-				summary := ar.Plan + "request hash: " + ar.RequestHash
-				proof, err := requirePresence(c.Context(), presence.ActionRunApprove, "%s", summary)
-				if err != nil {
-					return err
-				}
-				if !proof.Covers(presence.ActionRunApprove, summary) {
-					return NewSecurityBlock("the approval does not cover this plan")
-				}
+				action = presence.ActionRunApprove
+			}
+			summary := approvalSummary(ar)
+			proof, err := requirePresence(c.Context(), action, "%s", summary)
+			if err != nil {
+				return err
+			}
+			if !proof.Covers(action, summary) {
+				return NewSecurityBlock("the approval does not cover this request")
 			}
 
 			key, err := unlockApprover("approve", "KL-4106", "KL-4107")
@@ -92,7 +94,7 @@ key derived from that passphrase; unsigned approvals are never accepted.`,
 			}
 			defer clear(key)
 
-			if err := approval.ApproveWithReason(c.Context(), approvalsDir, token, approval.Digest(ar), reason, key); err != nil {
+			if err := approval.ApproveWithPresence(c.Context(), approvalsDir, token, approval.Digest(ar), reason, approvalPresence(proof), key); err != nil {
 				return approveError(token, err)
 			}
 

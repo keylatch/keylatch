@@ -9,6 +9,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/gateway/approval"
+	"github.com/keylatch/keylatch/internal/presence/presencetest"
 )
 
 const testApproverPassphrase = "correct horse battery"
@@ -33,6 +34,7 @@ func withApprover(t *testing.T) ed25519.PublicKey {
 		t.Fatal(err)
 	}
 	withHiddenAnswers(t, testApproverPassphrase)
+	presencetest.Approve(t)
 	pub, err := key.Public()
 	if err != nil {
 		t.Fatal(err)

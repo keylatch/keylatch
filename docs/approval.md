@@ -10,6 +10,7 @@ Approval decisions are made only by a human on a terminal:
 
 - `keylatch approve` and `keylatch deny` are **always blocked inside LLM sessions** (exit 2, SecurityBlock).
 - They require an interactive terminal on stdin; piped, scripted and agent tool-call invocations are refused.
+- They ask for human presence first, showing the request: a typed confirmation on the terminal, plus Touch ID, polkit or Windows Hello where the platform has one. `deny --all` asks once for the whole batch. The proof is stored in the record and covered by the signature.
 - They ask for the **approver passphrase**, set once with `keylatch approve init`. The passphrase is read only from the terminal, never from a flag, file or environment variable.
 - Every decision is signed with an Ed25519 key derived from that passphrase. An approval that is unsigned, signed with another key, or edited after signing is rejected.
 - The signature covers exactly the request shown to the approver. If the request file changes between display and the passphrase prompt, nothing is signed and the command exits 2. Requester-written fields are shown with control characters removed.
