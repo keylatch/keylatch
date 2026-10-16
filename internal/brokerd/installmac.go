@@ -220,7 +220,7 @@ func EnrollPresence(ctx context.Context, run Runner, euid func() int, stateRoot 
 	if err := dk.Enroll(uid, bytes.TrimSpace(out)); err != nil {
 		return "", err
 	}
-	return dk.file(uid), nil
+	return dk.Path(uid), nil
 }
 
 // MacUninstallCommands lists what removes the broker; the CLI prints them.

@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 
 	"github.com/keylatch/keylatch/internal/control"
@@ -161,14 +162,41 @@ func ParsePresenceKey(pemBytes []byte) (crypto.PublicKey, error) {
 	return pub, nil
 }
 
-// DirKeys keeps one public key per user in a directory root alone can write.
-type DirKeys struct{ Dir string }
+// DirKeys keeps one public key per user in a directory only root or an
+// administrator can write.
+type DirKeys struct {
+	Dir string
+	// NameOf names the file of a user number. Nil uses the number itself; the
+	// Windows broker uses the account SID, which an administrator knows when
+	// enrolling and the service maps back from the number.
+	NameOf func(uid uint32) (string, bool)
+}
 
-func (d DirKeys) file(uid uint32) string { return filepath.Join(d.Dir, uidString(uid)+".pem") }
+var keyFileName = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}$`)
+
+func (d DirKeys) nameOf(uid uint32) (string, bool) {
+	if d.NameOf != nil {
+		return d.NameOf(uid)
+	}
+	return uidString(uid), true
+}
+
+// PathOf is where the key named name is kept.
+func (d DirKeys) PathOf(name string) string { return filepath.Join(d.Dir, name+".pem") }
+
+// Path is where uid's key is kept.
+func (d DirKeys) Path(uid uint32) string {
+	name, _ := d.nameOf(uid)
+	return d.PathOf(name)
+}
 
 // PresenceKey implements KeyStore.
 func (d DirKeys) PresenceKey(uid uint32) (crypto.PublicKey, error) {
-	b, err := os.ReadFile(d.file(uid))
+	name, ok := d.nameOf(uid)
+	if !ok || !keyFileName.MatchString(name) {
+		return nil, ErrNoPresenceKey
+	}
+	b, err := os.ReadFile(d.PathOf(name))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrNoPresenceKey
 	}
@@ -182,17 +210,29 @@ func (d DirKeys) PresenceKey(uid uint32) (crypto.PublicKey, error) {
 // installer under root, never by the daemon on a client's request: a key a
 // client could register would let that client approve itself.
 func (d DirKeys) Enroll(uid uint32, pemBytes []byte) error {
+	name, ok := d.nameOf(uid)
+	if !ok {
+		return ErrNoPresenceKey
+	}
+	return d.EnrollNamed(name, pemBytes)
+}
+
+// EnrollNamed registers pemBytes under name.
+func (d DirKeys) EnrollNamed(name string, pemBytes []byte) error {
+	if !keyFileName.MatchString(name) {
+		return fmt.Errorf("brokerd: %q is not a valid key name", name)
+	}
 	if _, err := ParsePresenceKey(pemBytes); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(d.Dir, 0o755); err != nil { //nolint:gosec // G301: public keys only; the daemon account reads them
 		return err
 	}
-	tmp := d.file(uid) + ".new"
+	tmp := d.PathOf(name) + ".new"
 	if err := os.WriteFile(tmp, pemBytes, 0o644); err != nil { //nolint:gosec // G306: a public key
 		return err
 	}
-	return os.Rename(tmp, d.file(uid))
+	return os.Rename(tmp, d.PathOf(name))
 }
 
 // helperRequest and helperReply are the lines exchanged with a connected helper.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -53,7 +54,7 @@ func TestSealedFileRoundTrip(t *testing.T) {
 				t.Fatalf("load = %x, %v", got, err)
 			}
 			info, _ := os.Stat(store.Path)
-			if info.Mode().Perm() != 0o400 {
+			if runtime.GOOS != "windows" && info.Mode().Perm() != 0o400 {
 				t.Fatalf("mode = %v", info.Mode().Perm())
 			}
 			if tc.s != nil {
