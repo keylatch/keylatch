@@ -55,6 +55,7 @@ const (
 	OpMachineIssue  Op = "machine.issue"
 	OpMachineRevoke Op = "machine.revoke"
 	OpMachineList   Op = "machine.list"
+	OpMachineListen Op = "machine.listen"
 )
 
 var allOps = []Op{
@@ -63,7 +64,7 @@ var allOps = []Op{
 	OpRotateKeys, OpSessionRegister, OpSessionEnd, OpSessionVerify,
 	OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
 	OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
-	OpMachineIssue, OpMachineRevoke, OpMachineList,
+	OpMachineIssue, OpMachineRevoke, OpMachineList, OpMachineListen,
 }
 
 // Response codes.
@@ -90,7 +91,7 @@ const (
 func Privileged(op Op) bool {
 	switch op {
 	case OpPolicyAccept, OpPolicyImport, OpSecretSet, OpSecretDelete, OpMigrateImport, OpMigrateExport, OpRotateKeys,
-		OpSyncApply, OpSyncRotate, OpServiceEnroll, OpServiceRevoke, OpMachineIssue, OpMachineRevoke:
+		OpSyncApply, OpSyncRotate, OpServiceEnroll, OpServiceRevoke, OpMachineIssue, OpMachineRevoke, OpMachineListen:
 		return true
 	}
 	return false
@@ -326,7 +327,7 @@ func (r Request) Validate() error {
 		}
 	case OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
 		OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
-		OpMachineIssue, OpMachineRevoke, OpMachineList:
+		OpMachineIssue, OpMachineRevoke, OpMachineList, OpMachineListen:
 		return r.validateExtra()
 	}
 	return nil

@@ -19,6 +19,7 @@ import (
 	"github.com/keylatch/keylatch/internal/control"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // Default bounds on which accounts may use the broker.
@@ -56,6 +57,11 @@ type Config struct {
 	Sync SyncConfig
 	// Units inspects service units for enrollment and release; nil asks systemctl.
 	Units UnitInspector
+	// CallAction performs a provider action for a machine; nil uses
+	// runner.ExecuteAction.
+	CallAction func(ctx context.Context, baseURL, provider, action string, params map[string]string, creds string) (*runner.ActionResult, error)
+	// MachineListen binds the machine listener; nil uses net.Listen.
+	MachineListen func(network, addr string) (net.Listener, error)
 }
 
 // GatewayPartition is what the gateway needs to serve one partition.
@@ -81,6 +87,10 @@ type Server struct {
 
 	svcOnce sync.Once
 	svc     *serviceStore
+
+	machOnce sync.Once
+	mach     *machineStore
+	machines machineManager
 }
 
 type partition struct {
@@ -151,6 +161,7 @@ type Listener interface {
 
 // Serve accepts connections until ctx is done.
 func (s *Server) Serve(ctx context.Context, ln Listener) error {
+	s.StartMachineListener(ctx)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()

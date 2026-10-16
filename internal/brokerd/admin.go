@@ -123,6 +123,14 @@ func (a *admin) dispatch(ctx context.Context, peer control.Peer, res callerkind.
 		return a.listServices(ctx)
 	case brokerapi.OpServiceRelease:
 		return a.s.releaseService(ctx, peer.UID, peer.Cgroup, res, req)
+	case brokerapi.OpMachineIssue:
+		return a.issueMachine(ctx, res, req)
+	case brokerapi.OpMachineRevoke:
+		return a.revokeMachine(ctx, res, req)
+	case brokerapi.OpMachineList:
+		return a.listMachines()
+	case brokerapi.OpMachineListen:
+		return a.setMachineListen(ctx, res, req)
 	case brokerapi.OpSessionVerify:
 		l, ok := a.s.sessions.Lookup(req.Ticket, peer.UID)
 		if !ok {

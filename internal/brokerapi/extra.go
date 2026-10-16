@@ -103,6 +103,10 @@ type MachineRequest struct {
 	// PublicKey is the client's Ed25519 public key; the private key never
 	// leaves the client.
 	PublicKey []byte `json:"public_key,omitempty"`
+	// Listen is the address the machine listener binds (machine.listen);
+	// AllowWildcard permits an unspecified host.
+	Listen        string `json:"listen,omitempty"`
+	AllowWildcard bool   `json:"allow_wildcard,omitempty"`
 }
 
 // MachineInfo describes one issued credential.
@@ -229,6 +233,12 @@ func (r Request) validateMachine() error {
 	if r.Op == OpMachineList {
 		return nil
 	}
+	if r.Op == OpMachineListen {
+		if m.Listen == "" || len(m.Listen) > 300 || strings.ContainsRune(m.Listen, 0) {
+			return errors.New("an address to listen on is required")
+		}
+		return nil
+	}
 	if !machineName.MatchString(m.Name) {
 		return errors.New("a machine name of lower-case letters, digits and dashes is required")
 	}
@@ -303,6 +313,12 @@ func (r Request) describeExtra(short string) (action, summary string, ok bool) {
 		return "machine.issue", fmt.Sprintf("Issue machine credential %q for domain %q with %s, valid %ds (request %s)", r.Machine.Name, r.Machine.Domain, strings.Join(r.Machine.Caps, ","), r.Machine.TTLSeconds, short), true
 	case OpMachineRevoke:
 		return "machine.revoke", fmt.Sprintf("Revoke machine credential %q (request %s)", r.Machine.Name, short), true
+	case OpMachineListen:
+		wild := ""
+		if r.Machine.AllowWildcard {
+			wild = " on ALL interfaces if it names an unspecified host"
+		}
+		return "machine.listen", fmt.Sprintf("Let remote machines with a credential reach this broker at %s%s (request %s)", r.Machine.Listen, wild, short), true
 	}
 	return "", "", false
 }
