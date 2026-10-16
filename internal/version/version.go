@@ -79,7 +79,11 @@ func fromBuildInfo(bi *debug.BuildInfo, ver, commit, date string) (string, strin
 
 // String returns the canonical human-readable version string.
 func String() string {
-	return fmt.Sprintf("keylatch %s (%s) built %s", Version, Commit, BuildDate)
+	s := fmt.Sprintf("keylatch %s (%s) built %s", Version, Commit, BuildDate)
+	if variant != "" {
+		s += " " + variant
+	}
+	return s
 }
 
 // versionJSON is the JSON-serialisable shape of the version metadata.
@@ -87,6 +91,7 @@ type versionJSON struct {
 	Version   string `json:"Version"`
 	Commit    string `json:"Commit"`
 	BuildDate string `json:"BuildDate"`
+	Variant   string `json:"Variant,omitempty"`
 }
 
 // JSON returns a value suitable for JSON marshalling via encoding/json.
@@ -95,5 +100,6 @@ func JSON() any {
 		Version:   Version,
 		Commit:    Commit,
 		BuildDate: BuildDate,
+		Variant:   variant,
 	}
 }
