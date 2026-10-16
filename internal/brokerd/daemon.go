@@ -10,19 +10,24 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/brokerd/keys"
+	"github.com/keylatch/keylatch/internal/control"
 )
-
-// DefaultStateRoot is where the daemon keeps its state (StateDirectory=keylatch).
-const DefaultStateRoot = "/var/lib/keylatch"
-
-// DefaultSocket is the socket the clients connect to.
-const DefaultSocket = "/run/keylatch/broker.sock"
 
 // Options configures Run.
 type Options struct {
 	Version   string
 	StateRoot string
 	Socket    string
+	// Root loads the device root. Nil reads the systemd credential; the macOS and
+	// Windows brokers supply the keychain and CNG loaders.
+	Root func() ([]byte, error)
+	// Listen opens the client endpoint. Nil adopts the socket systemd passed or
+	// binds Socket; the Windows broker supplies its named pipe.
+	Listen func() (Listener, error)
+	// Identify pins each peer. Nil uses the platform default.
+	Identify func(control.Conn) (*Identity, error)
+	// Allow overrides which users may use the broker.
+	Allow func(uid uint32) bool
 	// Binary is the keylatch executable the daemon runs for served verbs.
 	Binary string
 	// Env reads the environment (os.Getenv in production).
@@ -60,7 +65,11 @@ func Run(ctx context.Context, o Options) error {
 	if o.Out == nil {
 		o.Out = io.Discard
 	}
-	root, err := keys.LoadRoot(o.Env("CREDENTIALS_DIRECTORY"))
+	loadRoot := o.Root
+	if loadRoot == nil {
+		loadRoot = func() ([]byte, error) { return keys.LoadRoot(o.Env("CREDENTIALS_DIRECTORY")) }
+	}
+	root, err := loadRoot()
 	if err != nil {
 		return fmt.Errorf("keylatchd: %w (run 'sudo keylatch broker install')", err)
 	}
@@ -103,6 +112,8 @@ func Run(ctx context.Context, o Options) error {
 		Audit:     audit.AsEmitter(logger),
 		AuditHead: logger.Head,
 		Presence:  presence,
+		Identify:  o.Identify,
+		Allow:     o.Allow,
 		Gateway:   Gateway(logger),
 	})
 	if err != nil {
@@ -111,14 +122,24 @@ func Run(ctx context.Context, o Options) error {
 	if err := srv.ResumeRotation(); err != nil {
 		return fmt.Errorf("keylatchd: finish the interrupted key rotation: %w", err)
 	}
-	ln, err := Listen(o.Socket, o.Env, o.PID)
+	open := o.Listen
+	if open == nil {
+		open = func() (Listener, error) {
+			ul, err := Listen(o.Socket, o.Env, o.PID)
+			if err != nil {
+				return nil, err
+			}
+			return UnixListener(ul), nil
+		}
+	}
+	ln, err := open()
 	scrub("LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES")
 	if err != nil {
 		return err
 	}
 	defer func() { _ = ln.Close() }()
 	if presence == nil {
-		fmt.Fprintln(o.Out, "keylatchd: no presence method is available (install polkit); privileged requests will be refused")
+		fmt.Fprintln(o.Out, "keylatchd: no presence method is available ("+presenceHint+"); privileged requests will be refused")
 	}
 	fmt.Fprintf(o.Out, "keylatchd: broker serving on %s\n", o.Socket)
 	if err := srv.Serve(ctx, ln); err != nil && !errors.Is(err, os.ErrClosed) {

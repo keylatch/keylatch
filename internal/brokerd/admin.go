@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net"
 	"strconv"
 
 	"github.com/keylatch/keylatch/internal/audit"
@@ -25,7 +24,7 @@ type admin struct {
 }
 
 // Handle implements control.Extension.
-func (a *admin) Handle(ctx context.Context, conn *net.UnixConn, peer control.Peer, res callerkind.Result, raw []byte) bool {
+func (a *admin) Handle(ctx context.Context, conn control.Conn, peer control.Peer, res callerkind.Result, raw []byte) bool {
 	if _, ok := brokerapi.OpOf(raw); !ok {
 		return false
 	}

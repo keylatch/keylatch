@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,7 +85,7 @@ func TestPeerUIDPartitioning(t *testing.T) {
 
 func TestPartitionAdmission(t *testing.T) {
 	h := newHarness(t, nil)
-	h.srv.cfg.Identify = func(*net.UnixConn) (*Identity, error) { return &Identity{UID: 0, PID: 1, pin: okPin{}}, nil }
+	h.srv.cfg.Identify = func(control.Conn) (*Identity, error) { return &Identity{UID: 0, PID: 1, pin: okPin{}}, nil }
 	call, stop := h.serve(t)
 	defer stop()
 
@@ -99,14 +98,14 @@ func TestPartitionAdmission(t *testing.T) {
 		t.Fatal("a refused user got a partition")
 	}
 
-	h.srv.cfg.Identify = func(*net.UnixConn) (*Identity, error) { return nil, ErrNoPID }
+	h.srv.cfg.Identify = func(control.Conn) (*Identity, error) { return nil, ErrNoPID }
 	call(brokerapi.Request{Op: brokerapi.OpStatus}, &resp)
 	if resp.Code != control.CodeRefused || !strings.Contains(resp.Error, "identify") {
 		t.Fatalf("unidentifiable peer = %+v", resp)
 	}
 
 	// A peer whose pidfd stops matching is refused once its request is read.
-	h.srv.cfg.Identify = func(*net.UnixConn) (*Identity, error) {
+	h.srv.cfg.Identify = func(control.Conn) (*Identity, error) {
 		return &Identity{UID: 1000, PID: 1, pin: okPin{err: ErrPeerGone}}, nil
 	}
 	call(brokerapi.Request{Op: brokerapi.OpStatus}, &resp)
@@ -117,7 +116,7 @@ func TestPartitionAdmission(t *testing.T) {
 
 func TestServeOverSocket(t *testing.T) {
 	h := newHarness(t, nil)
-	h.srv.cfg.Identify = func(*net.UnixConn) (*Identity, error) {
+	h.srv.cfg.Identify = func(control.Conn) (*Identity, error) {
 		return &Identity{UID: 1000, PID: os.Getpid(), Start: "1", pin: okPin{}}, nil
 	}
 	call, stop := h.serve(t)

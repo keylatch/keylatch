@@ -59,7 +59,7 @@ func (w *frameWriter) Write(p []byte) (int, error) {
 
 // exec runs a served verb and streams its output. Refusals and the final
 // status come back as one closing frame.
-func (s *Server) exec(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, res callerkind.Result, req Request) {
+func (s *Server) exec(ctx context.Context, conn Conn, r *bufio.Reader, res callerkind.Result, req Request) {
 	kind := res.Kind
 	d := decision{
 		op: string(OpExec), verb: req.Verb, res: res, child: childInDaemon,

@@ -305,7 +305,7 @@ func hostList(hosts []string) string {
 
 // containedRun serves one OpContained request: it decides, starts the sandbox
 // and relays its output until the child ends.
-func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, res callerkind.Result, req Request) {
+func (s *Server) containedRun(ctx context.Context, conn Conn, r *bufio.Reader, res callerkind.Result, req Request) {
 	kind := res.Kind
 	rr := req.Run
 	d := decision{op: string(OpContained), res: res, child: childInDaemon, tier: TierContained}

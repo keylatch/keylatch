@@ -116,7 +116,7 @@ type Config struct {
 type Extension interface {
 	// Handle answers the request in raw. It reports false for an operation it
 	// does not serve, and the server then refuses it.
-	Handle(ctx context.Context, conn *net.UnixConn, p Peer, res callerkind.Result, raw []byte) bool
+	Handle(ctx context.Context, conn Conn, p Peer, res callerkind.Result, raw []byte) bool
 }
 
 // Server answers control socket requests.
@@ -199,7 +199,7 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 
 // ServeConn answers the request on conn from a peer the caller has already
 // identified and admitted.
-func (s *Server) ServeConn(ctx context.Context, conn *net.UnixConn, peer Peer) {
+func (s *Server) ServeConn(ctx context.Context, conn Conn, peer Peer) {
 	r := bufio.NewReader(conn)
 	var req Request
 	_ = conn.SetReadDeadline(time.Now().Add(requestTimeout))
@@ -586,7 +586,7 @@ func (c *bufferedConn) Write(p []byte) (int, error) {
 
 // proxy turns the connection into a client connection of a placeholder
 // session's proxy and serves it until it closes.
-func (s *Server) proxy(conn *net.UnixConn, r *bufio.Reader, id string, run *runState) {
+func (s *Server) proxy(conn Conn, r *bufio.Reader, id string, run *runState) {
 	var sess *placeholder.Session
 	if s.cfg.Placeholders != nil {
 		sess, _ = s.cfg.Placeholders.Get(id)
@@ -645,7 +645,7 @@ func probe(addr string) error {
 
 // gateway pipes the connection to the gateway. The gateway authenticates each
 // request itself, so the stream grants nothing without a session token.
-func (s *Server) gateway(conn *net.UnixConn, r *bufio.Reader, run *runState) {
+func (s *Server) gateway(conn Conn, r *bufio.Reader, run *runState) {
 	addr, err := s.gatewayAddr()
 	var up net.Conn
 	if err == nil {

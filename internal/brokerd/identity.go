@@ -13,6 +13,8 @@ package brokerd
 import (
 	"errors"
 	"strings"
+
+	"github.com/keylatch/keylatch/internal/control"
 )
 
 var (
@@ -36,8 +38,26 @@ type Identity struct {
 	Start string
 	// Cgroup is the process's control group path.
 	Cgroup string
+	// SID is the Windows account SID of the peer's token.
+	SID string
+	// Session is the Windows session the peer runs in.
+	Session uint32
+	// Exe is the peer's executable path when it could be read.
+	Exe string
+	// Code is the peer's code identity on macOS: signing identifier and team.
+	Code string
+	// ParentPID is the peer's parent process, 0 when unknown.
+	ParentPID int
 
 	pin pin
+}
+
+// Peer is the identity as the control server sees it.
+func (i *Identity) Peer() control.Peer {
+	return control.Peer{
+		UID: i.UID, PID: i.PID, Cgroup: i.Cgroup, Start: i.Start, SID: i.SID,
+		Exe: i.Exe, Code: i.Code, ParentPID: i.ParentPID, Verify: i.Verify,
+	}
 }
 
 // Verify reports ErrPeerGone unless the connected process is still the process

@@ -12,6 +12,15 @@ type Peer struct {
 	// Start is the process start time in clock ticks since boot, set with
 	// Cgroup.
 	Start string
+	// SID is the account SID of the peer's token, set by the Windows broker.
+	SID string
+	// Exe is the peer's executable path when the broker could read it.
+	Exe string
+	// Code is the peer's code identity: the signing identifier and team the
+	// macOS broker read from the process.
+	Code string
+	// ParentPID is the peer's parent process, 0 when unknown.
+	ParentPID int
 	// Verify, when set, confirms that the process is still the one identified
 	// at connect time. The server calls it once the request has been read.
 	Verify func() error
