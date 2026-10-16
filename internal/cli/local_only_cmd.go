@@ -12,9 +12,17 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/localonly"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/spf13/cobra"
 )
+
+func orNoneMode(m localonly.Mode) string {
+	if m == "" {
+		return "none"
+	}
+	return string(m)
+}
 
 // parseLocalOnlyFlags reads --class and --local-only from connect.
 func parseLocalOnlyFlags(c *cobra.Command) (localonly.Class, map[string]localonly.Mode, error) {
@@ -108,10 +116,24 @@ func newLocalOnlyCmd() *cobra.Command {
 			namespace, _ := c.Flags().GetString("namespace")
 			human := !llmcontext.IsLLMSession(llmcontext.DefaultLookup)
 			store := newDispatchedStore(loadCLIConfig(c), llmcontext.DefaultLookup)
-			if err := connections.SetLocalOnly(c.Context(), namespace, args[0], args[1], mode, human, store); err != nil {
+			weaken := func(old, next localonly.Mode) error {
+				summary := fmt.Sprintf("weaken the local-only delivery of %s.%s\n  mode before: %s\n  mode after:  %s", args[0], args[1], orNoneMode(old), orNoneMode(next))
+				proof, err := requirePresence(c.Context(), presence.ActionLocalOnlyWeaken, "%s", summary)
+				if err != nil {
+					return err
+				}
+				if !proof.Covers(presence.ActionLocalOnlyWeaken, summary) {
+					return NewSecurityBlock("the approval does not cover this change")
+				}
+				return nil
+			}
+			if err := connections.SetLocalOnlyApproved(c.Context(), namespace, args[0], args[1], mode, human, weaken, store); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
 				code := exitcode.OperationFailed
+				var cliErr *CLIError
 				switch {
+				case errors.As(err, &cliErr):
+					code = cliErr.Code
 				case errors.Is(err, connections.ErrHumanOnly):
 					code = exitcode.SecurityBlock
 				case errors.Is(err, localonly.ErrEphemeralClass), errors.Is(err, localonly.ErrInvalidMode):

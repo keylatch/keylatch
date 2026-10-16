@@ -76,6 +76,17 @@ unless the policy pre-approves the exact command (`approval: auto`). The approva
 argv digest, the tier, the host set and the lifetime; an approval for one run never applies to
 another. Without an approver the daemon refuses the run and says why.
 
+The daemon opens a signed approval request that carries the plan (connection, tier, caller, project,
+argv, hosts, lifetime) and prints the token to the caller before it starts anything. The person runs
+`keylatch approve <token>` in their own terminal, which shows the plan and asks for presence bound to
+the request hash. The daemon starts the run only when the signed decision names that plan; a
+decision is used once and expires with the request.
+
+Changes that widen what a secret can reach need a person at a terminal even when the caller is a
+human: creating or widening a custom connection's hosts (`binding.change`, bound to the hosts before
+and after), and weakening a local-only delivery mode (`local_only.weaken`). Narrowing needs nothing.
+Key-operation allowlists are not yet presence-gated.
+
 ## Requirements and limits
 
 - Linux with unprivileged user namespaces, Landlock (Linux 5.13 or newer) and seccomp.

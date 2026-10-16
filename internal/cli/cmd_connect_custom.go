@@ -11,7 +11,9 @@ import (
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
+	"github.com/keylatch/keylatch/internal/runapproval"
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +27,8 @@ type customConnectInput struct {
 	Prefix    string
 	MinLength int
 	Fields    map[string][]byte
+	// Approve asks a human to accept a creation or a widening; nil asks nobody.
+	Approve func(connections.BindingChange) error
 }
 
 func callerKind(env llmcontext.Lookup) connections.CallerKind {
@@ -50,7 +54,7 @@ func connectCustomFromFlags(c *cobra.Command, name string) error {
 	st := newDispatchedStore(cfg, llmcontext.DefaultLookup)
 	f := c.Flags()
 
-	in := customConnectInput{Fields: map[string][]byte{}}
+	in := customConnectInput{Fields: map[string][]byte{}, Approve: bindingApproval(ctx, name)}
 	in.Namespace, _ = f.GetString("namespace")
 	in.Hosts, _ = f.GetStringArray("host")
 	in.Slots, _ = f.GetStringArray("slot")
@@ -94,6 +98,23 @@ func connectCustomFromFlags(c *cobra.Command, name string) error {
 	return connectCustom(ctx, c.OutOrStdout(), st, name, in, callerKind(llmcontext.DefaultLookup), em)
 }
 
+// bindingApproval asks a human, present at a terminal, to approve creating or
+// widening a binding. The approval covers the connection and the exact host
+// sets before and after; a proof for any other summary is not accepted.
+func bindingApproval(ctx context.Context, name string) func(connections.BindingChange) error {
+	return func(ch connections.BindingChange) error {
+		summary := runapproval.BindingSummary(name, ch.Kind, ch.HostsBefore, ch.HostsAfter)
+		proof, err := requirePresence(ctx, presence.ActionBindingChange, "%s", summary)
+		if err != nil {
+			return err
+		}
+		if !proof.Covers(presence.ActionBindingChange, summary) {
+			return NewSecurityBlock("the approval does not cover this binding change")
+		}
+		return nil
+	}
+}
+
 func customFieldValue(c *cobra.Command, key, val string) ([]byte, error) {
 	switch {
 	case val == "@-":
@@ -129,8 +150,14 @@ func connectCustom(ctx context.Context, out io.Writer, st connections.Store, nam
 		Fields:    in.Fields,
 		Binding:   b,
 		Caller:    kind,
+		Approve:   in.Approve,
 	}, st)
+	var cliErr *CLIError
 	switch {
+	case errors.As(err, &cliErr):
+		// A human who did not approve the exact change: nothing was written.
+		emitBinding(ctx, em, audit.ActionBindingRefused, audit.OutcomeDenied, name, kind, change, change.Kind)
+		return cliErr
 	case errors.Is(err, connections.ErrBindingHumanOnly):
 		emitBinding(ctx, em, audit.ActionBindingRefused, audit.OutcomeDenied, name, kind, change, change.Kind)
 		return &CLIError{

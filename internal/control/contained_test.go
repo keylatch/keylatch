@@ -500,6 +500,27 @@ func TestContainedRunApprovalIsBoundToTheRun(t *testing.T) {
 	assert.Equal(t, "apr-1", decided[0].Extra["approval_id"])
 }
 
+func TestContainedRunTellsTheCallerWhatToApproveBeforeItStarts(t *testing.T) {
+	w := newContainedWorld(t)
+	w.decide = func(enforce.Request) enforce.Decision { return enforce.Decision{Allow: true} }
+	w.srv.cfg.Approve = func(_ context.Context, r ApprovalRequest) (string, error) {
+		r.Notify("waiting: run `keylatch approve apv_x`\n")
+		return "apv_x", nil
+	}
+	conn := w.connect(context.Background())
+	require.NoError(t, writeFrame(conn, agentRequest(w.request())))
+	r := bufio.NewReader(conn)
+	var notice, started Response
+	require.NoError(t, readFrame(r, &notice, maxFrame))
+	assert.True(t, notice.More)
+	assert.Nil(t, notice.Session, "a message before the run starts is not the start")
+	assert.Contains(t, string(notice.Stderr), "keylatch approve apv_x")
+	require.NoError(t, readFrame(r, &started, maxFrame))
+	require.NotNil(t, started.Session)
+	assert.Equal(t, TierContained, started.Session.Tier)
+	assert.Equal(t, "apv_x", w.events(audit.ActionRunDecided)[0].Extra["approval_id"])
+}
+
 func TestContainedRunRefusedApprovalStartsNothing(t *testing.T) {
 	w := newContainedWorld(t)
 	w.decide = func(enforce.Request) enforce.Decision { return enforce.Decision{Allow: true} }

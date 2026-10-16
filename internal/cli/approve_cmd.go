@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/approval"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +72,19 @@ key derived from that passphrase; unsigned approvals are never accepted.`,
 				return approveError(token, err)
 			}
 			printApprovalSummary(c.ErrOrStderr(), ar)
+
+			// A contained run holds the real value, so the human must be present
+			// and the approval covers the exact plan that was shown.
+			if strings.HasPrefix(ar.Capability, "run:") {
+				summary := ar.Plan + "request hash: " + ar.RequestHash
+				proof, err := requirePresence(c.Context(), presence.ActionRunApprove, "%s", summary)
+				if err != nil {
+					return err
+				}
+				if !proof.Covers(presence.ActionRunApprove, summary) {
+					return NewSecurityBlock("the approval does not cover this plan")
+				}
+			}
 
 			key, err := unlockApprover("approve", "KL-4106", "KL-4107")
 			if err != nil {

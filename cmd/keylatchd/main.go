@@ -272,6 +272,7 @@ any agent sandbox.`,
 				cfg.Mint = mintCred
 			}
 			cfg.Decide = enforce.Decide
+			cfg.Approve = newApprover(env, emitter)
 			cfg.Contained = newContained(socket, binary, vaultResolver{cfg: loadConfig(env), env: env, log: emitter})
 			var agentLn *net.UnixListener
 			if keys, admin, closeAudit, err := newKeyService(env); err != nil {

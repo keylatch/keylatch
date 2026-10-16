@@ -49,6 +49,10 @@ type CustomOptions struct {
 	Fields  map[string][]byte
 	Binding registry.CustomBinding
 	Caller  CallerKind
+	// Approve, when set, is asked about a creation or a widening after the
+	// change is known and before anything is written. An error from it stops
+	// the save.
+	Approve func(BindingChange) error
 }
 
 func customPath(ns, name, leaf string) string {
@@ -108,6 +112,11 @@ func SaveCustom(ctx context.Context, name string, opts CustomOptions, st Store) 
 	}
 	if (change.Kind == ChangeCreated || change.Kind == ChangeWidened) && opts.Caller != CallerHuman {
 		return change, ErrBindingHumanOnly
+	}
+	if (change.Kind == ChangeCreated || change.Kind == ChangeWidened) && opts.Approve != nil {
+		if err := opts.Approve(change); err != nil {
+			return change, err
+		}
 	}
 
 	if !existing {

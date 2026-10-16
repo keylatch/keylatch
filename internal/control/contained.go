@@ -70,6 +70,11 @@ type ApprovalRequest struct {
 	Caller     Kind
 	// Plan is the human-readable plan the approver shows.
 	Plan string
+	// Project is the directory a contained run may write.
+	Project string
+	// Notify tells the waiting caller what to do, for example which command
+	// answers the approval. It is nil when the caller has no stream.
+	Notify func(string)
 }
 
 // ArgvDigest is the SHA-256 of the exact argv.
@@ -333,7 +338,8 @@ func (s *Server) containedRun(ctx context.Context, conn *net.UnixConn, r *bufio.
 	d.hosts = plan.hosts
 	d.sandbox = planDigest(plan)
 
-	if err := s.approveContained(ctx, kind, rr, plan, &d); err != nil {
+	notify := func(msg string) { send(Response{Kind: kind, More: true, Stderr: []byte(msg)}) }
+	if err := s.approveContained(ctx, kind, rr, plan, &d, notify); err != nil {
 		refuse(*err)
 		return
 	}
@@ -618,7 +624,7 @@ func (s *Server) feedContained(r *bufio.Reader, child contained.Child, cancel co
 // approveContained decides whether the run needs an approval and obtains it.
 // Agent and host callers need one unless the policy approves the exact command
 // in advance; the approval is bound to argv, tier, hosts and lifetime.
-func (s *Server) approveContained(ctx context.Context, kind Kind, rr *RunRequest, plan *containedPlan, d *decision) *refusal {
+func (s *Server) approveContained(ctx context.Context, kind Kind, rr *RunRequest, plan *containedPlan, d *decision, notify func(string)) *refusal {
 	if !needsApproval(plan.approval, kind) {
 		return nil
 	}
@@ -627,6 +633,7 @@ func (s *Server) approveContained(ctx context.Context, kind Kind, rr *RunRequest
 	}
 	req := ApprovalRequest{
 		Connection: rr.Connection, Tier: TierContained, Argv: rr.Command, Hosts: plan.hosts, TTL: plan.maxRun, Caller: kind,
+		Project: plan.project, Notify: notify,
 		Plan: fmt.Sprintf("run %s with the real %s value in a sandbox\n  project: %s (read-write)\n  network: %s\n  lifetime: %s",
 			strings.Join(rr.Command, " "), rr.Connection, plan.project, hostList(plan.hosts), plan.maxRun),
 	}

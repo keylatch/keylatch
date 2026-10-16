@@ -94,6 +94,11 @@ func runContained(ctx context.Context, c *Client, lookup llmcontext.Lookup, ra r
 			if !resp.More {
 				return report(resp, streams)
 			}
+			if resp.Session == nil {
+				// A message before the run starts, such as the approval to wait for.
+				_, _ = streams.ErrOut.Write(resp.Stderr)
+				continue
+			}
 			started = true
 			restore := func() {}
 			if rr.TTY != nil {

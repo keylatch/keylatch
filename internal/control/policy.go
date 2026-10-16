@@ -57,7 +57,7 @@ func (s *Server) approveSession(ctx context.Context, kind Kind, rr *RunRequest, 
 		return &refusal{CodeRefused, exitcode.ApprovalRequired, fmt.Sprintf("tier %s needs an approval for %s callers and this daemon cannot collect one", tier, kind)}
 	}
 	req := ApprovalRequest{
-		Connection: rr.Connection, Tier: tier, Argv: rr.Command, Hosts: dec.Hosts, TTL: dec.MaxTTL, Caller: kind,
+		Connection: rr.Connection, Tier: tier, Argv: rr.Command, Hosts: dec.Hosts, TTL: dec.MaxTTL, Caller: kind, Project: rr.CWD,
 		Plan: fmt.Sprintf("run %s with %s access to %s", strings.Join(rr.Command, " "), tier, rr.Connection),
 	}
 	if _, err := s.cfg.Approve(ctx, req); err != nil {
