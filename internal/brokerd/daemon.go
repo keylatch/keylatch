@@ -24,6 +24,9 @@ type Options struct {
 	// Listen opens the client endpoint. Nil adopts the socket systemd passed or
 	// binds Socket; the Windows broker supplies its named pipe.
 	Listen func() (Listener, error)
+	// Helpers and HelperAdmit connect per-user presence helpers (see Config).
+	Helpers     *HelperHub
+	HelperAdmit func(ctx context.Context, peer control.Peer) error
 	// Identify pins each peer. Nil uses the platform default.
 	Identify func(control.Conn) (*Identity, error)
 	// Allow overrides which users may use the broker.
@@ -61,6 +64,9 @@ func Run(ctx context.Context, o Options) error {
 	}
 	if o.Socket == "" {
 		o.Socket = DefaultSocket
+	}
+	if err := o.applyPlatform(); err != nil {
+		return fmt.Errorf("keylatchd: %w", err)
 	}
 	if o.Out == nil {
 		o.Out = io.Discard
@@ -105,16 +111,18 @@ func Run(ctx context.Context, o Options) error {
 		}
 	}
 	srv, err := New(Config{
-		Version:   o.Version,
-		StateRoot: o.StateRoot,
-		Binary:    o.Binary,
-		Keys:      h,
-		Audit:     audit.AsEmitter(logger),
-		AuditHead: logger.Head,
-		Presence:  presence,
-		Identify:  o.Identify,
-		Allow:     o.Allow,
-		Gateway:   Gateway(logger),
+		Version:     o.Version,
+		StateRoot:   o.StateRoot,
+		Binary:      o.Binary,
+		Keys:        h,
+		Audit:       audit.AsEmitter(logger),
+		AuditHead:   logger.Head,
+		Presence:    presence,
+		Identify:    o.Identify,
+		Allow:       o.Allow,
+		Helpers:     o.Helpers,
+		HelperAdmit: o.HelperAdmit,
+		Gateway:     Gateway(logger),
 	})
 	if err != nil {
 		return err

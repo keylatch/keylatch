@@ -43,6 +43,12 @@ type Config struct {
 	AuditHead func() audit.Head
 	// Presence verifies human presence; nil means privileged requests are refused.
 	Presence PresenceMethod
+	// Helpers holds the presence helpers connected through presence.helper; nil
+	// refuses that operation.
+	Helpers *HelperHub
+	// HelperAdmit decides whether a peer may register as a presence helper (the
+	// macOS broker checks its code identity).
+	HelperAdmit func(ctx context.Context, peer control.Peer) error
 	// Identify pins the peer; nil uses the platform's kernel facility (pidfd and
 	// SO_PEERCRED, LOCAL_PEERTOKEN, or the named pipe client token).
 	Identify func(control.Conn) (*Identity, error)

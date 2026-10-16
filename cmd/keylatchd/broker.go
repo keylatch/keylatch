@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -23,14 +24,15 @@ func newBrokerCmd() *cobra.Command {
 		Use:   "broker",
 		Short: "Run the system broker (started by keylatchd.service)",
 		Long: `broker holds the key hierarchy, the secret store, the policy and the audit log
-under its own OS user and answers keylatch clients on /run/keylatch/broker.sock.
-It needs the device root credential systemd hands to keylatchd.service, so run
-it through the unit, not from a shell. 'sudo keylatch broker install' sets the
-unit up.`,
+under its own OS user and answers keylatch clients on its socket (a named pipe
+on Windows). It needs the device root the platform hands it (the systemd
+credential on Linux, the System keychain on macOS, the CNG-sealed file on
+Windows), so run it through the service manager, not from a shell.
+'keylatch broker install' sets the service up.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if runtime.GOOS != "linux" {
-				return fmt.Errorf("keylatchd: the system broker runs on Linux only")
+			if !slices.Contains([]string{"linux", "darwin", "windows"}, runtime.GOOS) {
+				return fmt.Errorf("keylatchd: the system broker runs on Linux, macOS and Windows only")
 			}
 			if binary == "" {
 				resolved, err := siblingKeylatch()
