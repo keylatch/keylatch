@@ -1,4 +1,4 @@
-//go:build mint_test_endpoint
+//go:build mint_test_endpoint || sync_test_endpoint
 
 package version
 

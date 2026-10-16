@@ -731,5 +731,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		// Integration-marker checks.
 		plain("environment", checkIntegrationMarkers()),
 	}
-	return append(checks, brokerChecks(env, runner, probeBroker)...)
+	checks = append(checks, brokerChecks(env, runner, probeBroker)...)
+	checks = append(checks, syncChecks(env, probeSync)...)
+	return append(checks, serviceChecks(env, probeServices)...)
 }

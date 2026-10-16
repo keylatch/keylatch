@@ -44,12 +44,30 @@ const (
 	// OpPresenceHelper turns the connection into the link to the user's
 	// presence helper: the daemon sends it challenges and reads signatures.
 	OpPresenceHelper Op = "presence.helper"
+
+	OpSyncDiff   Op = "sync.diff"
+	OpSyncDrift  Op = "sync.drift"
+	OpSyncApply  Op = "sync.apply"
+	OpSyncRotate Op = "sync.rotate"
+
+	OpServiceEnroll  Op = "service.enroll"
+	OpServiceRevoke  Op = "service.revoke"
+	OpServiceList    Op = "service.list"
+	OpServiceRelease Op = "service.release"
+
+	OpMachineIssue  Op = "machine.issue"
+	OpMachineRevoke Op = "machine.revoke"
+	OpMachineList   Op = "machine.list"
+	OpMachineListen Op = "machine.listen"
 )
 
 var allOps = []Op{
 	OpStatus, OpPresenceBegin, OpPolicyAccept, OpPolicyImport, OpPolicyExport, OpPolicyCheck,
 	OpSecretSet, OpSecretDelete, OpSecretList, OpAuditHead, OpMigrateImport, OpMigrateExport,
 	OpRotateKeys, OpSessionRegister, OpSessionEnd, OpSessionVerify, OpPresenceHelper,
+	OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
+	OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
+	OpMachineIssue, OpMachineRevoke, OpMachineList, OpMachineListen,
 }
 
 // Response codes.
@@ -75,7 +93,8 @@ const (
 // presence proof bound to the request.
 func Privileged(op Op) bool {
 	switch op {
-	case OpPolicyAccept, OpPolicyImport, OpSecretSet, OpSecretDelete, OpMigrateImport, OpMigrateExport, OpRotateKeys:
+	case OpPolicyAccept, OpPolicyImport, OpSecretSet, OpSecretDelete, OpMigrateImport, OpMigrateExport, OpRotateKeys,
+		OpSyncApply, OpSyncRotate, OpServiceEnroll, OpServiceRevoke, OpMachineIssue, OpMachineRevoke, OpMachineListen:
 		return true
 	}
 	return false
@@ -108,6 +127,10 @@ type Request struct {
 	OldAuditHead string `json:"old_audit_head,omitempty"`
 	// Session registers or ends an agent session.
 	Session *SessionRequest `json:"session,omitempty"`
+
+	Sync    *SyncRequest    `json:"sync,omitempty"`
+	Service *ServiceRequest `json:"service,omitempty"`
+	Machine *MachineRequest `json:"machine,omitempty"`
 }
 
 // Item is one secret in a migration.
@@ -146,6 +169,10 @@ type Response struct {
 	MACs    map[string]string `json:"macs,omitempty"`
 	Head    *AuditHead        `json:"head,omitempty"`
 	Session *SessionInfo      `json:"session,omitempty"`
+
+	Sync    *SyncResult    `json:"sync,omitempty"`
+	Service *ServiceResult `json:"service,omitempty"`
+	Machine *MachineResult `json:"machine,omitempty"`
 }
 
 // Proof is what the daemon hands back once the human approved a request.
@@ -301,6 +328,10 @@ func (r Request) Validate() error {
 		if len(r.Session.Cgroup) > 1024 || strings.ContainsRune(r.Session.Cgroup, 0) {
 			return errors.New("malformed cgroup")
 		}
+	case OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
+		OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
+		OpMachineIssue, OpMachineRevoke, OpMachineList, OpMachineListen:
+		return r.validateExtra()
 	}
 	return nil
 }
@@ -387,6 +418,7 @@ func (r Request) Digest() string {
 	}
 	field(r.Nonce)
 	field([]byte(r.OldAuditHead))
+	r.digestExtra(field)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -427,6 +459,9 @@ func (r Request) Describe() (action, summary string) {
 		return "broker.export", fmt.Sprintf("Copy every broker secret back into your account (request %s)", short)
 	case OpRotateKeys:
 		return "keys.rotate", fmt.Sprintf("Rotate the broker master key (request %s)", short)
+	}
+	if action, summary, ok := r.describeExtra(short); ok {
+		return action, summary
 	}
 	return string(r.Op), fmt.Sprintf("Perform %s (request %s)", r.Op, short)
 }

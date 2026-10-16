@@ -19,6 +19,7 @@ import (
 	"github.com/keylatch/keylatch/internal/control"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // Default bounds on which accounts may use the broker.
@@ -59,6 +60,15 @@ type Config struct {
 	// loopback address. Nil leaves the gateway tier unavailable.
 	Gateway func(ctx context.Context, p GatewayPartition) (addr string, err error)
 	Now     func() time.Time
+	// Sync tunes the deploy-secret sync operations.
+	Sync SyncConfig
+	// Units inspects service units for enrollment and release; nil asks systemctl.
+	Units UnitInspector
+	// CallAction performs a provider action for a machine; nil uses
+	// runner.ExecuteAction.
+	CallAction func(ctx context.Context, baseURL, provider, action string, params map[string]string, creds string) (*runner.ActionResult, error)
+	// MachineListen binds the machine listener; nil uses net.Listen.
+	MachineListen func(network, addr string) (net.Listener, error)
 }
 
 // GatewayPartition is what the gateway needs to serve one partition.
@@ -81,6 +91,13 @@ type Server struct {
 
 	mu    sync.Mutex
 	parts map[uint32]*partition
+
+	svcOnce sync.Once
+	svc     *serviceStore
+
+	machOnce sync.Once
+	mach     *machineStore
+	machines machineManager
 }
 
 type partition struct {
@@ -90,7 +107,15 @@ type partition struct {
 	store  *brokerstore.Store
 	policy *PolicyStore
 	ctl    *control.Server
+
+	syncOnce sync.Once
+	sync     *syncState
+	// syncStore stands in for store in the sync operations; tests use it to
+	// count reads.
+	syncStore secretStore
 }
+
+func (p *partition) configDir() string { return filepath.Join(p.dir, "config") }
 
 // New returns a Server. It refuses a configuration that could serve without an
 // audit log, keys or a state directory.
@@ -151,6 +176,7 @@ func UnixListener(l *net.UnixListener) Listener { return unixListener{l} }
 
 // Serve accepts connections until ctx is done.
 func (s *Server) Serve(ctx context.Context, ln Listener) error {
+	s.StartMachineListener(ctx)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -187,7 +213,7 @@ func (s *Server) handle(ctx context.Context, conn control.Conn) {
 	}
 	defer id.Close()
 	if !s.cfg.Allow(id.UID) {
-		refuse(conn, control.CodeRefused, exitcode.SecurityBlock, fmt.Sprintf("user %d may not use the broker", id.UID))
+		s.serveServiceOnly(ctx, conn, id)
 		return
 	}
 	p, err := s.partition(ctx, id.UID)
@@ -261,6 +287,7 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 		Callers:    s.callers,
 		SigningKey: tokenKey,
 		ChildEnv:   childEnv,
+		ChildStore: store,
 		Decide:     enforce.New(env.lookup).Decide,
 		Gate:       pol.Gate,
 		Ticket:     s.sessions.VerifyTicket,

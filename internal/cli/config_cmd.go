@@ -73,7 +73,7 @@ func newConfigGetCmd() *cobra.Command {
 
 // newConfigSetCmd returns `config set <key> <value>`.
 func newConfigSetCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "set <key> <value>",
 		Short: "Set a configuration value",
 		Long: `Set a non-secret configuration value. Keys that look like credentials
@@ -81,6 +81,11 @@ func newConfigSetCmd() *cobra.Command {
 		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			key, value := args[0], args[1]
+
+			if strings.EqualFold(key, machineListenKey) {
+				allow, _ := c.Flags().GetBool("allow-wildcard")
+				return setMachineListen(c, value, allow)
+			}
 
 			// Blocklist check.
 			if err := config.ValidateSetKey(key); err != nil {
@@ -131,6 +136,8 @@ func newConfigSetCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("allow-wildcard", false, "with gateway.machine_listen: accept an address that names every interface")
+	return cmd
 }
 
 // newConfigListCmd returns `config list`.

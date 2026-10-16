@@ -30,6 +30,10 @@ const (
 	// namespaces, such as a process inside a harness sandbox, or a caller that
 	// is neither interactive nor a service.
 	Host Kind = "host"
+	// Machine is a remote guest that authenticated to the machine listener with
+	// a certificate the broker issued. What it may do is bounded by the
+	// certificate's domain and capabilities, not by connection policy.
+	Machine Kind = "machine"
 )
 
 // Constrained reports whether the kind may not receive secret values.

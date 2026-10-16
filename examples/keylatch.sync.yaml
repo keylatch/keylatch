@@ -1,0 +1,33 @@
+# Keep deploy secrets in step with the connections they come from.
+#   keylatch sync check    validate this file (no network)
+#   keylatch sync diff     names, targets and reasons; never a value
+#   keylatch sync drift    exit 1 when a target has drifted (safe for CI)
+#   keylatch sync apply    write the differences (needs your presence)
+version: 1
+targets:
+  web:
+    type: vercel
+    project: prj_example
+    team: team_example
+    credential: vercel-deploy
+  ci:
+    type: github-actions
+    repo: owner/app
+    environments: [production]
+    credential: github-app-ci
+  local:
+    type: env-file
+    path: .env.local
+vars:
+  - name: DATABASE_URL
+    from: {connection: app-db, field: url}
+    sensitive: true
+    to:
+      web: [production, preview]
+      ci: [repository, production]
+      local: [file]
+  - name: ANALYTICS_ID
+    from: {connection: analytics, field: id}
+    sensitive: false
+    to:
+      web: [production, preview, development]

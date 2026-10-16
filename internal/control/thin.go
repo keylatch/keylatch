@@ -32,7 +32,9 @@ var globalValueFlags = []string{"--log-level"}
 // and the verb is one it serves. It reports false when the caller should act
 // on local state instead.
 func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, streams IO) (exitCode int, handled bool) {
-	if lookup(LocalEnv) == "1" || slices.ContainsFunc(args, func(a string) bool { return a == "-h" || a == "--help" }) {
+	if lookup(LocalEnv) == "1" || slices.ContainsFunc(args, func(a string) bool {
+		return a == "-h" || a == "--help" || a == "--remote" || strings.HasPrefix(a, "--remote=")
+	}) {
 		return 0, false
 	}
 	global, verb, rest, ok := splitVerb(args)
@@ -236,6 +238,9 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
 		return exitcode.UserError
+	}
+	if ra.runtime == runner.ServiceRuntime {
+		return runService(ctx, c, lookup, ra, streams)
 	}
 	if ra.tier == TierContained {
 		return runContained(ctx, c, lookup, ra, streams)

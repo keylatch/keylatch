@@ -13,6 +13,7 @@ import (
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
+	keysync "github.com/keylatch/keylatch/internal/sync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +30,18 @@ func TestExamplesValidate(t *testing.T) {
 	for _, path := range configs {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			_, err := config.Load(path)
+			assert.NoError(t, err)
+		})
+	}
+
+	syncManifests, err := filepath.Glob(filepath.Join(root, "examples", "*.sync.yaml"))
+	require.NoError(t, err)
+	require.NotEmpty(t, syncManifests)
+	for _, path := range syncManifests {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path) //nolint:gosec // G304: repository examples
+			require.NoError(t, err)
+			_, err = keysync.Parse(data, nil)
 			assert.NoError(t, err)
 		})
 	}

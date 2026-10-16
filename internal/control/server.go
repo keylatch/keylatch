@@ -18,6 +18,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/adapter"
 	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/backend/childstore"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway/token"
@@ -102,6 +103,10 @@ type Config struct {
 	Approve Approver
 	// ChildEnv is added to the environment of the verbs the daemon runs.
 	ChildEnv []string
+	// ChildStore, when set, answers the store reads of the verbs the daemon
+	// runs, over a descriptor the verb inherits. Without it they use their own
+	// configured backend.
+	ChildStore childstore.Source
 	// Gate is asked before the daemon acts on policy, credentials or keys for a
 	// caller. An error refuses the request.
 	Gate func(ctx context.Context, res callerkind.Result) error
