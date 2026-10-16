@@ -94,6 +94,8 @@ jobs:
   go-test:
     needs: lint
     strategy:
+      # Report every platform's failures in one run.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
