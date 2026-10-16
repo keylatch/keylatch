@@ -105,7 +105,7 @@ func TestServiceEnrollRecordsHashes(t *testing.T) {
 	if !resp.OK || resp.Service == nil || len(resp.Service.Capability) != 32 {
 		t.Fatalf("enroll = %+v", resp)
 	}
-	e, ok := r.h.srv.services().get("app-db")
+	e, ok := r.h.srv.services().get(r.uid, "app-db")
 	if !ok || len(e.Units) != 1 || e.Units[0].SHA256 != strings.Repeat("a1", 32) || e.Units[0].ExecStart != "{ path=/usr/bin/app }" || e.Owner != r.uid || e.Scope != "system" {
 		t.Fatalf("enrollment = %+v", e)
 	}
@@ -333,7 +333,7 @@ func TestServiceScopesAndRevoke(t *testing.T) {
 	if resp := revoke(""); !resp.OK {
 		t.Fatalf("revoke all = %+v", resp)
 	}
-	if _, ok := r.h.srv.services().get("app-db"); ok {
+	if _, ok := r.h.srv.services().get(r.uid, "app-db"); ok {
 		t.Fatal("the enrollment survived revoking every unit")
 	}
 	if resp := r.h.send(t, r.uid, brokerapi.Request{Op: brokerapi.OpServiceRevoke, Service: &brokerapi.ServiceRequest{Connection: "app-db"}}); resp.OK {
@@ -438,5 +438,62 @@ func TestServiceReleaseUsesTheProviderContract(t *testing.T) {
 	}
 	if _, err := s.credentialPaths(ctx, "missing"); err == nil {
 		t.Fatal("missing connection")
+	}
+}
+
+func TestServiceEnrollmentsAreKeyedByOwner(t *testing.T) {
+	r := newSvcRig(t)
+	other := uint32(2000)
+	p, err := r.h.srv.partition(context.Background(), other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.store.Put(context.Background(), "app-db/value", []byte(svcCanary+"-other")); err != nil {
+		t.Fatal(err)
+	}
+	mine := r.enroll(t, nil).Service.Capability
+	sr := &brokerapi.ServiceRequest{Connection: "app-db", Units: []string{"app.service"}, Scope: "system"}
+	theirs := r.h.send(t, other, r.h.proven(t, other, brokerapi.Request{Op: brokerapi.OpServiceEnroll, Service: sr}))
+	if !theirs.OK {
+		t.Fatalf("second user's enroll = %+v", theirs)
+	}
+	// Neither enrollment replaced the other: each capability releases its
+	// owner's value, and not the other's.
+	got := r.release(t, 1000, "/system.slice/app.service", mine, host)
+	if !got.OK || string(got.Service.Env[0].Value) != svcCanary {
+		t.Fatalf("first user's release = %+v", got)
+	}
+	got = r.release(t, other, "/system.slice/app.service", theirs.Service.Capability, host)
+	if !got.OK || string(got.Service.Env[0].Value) != svcCanary+"-other" {
+		t.Fatalf("second user's release = %+v", got)
+	}
+	if got := r.release(t, other, "/system.slice/app.service", make([]byte, 32), host); got.OK {
+		t.Fatal("an unknown capability released a value")
+	}
+	// Revoking one leaves the other.
+	rev := r.h.proven(t, other, brokerapi.Request{Op: brokerapi.OpServiceRevoke, Service: &brokerapi.ServiceRequest{Connection: "app-db"}})
+	if resp := r.h.send(t, other, rev); !resp.OK {
+		t.Fatalf("revoke = %+v", resp)
+	}
+	if got := r.release(t, 1000, "/system.slice/app.service", mine, host); !got.OK {
+		t.Fatalf("revoking another user's enrollment removed this one: %+v", got)
+	}
+	if got := r.release(t, other, "/system.slice/app.service", theirs.Service.Capability, host); got.OK {
+		t.Fatal("a revoked enrollment still releases")
+	}
+}
+
+func TestServiceStoreRekeysOldRecords(t *testing.T) {
+	dir := t.TempDir()
+	old := `{"app-db":{"connection":"app-db","scope":"system","owner":1000,"cap_hash":"x","units":[{"unit":"a.service"}]}}`
+	if err := os.WriteFile(filepath.Join(dir, "services.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := newServiceStore(dir, nil)
+	if _, ok := s.get(1000, "app-db"); !ok {
+		t.Fatal("a record keyed by connection alone was lost")
+	}
+	if _, ok := s.get(1001, "app-db"); ok {
+		t.Fatal("another user sees it")
 	}
 }

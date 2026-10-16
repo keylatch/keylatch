@@ -162,6 +162,13 @@ func (s *serviceStore) load() error {
 		if err := json.Unmarshal(b, &s.m); err != nil {
 			return fmt.Errorf("service enrollments: %w", err)
 		}
+		// Records written when enrollments were keyed by connection alone.
+		for k, e := range s.m {
+			if want := enrollmentKey(e.Owner, e.Connection); k != want {
+				delete(s.m, k)
+				s.m[want] = e
+			}
+		}
 	}
 	s.loaded = true
 	return nil
@@ -193,13 +200,19 @@ func (s *serviceStore) capHash(capability []byte) (string, error) {
 	return hex.EncodeToString(m.Sum(nil)), nil
 }
 
-func (s *serviceStore) get(connection string) (Enrollment, bool) {
+// enrollmentKey keys an enrollment by its owner as well as its connection, so
+// one user's enrollment of a name never replaces or reads another's.
+func enrollmentKey(owner uint32, connection string) string {
+	return fmt.Sprintf("%d/%s", owner, connection)
+}
+
+func (s *serviceStore) get(owner uint32, connection string) (Enrollment, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.load() != nil {
 		return Enrollment{}, false
 	}
-	e, ok := s.m[connection]
+	e, ok := s.m[enrollmentKey(owner, connection)]
 	return e, ok
 }
 
@@ -209,17 +222,18 @@ func (s *serviceStore) put(e Enrollment) error {
 	if err := s.load(); err != nil {
 		return err
 	}
-	s.m[e.Connection] = e
+	s.m[enrollmentKey(e.Owner, e.Connection)] = e
 	return s.save()
 }
 
-func (s *serviceStore) remove(connection, unit string) (removed []string, err error) {
+func (s *serviceStore) remove(owner uint32, connection, unit string) (removed []string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.load(); err != nil {
 		return nil, err
 	}
-	e, ok := s.m[connection]
+	key := enrollmentKey(owner, connection)
+	e, ok := s.m[key]
 	if !ok {
 		return nil, nil
 	}
@@ -232,12 +246,28 @@ func (s *serviceStore) remove(connection, unit string) (removed []string, err er
 		keep = append(keep, u)
 	}
 	if len(keep) == 0 {
-		delete(s.m, connection)
+		delete(s.m, key)
 	} else {
 		e.Units = keep
-		s.m[connection] = e
+		s.m[key] = e
 	}
 	return removed, s.save()
+}
+
+// named returns every enrollment of a connection name, whoever owns it.
+func (s *serviceStore) named(connection string) []Enrollment {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.load() != nil {
+		return nil
+	}
+	var out []Enrollment
+	for _, e := range s.m {
+		if e.Connection == connection {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func (s *serviceStore) ownedBy(uid uint32) []Enrollment {
@@ -316,11 +346,11 @@ func (a *admin) enrollService(ctx context.Context, res callerkind.Result, req br
 			return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
 		}
 	}
-	return brokerapi.Response{OK: true, Service: &brokerapi.ServiceResult{Capability: capability, Services: infosOf(svc.mustGet(sr.Connection), nil)}}
+	return brokerapi.Response{OK: true, Service: &brokerapi.ServiceResult{Capability: capability, Services: infosOf(svc.mustGet(a.p.uid, sr.Connection), nil)}}
 }
 
-func (s *serviceStore) mustGet(connection string) Enrollment {
-	e, _ := s.get(connection)
+func (s *serviceStore) mustGet(owner uint32, connection string) Enrollment {
+	e, _ := s.get(owner, connection)
 	return e
 }
 
@@ -353,11 +383,11 @@ func infosOf(e Enrollment, changed map[string]string) []brokerapi.ServiceInfo {
 
 func (a *admin) revokeService(ctx context.Context, res callerkind.Result, req brokerapi.Request) brokerapi.Response {
 	sr := req.Service
-	e, ok := a.s.services().get(sr.Connection)
-	if !ok || e.Owner != a.p.uid {
+	_, ok := a.s.services().get(a.p.uid, sr.Connection)
+	if !ok {
 		return fail(brokerapi.CodeNotFound, exitcode.Missing, fmt.Errorf("no unit is enrolled for %q", sr.Connection))
 	}
-	removed, err := a.s.services().remove(sr.Connection, sr.Unit)
+	removed, err := a.s.services().remove(a.p.uid, sr.Connection, sr.Unit)
 	if err != nil {
 		return fail(brokerapi.CodeUnavailable, exitcode.OperationFailed, err)
 	}

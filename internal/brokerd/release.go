@@ -117,15 +117,25 @@ func (s *Server) releaseService(ctx context.Context, uid uint32, cgroup string, 
 	if !ok {
 		return s.denyService(ctx, res, sr.Connection, "the caller is not in a service unit")
 	}
-	e, ok := s.services().get(sr.Connection)
-	if !ok {
+	// Several users may enroll the same connection name; the capability, a
+	// random 256-bit value only the enrolling user's unit holds, names the
+	// enrollment, and so its owner.
+	candidates := s.services().named(sr.Connection)
+	if len(candidates) == 0 {
 		return s.denyService(ctx, res, sr.Connection, "no unit is enrolled for the connection")
 	}
 	hash, err := s.services().capHash(sr.Capability)
 	if err != nil {
 		return fail(brokerapi.CodeUnavailable, exitcode.OperationFailed, err)
 	}
-	if !hmac.Equal([]byte(hash), []byte(e.CapHash)) {
+	var e Enrollment
+	found := false
+	for _, c := range candidates {
+		if hmac.Equal([]byte(hash), []byte(c.CapHash)) {
+			e, found = c, true
+		}
+	}
+	if !found {
 		return s.denyService(ctx, res, sr.Connection, "the capability does not match")
 	}
 	var rec *unitRecord
