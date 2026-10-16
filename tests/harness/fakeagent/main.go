@@ -32,7 +32,10 @@ type profile struct {
 	ObservedIn string            `json:"observed_in"`
 	Env        map[string]string `json:"env"`
 	HookConfig string            `json:"hook_config"`
-	HookFormat string            `json:"hook_format"`
+	// HookFile is the hook file's name inside the harness's configuration
+	// directory, as the harness registry names it; HookConfig must end in it.
+	HookFile   string `json:"hook_file"`
+	HookFormat string `json:"hook_format"`
 	// HookEvent is the event the guard registers under, for matcher-group
 	// formats.
 	HookEvent string `json:"hook_event"`
@@ -76,6 +79,9 @@ func main() {
 	p, ok := profiles[*profileName]
 	if !ok {
 		fatal(fmt.Errorf("unknown profile %q", *profileName))
+	}
+	if !strings.HasSuffix(p.HookConfig, p.HookFile) {
+		fatal(fmt.Errorf("profile %q: hook_config %q does not end in hook_file %q", *profileName, p.HookConfig, p.HookFile))
 	}
 
 	var toolInput map[string]any
@@ -223,8 +229,7 @@ func hookPayload(p profile, tool string, in map[string]any, workdir string) []by
 	var v any
 	switch p.Payload {
 	case "gemini":
-		names := map[string]string{"Bash": "run_shell_command", "Read": "read_file", "Glob": "glob", "Grep": "search_file_content"}
-		v = map[string]any{"tool_name": rename(names, tool), "tool_input": in, "cwd": workdir}
+		v = map[string]any{"tool_name": nativeTool(p, tool), "tool_input": in, "cwd": workdir}
 	case "cursor":
 		switch tool {
 		case "Bash":
@@ -236,7 +241,6 @@ func hookPayload(p profile, tool string, in map[string]any, workdir string) []by
 			v = map[string]any{"tool_name": tool, "tool_input": string(raw)}
 		}
 	case "opencode":
-		names := map[string]string{"Bash": "bash", "Read": "read", "Glob": "glob", "Grep": "grep"}
 		args := map[string]any{}
 		for k, val := range in {
 			if k == "file_path" {
@@ -244,7 +248,7 @@ func hookPayload(p profile, tool string, in map[string]any, workdir string) []by
 			}
 			args[k] = val
 		}
-		v = map[string]any{"tool_name": rename(names, tool), "tool_input": args, "cwd": workdir}
+		v = map[string]any{"tool_name": nativeTool(p, tool), "tool_input": args, "cwd": workdir}
 	default:
 		v = map[string]any{"tool_name": tool, "tool_input": in, "cwd": workdir}
 	}
@@ -252,8 +256,15 @@ func hookPayload(p profile, tool string, in map[string]any, workdir string) []by
 	return b
 }
 
-func rename(names map[string]string, tool string) string {
-	if n, ok := names[tool]; ok {
+var nativeNames = map[string]map[string]string{
+	"gemini":   {"Bash": "run_shell_command", "Read": "read_file", "Glob": "glob", "Grep": "search_file_content"},
+	"opencode": {"Bash": "bash", "Read": "read", "Glob": "glob", "Grep": "grep"},
+}
+
+// nativeTool is the name the harness gives a tool; hook matchers are written
+// against it.
+func nativeTool(p profile, tool string) string {
+	if n, ok := nativeNames[p.Payload][tool]; ok {
 		return n
 	}
 	return tool
@@ -273,7 +284,7 @@ func matches(matcher, tool string) bool {
 func runHooks(home string, p profile, tool string, toolInput map[string]any, env []string, workdir string) (string, bool) {
 	payload := hookPayload(p, tool, toolInput, workdir)
 	for _, h := range loadHooks(home, p) {
-		if !matches(h.matcher, tool) {
+		if !matches(h.matcher, nativeTool(p, tool)) {
 			continue
 		}
 		if p.HookFormat == "cursor" && h.event != cursorEvent(tool) {

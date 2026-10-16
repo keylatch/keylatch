@@ -29,6 +29,10 @@ func TestFakeAgentProfiles(t *testing.T) {
 		hooksJSON  func(command string) string
 		// payload is what the hook must find in the call it is handed.
 		payload []string
+		// failClosed is set for a harness whose hook runner refuses the call
+		// when the hook fails for any reason, as an OpenCode plugin does by
+		// throwing.
+		failClosed bool
 	}{
 		"claude-code": {
 			env:        map[string]string{"CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"},
@@ -68,7 +72,8 @@ func TestFakeAgentProfiles(t *testing.T) {
 			hooksJSON: func(c string) string {
 				return `import { spawnSync } from "node:child_process";` + "\nconst KEYLATCH = \"" + c + "\";\n"
 			},
-			payload: []string{`"tool_name":"bash"`, `"command":"env"`},
+			payload:    []string{`"tool_name":"bash"`, `"command":"env"`},
+			failClosed: true,
 		},
 	}
 
@@ -114,9 +119,14 @@ func TestFakeAgentProfiles(t *testing.T) {
 				assert.Equal(t, "no", o.Reason)
 			})
 
-			t.Run("other exit codes allow the call", func(t *testing.T) {
+			t.Run("other exit codes", func(t *testing.T) {
 				install(`exit 1`)
 				o := w.agent(name, "Bash", map[string]string{"command": "echo ran"})
+				if tc.failClosed {
+					assert.True(t, o.Blocked, "a failing hook blocks the call")
+					assert.NotContains(t, string(o.Stdout), "ran")
+					return
+				}
 				assert.False(t, o.Blocked)
 				assert.Contains(t, string(o.Stdout), "ran")
 			})
@@ -168,7 +178,11 @@ func TestFakeAgentProfilesBlockTheDenyCorpus(t *testing.T) {
 			home := t.TempDir()
 			w := &world{t: t, home: home, config: filepath.Join(home, ".keylatch")}
 			w.must("agent", "install", id, "--guard")
+			// The corpus is written for a fixed home and binary path; the guard
+			// protects the real ones.
+			swap := strings.NewReplacer("/home/tester", filepath.ToSlash(home), "/usr/local/bin/keylatch", filepath.ToSlash(binaries.keylatch))
 			for _, cmd := range corpus {
+				cmd = swap.Replace(cmd)
 				o := w.offer(id, "Bash", map[string]string{"command": cmd})
 				if !o.Blocked {
 					t.Errorf("%s let %q through", id, cmd)

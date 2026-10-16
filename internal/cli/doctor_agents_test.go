@@ -55,7 +55,7 @@ func TestDoctorAgentsReportsEachHarness(t *testing.T) {
 	assert.Equal(t, stateInstalled, gemini.Hook)
 	assert.Equal(t, stateInstalled, gemini.MCP)
 	assert.Equal(t, stateInstalled, gemini.Rules)
-	assert.Equal(t, bin, gemini.GuardPath)
+	assert.Equal(t, filepath.ToSlash(bin), gemini.GuardPath, "hook commands use forward slashes on every platform")
 	assert.Empty(t, gemini.Problem)
 	assert.Equal(t, stateMissing, codex.Hook)
 	assert.False(t, codex.Detected)
