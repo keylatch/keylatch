@@ -153,7 +153,7 @@ func TestExtraDigestsBindTheRequest(t *testing.T) {
 func TestExtraDescriptionsNameCountsAndNames(t *testing.T) {
 	apply := syncReq(OpSyncApply, func(s *SyncRequest) { s.Prune = true })
 	action, summary := apply.Describe()
-	if action != "sync.apply" || !strings.Contains(summary, "l (env-file): 1 name(s) A") || !strings.Contains(summary, "DELETE") {
+	if action != "sync.apply" || !strings.Contains(summary, "l (env-file, path .env.local): 1 name(s) A<-c") || !strings.Contains(summary, "DELETE") {
 		t.Fatalf("apply: %s / %s", action, summary)
 	}
 	action, summary = syncReq(OpSyncRotate, func(s *SyncRequest) { s.Name = "A" }).Describe()
