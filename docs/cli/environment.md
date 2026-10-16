@@ -25,6 +25,8 @@ These variables configure the Keylatch runtime. They are read by the CLI process
 | `KEYLATCH_VAULT_PATH` | Override the file backend vault path | No | Never |
 | `KEYLATCH_NAMESPACE` | Override the default namespace (`default`) | No | Never |
 | `KEYLATCH_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | No | Never |
+| `KEYLATCH_CI_SESSION` | Path to the session record `keylatch ci exchange` wrote. While set, `run`, `call` and the MCP server refuse connections outside the record and stop at its expiry. | No | Never |
+| `KEYLATCH_CI_ID_TOKEN` | Default variable `keylatch ci exchange --provider gitlab` reads the job's ID token from (`--token-env` names another). | Yes | Never |
 | `KEYLATCH_EXPERIMENTAL` | Set to `1` to enable all experimental features, including the UI `/experimental` endpoint. Equivalent to setting `experimental_gated = true` in a custom-mode config. | No | Never |
 | ~~`KEYLATCH_EXPERIMENTAL_BACKENDS`~~ | **Deprecated — ignored.** Previously gated the (now-removed) NordPass backend stub. | No | Never |
 

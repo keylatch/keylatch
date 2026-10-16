@@ -274,6 +274,7 @@ func Register(root *cobra.Command) {
 	root.AddCommand(newDenyCmd())
 	root.AddCommand(newLaunchCmd())
 	root.AddCommand(newMintCmd())
+	root.AddCommand(newCICmd())
 	root.AddCommand(newGitCredentialCmd())
 	root.AddCommand(newDockerCredentialCmd())
 	addCmd(root, newKeyCmd(), "advanced")
@@ -760,7 +761,7 @@ func newRunCmd() *cobra.Command {
 			defer auditCleanup()
 			dr := runner.DispatchRunner{
 				Guard:   guardFn,
-				Enforce: enforce.Decide,
+				Enforce: ciScopedEnforce(enforce.Decide),
 				Audit:   audit.AsEmitter(auditLog),
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.

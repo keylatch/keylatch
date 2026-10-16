@@ -59,7 +59,7 @@ func mcpDispatchRunner(env llmcontext.Lookup, emitter audit.Emitter, drivers map
 			return blocked
 		}),
 		Audit:   emitter,
-		Enforce: enforce.Decide,
+		Enforce: ciScopedEnforce(enforce.Decide),
 		Drivers: drivers,
 	}
 }
