@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 //go:embed profiles.json
@@ -175,7 +177,8 @@ func runHooks(home string, p profile, tool string, toolInput map[string]any, env
 		if !matches(h.matcher, tool) {
 			continue
 		}
-		cmd := exec.Command("bash", "-c", h.command)
+		cmd, cancel := bashCommand(h.command)
+		defer cancel()
 		cmd.Env = env
 		cmd.Dir = workdir
 		cmd.Stdin = strings.NewReader(string(payload))
@@ -199,6 +202,17 @@ func runHooks(home string, p profile, tool string, toolInput map[string]any, env
 	return "", false
 }
 
+// toolTimeout ends a tool call that waits on a prompt nobody can answer; the
+// harness counts it as a call that did not obtain anything.
+const toolTimeout = 2 * time.Minute
+
+func bashCommand(script string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), toolTimeout)
+	cmd := exec.CommandContext(ctx, "bash", "-c", script)
+	cmd.WaitDelay = 5 * time.Second
+	return cmd, cancel
+}
+
 func str(m map[string]any, key string) string {
 	s, _ := m[key].(string)
 	return s
@@ -207,7 +221,8 @@ func str(m map[string]any, key string) string {
 func runTool(tool string, in map[string]any, env []string, workdir string) Result {
 	switch tool {
 	case "Bash":
-		cmd := exec.Command("bash", "-c", str(in, "command"))
+		cmd, cancel := bashCommand(str(in, "command"))
+		defer cancel()
 		cmd.Env = env
 		cmd.Dir = workdir
 		var stdout, stderr strings.Builder

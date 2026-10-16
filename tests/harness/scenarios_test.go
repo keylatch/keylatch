@@ -4,6 +4,7 @@ package harness
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -205,8 +207,11 @@ func containmentVerdict(t *testing.T, test string) verdict {
 				names = append(names, s.containment)
 			}
 		}
-		cmd := exec.Command("go", "test", "-tags", "containment", "-count=1", "-v",
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "go", "test", "-tags", "containment", "-count=1", "-v", "-timeout", "12m",
 			"-run", "^("+strings.Join(names, "|")+")$", "./tests/containment/")
+		cmd.WaitDelay = 10 * time.Second
 		cmd.Dir = filepath.Join("..", "..")
 		out, _ := cmd.CombinedOutput()
 		containmentOutput = string(out)

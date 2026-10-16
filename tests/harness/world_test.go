@@ -4,6 +4,7 @@ package harness
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -77,7 +79,7 @@ func newWorld(t *testing.T, profile string) *world {
 
 	// The operator's own config is the one way to a plaintext vault key on a
 	// host with no keyring or terminal.
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS != "windows" {
 		c := config.Default()
 		c.AllowInsecureFileKEK = true
 		if err := config.Save(paths.DefaultConfig(w.operatorHome()), c); err != nil {
@@ -110,6 +112,7 @@ func (w *world) humanEnv() []string {
 		}
 		env = append(env, e)
 	}
+	env = append(env, noKeyringEnv()...)
 	return append(env,
 		"HOME="+w.home,
 		"USERPROFILE="+w.home,
@@ -120,11 +123,32 @@ func (w *world) humanEnv() []string {
 	)
 }
 
+// noKeyringEnv keeps the binary away from the login keychain of a CI runner,
+// where an unlock prompt can never be answered.
+func noKeyringEnv() []string {
+	if runtime.GOOS == "darwin" {
+		return []string{"KEYLATCH_E2E_NO_OS_KEYRING=1"}
+	}
+	return nil
+}
+
+// commandTimeout bounds every process a scenario starts, so a prompt nobody
+// can answer fails the row instead of hanging the run.
+const commandTimeout = 3 * time.Minute
+
+func boundedCommand(name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = 10 * time.Second
+	return cmd, cancel
+}
+
 func (w *world) human(args ...string) (string, string, int) { return w.humanStdin("", args...) }
 
 func (w *world) humanStdin(stdin string, args ...string) (string, string, int) {
 	w.t.Helper()
-	cmd := exec.Command(binaries.keylatch, args...)
+	cmd, cancel := boundedCommand(binaries.keylatch, args...)
+	defer cancel()
 	cmd.Env = w.humanEnv()
 	cmd.Dir = w.home
 	cmd.Stdin = strings.NewReader(stdin)
@@ -200,10 +224,12 @@ func (w *world) agent(profile, tool string, input map[string]string, extraEnv ..
 	// The agent finds keylatch on PATH, as it does after an install; stand-in
 	// vendor CLIs in <home>/bin come first.
 	path := strings.Join([]string{filepath.Join(w.home, "bin"), filepath.Dir(binaries.keylatch), os.Getenv("PATH")}, string(os.PathListSeparator))
-	env := append([]string{"KEYLATCH_CONFIG_DIR=" + w.config, "PATH=" + path}, extraEnv...)
-	cmd := exec.Command(binaries.fakeagent,
+	env := append([]string{"KEYLATCH_CONFIG_DIR=" + w.config, "PATH=" + path}, noKeyringEnv()...)
+	env = append(env, extraEnv...)
+	cmd, cancel := boundedCommand(binaries.fakeagent,
 		"--profile", profile, "--home", w.home, "--tool", tool, "--input", string(in),
 		"--env", strings.Join(env, "\n"))
+	defer cancel()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
