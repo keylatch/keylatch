@@ -3,6 +3,7 @@ package connpolicy
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -160,11 +161,13 @@ func TestStoreRefusesUnsafeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "openrouter.json")
-	if err := os.Chmod(path, 0o666); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Load("openrouter"); err == nil || !strings.Contains(err.Error(), "unsafe permissions") {
-		t.Fatalf("group- and world-writable document: %v", err)
+	if runtime.GOOS != "windows" { // the store does not check permission bits on Windows
+		if err := os.Chmod(path, 0o666); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Load("openrouter"); err == nil || !strings.Contains(err.Error(), "unsafe permissions") {
+			t.Fatalf("group- and world-writable document: %v", err)
+		}
 	}
 	if err := os.WriteFile(path, []byte(`{"schema_version": 2, "connection": "openrouter", "default": "allow"}`), 0o600); err != nil {
 		t.Fatal(err)
