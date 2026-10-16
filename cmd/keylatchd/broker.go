@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 // socket passed by systemd.
 func newBrokerCmd() *cobra.Command {
 	var socket, stateRoot, binary string
+	var service bool
 	cmd := &cobra.Command{
 		Use:   "broker",
 		Short: "Run the system broker (started by keylatchd.service)",
@@ -41,9 +43,7 @@ Windows), so run it through the service manager, not from a shell.
 				}
 				binary = resolved
 			}
-			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
-			defer stop()
-			return brokerd.Run(ctx, brokerd.Options{
+			opts := brokerd.Options{
 				Version:     version.Version,
 				StateRoot:   stateRoot,
 				Socket:      socket,
@@ -54,9 +54,16 @@ Windows), so run it through the service manager, not from a shell.
 				Unsetenv:    os.Unsetenv,
 				RequireLock: true,
 				Out:         cmd.OutOrStdout(),
-			})
+			}
+			if service || brokerd.IsWindowsService() {
+				return brokerd.RunService(brokerd.WindowsServiceName, func(ctx context.Context) error { return brokerd.Run(ctx, opts) })
+			}
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
+			defer stop()
+			return brokerd.Run(ctx, opts)
 		},
 	}
+	cmd.Flags().BoolVar(&service, "service", false, "run under the Windows service control manager")
 	cmd.Flags().StringVar(&socket, "socket", brokerd.DefaultSocket, "broker socket path when systemd does not pass one")
 	cmd.Flags().StringVar(&stateRoot, "state", brokerd.DefaultStateRoot, "state directory")
 	cmd.Flags().StringVar(&binary, "keylatch-bin", "", "keylatch executable the daemon runs for served verbs (default: next to keylatchd)")
