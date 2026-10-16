@@ -89,7 +89,7 @@ func (s *Server) exec(ctx context.Context, conn *net.UnixConn, r *bufio.Reader, 
 		d.child = childInCaller
 		finish(Response{Code: CodeRunLocally}, audit.OutcomeOK)
 		return
-	case !slices.Contains(servedVerbs, req.Verb):
+	case !slices.Contains(servedVerbs, req.Verb) && !isPolicyCheck(req.Verb, req.Args):
 		refuse(Response{Code: CodeBadRequest, ExitCode: exitcode.UserError, Error: fmt.Sprintf("%q is not served by the daemon", req.Verb)})
 		return
 	case req.Verb == "run" && !slices.Contains(req.Args, "--dry-run"):

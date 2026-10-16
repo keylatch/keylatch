@@ -80,6 +80,11 @@ func Privileged(op Op) bool {
 // Request is one client message.
 type Request struct {
 	Op Op `json:"op"`
+	// Signals and Ticket are the agent signals and session ticket from the
+	// client's environment. They can only make the daemon stricter, and the
+	// digest ignores them.
+	Signals []string `json:"signals,omitempty"`
+	Ticket  string   `json:"ticket,omitempty"`
 	// Proof is a presence proof issued for exactly this request.
 	Proof string `json:"proof,omitempty"`
 	// Target is the privileged request OpPresenceBegin asks the human to approve.
@@ -230,6 +235,14 @@ func (r Request) Validate() error {
 	}
 	if len(r.Proof) > 0 && (len(r.Proof) != ProofLen*2 || !isHex(r.Proof)) {
 		return errors.New("malformed proof")
+	}
+	if len(r.Signals) > 64 || len(r.Ticket) > 512 {
+		return errors.New("too many signals or an oversized ticket")
+	}
+	for _, s := range r.Signals {
+		if len(s) > 128 {
+			return errors.New("oversized signal")
+		}
 	}
 	if r.Target != nil {
 		if r.Op != OpPresenceBegin {

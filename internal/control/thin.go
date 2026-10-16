@@ -41,11 +41,15 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 	if verb == gitCredentialVerb {
 		return runGitCredential(lookup, rest, streams), true
 	}
-	if !IsServedVerb(verb) && verb != KeyVerb {
+	if !IsServedVerb(verb) && verb != KeyVerb && !isPolicyCheck(verb, rest) {
 		return 0, false
 	}
 	client, err := NewClient(lookup)
 	if err != nil {
+		if errors.Is(err, ErrBrokerUnreachable) {
+			fmt.Fprintf(streams.ErrOut, "keylatch: %v\n", err)
+			return exitcode.OperationFailed, true
+		}
 		return 0, false
 	}
 
@@ -68,6 +72,12 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 		return 0, false
 	}
 	return report(resp, streams), true
+}
+
+// isPolicyCheck reports whether the invocation asks what policy would decide,
+// which only reads policy and so goes through the daemon.
+func isPolicyCheck(verb string, rest []string) bool {
+	return verb == "policy" && len(rest) > 0 && rest[0] == "check"
 }
 
 // report writes a daemon reply to the caller's streams and returns the exit code.
