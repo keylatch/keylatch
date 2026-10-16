@@ -111,7 +111,8 @@ func TestGolden(t *testing.T) {
 			}
 			want, err := os.ReadFile(golden)
 			require.NoError(t, err, "missing golden; run with -update")
-			assert.Equal(t, string(want), string(got))
+			// A Windows checkout may convert the golden file to CRLF.
+			assert.Equal(t, strings.ReplaceAll(string(want), "\r\n", "\n"), string(got))
 
 			var doc any
 			require.NoError(t, json.Unmarshal(got, &doc))
