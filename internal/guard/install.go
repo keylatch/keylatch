@@ -69,6 +69,17 @@ type InstallOpts struct {
 	// ProjectDir installs into <ProjectDir>/.claude/settings.json instead of global.
 	// When empty the global ~/.claude/settings.json is used. Claude Code only.
 	ProjectDir string
+	// ConfigDirs are extra Claude Code configuration directories to install
+	// into, besides ~/.claude and $CLAUDE_CONFIG_DIR. Claude Code only.
+	ConfigDirs []string
+	// Upgrade rewrites an installed guard entry in place (new binary path,
+	// matcher, timeout). Claude Code only.
+	Upgrade bool
+	// DryRun computes the change and writes nothing. Claude Code only.
+	DryRun bool
+	// KeylatchPath is the binary the hook runs; the running executable when
+	// empty. Claude Code only.
+	KeylatchPath string
 }
 
 // InstallResult carries the result of an Install call.
@@ -85,7 +96,11 @@ type InstallResult struct {
 func Install(agent Agent, opts InstallOpts) (settingsPath string, err error) {
 	switch agent {
 	case AgentClaudeCode:
-		return installClaudeCode(opts)
+		changes, err := InstallClaudeCode(opts)
+		if err != nil {
+			return "", err
+		}
+		return changes[0].Path, nil
 	case AgentOpenCode:
 		return installOpenCode(opts)
 	case AgentCursor, AgentCodex, AgentCopilot, AgentGemini, AgentAntigravity:
@@ -100,15 +115,15 @@ func Install(agent Agent, opts InstallOpts) (settingsPath string, err error) {
 func IsInstalled(agent Agent, opts InstallOpts) (bool, error) {
 	switch agent {
 	case AgentClaudeCode:
-		settingsPath, err := resolveSettingsPath(opts)
+		paths, err := ClaudeSettingsPaths(opts)
 		if err != nil {
 			return false, err
 		}
-		scriptPath, err := guardScriptPath(agent, opts)
+		settings, err := loadSettings(paths[0])
 		if err != nil {
 			return false, err
 		}
-		return configReferences(settingsPath, hookCommand(agent, scriptPath))
+		return hasCurrentGuard(settings), nil
 
 	case AgentOpenCode:
 		home, err := os.UserHomeDir()
@@ -145,53 +160,6 @@ func configReferences(path, command string) (bool, error) {
 }
 
 // --- agent-specific install functions ---
-
-func installClaudeCode(opts InstallOpts) (string, error) {
-	// Resolve the settings file path.
-	settingsPath, err := resolveSettingsPath(opts)
-	if err != nil {
-		return "", err
-	}
-
-	// Write the guard script to ~/.keylatch/hooks/ (or project-local equivalent).
-	scriptPath, err := writeGuardScript(AgentClaudeCode, opts)
-	if err != nil {
-		return "", err
-	}
-
-	// Load (or create) the settings file.
-	settings, err := loadSettings(settingsPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Repair the legacy array-format "hooks" field first (written by older
-	// keylatch versions; silently ignored by current Claude Code), so an
-	// already-present-but-broken hook gets fixed instead of skipped.
-	settings, migrated := migrateLegacyHooks(settings)
-
-	// Replace entries written by earlier versions (a bare script path, the old
-	// per-agent scripts) with the current command.
-	command := hookCommand(AgentClaudeCode, scriptPath)
-	pruned := pruneStaleHooks(settings, command)
-
-	if hookAlreadyInstalled(settings, command) {
-		if migrated || pruned {
-			if err := saveSettings(settingsPath, settings); err != nil {
-				return "", err
-			}
-		}
-		removeLegacyScripts(AgentClaudeCode, opts)
-		return settingsPath, nil
-	}
-
-	settings = appendClaudeCodePreToolUseHook(settings, command)
-	if err := saveSettings(settingsPath, settings); err != nil {
-		return "", err
-	}
-	removeLegacyScripts(AgentClaudeCode, opts)
-	return settingsPath, nil
-}
 
 // installHarness wires the shared guard script into a harness that reads a
 // JSON hooks file. Each harness gets its own entry shape and `--harness` flag.
@@ -422,18 +390,6 @@ func installOpenCode(opts InstallOpts) (string, error) {
 
 // --- internal helpers ---
 
-// resolveSettingsPath returns the path to the Claude Code settings JSON file.
-func resolveSettingsPath(opts InstallOpts) (string, error) {
-	if opts.ProjectDir != "" {
-		return filepath.Join(opts.ProjectDir, ".claude", "settings.json"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-	}
-	return filepath.Join(home, ".claude", "settings.json"), nil
-}
-
 // guardScriptDir returns the directory where guard scripts are stored.
 func guardScriptDir(agent Agent, opts InstallOpts) (string, error) {
 	if opts.ProjectDir != "" {
@@ -521,11 +477,10 @@ func saveSettings(path string, settings map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("install-guard: create settings dir: %w", err)
 	}
-	data, err := json.MarshalIndent(settings, "", " ")
+	data, err := encodeSettings(settings)
 	if err != nil {
-		return fmt.Errorf("install-guard: marshal settings: %w", err)
+		return err
 	}
-	data = append(data, '\n')
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".settings-*.tmp")
 	if err != nil {
@@ -618,30 +573,6 @@ func migrateLegacyHooks(settings map[string]any) (map[string]any, bool) {
 	}
 	settings["hooks"] = hooksObj
 	return settings, true
-}
-
-// appendClaudeCodePreToolUseHook adds a PreToolUse hook entry running command
-// using the Claude Code settings schema, where "hooks" is an object mapping
-// event names to matcher groups:
-//
-//	"hooks": { "PreToolUse": [{ "hooks": [{ "type": "command", "command": "<command>" }] }] }
-func appendClaudeCodePreToolUseHook(settings map[string]any, command string) map[string]any {
-	hooksObj, ok := settings["hooks"].(map[string]any)
-	if !ok {
-		hooksObj = map[string]any{}
-	}
-
-	arr, _ := hooksObj["PreToolUse"].([]any)
-	hooksObj["PreToolUse"] = append(arr, map[string]any{
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": command,
-			},
-		},
-	})
-	settings["hooks"] = hooksObj
-	return settings
 }
 
 // legacyGuardRe matches the per-agent scripts older versions installed under

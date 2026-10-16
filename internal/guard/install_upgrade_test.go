@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -49,7 +48,7 @@ func TestInstall_HookCommandSurvivesSpaceInHome(t *testing.T) {
 		guard.AgentAntigravity: `{"toolCall":{"name":"run_command","args":{"CommandLine":"keylatch get x y"}}}`,
 		guard.AgentGemini:      `{"tool_name":"run_shell_command","tool_input":{"command":"keylatch get x y"}}`,
 	}
-	for _, agent := range []guard.Agent{guard.AgentClaudeCode, guard.AgentCodex, guard.AgentGemini, guard.AgentCursor, guard.AgentCopilot, guard.AgentAntigravity} {
+	for _, agent := range []guard.Agent{guard.AgentCodex, guard.AgentGemini, guard.AgentCursor, guard.AgentCopilot, guard.AgentAntigravity} {
 		t.Run(string(agent), func(t *testing.T) {
 			setHome(t, filepath.Join(t.TempDir(), "h o me"))
 			path, err := guard.Install(agent, guard.InstallOpts{})
@@ -77,7 +76,8 @@ func TestInstall_HookCommandSurvivesSpaceInHome(t *testing.T) {
 
 func TestInstall_ClaudeCodeReplacesBareCommand(t *testing.T) {
 	dir := t.TempDir()
-	opts := guard.InstallOpts{ProjectDir: dir}
+	bin := filepath.Join(t.TempDir(), "keylatch")
+	opts := guard.InstallOpts{ProjectDir: dir, KeylatchPath: bin}
 	scriptPath := filepath.Join(dir, ".keylatch", "hooks", "block-keylatch-exfiltration.sh")
 	settingsPath := filepath.Join(dir, ".claude", "settings.json")
 	bare := mustMarshal(t, map[string]any{"hooks": map[string]any{"PreToolUse": []any{
@@ -106,9 +106,7 @@ func TestInstall_ClaudeCodeReplacesBareCommand(t *testing.T) {
 	installed, err = guard.IsInstalled(guard.AgentClaudeCode, opts)
 	require.NoError(t, err)
 	assert.True(t, installed)
-	if runtime.GOOS != "windows" {
-		assert.Equal(t, `"`+scriptPath+`"`, commands[0])
-	}
+	assert.Equal(t, `"`+filepath.ToSlash(bin)+`" guard hook --harness claude-code`, commands[0])
 }
 
 func TestInstall_RemovesOldPerAgentGuards(t *testing.T) {

@@ -32,8 +32,6 @@ type harnessFixture struct {
 }
 
 var harnessFixtures = []harnessFixture{
-	{guard.AgentClaudeCode, ".claude/settings.json", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"direnv exec . env"}}`,
-		`{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"{HOME}/.ssh/id_rsa"}}`, `"permissionDecision":"deny"`, 2, 1},
 	{guard.AgentCursor, ".cursor/hooks.json", `{"hook_event_name":"beforeShellExecution","command":"direnv export bash","cwd":"/work"}`,
 		`{"hook_event_name":"beforeReadFile","file_path":"/work/a.go","content":"","attachments":[{"type":"file","file_path":"{HOME}/.aws/credentials"}]}`, `"permission":"deny"`, 2, 2},
 	{guard.AgentCodex, ".codex/hooks.json", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"direnv exec . env"}}`, "", `"permissionDecision":"deny"`, 2, 1},
@@ -64,7 +62,7 @@ func runHook(t *testing.T, command, payload string) (int, string, string) {
 func hookCommands(v any, out *[]string) {
 	switch t := v.(type) {
 	case string:
-		if strings.Contains(t, "block-keylatch-exfiltration.sh") {
+		if strings.Contains(t, "block-keylatch-exfiltration.sh") || strings.HasSuffix(t, " guard hook --harness claude-code") {
 			*out = append(*out, t)
 		}
 	case []any:

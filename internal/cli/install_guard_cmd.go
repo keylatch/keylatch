@@ -30,7 +30,15 @@ from an LLM agent. Supported agents:
   opencode      TypeScript plugin (tool.execute.before hook)
   antigravity   PreToolUse hook in ~/.gemini/config/hooks.json
 
-The guard is a shell script (or TypeScript plugin for opencode) that runs before
+For Claude Code the guard is 'keylatch guard hook --harness claude-code': it parses
+each shell command and checks each file tool's paths, and denies on a credential
+read, a secret-manager call or an environment dump (exit 2 plus the deny JSON).
+install-guard merges it into ~/.claude/settings.json and, when set,
+$CLAUDE_CONFIG_DIR/settings.json, keeping every other setting and hook; --config-dir
+adds directories, --upgrade refreshes an installed entry, --dry-run prints a diff.
+The previous file is saved as settings.json.keylatch.bak.
+
+The other harnesses run a shell script (or a TypeScript plugin for opencode) before
 every tool call. When it detects a credential exfiltration pattern (keylatch get,
 secret-manager reads, env dumps, direnv/mise/atuin dumps, ...) it exits 2 and
 prints the harness's deny JSON, which blocks the tool call.
@@ -61,6 +69,12 @@ Use --list to show all supported agents with their hook mechanism type.`,
 		"install into .claude/settings.json in the current directory instead of global (claude-code only)")
 	cmd.Flags().BoolVar(&list, "list", false,
 		"list all supported agents with their hook mechanism type")
+	cmd.Flags().Bool("upgrade", false,
+		"refresh an installed guard entry in place: new binary path, matcher and timeout (claude-code only)")
+	cmd.Flags().Bool("dry-run", false,
+		"print a unified diff of the change and write nothing (claude-code only)")
+	cmd.Flags().StringSlice("config-dir", nil,
+		"also install into this Claude Code configuration directory; repeatable (claude-code only)")
 
 	return cmd
 }
@@ -144,6 +158,32 @@ func parseGuardAgent(agentName string) (guard.Agent, error) {
 	return agent, nil
 }
 
+// runInstallClaudeGuard merges the Go guard into every Claude Code settings
+// file, or with --dry-run prints what it would change.
+func runInstallClaudeGuard(cmd *cobra.Command, opts guard.InstallOpts) error {
+	changes, err := guard.InstallClaudeCode(opts)
+	if err != nil {
+		return fmt.Errorf("install-guard: %w", err)
+	}
+	w := cmd.OutOrStdout()
+	for _, c := range changes {
+		switch {
+		case c.Changed && opts.DryRun:
+			fmt.Fprint(w, c.Diff)
+		case c.Changed && c.Backup != "":
+			fmt.Fprintf(w, "Hook written to: %s (previous file saved as %s)\n", c.Path, c.Backup)
+		case c.Changed:
+			fmt.Fprintf(w, "Hook written to: %s\n", c.Path)
+		default:
+			fmt.Fprintf(w, "Hook already installed in: %s (use --upgrade to refresh it)\n", c.Path)
+		}
+	}
+	if !opts.DryRun {
+		fmt.Fprintln(w, "\nTo verify: keylatch doctor")
+	}
+	return nil
+}
+
 func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 	agent, err := parseGuardAgent(agentName)
 	if err != nil {
@@ -154,6 +194,15 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 	if project {
 		opts.ProjectDir = "."
 	}
+	opts.Upgrade, _ = cmd.Flags().GetBool("upgrade")
+	opts.DryRun, _ = cmd.Flags().GetBool("dry-run")
+	opts.ConfigDirs, _ = cmd.Flags().GetStringSlice("config-dir")
+	if agent != guard.AgentClaudeCode && (opts.Upgrade || opts.DryRun || len(opts.ConfigDirs) > 0) {
+		return fmt.Errorf("install-guard: --upgrade, --dry-run and --config-dir apply to claude-code only")
+	}
+	if agent == guard.AgentClaudeCode {
+		return runInstallClaudeGuard(cmd, opts)
+	}
 
 	settingsPath, err := guard.Install(agent, opts)
 	if err != nil {
@@ -162,10 +211,6 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 
 	w := cmd.OutOrStdout()
 	switch agent {
-	case guard.AgentClaudeCode:
-		fmt.Fprintln(w, "Guard installed for Claude Code.")
-		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
-		fmt.Fprintln(w, "Run 'keylatch install-guard claude-code' again to update.")
 	case guard.AgentCursor:
 		fmt.Fprintln(w, "Guard installed for Cursor.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)

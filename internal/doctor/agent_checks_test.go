@@ -113,15 +113,27 @@ func TestDoctorGuardCurrent(t *testing.T) {
 	assert.True(t, checks["guard.current"].OK, checks["guard.current"].Detail)
 	assert.True(t, checks["guard.matcher"].OK, checks["guard.matcher"].Detail)
 
-	// An older script fails the version check with a command as its fix.
+	// The shell script of an earlier version fails the currency check with a
+	// command as its fix.
 	script := filepath.Join(home, ".keylatch", "hooks", "block-keylatch-exfiltration.sh")
-	require.NoError(t, os.WriteFile(script, []byte("#!/bin/bash\n# keylatch-hook-version: 1\n"), 0o700))
+	settings := filepath.Join(claudeDir, "settings.json")
+	require.NoError(t, os.WriteFile(settings,
+		[]byte(`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"`+filepath.ToSlash(script)+`"}]}]}}`), 0o600))
+	checks = run()
+	assert.True(t, checks["guard.installed"].OK)
+	assert.False(t, checks["guard.current"].OK)
+	assert.Equal(t, "Run `keylatch install-guard claude-code --upgrade` to replace it.", checks["guard.current"].Fix)
+
+	// A guard whose binary is gone fails the same check.
+	missing := filepath.ToSlash(filepath.Join(home, "gone", "keylatch"))
+	require.NoError(t, os.WriteFile(settings,
+		[]byte(`{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"\"`+missing+`\" guard hook --harness claude-code"}]}]}}`), 0o600))
 	checks = run()
 	assert.False(t, checks["guard.current"].OK)
-	assert.Equal(t, "Run `keylatch install-guard claude-code` to refresh it.", checks["guard.current"].Fix)
+	assert.Contains(t, checks["guard.current"].Detail, missing)
 
 	// A hook that covers only some tools fails the matcher check.
-	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "settings.json"),
+	require.NoError(t, os.WriteFile(settings,
 		[]byte(`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"`+filepath.ToSlash(script)+`"}]}]}}`), 0o600))
 	checks = run()
 	assert.False(t, checks["guard.matcher"].OK)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/guard"
@@ -14,19 +13,14 @@ import (
 
 func TestInstall_ClaudeCode_CreatesSettingsAndScript(t *testing.T) {
 	dir := t.TempDir()
-	opts := guard.InstallOpts{ProjectDir: dir}
+	opts := guard.InstallOpts{ProjectDir: dir, KeylatchPath: filepath.Join(t.TempDir(), "keylatch")}
 
 	settingsPath, err := guard.Install(guard.AgentClaudeCode, opts)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(dir, ".claude", "settings.json"), settingsPath)
 
-	// Script must exist and be executable (Unix only — Windows has no execute bit).
-	scriptPath := filepath.Join(dir, ".keylatch", "hooks", "block-keylatch-exfiltration.sh")
-	info, err := os.Stat(scriptPath)
-	require.NoError(t, err, "guard script must exist on disk")
-	if runtime.GOOS != "windows" {
-		assert.NotZero(t, info.Mode()&0o100, "guard script must be executable")
-	}
+	// The Go guard needs no script on disk.
+	assert.NoFileExists(t, filepath.Join(dir, ".keylatch", "hooks", "block-keylatch-exfiltration.sh"))
 
 	// Settings file must contain the hook.
 	data, err := os.ReadFile(settingsPath)
@@ -48,11 +42,9 @@ func TestInstall_ClaudeCode_CreatesSettingsAndScript(t *testing.T) {
 	cmd, ok := inner[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "command", cmd["type"])
-	if runtime.GOOS == "windows" {
-		assert.Equal(t, `bash "`+filepath.ToSlash(scriptPath)+`"`, cmd["command"])
-	} else {
-		assert.Equal(t, `"`+scriptPath+`"`, cmd["command"])
-	}
+	assert.Equal(t, `"`+filepath.ToSlash(opts.KeylatchPath)+`" guard hook --harness claude-code`, cmd["command"])
+	assert.EqualValues(t, 10, cmd["timeout"])
+	assert.Equal(t, "*", group["matcher"])
 }
 
 func TestInstall_ClaudeCode_Idempotent(t *testing.T) {

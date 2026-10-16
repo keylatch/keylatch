@@ -16,7 +16,11 @@ func Uninstall(agent Agent, opts InstallOpts) (settingsPath string, removed bool
 	}
 	switch agent {
 	case AgentClaudeCode:
-		settingsPath, err = resolveSettingsPath(opts)
+		settingsPath, removed, err = uninstallClaudeCode(opts)
+		if err != nil {
+			return "", false, err
+		}
+		return settingsPath, removeUnusedScript(agent, opts) || removed, nil
 	case AgentCursor, AgentCodex, AgentCopilot, AgentGemini, AgentAntigravity:
 		var home string
 		if home, err = os.UserHomeDir(); err != nil {
@@ -25,9 +29,6 @@ func Uninstall(agent Agent, opts InstallOpts) (settingsPath string, removed bool
 		settingsPath = harnessConfigPath(agent, home)
 	default:
 		return "", false, fmt.Errorf("install-guard: --uninstall is not supported for %q; remove its guard by hand", agent)
-	}
-	if err != nil {
-		return "", false, err
 	}
 	scriptPath, err := guardScriptPath(agent, opts)
 	if err != nil {
@@ -50,15 +51,17 @@ func Uninstall(agent Agent, opts InstallOpts) (settingsPath string, removed bool
 			return "", false, err
 		}
 	}
-	if scriptInUse(agent, opts) {
-		return settingsPath, removed, nil
+	return settingsPath, removeUnusedScript(agent, opts) || removed, nil
+}
+
+// removeUnusedScript deletes the shared guard script unless another agent's
+// configuration still runs it, and reports whether a file was removed.
+func removeUnusedScript(agent Agent, opts InstallOpts) bool {
+	scriptPath, err := guardScriptPath(agent, opts)
+	if err != nil || scriptInUse(agent, opts) {
+		return false
 	}
-	if err := os.Remove(scriptPath); err == nil {
-		removed = true
-	} else if !os.IsNotExist(err) {
-		return settingsPath, removed, fmt.Errorf("install-guard: remove %q: %w", scriptPath, err)
-	}
-	return settingsPath, removed, nil
+	return os.Remove(scriptPath) == nil
 }
 
 // scriptInUse reports whether a configuration other than agent's still runs the
@@ -69,7 +72,7 @@ func scriptInUse(agent Agent, opts InstallOpts) bool {
 		return false
 	}
 	for _, other := range SupportedAgents {
-		if other == agent || other == AgentOpenCode {
+		if other == agent || other == AgentOpenCode || other == AgentClaudeCode {
 			continue
 		}
 		if installed, err := IsInstalled(other, opts); installed || err != nil {

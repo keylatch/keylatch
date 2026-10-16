@@ -1,5 +1,7 @@
 # Keylatch Agent Guard — `block-keylatch-exfiltration.sh`
 
+> Claude Code no longer runs this script: `keylatch install-guard claude-code` installs `keylatch guard hook --harness claude-code`, which parses commands with a shell syntax tree (`internal/guard/hook`). This script is the shared guard of the other harnesses (Codex, Cursor, Gemini CLI, Copilot, Antigravity) until each has a structured installer, and `deny-corpus.test.sh` runs it against the same payloads.
+
 ## What this does
 
 This is a **Layer 2 defence** for Claude Code (and compatible agents that support `preToolUse` hooks). It intercepts `Bash` and `Read` tool calls before they execute and blocks patterns that could exfiltrate credentials or bypass the keylatch CLI's internal guard (Layer 1).
