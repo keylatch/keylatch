@@ -239,6 +239,11 @@ func (t Target) validate(at string, repo RepoChecker) error {
 		if t.Credential == "" {
 			return fmt.Errorf("%s.credential: required", at)
 		}
+		if t.Link != "" {
+			if err := validateLinkPath(at+".link", t.Link); err != nil {
+				return err
+			}
+		}
 		for _, f := range [][2]string{{"repo", t.Repo}, {"path", t.Path}} {
 			if err := forbid(f[0], f[1]); err != nil {
 				return err
@@ -276,6 +281,25 @@ func (t Target) validate(at string, repo RepoChecker) error {
 		return validateEnvFilePath(at+".path", t.Path, repo)
 	default:
 		return fmt.Errorf("%s.type: %q is not vercel, github-actions or env-file", at, t.Type)
+	}
+	return nil
+}
+
+// validateLinkPath checks the path of a .vercel/project.json the daemon's
+// client reads: relative, inside the repository, and with no ".." element at
+// all, so a path that only looks like it stays inside cannot be used to read
+// another file's project and team ids.
+func validateLinkPath(at, p string) error {
+	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) || filepath.VolumeName(p) != "" || (len(p) > 1 && p[1] == ':') {
+		return fmt.Errorf("%s: must be relative to the repository, not absolute", at)
+	}
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return fmt.Errorf("%s: must not contain ..", at)
+		}
+	}
+	if strings.ContainsRune(p, 0) {
+		return fmt.Errorf("%s: invalid path", at)
 	}
 	return nil
 }

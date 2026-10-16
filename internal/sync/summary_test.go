@@ -42,3 +42,21 @@ func TestVerifyHostKeepsAnUnparsableURLVisible(t *testing.T) {
 		t.Fatalf("unparsable = %q", got)
 	}
 }
+
+func TestVercelLinkPathStaysInsideTheRepository(t *testing.T) {
+	manifest := func(link string) []byte {
+		return []byte("version: 1\ntargets:\n  web: {type: vercel, link: \"" + link + "\", credential: v}\nvars:\n  - {name: A, from: {connection: c}, to: {web: [production]}}\n")
+	}
+	for _, ok := range []string{".vercel/project.json", "apps/web/.vercel/project.json", "a..b/project.json"} {
+		if _, err := Parse(manifest(ok), nil); err != nil {
+			t.Errorf("%s refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{
+		"../x/.vercel/project.json", "a/../../x", "a/../b/project.json", "/etc/passwd", `\\share\x`, `a\..\b`, "..", "C:/x/project.json",
+	} {
+		if _, err := Parse(manifest(bad), nil); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+}
