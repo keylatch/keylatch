@@ -193,7 +193,7 @@ pass "/health returns {status:ok}"
 log "Creating gateway token..."
 TOKEN_OUTPUT=$(with_presence "$KEYLATCH_BIN" gateway token create test-e2e-actor \
   --allow "openrouter.chat.completion" \
-  --ttl 1h)
+  --ttl 1h) || { printf '%s\n' "$TOKEN_OUTPUT" >&2; fail "token create failed"; }
 GATEWAY_TOKEN=$(echo "$TOKEN_OUTPUT" | grep '^token:' | awk '{print $2}')
 TOKEN_ID=$(echo "$TOKEN_OUTPUT" | grep '^id:' | awk '{print $2}')
 TOKEN_ACCESSOR=$(echo "$TOKEN_OUTPUT" | grep '^accessor:' | awk '{print $2}')
@@ -217,7 +217,7 @@ pass "missing token → 401"
 
 log "Creating a sentry-scoped token to verify audience isolation..."
 SENTRY_TOKEN_OUTPUT=$(with_presence "$KEYLATCH_BIN" gateway token create sentry-actor \
-  --allow "sentry.error_reporting" --ttl 1h)
+  --allow "sentry.error_reporting" --ttl 1h) || { printf '%s\n' "$SENTRY_TOKEN_OUTPUT" >&2; fail "sentry token create failed"; }
 SENTRY_TOKEN=$(echo "$SENTRY_TOKEN_OUTPUT" | grep '^token:' | awk '{print $2}')
 
 log "Verifying sentry token on openrouter route → 403..."
