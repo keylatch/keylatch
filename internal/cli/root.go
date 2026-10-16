@@ -191,6 +191,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newUICmd(), "start")
 	addCmd(root, newBootstrapCmd(), "start")
 	addCmd(root, newInstallGuardCmd(), "start")
+	addCmd(root, newGuardCmd(), "start")
 	addHelpTopics(root)
 
 	// --- Daily Use ---

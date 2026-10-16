@@ -28,7 +28,10 @@ for platform in "${RELEASE_PLATFORMS[@]}"; do
   archives+=("keylatch_${version}_${platform}.${ext}")
 done
 checksums="keylatch-${version}_checksums.txt"
-signed=("${archives[@]}" "$checksums" "keylatch-${tag}.cdx.json" "keylatch-${tag}.spdx.json")
+# The conformance test build is signed and checksummed like the CLI archives
+# but is not part of the SLSA subject set checked below.
+testendpoint="keylatch-testendpoint_${version}_linux_amd64.tar.gz"
+signed=("${archives[@]}" "$testendpoint" "$checksums" "keylatch-${tag}.cdx.json" "keylatch-${tag}.spdx.json")
 provenance="keylatch-${tag}-provenance.intoto.jsonl"
 
 shopt -s nullglob
@@ -49,7 +52,7 @@ if ((${#missing[@]} > 0)); then
   die "release $tag is incomplete (${#missing[@]} missing files)"
 fi
 
-for a in "${archives[@]}"; do
+for a in "${archives[@]}" "$testendpoint"; do
   grep -qE "^[0-9a-f]{64}  ${a//./\\.}\$" "$dir/$checksums" || die "$checksums does not list $a"
 done
 (cd "$dir" && sha256sum --quiet --strict -c "$checksums") || die "checksum mismatch in $dir"

@@ -118,7 +118,8 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_BW_SERVER` | Bitwarden/Vaultwarden server URL | No | Never | — |
 | `KEYLATCH_BW_FOLDER` | Bitwarden folder filter | No | Never | — |
 | `KEYLATCH_BW_COLLECTION` | Bitwarden collection filter | No | Never | — |
-| `KEYLATCH_BW_SESSION_DIR` | Directory for cached Bitwarden session tokens and expiry metadata (default: `~/.keylatch/sessions`) | Yes | Never | — |
+| `KEYLATCH_BW_SESSION_DIR` | Directory for the sealed Bitwarden session and its expiry metadata (default: `<config dir>/sessions`) | Yes | Never | — |
+| `KEYLATCH_TEST_GITHUB_API_URL` | GitHub API root for GitHub App requests; read only by the conformance test build (`mint_test_endpoint`), ignored by every other build (see [mint conformance](../mint-conformance.md)) | No | Never | — |
 | `KEYLATCH_PROTON_PASS_BIN` | Override path to the Proton Pass CLI binary | No | Never | — |
 | `KEYLATCH_PROTON_PASS_VAULT` | Proton Pass vault name | No | Never | — |
 | `KEYLATCH_PROTON_PASS_ITEM_PREFIX` | Prefix for Proton Pass item names | No | Never | — |

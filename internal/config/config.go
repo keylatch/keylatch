@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 // currentVersion is the schema version this code understands.
@@ -177,7 +178,14 @@ type BWConfig struct {
 	Collection string `json:"collection,omitempty"`
 	// OrganizationID is the Bitwarden organization the vault belongs to.
 	OrganizationID string `json:"organization_id,omitempty"`
-	Bin            string `json:"bin"`
+	// Namespaces maps a namespace to the name of an organization collection
+	// (for example "Work/infra"). A namespace that is not listed is refused.
+	// It needs OrganizationID and replaces Folder and Collection.
+	Namespaces map[string]string `json:"namespaces,omitempty"`
+	// SessionTTL is how long `keylatch bw unlock` keeps a session, as a Go
+	// duration (default 1h, at most 8h).
+	SessionTTL string `json:"session_ttl,omitempty"`
+	Bin        string `json:"bin"`
 
 	// Forward-compat team-mode fields. Not interpreted in single-user mode.
 	ServiceAccountTokenRef string `json:"service_account_token_ref,omitempty"`
@@ -199,8 +207,33 @@ func (c *BWConfig) Validate() error {
 	if c.Folder != "" && c.Collection != "" {
 		return ErrBWMutualExclusion{}
 	}
+	if len(c.Namespaces) > 0 {
+		if c.OrganizationID == "" {
+			return fmt.Errorf("bw.namespaces needs bw.organization_id")
+		}
+		if c.Folder != "" || c.Collection != "" {
+			return fmt.Errorf("bw.namespaces replaces bw.folder and bw.collection; set only one way to place items")
+		}
+		for ns, coll := range c.Namespaces {
+			if strings.TrimSpace(ns) == "" || strings.TrimSpace(coll) == "" {
+				return fmt.Errorf("bw.namespaces: a namespace and its collection must both be non-empty")
+			}
+		}
+	}
+	if c.SessionTTL != "" {
+		d, err := time.ParseDuration(c.SessionTTL)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("bw.session_ttl %q: use a positive duration such as 1h", c.SessionTTL)
+		}
+		if d > maxBWSessionTTL {
+			return fmt.Errorf("bw.session_ttl %q is above the maximum of %s", c.SessionTTL, maxBWSessionTTL)
+		}
+	}
 	return nil
 }
+
+// maxBWSessionTTL is the longest a cached Bitwarden session may live.
+const maxBWSessionTTL = 8 * time.Hour
 
 // AuditConfig controls audit logging.
 type AuditConfig struct {

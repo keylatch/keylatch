@@ -28,4 +28,4 @@ func ScriptVersion(script []byte) int {
 
 // ClaudeCodeVersion is the version of the Claude Code guard script this build
 // installs.
-func ClaudeCodeVersion() int { return ScriptVersion(ClaudeCodeScript) }
+func ClaudeCodeVersion() int { return ScriptVersion(GuardScript) }

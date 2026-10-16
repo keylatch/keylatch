@@ -1,0 +1,138 @@
+package guard_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/keylatch/keylatch/internal/guard"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestScriptVersion(t *testing.T) {
+	assert.Equal(t, 3, guard.ScriptVersion([]byte("#!/bin/sh\n# keylatch-hook-version: 3\nexit 0\n")))
+	assert.Equal(t, 0, guard.ScriptVersion([]byte("#!/bin/sh\n# keylatch-hook-version: three\n")))
+	assert.Equal(t, 0, guard.ScriptVersion([]byte("#!/bin/sh\nexit 0\n")))
+	assert.Positive(t, guard.ClaudeCodeVersion())
+	assert.Equal(t, guard.ScriptVersion(guard.GuardScript), guard.ClaudeCodeVersion())
+}
+
+func TestProtectedPathsFromScript(t *testing.T) {
+	assert.Contains(t, guard.ProtectedPaths(), ".ssh")
+	saved := guard.GuardScript
+	t.Cleanup(func() { guard.GuardScript = saved })
+	guard.GuardScript = []byte("no list here")
+	assert.Nil(t, guard.ProtectedPaths())
+}
+
+func TestEveryAgentInstallsDetectsAndUninstalls(t *testing.T) {
+	for _, agent := range guard.SupportedAgents {
+		t.Run(string(agent), func(t *testing.T) {
+			setHome(t, filepath.Join(t.TempDir(), "home"))
+			t.Setenv("CLAUDE_CONFIG_DIR", "")
+			opts := guard.InstallOpts{KeylatchPath: filepath.Join(t.TempDir(), "keylatch")}
+
+			ok, err := guard.IsInstalled(agent, opts)
+			require.NoError(t, err)
+			assert.False(t, ok)
+
+			_, err = guard.Install(agent, opts)
+			require.NoError(t, err)
+			ok, err = guard.IsInstalled(agent, opts)
+			require.NoError(t, err)
+			assert.True(t, ok)
+
+			_, removed, err := guard.Uninstall(agent, opts)
+			require.NoError(t, err)
+			assert.True(t, removed)
+			ok, err = guard.IsInstalled(agent, opts)
+			require.NoError(t, err)
+			assert.False(t, ok)
+		})
+	}
+}
+
+func TestUnsupportedAgentIsRefused(t *testing.T) {
+	setHome(t, t.TempDir())
+	_, err := guard.IsInstalled("nope", guard.InstallOpts{})
+	assert.ErrorContains(t, err, "unsupported agent")
+	_, _, err = guard.Uninstall("nope", guard.InstallOpts{})
+	assert.ErrorContains(t, err, "not supported")
+}
+
+func TestInstallFailsWithoutAUsableHome(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "afile")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
+	for _, agent := range guard.SupportedAgents {
+		t.Run("home is a file/"+string(agent), func(t *testing.T) {
+			t.Setenv("HOME", file)
+			t.Setenv("USERPROFILE", file)
+			t.Setenv("COPILOT_HOME", "")
+			t.Setenv("CLAUDE_CONFIG_DIR", "")
+			_, err := guard.Install(agent, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
+			assert.Error(t, err)
+			_, _, err = guard.Uninstall(agent, guard.InstallOpts{})
+			if agent != guard.AgentOpenCode {
+				assert.Error(t, err)
+			}
+		})
+		t.Run("home unset/"+string(agent), func(t *testing.T) {
+			t.Setenv("HOME", "")
+			t.Setenv("USERPROFILE", "")
+			t.Setenv("CLAUDE_CONFIG_DIR", "")
+			_, err := guard.Install(agent, guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
+			assert.Error(t, err)
+			_, err = guard.IsInstalled(agent, guard.InstallOpts{})
+			assert.Error(t, err)
+			_, _, err = guard.Uninstall(agent, guard.InstallOpts{})
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestUnreadableSettingsFailTheInstall(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	setHome(t, home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	settings := filepath.Join(home, ".claude", "settings.json")
+	require.NoError(t, os.MkdirAll(settings, 0o700), "a directory where the file should be")
+
+	_, err := guard.InstallClaudeCode(guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
+	assert.Error(t, err)
+	_, err = guard.IsInstalled(guard.AgentClaudeCode, guard.InstallOpts{})
+	assert.Error(t, err)
+	_, _, err = guard.Uninstall(guard.AgentClaudeCode, guard.InstallOpts{})
+	assert.Error(t, err)
+}
+
+func TestInstallFailsWhenTheBackupCannotBeWritten(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	setHome(t, home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	settings := filepath.Join(home, ".claude", "settings.json")
+	writeFile(t, settings, `{"theme":"dark"}`)
+	require.NoError(t, os.MkdirAll(settings+".keylatch.bak", 0o700), "a directory where the backup should be")
+
+	_, err := guard.InstallClaudeCode(guard.InstallOpts{KeylatchPath: "/opt/keylatch"})
+	assert.ErrorContains(t, err, "backup")
+	data, readErr := os.ReadFile(settings)
+	require.NoError(t, readErr)
+	assert.JSONEq(t, `{"theme":"dark"}`, string(data), "the settings are untouched when the backup fails")
+}
+
+func TestUninstallKeepsScriptForAnotherAgentAndOtherHarnessEntries(t *testing.T) {
+	setHome(t, filepath.Join(t.TempDir(), "home"))
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	opts := guard.InstallOpts{KeylatchPath: "/opt/keylatch"}
+	for _, a := range []guard.Agent{guard.AgentClaudeCode, guard.AgentGemini, guard.AgentAntigravity} {
+		_, err := guard.Install(a, opts)
+		require.NoError(t, err)
+	}
+	_, removed, err := guard.Uninstall(guard.AgentAntigravity, opts)
+	require.NoError(t, err)
+	assert.True(t, removed)
+	ok, err := guard.IsInstalled(guard.AgentGemini, opts)
+	require.NoError(t, err)
+	assert.True(t, ok, "removing one harness leaves the others")
+}

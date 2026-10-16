@@ -54,12 +54,42 @@ builds:
       - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
       - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
 
+  # Conformance test build of keylatch: it takes the GitHub API root from
+  # KEYLATCH_TEST_GITHUB_API_URL, so it is published only as its own archive,
+  # never in the packages, the images or the default archives.
+  - id: keylatch-testendpoint
+    main: ./cmd/keylatch
+    binary: keylatch
+    tags:
+      - embedded_ui
+      - production
+      - release
+      - mint_test_endpoint
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64]
+    ldflags:
+      - -s -w
+      - -X 'github.com/keylatch/keylatch/internal/version.Version={{.Version}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
+
 archives:
   - id: default
+    ids: [keylatch, keylatchd]
     formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+  - id: testendpoint
+    ids: [keylatch-testendpoint]
+    formats: [tar.gz]
+    name_template: "keylatch-testendpoint_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
       - README.md
@@ -77,9 +107,15 @@ changelog:
 release:
   draft: true
   replace_existing_draft: true
+  footer: |
+    `keylatch-testendpoint_{{ .Version }}_linux_amd64.tar.gz` is for conformance testing only. Its
+    `keylatch version` prints `testendpoint`, and it sends GitHub App requests to the server named
+    by `KEYLATCH_TEST_GITHUB_API_URL`. Do not install it and do not run it with real credentials.
+    The checksums list it and it is signed like the other archives.
 
 dockers:
   - id: keylatch-linux-amd64
+    ids: [keylatch, keylatchd]
     goos: linux
     goarch: amd64
     image_templates:
@@ -89,6 +125,7 @@ dockers:
     build_flag_templates:
       - --platform=linux/amd64
   - id: keylatch-linux-arm64
+    ids: [keylatch, keylatchd]
     goos: linux
     goarch: arm64
     image_templates:

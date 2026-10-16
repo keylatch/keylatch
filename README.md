@@ -132,7 +132,7 @@ Keylatch recognises these agent harnesses:
 | Cursor | `CURSOR_AGENT`, `CURSOR_TRACE_ID` |
 | Gemini CLI | `GEMINI_CLI` |
 | OpenCode | `OPENCODE` |
-| Aider | none; set `CREDENTIALS_LLM_SESSION=aider` in your shell rc |
+| Aider | none (no hook API); start it with `keylatch launch -- aider` |
 | GitHub Copilot CLI | none; set `CREDENTIALS_LLM_SESSION=copilot` in your shell rc |
 
 Any tool that sets `CREDENTIALS_LLM_SESSION` to a non-empty value is treated as an agent session. Run `keylatch env` for the full list of variables.

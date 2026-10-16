@@ -279,7 +279,7 @@ Exit codes:
 	cmd.Flags().String("config", "", "path to keylatch.yaml config file")
 	cmd.Flags().String("server", "", "Bitwarden server URL for a self-hosted or Vaultwarden server (bw backend, https only)")
 	cmd.Flags().String("organization-id", "", "Bitwarden organization ID (bw backend)")
-	cmd.Flags().String("namespace", "", "default vault namespace")
+	cmd.Flags().StringArray("namespace", nil, "default vault namespace, or <namespace>=<collection> to place that namespace's items in a Bitwarden organization collection (bw backend; repeatable)")
 	cmd.Flags().Bool("install-guard", false, "headless: also install the Claude Code exfiltration guard")
 	return cmd
 }
@@ -327,8 +327,18 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 		return fail(exitcode.OperationFailed, err.Error())
 	}
 
-	namespace, _ := c.Flags().GetString("namespace")
-	if err := applySetupOptions(c, selectedBackend, server, orgID, namespace); err != nil {
+	namespaceFlags, _ := c.Flags().GetStringArray("namespace")
+	namespace, mapping, err := splitNamespaceFlags(namespaceFlags)
+	if err != nil {
+		return fail(exitcode.UserError, err.Error())
+	}
+	if len(mapping) > 0 && selectedBackend != "bw" {
+		return fail(exitcode.UserError, "--namespace <namespace>=<collection> applies to the bw backend only")
+	}
+	if len(mapping) > 0 && orgID == "" {
+		return fail(exitcode.UserError, "--namespace <namespace>=<collection> needs --organization-id")
+	}
+	if err := applySetupOptions(c, selectedBackend, server, orgID, namespace, mapping); err != nil {
 		return fail(exitcode.OperationFailed, err.Error())
 	}
 
@@ -367,9 +377,32 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 	return nil
 }
 
+// splitNamespaceFlags separates the --namespace values: a plain name is the
+// default namespace (the last one wins), name=collection maps a namespace to a
+// Bitwarden organization collection.
+func splitNamespaceFlags(values []string) (defaultNS string, mapping map[string]string, err error) {
+	for _, v := range values {
+		ns, collection, mapped := strings.Cut(v, "=")
+		if !mapped {
+			defaultNS = v
+			continue
+		}
+		ns, collection = strings.TrimSpace(ns), strings.TrimSpace(collection)
+		if ns == "" || collection == "" {
+			return "", nil, fmt.Errorf("--namespace %q: use <namespace>=<collection>", v)
+		}
+		if mapping == nil {
+			mapping = map[string]string{}
+		}
+		mapping[ns] = collection
+	}
+	return defaultNS, mapping, nil
+}
+
 // applySetupOptions stores the options a headless setup was given: the vault
-// server and organization for Bitwarden, and the default namespace.
-func applySetupOptions(c *cobra.Command, selectedBackend, server, orgID, namespace string) error {
+// server, organization and namespace-to-collection map for Bitwarden, and the
+// default namespace.
+func applySetupOptions(c *cobra.Command, selectedBackend, server, orgID, namespace string, mapping map[string]string) error {
 	cfgPath := paths.Config(llmcontext.DefaultLookup)
 	cfg, err := loadConfigOrWarn(c, cfgPath)
 	if err != nil {
@@ -379,7 +412,7 @@ func applySetupOptions(c *cobra.Command, selectedBackend, server, orgID, namespa
 	if namespace != "" {
 		cfg.DefaultNamespace = namespace
 	}
-	if selectedBackend == "bw" && (server != "" || orgID != "") {
+	if selectedBackend == "bw" && (server != "" || orgID != "" || len(mapping) > 0) {
 		if cfg.BW == nil {
 			cfg.BW = &config.BWConfig{Bin: "bw"}
 		}
@@ -388,6 +421,17 @@ func applySetupOptions(c *cobra.Command, selectedBackend, server, orgID, namespa
 		}
 		if orgID != "" {
 			cfg.BW.OrganizationID = orgID
+		}
+		if len(mapping) > 0 {
+			if cfg.BW.Namespaces == nil {
+				cfg.BW.Namespaces = map[string]string{}
+			}
+			for ns, collection := range mapping {
+				cfg.BW.Namespaces[ns] = collection
+			}
+		}
+		if err := cfg.BW.Validate(); err != nil {
+			return err
 		}
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
@@ -677,11 +721,11 @@ func setupUnlockBW(c *cobra.Command, ctx context.Context, env llmcontext.Lookup)
 		return fmt.Errorf("unlock failed: %w", unlockErr)
 	}
 
-	if err := bw.SaveSession(env, token, bw.DefaultSessionTTL); err != nil {
-		return fmt.Errorf("unlocked but failed to cache session: %w", err)
+	if err := saveBWSession(env, token, bw.DefaultSessionTTL); err != nil {
+		return fmt.Errorf("unlocked but failed to keep the session: %w", err)
 	}
 
-	fmt.Fprintf(c.OutOrStdout(), "  Bitwarden vault unlocked; session cached (expires in %s)\n", bw.DefaultSessionTTL)
+	fmt.Fprintf(c.OutOrStdout(), "  Bitwarden vault unlocked; session kept sealed (expires in %s)\n", bw.DefaultSessionTTL)
 	return nil
 }
 

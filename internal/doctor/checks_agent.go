@@ -14,8 +14,8 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/config"
-	"github.com/keylatch/keylatch/internal/guard"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -51,10 +51,19 @@ func claudeConfigDirs(env llmcontext.Lookup) []string {
 type guardHook struct {
 	matcher string
 	command string
+	// script is true for the shell script guard of earlier versions.
+	script bool
+}
+
+const goGuardSuffix = " guard hook --harness claude-code"
+
+// guardBinary returns the Keylatch binary a current guard command runs.
+func guardBinary(command string) string {
+	return strings.Trim(strings.TrimSuffix(command, goGuardSuffix), `"`)
 }
 
 // claudeGuardHooks returns the PreToolUse hooks in dir whose command is the
-// Keylatch guard script.
+// Keylatch guard, current or the script of an earlier version.
 func claudeGuardHooks(dir string) ([]guardHook, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "settings.json")) //nolint:gosec // G304: the user's own Claude Code settings
 	if err != nil {
@@ -79,8 +88,11 @@ func claudeGuardHooks(dir string) ([]guardHook, error) {
 	var found []guardHook
 	for _, group := range settings.Hooks.PreToolUse {
 		for _, h := range group.Hooks {
-			if strings.Contains(filepath.Base(h.Command), "block-keylatch-exfiltration") {
+			switch {
+			case strings.HasSuffix(h.Command, goGuardSuffix):
 				found = append(found, guardHook{matcher: group.Matcher, command: h.Command})
+			case strings.Contains(filepath.Base(h.Command), "block-keylatch-exfiltration"):
+				found = append(found, guardHook{matcher: group.Matcher, command: h.Command, script: true})
 			}
 		}
 	}
@@ -122,31 +134,29 @@ func checkClaudeGuardInstalled(env llmcontext.Lookup) Check {
 	}
 }
 
-// checkClaudeGuardCurrent fails when an installed guard script is older than
-// the one this build ships.
+// checkClaudeGuardCurrent fails when the installed guard is the shell script of
+// an earlier version, or when the Keylatch binary its hook runs is gone.
 func checkClaudeGuardCurrent(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		st := Status{Name: "guard.current", Section: "environment", OK: true, Tags: []string{"guard", "claude-code"}}
-		want := guard.ClaudeCodeVersion()
 		for _, dir := range claudeConfigDirs(env) {
 			hooks, _ := claudeGuardHooks(dir)
 			for _, h := range hooks {
-				script, err := os.ReadFile(h.command) //nolint:gosec // G304: the script path the user's settings name
-				if err != nil {
+				if h.script {
 					st.OK = false
-					st.Detail = fmt.Sprintf("the guard script named in %s cannot be read: %v", dir, err)
-					st.Fix = "Run `keylatch install-guard claude-code`."
+					st.Detail = fmt.Sprintf("the guard in %s is the shell script of an earlier version, which does not parse commands", dir)
+					st.Fix = "Run `keylatch install-guard claude-code --upgrade` to replace it."
 					return st
 				}
-				if got := guard.ScriptVersion(script); got != want {
+				if _, err := os.Stat(guardBinary(h.command)); err != nil {
 					st.OK = false
-					st.Detail = fmt.Sprintf("the guard script in %s is version %d; this build ships version %d", dir, got, want)
-					st.Fix = "Run `keylatch install-guard claude-code` to refresh it."
+					st.Detail = fmt.Sprintf("the guard hook in %s runs %s, which cannot be found: %v", dir, guardBinary(h.command), err)
+					st.Fix = "Run `keylatch install-guard claude-code --upgrade` to point it at the installed binary."
 					return st
 				}
 			}
 		}
-		st.Detail = fmt.Sprintf("guard script is current (version %d)", want)
+		st.Detail = "guard hook runs the structured guard in an installed keylatch binary"
 		return st
 	}
 }
@@ -230,18 +240,18 @@ func checkBackendCredentialsInEnvironment(env llmcontext.Lookup) Check {
 	}
 }
 
-// checkLeftoverBWSession warns about a cached Bitwarden session file, which
-// any process running as the user can read.
+// checkLeftoverBWSession fails on a plaintext Bitwarden session file left by an
+// earlier version: any process running as the user can unlock the vault with
+// it. Sessions are now stored only wrapped by the vault key.
 func checkLeftoverBWSession(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		st := Status{Name: "backend.bw_session_file", Section: "environment", OK: true, Tags: []string{"backend", "bw"}}
-		p := filepath.Join(paths.ConfigDir(env), "sessions", "bw.session")
-		if _, err := os.Stat(p); err != nil {
-			st.Detail = "no cached Bitwarden session file"
+		if _, err := os.Stat(bw.LegacySessionPath(env)); err != nil {
+			st.Detail = "no plaintext Bitwarden session file"
 			return st
 		}
-		st.Warn = true
-		st.Detail = "a cached Bitwarden session file is on disk; any process running as you can unlock the vault with it"
+		st.OK = false
+		st.Detail = "a plaintext Bitwarden session file is on disk; any process running as you can unlock the vault with it"
 		st.Fix = "Run `keylatch bw lock` to remove it."
 		return st
 	}

@@ -23,21 +23,30 @@ func newInstallGuardCmd() *cobra.Command {
 from an LLM agent. Supported agents:
 
   claude-code   PreToolUse hook in ~/.claude/settings.json
-  cursor        PreToolUse hook in ~/.cursor/settings.json
-  aider         pre-tool-use-hook in ~/.aider.conf.yml
-  codex         PreToolUse hook in ~/.codex/hooks.json
-  copilot       Shell wrapper (patches shell rc to intercept copilot invocations)
+  cursor        beforeShellExecution and beforeReadFile hooks in ~/.cursor/hooks.json
+  codex         PreToolUse hook in ~/.codex/hooks.json (review it with /hooks in Codex)
+  copilot       PreToolUse hook in ~/.copilot/hooks/keylatch-guard.json
   gemini        BeforeTool hook in ~/.gemini/settings.json
   opencode      TypeScript plugin (tool.execute.before hook)
-  antigravity   Manual — set CREDENTIALS_LLM_SESSION=antigravity in shell rc
+  antigravity   PreToolUse hook in ~/.gemini/config/hooks.json
 
-The guard is a shell script (or TypeScript plugin for opencode) that runs before
-every tool call. It exits non-zero / throws when it detects credential exfiltration
-patterns (keylatch get, security find-password, op read, etc.), causing the tool
-call to be blocked by the agent.
+For Claude Code the guard is 'keylatch guard hook --harness claude-code': it parses
+each shell command and checks each file tool's paths, and denies on a credential
+read, a secret-manager call or an environment dump (exit 2 plus the deny JSON).
+install-guard merges it into ~/.claude/settings.json and, when set,
+$CLAUDE_CONFIG_DIR/settings.json, keeping every other setting and hook; --config-dir
+adds directories, --upgrade refreshes an installed entry, --dry-run prints a diff.
+The previous file is saved as settings.json.keylatch.bak.
+
+The other harnesses run a shell script (or a TypeScript plugin for opencode) before
+every tool call. When it detects a credential exfiltration pattern (keylatch get,
+secret-manager reads, env dumps, direnv/mise/atuin dumps, ...) it exits 2 and
+prints the harness's deny JSON, which blocks the tool call.
 
 Keylatch's own LLM-session guard (Layer 1) still applies even without this hook.
 The hook provides a second layer of defence (Layer 2) at the agent framework level.
+
+Aider has no hook API; start it with 'keylatch launch -- aider'.
 
 Use --list to show all supported agents with their hook mechanism type.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -60,6 +69,12 @@ Use --list to show all supported agents with their hook mechanism type.`,
 		"install into .claude/settings.json in the current directory instead of global (claude-code only)")
 	cmd.Flags().BoolVar(&list, "list", false,
 		"list all supported agents with their hook mechanism type")
+	cmd.Flags().Bool("upgrade", false,
+		"refresh an installed guard entry in place: new binary path, matcher and timeout (claude-code only)")
+	cmd.Flags().Bool("dry-run", false,
+		"print a unified diff of the change and write nothing (claude-code only)")
+	cmd.Flags().StringSlice("config-dir", nil,
+		"also install into this Claude Code configuration directory; repeatable (claude-code only)")
 
 	return cmd
 }
@@ -119,7 +134,7 @@ func parseGuardAgent(agentName string) (guard.Agent, error) {
 	case "cursor":
 		agent = guard.AgentCursor
 	case "aider":
-		agent = guard.AgentAider
+		return "", fmt.Errorf("install-guard: aider has no hook API; start it with 'keylatch launch -- aider'")
 	case "codex":
 		agent = guard.AgentCodex
 	case "copilot":
@@ -143,33 +158,50 @@ func parseGuardAgent(agentName string) (guard.Agent, error) {
 	return agent, nil
 }
 
+// runInstallClaudeGuard merges the Go guard into every Claude Code settings
+// file, or with --dry-run prints what it would change.
+func runInstallClaudeGuard(cmd *cobra.Command, opts guard.InstallOpts) error {
+	changes, err := guard.InstallClaudeCode(opts)
+	if err != nil {
+		return fmt.Errorf("install-guard: %w", err)
+	}
+	w := cmd.OutOrStdout()
+	for _, c := range changes {
+		switch {
+		case c.Changed && opts.DryRun:
+			fmt.Fprint(w, c.Diff)
+		case c.Changed && c.Backup != "":
+			fmt.Fprintf(w, "Hook written to: %s (previous file saved as %s)\n", c.Path, c.Backup)
+		case c.Changed:
+			fmt.Fprintf(w, "Hook written to: %s\n", c.Path)
+		default:
+			fmt.Fprintf(w, "Hook already installed in: %s (use --upgrade to refresh it)\n", c.Path)
+		}
+	}
+	if !opts.DryRun {
+		fmt.Fprintln(w, "\nTo verify: keylatch doctor")
+	}
+	return nil
+}
+
 func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 	agent, err := parseGuardAgent(agentName)
 	if err != nil {
 		return err
 	}
 
-	// Antigravity has no hook API — print shell-rc guidance and return.
-	if agent == guard.AgentAntigravity {
-		w := cmd.OutOrStdout()
-		fmt.Fprintln(w, "To protect credentials in Antigravity integrated terminals, add this to your shell rc:")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  zsh/bash:   export CREDENTIALS_LLM_SESSION=antigravity")
-		fmt.Fprintln(w, "  fish:       set -Ux CREDENTIALS_LLM_SESSION antigravity")
-		fmt.Fprintln(w, "  PowerShell: [Environment]::SetEnvironmentVariable('CREDENTIALS_LLM_SESSION','antigravity','User')")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "After setting the variable, restart your terminal or reload your shell rc.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "This triggers the LLM-session guard (Layer 1), blocking direct credential")
-		fmt.Fprintln(w, "access via 'keylatch get' whenever Antigravity's integrated terminal is active.")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "See: https://keylatch.dev/integrations/antigravity")
-		return nil
-	}
-
 	opts := guard.InstallOpts{}
 	if project {
 		opts.ProjectDir = "."
+	}
+	opts.Upgrade, _ = cmd.Flags().GetBool("upgrade")
+	opts.DryRun, _ = cmd.Flags().GetBool("dry-run")
+	opts.ConfigDirs, _ = cmd.Flags().GetStringSlice("config-dir")
+	if agent != guard.AgentClaudeCode && (opts.Upgrade || opts.DryRun || len(opts.ConfigDirs) > 0) {
+		return fmt.Errorf("install-guard: --upgrade, --dry-run and --config-dir apply to claude-code only")
+	}
+	if agent == guard.AgentClaudeCode {
+		return runInstallClaudeGuard(cmd, opts)
 	}
 
 	settingsPath, err := guard.Install(agent, opts)
@@ -179,25 +211,27 @@ func runInstallGuard(cmd *cobra.Command, agentName string, project bool) error {
 
 	w := cmd.OutOrStdout()
 	switch agent {
-	case guard.AgentClaudeCode:
-		fmt.Fprintln(w, "Guard installed for Claude Code.")
-		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
-		fmt.Fprintln(w, "Run 'keylatch install-guard claude-code' again to update.")
 	case guard.AgentCursor:
 		fmt.Fprintln(w, "Guard installed for Cursor.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
-	case guard.AgentAider:
-		fmt.Fprintln(w, "Guard installed for Aider.")
-		fmt.Fprintf(w, "Config updated: %s\n", settingsPath)
+		fmt.Fprintln(w, "\nCursor does not currently enforce a beforeReadFile deny for agent reads, so the")
+		fmt.Fprintln(w, "read hook is defence in depth only. Cursor's ignore files apply per project;")
+		fmt.Fprintln(w, "add these patterns to each project's .cursorignore, or to the global ignore")
+		fmt.Fprintln(w, "list in Cursor's user settings (the docs name no file path for it):")
+		fmt.Fprintln(w)
+		for _, pattern := range guard.CursorIgnorePatterns() {
+			fmt.Fprintf(w, "  %s\n", pattern)
+		}
+	case guard.AgentAntigravity:
+		fmt.Fprintln(w, "Guard installed for Antigravity.")
+		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
 	case guard.AgentCodex:
 		fmt.Fprintln(w, "Guard installed for Codex CLI.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
+		fmt.Fprintln(w, "Review and trust the hook with /hooks in Codex before it runs.")
 	case guard.AgentCopilot:
-		fmt.Fprintln(w, "Installing shell wrapper for GitHub Copilot CLI.")
-		fmt.Fprintln(w, "Wrapper intercepts copilot invocations.")
-		if settingsPath != "" {
-			fmt.Fprintf(w, "Shell RC patched: %s\n", settingsPath)
-		}
+		fmt.Fprintln(w, "Guard installed for GitHub Copilot CLI.")
+		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
 	case guard.AgentGemini:
 		fmt.Fprintln(w, "Guard installed for Gemini CLI.")
 		fmt.Fprintf(w, "Hook written to: %s\n", settingsPath)
