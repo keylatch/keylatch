@@ -302,9 +302,11 @@ system broker is installed. Exits 1 when anything differs, so CI and
 
 // openEnvFiles prepares the descriptors for the env-file targets named: the
 // existing file read-only (the null device when there is none) and a new
-// owner-only file in the same directory. commit renames each over its target.
-func openEnvFiles(in *syncInput, names []string) (files []*os.File, commit func() error, abort func(), err error) {
-	type pending struct{ tmp, target string }
+// owner-only file in the same directory. commit renames over its target only
+// the files whose target the daemon changed: the daemon writes nothing for an
+// unchanged target, and renaming its empty file would erase the real one.
+func openEnvFiles(in *syncInput, names []string) (files []*os.File, commit func([]keysync.Entry) error, abort func(), err error) {
+	type pending struct{ name, tmp, target string }
 	var made []pending
 	abort = func() {
 		for _, f := range files {
@@ -337,10 +339,21 @@ func openEnvFiles(in *syncInput, names []string) (files []*os.File, commit func(
 			return nil, nil, nil, terr
 		}
 		files = append(files, tmp)
-		made = append(made, pending{tmp.Name(), target})
+		made = append(made, pending{name, tmp.Name(), target})
 	}
-	commit = func() error {
+	commit = func(entries []keysync.Entry) error {
+		changed := map[string]bool{}
+		for _, en := range entries {
+			switch en.Outcome {
+			case keysync.OutcomeWritten, keysync.OutcomeDeleted, keysync.OutcomeRolledBack:
+				changed[en.Target] = true
+			}
+		}
 		for _, p := range made {
+			if !changed[p.name] {
+				_ = os.Remove(p.tmp)
+				continue
+			}
 			if err := os.Rename(p.tmp, p.target); err != nil {
 				return err
 			}
@@ -426,7 +439,7 @@ A second apply writes nothing.`,
 			for _, f := range files {
 				_ = f.Close()
 			}
-			if err := commit(); err != nil {
+			if err := commit(resp.Sync.Entries); err != nil {
 				abort()
 				return withExitCode(exitcode.OperationFailed, err)
 			}
@@ -495,7 +508,11 @@ needs your presence.`,
 			for _, f := range files {
 				_ = f.Close()
 			}
-			if err := commit(); err != nil {
+			if resp.Sync == nil {
+				abort()
+				return withExitCode(exitcode.OperationFailed, errors.New("sync rotate: the daemon sent no result"))
+			}
+			if err := commit(resp.Sync.Entries); err != nil {
 				abort()
 				return withExitCode(exitcode.OperationFailed, err)
 			}

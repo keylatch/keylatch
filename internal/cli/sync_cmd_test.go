@@ -38,6 +38,9 @@ type syncBroker struct {
 	answer   func(brokerapi.Request) brokerapi.Response
 	merged   string
 	refuse   bool
+	// idle makes the fake daemon leave the output files empty, as the real one
+	// does for a target that needs no change.
+	idle bool
 }
 
 func (b *syncBroker) Call(req brokerapi.Request) (brokerapi.Response, error) {
@@ -53,6 +56,9 @@ func (b *syncBroker) Call(req brokerapi.Request) (brokerapi.Response, error) {
 
 func (b *syncBroker) CallWithFiles(req brokerapi.Request, files []*os.File) (brokerapi.Response, error) {
 	b.requests = append(b.requests, req)
+	if b.idle {
+		return b.answer(req), nil
+	}
 	existing, _ := io.ReadAll(files[0])
 	b.merged = string(existing) + "DATABASE_URL=" + cliSyncCanary + "\n"
 	if _, err := files[1].WriteString(b.merged); err != nil {
@@ -316,6 +322,34 @@ func TestSyncEnvFileAtomic0600(t *testing.T) {
 	}
 	if matches, _ := filepath.Glob(filepath.Join(f.dir, ".keylatch-sync-*")); len(matches) != 0 {
 		t.Fatalf("temp files left after a failure: %v", matches)
+	}
+}
+
+func TestSyncApplyIdempotentKeepsTheEnvFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes and descriptor passing are Unix features")
+	}
+	f := newSyncFixture(t, true)
+	f.broker.idle = true
+	path := filepath.Join(f.dir, ".env.local")
+	before, _ := os.ReadFile(path)
+	for name, entries := range map[string][]keysync.Entry{
+		"unchanged":        {{Target: "local", Environment: "file", Name: "DATABASE_URL", Outcome: keysync.OutcomeUnchanged}},
+		"failed":           {{Target: "local", Environment: "file", Name: "DATABASE_URL", Outcome: keysync.OutcomeFailed, Error: "source missing"}},
+		"another target":   {{Target: "web", Environment: "production", Name: "DATABASE_URL", Outcome: keysync.OutcomeWritten}},
+		"nothing reported": nil,
+	} {
+		f.broker.answer = func(brokerapi.Request) brokerapi.Response {
+			return brokerapi.Response{OK: true, Sync: &brokerapi.SyncResult{Entries: entries}}
+		}
+		_ = f.run(t, "apply")
+		after, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatalf("%s: env file = %q, %v", name, after, err)
+		}
+		if matches, _ := filepath.Glob(filepath.Join(f.dir, ".keylatch-sync-*")); len(matches) != 0 {
+			t.Fatalf("%s: temp files left: %v", name, matches)
+		}
 	}
 }
 
