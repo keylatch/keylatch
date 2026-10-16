@@ -125,6 +125,9 @@ type KeyPolicyRequest struct {
 	HostKeys     []string `json:"host_keys,omitempty"`
 	AgentDecrypt bool     `json:"agent_decrypt,omitempty"`
 	SSHAgent     bool     `json:"ssh_agent,omitempty"`
+	// PresenceDigest is the proof the CLI obtained from the human before it
+	// asked to add or widen an entry; the daemon refuses an allow without one.
+	PresenceDigest string `json:"presence_digest,omitempty"`
 }
 
 // KeyRequest names a key operation. The daemon reads the key; the reply

@@ -25,6 +25,9 @@ type Change struct {
 	HostKeys     []string
 	AgentDecrypt bool
 	SSHAgent     bool
+	// PresenceDigest identifies the human-presence proof an allow was made
+	// under; it is recorded in the audit event.
+	PresenceDigest string
 }
 
 // Admin edits the allowlist. Adding or widening is for humans only; removing
@@ -55,13 +58,16 @@ func summarize(fp *FieldPolicy) string {
 		strings.Join(fp.Operations, ","), strings.Join(fp.Algorithms, ","), fp.AgentDecrypt, ssh, hex.EncodeToString(sum[:4]))
 }
 
-func (a *Admin) record(ctx context.Context, c Caller, change, conn, field string, before, after *FieldPolicy, outcome audit.Outcome, reason string) error {
+func (a *Admin) record(ctx context.Context, c Caller, change, conn, field string, before, after *FieldPolicy, outcome audit.Outcome, reason, proof string) error {
 	extra := map[string]any{
 		"change": change, "connection": conn, "field": field, "caller_kind": c.Kind,
 		"before": summarize(before), "after": summarize(after),
 	}
 	if reason != "" {
 		extra["reason"] = reason
+	}
+	if proof != "" {
+		extra["presence_digest"] = proof
 	}
 	return a.audit.Emit(ctx, audit.Event{Action: audit.ActionKeyPolicyChange, Outcome: outcome, Extra: extra})
 }
@@ -101,7 +107,7 @@ func (a *Admin) Allow(ctx context.Context, c Caller, ch Change) error {
 		return fmt.Errorf("%w: a connection and --field are required", ErrInvalid)
 	}
 	if c.Constrained {
-		_ = a.record(ctx, c, "allow", ch.Connection, ch.Field, nil, nil, audit.OutcomeDenied, "adding or widening the allowlist is human-only")
+		_ = a.record(ctx, c, "allow", ch.Connection, ch.Field, nil, nil, audit.OutcomeDenied, "adding or widening the allowlist is human-only", ch.PresenceDigest)
 		return deny("changing the allowlist is not available to %s callers", c.Kind)
 	}
 	algs, err := normalizeAlgs(ch.Algorithms)
@@ -143,7 +149,7 @@ func (a *Admin) Allow(ctx context.Context, c Caller, ch Change) error {
 	if err != nil {
 		return err
 	}
-	if aerr := a.record(ctx, c, "allow", ch.Connection, ch.Field, before, after, audit.OutcomeOK, ""); aerr != nil {
+	if aerr := a.record(ctx, c, "allow", ch.Connection, ch.Field, before, after, audit.OutcomeOK, "", ch.PresenceDigest); aerr != nil {
 		a.store.restore(prev)
 		return fmt.Errorf("%w: audit log is not writable", ErrUnavailable)
 	}
@@ -206,7 +212,7 @@ func (a *Admin) Revoke(ctx context.Context, c Caller, ch Change) error {
 	}
 	sort.Slice(edits, func(i, j int) bool { return edits[i].field < edits[j].field })
 	for _, e := range edits {
-		if aerr := a.record(ctx, c, "revoke", ch.Connection, e.field, e.before, e.after, audit.OutcomeOK, ""); aerr != nil {
+		if aerr := a.record(ctx, c, "revoke", ch.Connection, e.field, e.before, e.after, audit.OutcomeOK, "", ""); aerr != nil {
 			a.store.restore(prev)
 			return fmt.Errorf("%w: audit log is not writable", ErrUnavailable)
 		}

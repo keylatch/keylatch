@@ -43,13 +43,19 @@ func (s *Server) keyPolicy(_ context.Context, kind Kind, kp *KeyPolicyRequest) R
 	ch := keyops.Change{
 		Connection: kp.Connection, Field: kp.Field, Secret: kp.Secret,
 		Operations: kp.Operations, Algorithms: kp.Algorithms, HostKeys: kp.HostKeys,
-		AgentDecrypt: kp.AgentDecrypt, SSHAgent: kp.SSHAgent,
+		AgentDecrypt: kp.AgentDecrypt, SSHAgent: kp.SSHAgent, PresenceDigest: kp.PresenceDigest,
 	}
 	var err error
 	ctx := context.Background()
 	caller := callerOf(kind)
 	switch kp.Action {
 	case "allow":
+		// Constrained callers get the admin's own refusal, which audits it.
+		if !caller.Constrained && kp.PresenceDigest == "" {
+			resp.Code, resp.ExitCode = CodeRefused, exitcode.SecurityBlock
+			resp.Error = "adding or widening the allowlist needs a human at a terminal; run keylatch key allow yourself"
+			return resp
+		}
 		err = s.cfg.KeyAdmin.Allow(ctx, caller, ch)
 	case "revoke":
 		err = s.cfg.KeyAdmin.Revoke(ctx, caller, ch)

@@ -204,4 +204,7 @@ const (
 	ActionKeysRewrap     Action = "keys.rewrap"
 	ActionPolicyChange   Action = "policy.change"
 	ActionUIAdmin        Action = "ui.admin"
+	// ActionKeyAllow approves adding or widening a key operation allowlist
+	// entry, bound to the entry before and the additions requested.
+	ActionKeyAllow Action = "key.allow"
 )

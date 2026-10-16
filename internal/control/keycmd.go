@@ -211,6 +211,14 @@ func runKeyPolicy(c *Client, args []string, streams IO) int {
 		fmt.Fprintf(streams.ErrOut, "keylatch key: %v\n", err)
 		return exitcode.UserError
 	}
+	if kp.Action == "allow" {
+		proof, err := requireAllowPresence(c, kp)
+		if err != nil {
+			fmt.Fprintf(streams.ErrOut, "keylatch key: %v\n", err)
+			return exitcode.SecurityBlock
+		}
+		kp.PresenceDigest = proof.Digest
+	}
 	resp, err := c.KeyPolicy(kp)
 	if err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch key: daemon: %v\n", err)
