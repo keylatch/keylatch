@@ -62,8 +62,16 @@ log "Temp workspace: $TMPDIR_ROOT"
 if [[ -z "$KEYLATCH_BIN" ]]; then
   log "Building keylatch binary..."
   KEYLATCH_BIN="$TMPDIR_ROOT/keylatch"
-  go build -o "$KEYLATCH_BIN" ./cmd/keylatch
+  # The end-to-end build lets this unattended job stand in for the human
+  # presence that token creation needs; release binaries cannot.
+  go build -tags keylatch_e2e -o "$KEYLATCH_BIN" ./cmd/keylatch
   log "Built: $KEYLATCH_BIN"
+fi
+export KEYLATCH_E2E_PRESENCE=approve
+# A runner's macOS login keychain can block on an unlock prompt; the operator
+# config written below lets bootstrap use a file key instead.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  export KEYLATCH_E2E_NO_OS_KEYRING=1
 fi
 
 [[ -x "$KEYLATCH_BIN" ]] || fail "keylatch binary not executable: $KEYLATCH_BIN"
@@ -119,8 +127,10 @@ pass "bootstrap"
 
 log "Running: keylatch gateway init"
 "$KEYLATCH_BIN" gateway init
-[[ -f "$KEYLATCH_CONFIG_DIR/gateway/signing.key" ]] || \
-  fail "gateway init: signing key not created at \$KEYLATCH_CONFIG_DIR/gateway/signing.key"
+[[ -f "$KEYLATCH_CONFIG_DIR/gateway/signing.key.enc" ]] || \
+  fail "gateway init: wrapped signing key not created at \$KEYLATCH_CONFIG_DIR/gateway/signing.key.enc"
+[[ ! -e "$KEYLATCH_CONFIG_DIR/gateway/signing.key" ]] || \
+  fail "gateway init: a plaintext signing key was written"
 [[ -f "$KEYLATCH_CONFIG_DIR/gateway/config.json" ]] || \
   fail "gateway init: config.json not created"
 pass "gateway init"
