@@ -21,6 +21,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/connections"
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -543,20 +544,19 @@ func (h *WizardHandlers) checkGatewayHealth() (ok bool, message string) {
 }
 
 // checkAgentConfigured returns true when at least one known AI agent config file exists.
-// Checked paths cover Claude Code, Codex and Cursor.
+// It checks the hook and MCP files of every harness the installer supports.
 func checkAgentConfigured() (ok bool, message string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false, "cannot determine home directory"
 	}
-	knownPaths := []string{
-		home + "/.claude/settings.json",
-		home + "/.codex/config.json",
-		home + "/.cursor/settings.json",
-	}
-	for _, p := range knownPaths {
-		if _, statErr := os.Stat(p); statErr == nil {
-			return true, ""
+	env := harness.Env{Home: home}
+	for _, d := range harness.Installable() {
+		l := d.Layout(env)
+		for _, p := range []string{l.Hook, l.MCP} {
+			if _, statErr := os.Stat(p); p != "" && statErr == nil {
+				return true, ""
+			}
 		}
 	}
 	return false, "no agent config file found; run 'keylatch install-guard' or configure an agent"

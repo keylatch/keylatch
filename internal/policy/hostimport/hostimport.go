@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/registry"
 )
@@ -43,18 +44,24 @@ type Bounds struct {
 // DefaultFiles returns the settings files of a host that exist, user level
 // first, for a project at dir.
 func DefaultFiles(host, home, dir string) []string {
+	user := harness.Env{Home: home, Getenv: func(string) string { return "" }}
+	project := harness.Env{Project: dir}
 	var candidates []string
 	switch host {
 	case ClaudeCode:
+		d, _ := harness.Lookup("claude-code")
+		projectSettings := d.Layout(project).Hook
 		candidates = []string{
-			filepath.Join(home, ".claude", "settings.json"),
-			filepath.Join(dir, ".claude", "settings.json"),
-			filepath.Join(dir, ".claude", "settings.local.json"),
+			d.Layout(user).Hook,
+			projectSettings,
+			filepath.Join(filepath.Dir(projectSettings), "settings.local.json"),
 		}
 	case Codex:
-		candidates = []string{filepath.Join(home, ".codex", "config.toml")}
+		d, _ := harness.Lookup("codex")
+		candidates = []string{d.Layout(user).MCP}
 	case Gemini:
-		candidates = []string{filepath.Join(home, ".gemini", "settings.json"), filepath.Join(dir, ".gemini", "settings.json")}
+		d, _ := harness.Lookup("gemini-cli")
+		candidates = []string{d.Layout(user).Hook, d.Layout(project).Hook}
 	}
 	var out []string
 	for _, c := range candidates {

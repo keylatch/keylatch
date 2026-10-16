@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy/connpolicy"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
@@ -84,7 +85,7 @@ func (s *Server) pathVars(project string) map[string][]string {
 		for _, p := range []string{".mozilla", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware"} {
 			vars["browser_profiles"] = append(vars["browser_profiles"], filepath.Join(home, p))
 		}
-		for _, p := range []string{".claude", ".codex", ".gemini", ".cursor"} {
+		for _, p := range harness.ConfigDirNames() {
 			vars["harness_config"] = append(vars["harness_config"], filepath.Join(home, p))
 		}
 	}
