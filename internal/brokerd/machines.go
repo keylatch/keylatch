@@ -228,6 +228,10 @@ func (a *admin) setMachineListen(ctx context.Context, res callerkind.Result, req
 	if err := gateway.ValidateMachineAddr(mr.Listen, mr.AllowWildcard); err != nil {
 		return fail(brokerapi.CodeBadRequest, exitcode.UserError, err)
 	}
+	// Audit first: the listener only changes once the change is on record.
+	if err := a.emit(ctx, audit.ActionPolicyChange, audit.OutcomeOK, res, map[string]any{"change": "machine.listen", "digest": req.Digest(), "after": mr.Listen}); err != nil {
+		return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
+	}
 	if err := os.MkdirAll(a.s.cfg.StateRoot, 0o700); err != nil {
 		return fail(brokerapi.CodeUnavailable, exitcode.OperationFailed, err)
 	}
@@ -236,9 +240,6 @@ func (a *admin) setMachineListen(ctx context.Context, res callerkind.Result, req
 	}
 	if err := a.s.RestartMachineListener(mr.AllowWildcard); err != nil {
 		return fail(brokerapi.CodeUnavailable, exitcode.OperationFailed, err)
-	}
-	if err := a.emit(ctx, audit.ActionPolicyChange, audit.OutcomeOK, res, map[string]any{"change": "machine.listen", "digest": req.Digest(), "after": mr.Listen}); err != nil {
-		return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
 	}
 	return brokerapi.Response{OK: true}
 }

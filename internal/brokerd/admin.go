@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"slices"
 	"strconv"
 
 	"github.com/keylatch/keylatch/internal/audit"
@@ -198,13 +199,28 @@ func (a *admin) setSecret(ctx context.Context, res callerkind.Result, req broker
 }
 
 func (a *admin) deleteSecret(ctx context.Context, res callerkind.Result, req brokerapi.Request) brokerapi.Response {
+	entries, err := a.p.store.List(ctx, req.Path)
+	if err != nil {
+		return fail(brokerapi.CodeUnavailable, exitcode.OperationFailed, err)
+	}
+	if !slices.ContainsFunc(entries, func(e backend.Entry) bool { return e.Path == req.Path }) {
+		// Nothing to delete: the store says why (a bad path or no such secret).
+		if err := a.p.store.Delete(ctx, req.Path); err != nil && !errors.Is(err, backend.ErrNotFound) {
+			return fail(brokerapi.CodeBadRequest, exitcode.UserError, err)
+		}
+		return fail(brokerapi.CodeNotFound, exitcode.Missing, backend.ErrNotFound)
+	}
+	// The record is written first: a delete that cannot be audited does not
+	// happen, as for every other change.
+	if err := a.emit(ctx, audit.ActionDelete, audit.OutcomeOK, res, map[string]any{"backend": "broker"}); err != nil {
+		return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
+	}
 	if err := a.p.store.Delete(ctx, req.Path); err != nil {
 		if errors.Is(err, backend.ErrNotFound) {
 			return fail(brokerapi.CodeNotFound, exitcode.Missing, err)
 		}
 		return fail(brokerapi.CodeBadRequest, exitcode.UserError, err)
 	}
-	_ = a.emit(ctx, audit.ActionDelete, audit.OutcomeOK, res, map[string]any{"backend": "broker"})
 	return brokerapi.Response{OK: true}
 }
 
