@@ -165,6 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keylatch doctor --json` reports `agent_session.detected`, `agent_session.signals` and `agent_session.harness`.
 - `keylatch explain [--json] run <connection> -- <command>` and `keylatch explain policy` report the delivery tier, approval need, hosts, scope, containment and residual risk for a run without executing it. The JSON output is versioned (`schema_version`), ships with a JSON Schema (`keylatch explain schema`) and is documented for host guards in `docs/integration/host-guards.md`.
 - Output of every child process Keylatch launches is streamed through an exact-value redactor: injected tokens are replaced with `[REDACTED]` in raw, base64 (standard and URL alphabets, padded or not, at any alignment), hex, percent-encoded and JSON-escaped form, including when split across writes. Files the child wrote in its working directory are scanned afterwards and reported; the receipt carries `leaked_files`.
+- `keylatch doctor` check `host.sandbox.keylatch_excluded` fails when a Claude Code user, project or local settings file lists `keylatch run` in `sandbox.excludedCommands`, and prints the entries to remove. Docs and the README now state that Keylatch must never be excluded from an agent sandbox and what Keylatch can and cannot guarantee per deployment.
 
 ### Security
 

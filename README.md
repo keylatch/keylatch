@@ -19,6 +19,8 @@ keylatch install-guard claude-code
 
 This wires a `PreToolUse` hook into Claude Code that blocks credential-access patterns before they run. See [docs/integrations/claude-code.md](docs/integrations/claude-code.md). The guard ships for Claude Code in v0.10.0; guards for the other agents arrive in v0.13.0.
 
+Never add `keylatch` to Claude Code's `sandbox.excludedCommands`: an excluded `keylatch run` starts the command after `--`, and everything it executes, outside the sandbox. `keylatch doctor` fails when it finds such an entry and prints the settings change to make. See [Never exclude keylatch from the sandbox](docs/integration/agents/claude-code.md#never-exclude-keylatch-from-the-sandbox).
+
 ## Install
 
 Keylatch ships as a **CLI** (macOS, Windows, Linux) and a **Docker image**. `keylatch ui` opens the browser GUI. No desktop installer is shipped.
@@ -247,6 +249,14 @@ keylatch connect openrouter --provider-ref api_key=op://Keylatch/openrouter/api_
 - Detection blocks casual extraction; it does not stop a same-user agent that tries to evade it.
 - Releases are cosign-signed with SLSA provenance, except v0.9.7; see [SECURITY.md](SECURITY.md).
 - Keylatch sends no telemetry ([docs/telemetry.md](docs/telemetry.md)).
+
+### What Keylatch can and cannot guarantee
+
+| Deployment | Agent runs in its harness sandbox | Agent has an unrestricted shell as the same user |
+|---|---|---|
+| Same-user install | Partial for gateway and typed-call use: values injected through the gateway or a typed call stay out of the child's environment and output. Keylatch installs no `denyRead` and the Claude Code sandbox reads everywhere by default, so the agent can read Keylatch state unless the harness denies it; `keylatch call` and `keylatch run` read the vault in-process, so denying it breaks them. Requires that Keylatch is not excluded from the sandbox. Remaining risk: misuse of granted capabilities. | Not a boundary: same-user files, the unlocked OS keystore and `ptrace` are reachable. Keylatch makes this a deliberate, detectable attack (detection, canaries, audit). |
+
+See [docs/security/threat-model.md](docs/security/threat-model.md) for the full threat model.
 
 For vulnerability disclosure, SBOMs and artifact verification see [SECURITY.md](SECURITY.md).
 
