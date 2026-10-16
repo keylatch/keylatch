@@ -38,6 +38,12 @@ const (
 	ActionSecurityBlock Action = "security.block"
 	ActionGuardBlock    Action = "guard.block"
 
+	// ActionBrokerAdopt records secrets moved from a user's own store into the
+	// broker, and ActionBrokerExport records the reverse. Both carry counts;
+	// adopt also carries the head of the in-user audit chain it replaces.
+	ActionBrokerAdopt  Action = "broker.adopt"
+	ActionBrokerExport Action = "broker.export"
+
 	// ActionBackupExport records a backup written.
 	ActionBackupExport Action = "backup.export"
 

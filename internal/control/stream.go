@@ -168,6 +168,7 @@ func forwardStdin(r *bufio.Reader, w io.WriteCloser) {
 // caller's verbs run as an agent session so every existing guard applies.
 func (s *Server) childEnv(kind Kind) []string {
 	env := os.Environ()
+	env = append(env, s.cfg.ChildEnv...)
 	env = append(env, LocalEnv+"=1")
 	if kind.Constrained() {
 		env = append(env, harness.ManualLabel+"=1")

@@ -21,14 +21,14 @@ import (
 var safeLogFields = map[string][]string{
 	"write":        {"version", "backend", "key_term"},
 	"read":         {"version", "backend", "key_term"},
-	"delete":       {"version", "backend"},
+	"delete":       {"version", "backend", "caller_kind"},
 	"list":         {"prefix", "count"},
 	"decrypt":      {"version", "backend", "key_term"},
 	"encrypt":      {"version", "backend", "key_term"},
 	"revoke":       {"version"},
 	"rotate":       {"new_term", "old_term"},
 	"keyring_init": {"algorithm", "kek_type"},
-	"kek_rotate":   {"old_kek_type", "new_kek_type"},
+	"kek_rotate":   {"old_kek_type", "new_kek_type", "caller_kind"},
 	"term_destroy": {"term"},
 	// rotated_to/rotated_from are file paths (no credential content).
 	// prev_file_hmac is a chain MAC value needed for cross-file chain verification.
@@ -151,6 +151,9 @@ var safeLogFields = map[string][]string{
 	"security.block":    {"command", "signals", "caller_kind"},
 	"guard.block":       {"command", "rule", "caller_kind", "reason"},
 	"backup.export":     {"destination_kind", "caller_kind", "reason"},
+	// broker migration: counts and the digest of the old chain head, never a value.
+	"broker.adopt":  {"count", "old_audit_head", "caller_kind"},
+	"broker.export": {"count", "caller_kind"},
 
 	// binding changes: host sets are authorities (no credential content).
 	// attempted is the change an agent caller was refused.
@@ -224,6 +227,7 @@ func AllActions() []string {
 		"presence.decision", "policy.change", "backup.export",
 		// binding change actions.
 		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
+		"broker.adopt", "broker.export",
 	}
 }
 
