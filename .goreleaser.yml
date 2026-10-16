@@ -64,6 +64,38 @@ archives:
       - LICENSE
       - README.md
 
+# .deb and .rpm packages carry the broker's units, system user definition and
+# polkit policy. The postinstall script creates the keylatch user and reloads
+# systemd; starting the broker stays with 'sudo keylatch broker install'.
+nfpms:
+  - id: keylatch-linux
+    package_name: keylatch
+    ids: [keylatch, keylatchd]
+    formats: [deb, rpm]
+    vendor: Keylatch
+    homepage: https://github.com/keylatch/keylatch
+    maintainer: Keylatch <security@keylatch.dev>
+    description: Brokered credentials for AI agents
+    license: Apache-2.0
+    bindir: /usr/bin
+    file_name_template: "{{ .ConventionalFileName }}"
+    dependencies:
+      - systemd
+    recommends:
+      - polkitd
+    contents:
+      - src: packaging/linux/systemd/keylatchd.service
+        dst: /usr/lib/systemd/system/keylatchd.service
+      - src: packaging/linux/systemd/keylatchd.socket
+        dst: /usr/lib/systemd/system/keylatchd.socket
+      - src: packaging/linux/sysusers.d/keylatch.conf
+        dst: /usr/lib/sysusers.d/keylatch.conf
+      - src: packaging/linux/polkit/dev.keylatch.policy
+        dst: /usr/share/polkit-1/actions/dev.keylatch.policy
+    scripts:
+      postinstall: packaging/linux/scripts/postinstall.sh
+      postremove: packaging/linux/scripts/postremove.sh
+
 checksum:
   name_template: "keylatch-{{ .Version }}_checksums.txt"
   algorithm: sha256
