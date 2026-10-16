@@ -61,7 +61,7 @@ test "${#STRIPE_SECRET_KEY}" -gt 20 && echo holds-the-value`
 		assert.NotContains(t, res.stderr, form)
 	}
 	assert.Contains(t, res.stdout, "plain=")
-	for _, e := range w.audit.events {
+	for _, e := range w.emitted() {
 		assert.NotContains(t, fmt.Sprint(e), containedSecret)
 	}
 }

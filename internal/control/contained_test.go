@@ -344,6 +344,14 @@ func (w *containedWorld) events(action audit.Action) []audit.Event {
 	return out
 }
 
+// emitted copies every recorded event; the server keeps emitting after it has
+// sent the final frame, so reads must go through the lock.
+func (w *containedWorld) emitted() []audit.Event {
+	w.audit.mu.Lock()
+	defer w.audit.mu.Unlock()
+	return append([]audit.Event(nil), w.audit.events...)
+}
+
 func TestContainedRunRelaysRedactedOutputAndExitStatus(t *testing.T) {
 	w := newContainedWorld(t)
 	w.launcher.script = func(spec contained.Spec, c *fakeChild) {
@@ -391,7 +399,7 @@ func TestContainedRunRelaysRedactedOutputAndExitStatus(t *testing.T) {
 	require.Len(t, exited, 1)
 	assert.EqualValues(t, 4, exited[0].Extra["exit"])
 	assert.EqualValues(t, 3, exited[0].Extra["redactions"])
-	for _, e := range w.audit.events {
+	for _, e := range w.emitted() {
 		assert.NotContains(t, fmt.Sprint(e), containedSecret, "no audit event holds the value")
 	}
 }
