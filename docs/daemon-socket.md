@@ -41,6 +41,18 @@ Every decision on the socket writes one value-free event, whether it allows or r
   status is what the client reports; a run whose client never reports is closed as `expired`.
 - `approval.requested`, `approval.granted` and `approval.denied` are reserved for decisions that wait on an
   approval; the daemon serves none yet.
+- A contained run (tier D5, see [contained-runtime.md](contained-runtime.md)) is decided and recorded the same
+  way, with `child_location` `daemon`, `sandbox_sha256` (a digest of the command, project, paths, hosts and
+  limits, never of the environment) and `approval_id` when an approval was collected. Its `run.exited` adds the
+  number of redactions, and `egress.denied`, `contained.leak_suspected` and `sandbox.degraded` events record what
+  the sandbox refused or could not apply.
+
+## Contained runs
+
+A client asks for tier D5 with one `contained` request that stays open for the run. The daemon answers with a
+first frame that says the run started, then streams the child's output in frames, and the client sends frames
+for standard input, terminal resizes and signals. The final frame carries the exit status. The daemon starts the
+child in its own sandbox, so the client holds no value and the host sandbox around the client needs no change.
 
 Argv and cwd appear only as SHA-256 digests; tokens, placeholders and credentials never appear. When the audit
 log cannot record a decision, the daemon refuses it: `keylatchd serve` does not start without an audit log.

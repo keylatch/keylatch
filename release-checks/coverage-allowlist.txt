@@ -127,7 +127,6 @@ github.com/keylatch/keylatch/internal/doctor
 github.com/keylatch/keylatch/internal/masking
 github.com/keylatch/keylatch/internal/vault/path
 github.com/keylatch/keylatch/internal/completion
-github.com/keylatch/keylatch/internal/sandbox
 github.com/keylatch/keylatch/internal/cmd/registry
 github.com/keylatch/keylatch/internal/backend/awssm
 github.com/keylatch/keylatch/internal/policy/match

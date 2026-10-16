@@ -18,6 +18,8 @@ func TestValidateRuntimeMode(t *testing.T) {
 		{input: "direct_brokered", wantErr: false},
 		{input: "direct_classic", wantErr: false},
 		{input: "gateway_proxy", wantErr: false},
+		{input: "placeholder", wantErr: false},
+		{input: "contained", wantErr: false},
 		// Removed modes — must mention migration table.
 		{input: "direct_run", wantErr: true, wantMsg: "migration table"},
 		{input: "local_gateway", wantErr: true, wantMsg: "migration table"},

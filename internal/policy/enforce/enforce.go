@@ -53,6 +53,9 @@ type Request struct {
 	Unit        string
 	ApprovalJWT string
 	Namespace   string
+	// Tier is the delivery tier asked for (D1 to D6); empty for requests that
+	// do not pick one.
+	Tier string
 }
 
 // Decision is the verdict and where it came from.
@@ -69,6 +72,15 @@ type Decision struct {
 	GrantID string
 	// MaxTTL caps the lifetime of anything issued for the request; zero is no cap.
 	MaxTTL time.Duration
+	// Approval is what the policy says about approving the request: "auto",
+	// "ask", "auto_if_contained" or "presence"; empty when it says nothing.
+	Approval string
+	// EgressAllow lists the non-secret destinations contained children may
+	// reach, and FSRead and FSWrite the paths they may read and write; empty
+	// means the policy sets none.
+	EgressAllow []string
+	FSRead      []string
+	FSWrite     []string
 }
 
 // Enforcer reads the policy a request is decided against.

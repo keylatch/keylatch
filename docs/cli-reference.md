@@ -129,8 +129,12 @@ Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.lo
 Diagnose keylatch configuration and environment.
 
 ```
-keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--quiet]
+keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--quiet] [--sandbox]
 ```
+
+`keylatch doctor --sandbox` instead reports what the host lets the contained tier (D5) do: user, mount, PID,
+network and cgroup namespaces, seccomp, Landlock and the cgroup leaf. It exits `2` when D5 cannot run, `1`
+when only an optional layer is missing and `0` otherwise. See [contained-runtime.md](contained-runtime.md).
 
 **Exit codes:**
 - `0` — all checks passed (warnings are informational only)

@@ -36,6 +36,10 @@ type decision struct {
 	hosts      []string
 	runID      string
 	reason     string
+	// sandbox is the digest of a contained run's plan; approvalID names the
+	// approval the decision waited on.
+	sandbox    string
+	approvalID string
 }
 
 func digest(parts ...string) string {
@@ -69,6 +73,8 @@ func (s *Server) record(ctx context.Context, d decision, outcome audit.Outcome) 
 	set("harness", d.res.Harness)
 	set("run_id", d.runID)
 	set("reason", d.reason)
+	set("sandbox_sha256", d.sandbox)
+	set("approval_id", d.approvalID)
 	if len(d.argv) > 0 {
 		extra["argv_sha256"] = digest(d.argv...)
 	}

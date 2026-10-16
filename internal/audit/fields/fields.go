@@ -96,8 +96,12 @@ var safeLogFields = map[string][]string{
 	// cwd_sha256 are SHA-256 hex digests; hosts is a list of host names.
 	"run.decided": {
 		"op", "verb", "connection", "tier", "child_location", "caller_kind",
-		"harness", "argv_sha256", "cwd_sha256", "hosts", "approval_id", "run_id", "reason",
+		"harness", "argv_sha256", "cwd_sha256", "hosts", "approval_id", "run_id", "reason", "sandbox_sha256",
 	},
+	// contained runs: counts, names and digests only.
+	"contained.leak_suspected": {"run_id", "connection", "caller_kind", "files"},
+	"sandbox.degraded":         {"run_id", "connection", "reason"},
+	"canary.tripped":           {"run_id", "connection", "session_id_hmac", "host", "where", "caller_kind", "reason"},
 	"run.exited": {
 		"run_id", "op", "verb", "exit", "duration_ms", "bytes_relayed", "redactions", "reason",
 	},
@@ -220,6 +224,7 @@ func AllActions() []string {
 		"run", "call", "release", "connect", "set", "policy.change",
 		"presence.decision", "security.block", "guard.block", "backup.export",
 		"run.decided", "run.exited",
+		"contained.leak_suspected", "sandbox.degraded", "canary.tripped",
 		"approval.requested", "approval.granted", "approval.denied",
 		"presence.decision", "policy.change", "backup.export",
 		// binding change actions.

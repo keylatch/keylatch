@@ -25,6 +25,10 @@ type vaultResolver struct {
 	log audit.Emitter
 }
 
+func (r vaultResolver) value(ctx context.Context, connection, field string) ([]byte, error) {
+	return r.Resolve(ctx, connection, field)
+}
+
 func (r vaultResolver) Resolve(ctx context.Context, connection, field string) ([]byte, error) {
 	tmpl, err := registry.Get(connection)
 	if err != nil {

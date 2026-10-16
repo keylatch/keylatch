@@ -38,6 +38,7 @@ import (
 	"github.com/keylatch/keylatch/internal/keyops"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/sidecar/ipc"
 	"github.com/keylatch/keylatch/internal/ui"
@@ -270,6 +271,8 @@ any agent sandbox.`,
 				cfg.Placeholders = mgr
 				cfg.Mint = mintCred
 			}
+			cfg.Decide = enforce.Decide
+			cfg.Contained = newContained(socket, binary, vaultResolver{cfg: loadConfig(env), env: env, log: emitter})
 			var agentLn *net.UnixListener
 			if keys, admin, closeAudit, err := newKeyService(env); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: key operations are disabled: %v\n", err)
@@ -298,6 +301,13 @@ any agent sandbox.`,
 	cmd.Flags().StringVar(&binary, "keylatch-bin", "", "keylatch executable the daemon runs for served verbs (default: next to keylatchd)")
 	cmd.Flags().StringVar(&sshAgentSocket, "ssh-agent-socket", "", "ssh-agent endpoint path (default: $KEYLATCH_SSH_AGENT_SOCKET or ssh-agent.sock next to the control socket; \"off\" disables it)")
 	return cmd
+}
+
+func loadConfig(env llmcontext.Lookup) config.Config {
+	if cfg, err := config.Load(paths.Config(env)); err == nil {
+		return cfg
+	}
+	return config.Default()
 }
 
 // newKeyService wires key operations to the configured backend, the sealed

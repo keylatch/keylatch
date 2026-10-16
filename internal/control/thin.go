@@ -207,6 +207,9 @@ func runThroughDaemon(ctx context.Context, c *Client, lookup llmcontext.Lookup, 
 		fmt.Fprintf(streams.ErrOut, "keylatch run: %v\n", err)
 		return exitcode.UserError
 	}
+	if ra.tier == TierContained {
+		return runContained(ctx, c, lookup, ra, streams)
+	}
 	cwd, _ := os.Getwd()
 	resp, err := c.RunSession(RunRequest{
 		Connection:    ra.connection,

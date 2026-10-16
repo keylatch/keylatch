@@ -530,6 +530,17 @@ func newRunCmd() *cobra.Command {
 				os.Exit(exitcode.UserError)
 			}
 
+			// A tier is chosen and served by the daemon; with no daemon reachable
+			// the thin client never gets here, so a local run cannot honour one
+			// and must not quietly pick another.
+			if tier, _ := c.Flags().GetString("tier"); tier != "" {
+				if dry, _ := c.Flags().GetBool("dry-run"); !dry {
+					cliErr := NewRuntimeNotAvailable("--tier %s is served by keylatchd and no daemon answers; start it with `keylatchd serve`", tier)
+					fmt.Fprint(c.ErrOrStderr(), cliErr.Stderr())
+					os.Exit(exitcode.RuntimeNotAvailable)
+				}
+			}
+
 			// --dry-run mode must bypass all infrastructure guards because it
 			// never decrypts credentials and must work on machines that have not yet
 			// been bootstrapped (e.g. CI canary tests, operator previews).
@@ -949,6 +960,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	cmd.Flags().StringArray("allow", nil, "allow this command prefix for this run only; repeat or comma-separate (blocked in LLM sessions)")
 	cmd.Flags().Bool("no-daemon-start", false, "do not auto-start keylatchd if it is not running")
+	cmd.Flags().String("tier", "", "delivery tier D2 to D5; served through a running keylatchd (D5 runs the command in the Keylatch sandbox with the real value)")
 	cmd.Flags().Bool("dry-run", false, "show what would be injected and executed without running the command")
 	cmd.Flags().Bool("json", false, "output dry-run plan as JSON (requires --dry-run)")
 	cmd.Flags().Bool("clean-env", false, "exec the child with a minimal env (PATH, HOME, USER, SHELL, TERM, LANG + injected vars)")

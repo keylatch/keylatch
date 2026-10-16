@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/contained"
 	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -117,6 +118,14 @@ Exit codes:
 			repair, _ := c.Flags().GetBool("repair")
 			yes, _ := c.Flags().GetBool("yes")
 
+			if sandboxOnly, _ := c.Flags().GetBool("sandbox"); sandboxOnly {
+				report := contained.Probe()
+				if err := writeSandboxReport(c.OutOrStdout(), report, jsonOut); err != nil {
+					return err
+				}
+				os.Exit(sandboxExitCode(report))
+			}
+
 			// --repair's per-check confirmation prompt
 			// is written to stdout, which --quiet discards — without --yes
 			// the prompt would be invisible while the process still blocks
@@ -198,6 +207,7 @@ Exit codes:
 	cmd.Flags().Bool("yes", false, "skip the interactive confirmation prompt for --repair (required when combined with --quiet --repair)")
 	cmd.Flags().Bool("quiet", false, "suppress table output; only exits with the appropriate code")
 	cmd.Flags().String("category", "", "comma-separated list of categories to run (e.g. environment,backends)")
+	cmd.Flags().Bool("sandbox", false, "report what this host lets the contained tier (D5) do: namespaces, Landlock, seccomp and cgroups")
 	// NOTE: --connection flag for gateway scoping is deferred.
 
 	return cmd

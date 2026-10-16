@@ -15,6 +15,11 @@ const (
 	// RuntimeDirectClassic is the 0.1.0 non-sandboxed direct injection mode.
 	RuntimeDirectClassic RuntimeMode = "direct_classic"
 	RuntimeGatewayProxy  RuntimeMode = "gateway_proxy"
+	// RuntimePlaceholder is tier D3: the child holds placeholders the daemon's
+	// proxy replaces. RuntimeContained is tier D5: the child holds the real
+	// value inside the Keylatch sandbox.
+	RuntimePlaceholder RuntimeMode = "placeholder"
+	RuntimeContained   RuntimeMode = "contained"
 )
 
 // removedRuntimes is the set of names that have been removed.
@@ -30,7 +35,7 @@ var removedRuntimes = map[string]bool{
 // See migration table in spec §.
 func ValidateRuntimeMode(s string) error {
 	switch RuntimeMode(s) {
-	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeDirectClassic, RuntimeGatewayProxy:
+	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeDirectClassic, RuntimeGatewayProxy, RuntimePlaceholder, RuntimeContained:
 		return nil
 	}
 	if removedRuntimes[s] {

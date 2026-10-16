@@ -104,6 +104,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Allow unprivileged user namespaces
+        # The contained runtime's tests create real namespaces; Ubuntu runners
+        # restrict them with AppArmor by default.
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run tests with coverage
         shell: bash
         env:
@@ -124,6 +129,26 @@ jobs:
         run: go test -run TestCanary -v ./internal/canary/...
       - name: go test canary meta
         run: go test -tags meta ./internal/canary/...
+
+  containment:
+    # Escape suite: hostile commands run in the thin-client sandbox
+    # (bubblewrap) and in the daemon's own sandbox (tier D5). A host that lacks
+    # a capability skips with the reason, so the job installs what it needs.
+    needs: go-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - name: Escape suite
+        run: go test -tags containment -count=1 -timeout 900s -v ./tests/containment/...
 
   bootstrap-smoke:
     # Clean-machine smoke test for the bootstrap onboarding flow.

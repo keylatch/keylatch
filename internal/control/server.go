@@ -24,6 +24,7 @@ import (
 	"github.com/keylatch/keylatch/internal/mintsession"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/placeholder"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/policy/mint"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
@@ -85,6 +86,13 @@ type Config struct {
 	// SigningKey returns the gateway signing key session tokens are minted
 	// with. Nil means the gateway cannot be served.
 	SigningKey func() ([]byte, error)
+	// Contained serves tier D5. Nil refuses it.
+	Contained *ContainedConfig
+	// Decide is the policy engine. Tier D5 is refused without it.
+	Decide func(ctx context.Context, req enforce.Request) enforce.Decision
+	// Approve obtains approval for a run that needs one. Without it such a
+	// run is refused.
+	Approve Approver
 }
 
 // Server answers control socket requests.
@@ -178,6 +186,8 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		s.exec(ctx, conn, r, res, req)
 	case OpRunSession:
 		_ = writeFrame(conn, s.decideRun(ctx, res, req.Run))
+	case OpContained:
+		s.containedRun(ctx, conn, r, res, req)
 	case OpRunExit:
 		_ = writeFrame(conn, s.runExited(ctx, req))
 	case OpGateway:
@@ -243,6 +253,10 @@ func (s *Server) runSession(ctx context.Context, kind Kind, rr *RunRequest, revo
 	case TierGateway:
 	case TierPlaceholder:
 		return s.placeholderSession(ctx, kind, rr)
+	case TierContained:
+		resp.Code, resp.ExitCode = CodeBadRequest, exitcode.UserError
+		resp.Error = "tier D5 runs in the daemon's sandbox and is requested with a contained run, not a session"
+		return resp
 	case TierRaw:
 		resp.Code, resp.ExitCode = CodeRefused, exitcode.SecurityBlock
 		resp.Error = "tier D6 injects an uncontained secret and is never served over the socket"
