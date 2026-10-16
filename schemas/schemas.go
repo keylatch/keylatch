@@ -8,6 +8,11 @@ import _ "embed"
 //go:embed connection-policy.schema.json
 var ConnectionPolicy []byte
 
+// Sync is the JSON Schema of keylatch.sync.yaml.
+//
+//go:embed sync.schema.json
+var Sync []byte
+
 // MigrateMap is the JSON Schema of the map 'keylatch migrate inventory' reads.
 //
 //go:embed migrate-map.schema.json
