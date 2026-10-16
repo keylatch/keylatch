@@ -74,10 +74,8 @@ func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 
 func skipWhereAKeystoreAlwaysExists(t *testing.T) {
 	t.Helper()
-	switch runtime.GOOS {
-	case "darwin":
-		t.Skip("the macOS login keychain is always present")
-	case "windows":
+	// The suite turns the macOS keychain off, so only DPAPI is always there.
+	if runtime.GOOS == "windows" {
 		t.Skip("DPAPI is always available for the current user")
 	}
 }

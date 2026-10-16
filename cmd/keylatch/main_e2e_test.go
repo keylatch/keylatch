@@ -653,10 +653,15 @@ func isolateFromKeyring(environ []string, overrides map[string]string) []string 
 	out := make([]string, 0, len(environ)+2)
 	for _, e := range environ {
 		switch name, _, _ := strings.Cut(e, "="); name {
-		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_E2E_OPERATOR_HOME", noInsecureKEK:
+		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_E2E_OPERATOR_HOME", "KEYLATCH_E2E_NO_OS_KEYRING", noInsecureKEK:
 			continue
 		}
 		out = append(out, e)
+	}
+	// The macOS login keychain on a CI runner can block on an unlock prompt
+	// until the store timeout kills it.
+	if runtime.GOOS == "darwin" {
+		out = append(out, "KEYLATCH_E2E_NO_OS_KEYRING=1")
 	}
 	home, ok := overrides["HOME"]
 	if !ok {
@@ -666,7 +671,7 @@ func isolateFromKeyring(environ []string, overrides map[string]string) []string 
 	// under HOME is never mistaken for the operator's.
 	operatorHome := filepath.Join(home, "operator-home")
 	out = append(out, "KEYLATCH_E2E_OPERATOR_HOME="+operatorHome)
-	if _, off := overrides[noInsecureKEK]; !off && runtime.GOOS == "linux" {
+	if _, off := overrides[noInsecureKEK]; !off && runtime.GOOS != "windows" {
 		if cfgPath := paths.DefaultConfig(operatorHome); !fileExists(cfgPath) {
 			c := config.Default()
 			c.AllowInsecureFileKEK = true
