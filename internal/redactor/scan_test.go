@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -80,7 +81,7 @@ func TestScanChangedRedactsInPlace(t *testing.T) {
 	if string(b) != "token "+Marker+" end" {
 		t.Fatalf("content %q", b)
 	}
-	if info, _ := os.Stat(p); info.Mode().Perm() != 0o640 {
+	if info, _ := os.Stat(p); runtime.GOOS != "windows" && info.Mode().Perm() != 0o640 {
 		t.Fatalf("mode %v", info.Mode())
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {

@@ -167,5 +167,7 @@ func (m *Matcher) rewrite(path string, in *os.File) error {
 	if err := errors.Join(copyErr, closeErr); err != nil {
 		return err
 	}
+	// Windows refuses to replace a file that still has an open handle.
+	_ = in.Close()
 	return os.Rename(tmp.Name(), path)
 }
