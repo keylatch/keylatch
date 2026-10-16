@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"strconv"
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
@@ -105,10 +106,19 @@ func (a *admin) dispatch(ctx context.Context, peer control.Peer, res callerkind.
 		if err != nil {
 			return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
 		}
-		return brokerapi.Response{OK: true, Session: &brokerapi.SessionInfo{ID: req.Session.ID, Ticket: ticket}}
+		start, _ := strconv.ParseUint(peer.Start, 10, 64)
+		l := Launcher{PID: peer.PID, Start: start}
+		a.s.sessions.Bind(peer.UID, req.Session.ID, l)
+		return brokerapi.Response{OK: true, Session: &brokerapi.SessionInfo{ID: req.Session.ID, Ticket: ticket, PID: l.PID, Start: l.Start}}
 	case brokerapi.OpSessionEnd:
 		a.s.sessions.End(peer.UID, req.Session.ID)
 		return brokerapi.Response{OK: true}
+	case brokerapi.OpSessionVerify:
+		l, ok := a.s.sessions.Lookup(req.Ticket, peer.UID)
+		if !ok {
+			return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, errors.New("the ticket is not valid"))
+		}
+		return brokerapi.Response{OK: true, Session: &brokerapi.SessionInfo{PID: l.PID, Start: l.Start}}
 	}
 	return fail(brokerapi.CodeBadRequest, exitcode.UserError, errors.New("unknown operation"))
 }

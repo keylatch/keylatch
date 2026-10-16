@@ -221,9 +221,8 @@ func (h *harness) serve(t *testing.T) (call func(frame, out any), stop func()) {
 		server, client := pair(t)
 		ln.ch <- server
 		b, _ := json.Marshal(frame)
-		if _, err := client.Write(append(b, '\n')); err != nil {
-			t.Fatal(err)
-		}
+		// A refusal can arrive before the request is written; the reply is what counts.
+		_, _ = client.Write(append(b, '\n'))
 		_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
 		line, err := bufio.NewReader(client).ReadBytes('\n')
 		if err != nil {

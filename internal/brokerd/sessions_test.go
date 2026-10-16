@@ -58,6 +58,34 @@ func TestLaunchedAgentClassified(t *testing.T) {
 	}
 }
 
+func TestSessionTicketsAreBoundToTheLauncher(t *testing.T) {
+	h := newHarness(t, nil)
+	reg := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionRegister, Session: &brokerapi.SessionRequest{ID: agentID, Cgroup: agentScope}})
+	if !reg.OK || reg.Session.PID != 4242 || reg.Session.Start != 9999 {
+		t.Fatalf("register = %+v", reg)
+	}
+	// A client verifies its ticket with the daemon and learns the launcher it must descend from.
+	ok := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionVerify, Ticket: reg.Session.Ticket})
+	if !ok.OK || ok.Session.PID != 4242 || ok.Session.Start != 9999 {
+		t.Fatalf("verify = %+v", ok)
+	}
+	for name, resp := range map[string]brokerapi.Response{
+		"another user": h.send(t, 1001, brokerapi.Request{Op: brokerapi.OpSessionVerify, Ticket: reg.Session.Ticket}),
+		"a forgery":    h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionVerify, Ticket: reg.Session.Ticket + "0"}),
+	} {
+		if resp.OK || resp.Code != brokerapi.CodeRefused {
+			t.Errorf("verify for %s = %+v", name, resp)
+		}
+	}
+	h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionEnd, Session: &brokerapi.SessionRequest{ID: agentID}})
+	if resp := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionVerify, Ticket: reg.Session.Ticket}); resp.OK {
+		t.Fatalf("a ticket of an ended session verified: %+v", resp)
+	}
+	if resp := h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionRegister, Session: &brokerapi.SessionRequest{ID: agentID, Cgroup: "/system.slice/x.scope"}}); resp.OK || resp.Code != brokerapi.CodeRefused {
+		t.Fatalf("a registration outside the user slice = %+v", resp)
+	}
+}
+
 func TestEscapedProcessIsHostNotHuman(t *testing.T) {
 	h := newHarness(t, nil)
 	h.send(t, 1000, brokerapi.Request{Op: brokerapi.OpSessionRegister, Session: &brokerapi.SessionRequest{ID: agentID, Cgroup: agentScope}})

@@ -35,6 +35,7 @@ func validRequests() map[string]Request {
 		"import-m": {Op: OpMigrateImport, Nonce: make([]byte, 16), Items: []Item{{Path: "a", Value: []byte("x")}}, OldAuditHead: "ab12"},
 		"register": {Op: OpSessionRegister, Session: &SessionRequest{ID: "agent-12345", Cgroup: "/user.slice/x.scope"}},
 		"end":      {Op: OpSessionEnd, Session: &SessionRequest{ID: "agent-12345"}},
+		"verify":   {Op: OpSessionVerify, Ticket: "agent-12345.1.abcd"},
 		"begin":    {Op: OpPresenceBegin, Target: &Request{Op: OpSecretDelete, Path: "svc/key"}},
 	}
 }
@@ -92,6 +93,7 @@ func TestDecodeRefusesMalformed(t *testing.T) {
 		"many signals":     frame(t, Request{Op: OpStatus, Signals: make([]string, 65)}),
 		"long signal":      frame(t, Request{Op: OpStatus, Signals: []string{strings.Repeat("s", 129)}}),
 		"long ticket":      frame(t, Request{Op: OpStatus, Ticket: strings.Repeat("t", 513)}),
+		"verify no ticket": frame(t, Request{Op: OpSessionVerify}),
 		"session no id":    frame(t, Request{Op: OpSessionRegister}),
 		"session bad id":   frame(t, Request{Op: OpSessionRegister, Session: &SessionRequest{ID: "a b"}}),
 		"session bad cg":   frame(t, Request{Op: OpSessionRegister, Session: &SessionRequest{ID: "agent-12345", Cgroup: "a\x00"}}),

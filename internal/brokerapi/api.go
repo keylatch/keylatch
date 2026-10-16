@@ -40,12 +40,13 @@ const (
 	OpRotateKeys      Op = "keys.rotate"
 	OpSessionRegister Op = "session.register"
 	OpSessionEnd      Op = "session.end"
+	OpSessionVerify   Op = "session.verify"
 )
 
 var allOps = []Op{
 	OpStatus, OpPresenceBegin, OpPolicyAccept, OpPolicyImport, OpPolicyExport, OpPolicyCheck,
 	OpSecretSet, OpSecretDelete, OpSecretList, OpAuditHead, OpMigrateImport, OpMigrateExport,
-	OpRotateKeys, OpSessionRegister, OpSessionEnd,
+	OpRotateKeys, OpSessionRegister, OpSessionEnd, OpSessionVerify,
 }
 
 // Response codes.
@@ -185,10 +186,13 @@ type AuditHead struct {
 	Events int64  `json:"events"`
 }
 
-// SessionInfo answers a session registration.
+// SessionInfo answers a session registration or a ticket check. PID and Start
+// name the launcher process the ticket is bound to.
 type SessionInfo struct {
-	ID     string `json:"id"`
+	ID     string `json:"id,omitempty"`
 	Ticket string `json:"ticket,omitempty"`
+	PID    int    `json:"pid,omitempty"`
+	Start  uint64 `json:"start,omitempty"`
 }
 
 var (
@@ -283,6 +287,10 @@ func (r Request) Validate() error {
 		}
 	case OpMigrateImport:
 		return r.validMigration()
+	case OpSessionVerify:
+		if r.Ticket == "" {
+			return errors.New("session.verify needs a ticket")
+		}
 	case OpSessionRegister, OpSessionEnd:
 		if r.Session == nil || !sessionID.MatchString(r.Session.ID) {
 			return errors.New("a session id of 8 to 64 letters, digits and dashes is required")

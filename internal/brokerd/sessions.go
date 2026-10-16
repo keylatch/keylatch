@@ -31,6 +31,16 @@ type registeredScope struct {
 	uid     uint32
 	cgroup  string
 	expires time.Time
+	// pid and start identify the launcher that registered the scope. A client
+	// that holds the ticket checks that process is among its ancestors.
+	pid   int
+	start uint64
+}
+
+// Launcher identifies the process that registered a scope.
+type Launcher struct {
+	PID   int
+	Start uint64
 }
 
 // Sessions is the table of agent scopes the launcher registered. A peer whose
@@ -83,6 +93,16 @@ func (s *Sessions) Register(uid uint32, id, cgroup string) (string, error) {
 	return s.ticket(id, uid, exp), nil
 }
 
+// Bind records which launcher process registered the scope id.
+func (s *Sessions) Bind(uid uint32, id string, l Launcher) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sc, ok := s.scopes[id]; ok && sc.uid == uid {
+		sc.pid, sc.start = l.PID, l.Start
+		s.scopes[id] = sc
+	}
+}
+
 // End forgets a scope the same user registered.
 func (s *Sessions) End(uid uint32, id string) {
 	s.mu.Lock()
@@ -121,19 +141,29 @@ func (s *Sessions) mac(body string, uid uint32) string {
 // VerifyTicket reports whether raw is an unexpired ticket this daemon issued to
 // the peer's user and whose session is still registered.
 func (s *Sessions) VerifyTicket(raw string, p control.Peer) bool {
+	_, ok := s.Lookup(raw, p.UID)
+	return ok
+}
+
+// Lookup returns the session a ticket belongs to when the ticket is genuine,
+// unexpired, issued to uid and its session is still registered.
+func (s *Sessions) Lookup(raw string, uid uint32) (Launcher, bool) {
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
-		return false
+		return Launcher{}, false
 	}
 	exp, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || s.now().Unix() > exp {
-		return false
+		return Launcher{}, false
 	}
-	if !hmac.Equal([]byte(parts[2]), []byte(s.mac(parts[0]+"."+parts[1], p.UID))) {
-		return false
+	if !hmac.Equal([]byte(parts[2]), []byte(s.mac(parts[0]+"."+parts[1], uid))) {
+		return Launcher{}, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sc, ok := s.scopes[parts[0]]
-	return ok && sc.uid == p.UID
+	if !ok || sc.uid != uid {
+		return Launcher{}, false
+	}
+	return Launcher{PID: sc.pid, Start: sc.start}, true
 }
