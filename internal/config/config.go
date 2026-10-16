@@ -52,7 +52,7 @@ type Config struct {
 	Connections map[string]ConnectionPolicy `json:"connections,omitempty"`
 
 	// Backends holds per-backend credential settings keyed by backend id:
-	// op, opconnect, vault, awssm, gcpsm, azurekv, doppler, infisical.
+	// op, opconnect, vault, awssm, gcpsm, azurekv, doppler, infisical, bws, sops.
 	Backends map[string]BackendCredentials `json:"backends,omitempty"`
 }
 
@@ -106,7 +106,7 @@ type BackendCredentials struct {
 
 // RemoteBackendIDs are the backends that authenticate with a credential and so
 // take BackendCredentials.
-var RemoteBackendIDs = []string{"op", "opconnect", "vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical"}
+var RemoteBackendIDs = []string{"op", "opconnect", "vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "bws", "sops"}
 
 // BackendID maps a backend name as the registry spells it (aws-sm) to the id
 // used in the config (awssm).

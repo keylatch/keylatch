@@ -906,6 +906,8 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) string {
 	fmt.Fprintln(c.OutOrStdout(), "    12) doppler         — Doppler secrets manager")
 	fmt.Fprintln(c.OutOrStdout(), "    13) infisical       — Infisical")
 	fmt.Fprintln(c.OutOrStdout(), "    14) op-connect      — 1Password Connect")
+	fmt.Fprintln(c.OutOrStdout(), "    15) bws             — Bitwarden Secrets Manager (read-only)")
+	fmt.Fprintln(c.OutOrStdout(), "    16) sops            — SOPS file encrypted to age (read-only)")
 	fmt.Fprintln(c.OutOrStdout())
 
 	// Advanced port, audit, and key configuration are owned by dedicated
@@ -916,7 +918,7 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) string {
 		"5": "proton-pass", "6": "keeper", "7": "lastpass",
 		"8": "vault", "9": "aws-sm", "10": "gcp-sm",
 		"11": "azure-kv", "12": "doppler", "13": "infisical",
-		"14": "op-connect",
+		"14": "op-connect", "15": "bws", "16": "sops",
 	}
 	fmt.Fprintf(c.OutOrStdout(), "  Choose backend [recommended: %s, enter number]: ", recommended)
 	choice := strings.TrimSpace(readLine())

@@ -11,6 +11,7 @@ import (
 	_ "github.com/keylatch/keylatch/internal/backend/awssm"
 	_ "github.com/keylatch/keylatch/internal/backend/azurekv"
 	_ "github.com/keylatch/keylatch/internal/backend/bw"
+	_ "github.com/keylatch/keylatch/internal/backend/bws"
 	_ "github.com/keylatch/keylatch/internal/backend/doppler"
 	_ "github.com/keylatch/keylatch/internal/backend/file"
 	_ "github.com/keylatch/keylatch/internal/backend/gcpsm"
@@ -21,5 +22,6 @@ import (
 	_ "github.com/keylatch/keylatch/internal/backend/op"
 	_ "github.com/keylatch/keylatch/internal/backend/opconnect"
 	_ "github.com/keylatch/keylatch/internal/backend/protonpass"
+	_ "github.com/keylatch/keylatch/internal/backend/sops"
 	_ "github.com/keylatch/keylatch/internal/backend/vault"
 )

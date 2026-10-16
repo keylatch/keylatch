@@ -24,7 +24,7 @@ func TestBackendListJSONMatchesTierPolicy(t *testing.T) {
 		Note string `json:"note"`
 	}
 	require.NoError(t, json.Unmarshal(out.Bytes(), &rows))
-	require.Len(t, rows, 14)
+	require.Len(t, rows, 16)
 
 	tiers := map[string]string{}
 	for _, r := range rows {
@@ -34,7 +34,7 @@ func TestBackendListJSONMatchesTierPolicy(t *testing.T) {
 	want := map[string]string{
 		"bw": "supported", "op": "supported", "file": "supported",
 		"vault": "community", "awssm": "community", "gcpsm": "community", "azurekv": "community",
-		"doppler": "community", "infisical": "community", "opconnect": "community",
+		"doppler": "community", "infisical": "community", "opconnect": "community", "bws": "community", "sops": "community",
 		"keychain": "deprecated", "keeper": "deprecated", "lastpass": "deprecated", "proton-pass": "deprecated",
 	}
 	assert.Equal(t, want, tiers)

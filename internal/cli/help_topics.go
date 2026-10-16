@@ -117,6 +117,8 @@ func newHelpTopicBackendsCmd() *cobra.Command {
 			fmt.Fprintln(w, "Azure Key Vault\tazure-kv\tAll\tYes (cloud)\tNo\tYes\tNo")
 			fmt.Fprintln(w, "Doppler\tdoppler\tAll\tYes (cloud)\tNo\tYes\tNo")
 			fmt.Fprintln(w, "Infisical\tinfisical\tAll\tYes (cloud)\tNo\tYes\tNo")
+			fmt.Fprintln(w, "Bitwarden Secrets Manager\tbws\tAll\tYes (cloud)\tNo\tYes\tNo")
+			fmt.Fprintln(w, "SOPS (age)\tsops\tAll\tYes (file)\tNo\tYes\tYes")
 			_ = w.Flush()
 			fmt.Fprintln(c.OutOrStdout())
 			fmt.Fprintln(c.OutOrStdout(), "Set backend: keylatch config set backend <key>")

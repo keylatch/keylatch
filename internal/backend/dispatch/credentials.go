@@ -40,6 +40,8 @@ var envCredentials = map[string][]envCredential{
 		{"client_id", []string{"KEYLATCH_INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_ID"}},
 		{"client_secret", []string{"KEYLATCH_INFISICAL_CLIENT_SECRET", "INFISICAL_CLIENT_SECRET"}},
 	},
+	"bws":  {{"access_token", []string{"KEYLATCH_BWS_ACCESS_TOKEN", "BWS_ACCESS_TOKEN"}}},
+	"sops": {{"age_key", []string{"KEYLATCH_SOPS_AGE_KEY", "SOPS_AGE_KEY"}}},
 }
 
 // ErrEnvCredentials means a backend's credentials are in the environment but

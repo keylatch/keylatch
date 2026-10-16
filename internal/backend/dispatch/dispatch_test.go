@@ -90,7 +90,7 @@ func TestSelect_UnknownBackend(t *testing.T) {
 	defer dispatch.ClearCached()
 
 	cfg := tempDirConfig(t)
-	cfg.Backend = "sops"
+	cfg.Backend = "nonesuch"
 
 	_, err := dispatch.Select(context.Background(), cfg, nil)
 	if err == nil {

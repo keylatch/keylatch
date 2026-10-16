@@ -102,6 +102,8 @@ A step-by-step walk-through lives in [docs/guides/secure-agent-setup.md](docs/gu
 | `doppler` | community | Doppler; no live suite |
 | `infisical` | community | Infisical; no live suite |
 | `opconnect` | community | 1Password Connect server; no live suite |
+| `bws` | community | Bitwarden Secrets Manager, read-only; machine-account token held by Keylatch; no live suite |
+| `sops` | community | SOPS files encrypted to age, read-only; decrypted in memory by the daemon |
 | `keychain` | deprecated | macOS Keychain secrets; reads the value from stdin; the Keychain stays a key store, not a backend |
 | `keeper` | deprecated | vendor CLI sessions are directly callable by an agent |
 | `lastpass` | deprecated | vendor CLI sessions are directly callable by an agent |
