@@ -90,6 +90,8 @@ Tier D5 (`keylatch run --tier D5 <connection> -- <command>`) runs a command in a
 
 ## Limits of this release
 
+- Service credentials (`keylatch service`) are bound to systemd units, so the macOS and Windows brokers refuse every release. Remote machine credentials and `keylatch sync` work on both, except that `sync` cannot rewrite env files through descriptors on Windows.
+- On Windows the broker cannot hand its store to a served command such as `call` or `mint`, because a Windows child cannot inherit the descriptor; it refuses with a message that points to `keylatch run`. macOS serves them as Linux does.
 - Socket activation is a systemd feature. The macOS daemon and the Windows service open their own endpoint.
 - Terminal (PTY) runs are not available in the contained tier on macOS and Windows. Run the command without a terminal.
 - A contained run holds the forwarder's loopback port (3128) for its lifetime on macOS and Windows, so only one contained run can be active at a time.
