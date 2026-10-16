@@ -3,6 +3,7 @@ package contained
 import (
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -81,7 +82,8 @@ func writeRule(b *strings.Builder, ops string, paths []string) error {
 		if err != nil {
 			return err
 		}
-		if !filepath.IsAbs(p) {
+		// Profiles are macOS paths, so the check must not depend on the host OS.
+		if !path.IsAbs(p) {
 			return fmt.Errorf("contained: %q must be an absolute path", p)
 		}
 		b.WriteString(" (subpath " + q + ")")
