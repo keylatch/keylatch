@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package simulate implements policy simulation (dry-run).
 package simulate
 

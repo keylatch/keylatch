@@ -143,14 +143,14 @@ Each connection can be configured with an `approval_mode` that determines when h
 | Runtime path | Default mode |
 |---|---|
 | `gateway_typed`, `gateway_sdk`, `gateway_proxy` | `trust` |
-| `direct_brokered` and value-bearing paths | `first-run` |
+| `minted` and value-bearing paths | `first-run` |
 
 ### Configuration
 
 Set `approval_mode` in your connection YAML:
 
 ```yaml
-# ~/.keylatch/config.yaml (per-connection override)
+# per-connection override
 connections:
   openrouter:
     approval_mode: prompt   # require approval every time

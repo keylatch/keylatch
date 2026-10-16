@@ -11,6 +11,8 @@ import (
 	"github.com/keylatch/keylatch/internal/doctor"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,6 +74,10 @@ func bootstrappedHome(t *testing.T) (string, llmcontext.Lookup) {
 	}
 	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: fullEnv})
 	require.NoError(t, err)
+	// A set-up install also has the default-deny policy `keylatch setup` writes.
+	require.NoError(t, policy.Save(paths.Policy(fullEnv), policy.Policy{
+		SchemaVersion: 1, Mode: policy.ModeEnforcing, DefaultDeny: true, Rules: []policy.Rule{},
+	}))
 	return tmp, fullEnv
 }
 

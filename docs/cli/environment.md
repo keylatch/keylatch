@@ -17,14 +17,16 @@ These variables configure the Keylatch runtime. They are read by the CLI process
 
 | Variable | Purpose | Security-sensitive | Child-env |
 |----------|---------|-------------------|-----------|
-| `KEYLATCH_MODE` | Override operating mode for process lifetime (`standard`, `telemetry`, `canary`, `custom`). Takes precedence over config file value. | No | Never |
-| `KEYLATCH_BACKEND` | Override the backend type (`file`, `keychain`, `op`, …) | No | Never |
+| `KEYLATCH_MODE` | Override operating mode for process lifetime (`standard`, `canary`, `custom`). Takes precedence over config file value. | No | Never |
+| `KEYLATCH_BACKEND` | Backend type (`file`, `op`, `bw`, …; see `keylatch backend list`). Used only when `backend` is unset in `config.json`: config wins over this variable. | No | Never |
 | `KEYLATCH_CONFIG` | Path to the main `config.json` file | No | Never |
 | `KEYLATCH_CONFIG_DIR` | Override the configuration directory (`~/.keylatch/`) | No | Never |
 | `KEYLATCH_DATA_DIR` | Override the vault data directory (`~/.keylatch/vault/`) | No | Never |
 | `KEYLATCH_VAULT_PATH` | Override the file backend vault path | No | Never |
 | `KEYLATCH_NAMESPACE` | Override the default namespace (`default`) | No | Never |
 | `KEYLATCH_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | No | Never |
+| `KEYLATCH_CI_SESSION` | Path to the session record `keylatch ci exchange` wrote. While set, `run`, `call` and the MCP server refuse connections outside the record and stop at its expiry. | No | Never |
+| `KEYLATCH_CI_ID_TOKEN` | Default variable `keylatch ci exchange --provider gitlab` reads the job's ID token from (`--token-env` names another). | Yes | Never |
 | `KEYLATCH_EXPERIMENTAL` | Set to `1` to enable all experimental features, including the UI `/experimental` endpoint. Equivalent to setting `experimental_gated = true` in a custom-mode config. | No | Never |
 | ~~`KEYLATCH_EXPERIMENTAL_BACKENDS`~~ | **Deprecated — ignored.** Previously gated the (now-removed) NordPass backend stub. | No | Never |
 
@@ -40,9 +42,8 @@ These variables configure cryptographic operations. They are **security-sensitiv
 | `KEYLATCH_KEYRING_DIR` | Override the keyring directory (`~/.keylatch/keyring/`) | Yes | Never |
 | `KEYLATCH_KEYRING_PATH` | Override the keyring JSON path (`~/.keylatch/keyring.json`) | Yes | Never |
 | `KEYLATCH_KEYRING_IDENTITY_PATH` | Override the age identity file path (`~/.keylatch/keyring/identity`) | Yes | Never |
-| `KEYLATCH_INSECURE_FILE_KEK` | `1` opts into a plaintext vault identity file when no OS keyring is available (same as `bootstrap --insecure-file-kek`) and stops the move into the keyring on open | No | Never |
-| `KEYLATCH_GATEWAY_SIGNING_KEY` | Override path for the gateway signing key | Yes | Never |
-| `KEYLATCH_IPC_KEY_FD` | File descriptor for passing the daemon IPC HMAC key between processes (Unix — pipe-based, FIND2-002) | Yes | Never |
+| `KEYLATCH_GATEWAY_SIGNING_KEY` | Override path for the gateway signing key (the wrapped key is stored beside it with a `.enc` suffix) | Yes | Never |
+| `KEYLATCH_IPC_KEY_FD` | File descriptor for passing the daemon IPC HMAC key between processes (Unix, pipe-based) | Yes | Never |
 | `KEYLATCH_IPC_KEY` | Windows equivalent of `KEYLATCH_IPC_KEY_FD` — the daemon IPC HMAC key passed as a hex string (Windows cannot inherit a pipe FD the same way). Set by the Tauri desktop shell (`src-tauri/src/sidecar.rs`) when spawning `keylatchd`. **Note**: the Windows desktop shell is not shipped in the current release, so this path is compile-only today — no Go-side reader currently consumes it. | Yes | Never |
 | `KEYLATCH_GRANT_ACCESSOR_KEY_PATH` | Path to the grant accessor HMAC key file | Yes | Never |
 | `KEYLATCH_PKCS11_PIN` | **SECRET.** PKCS#11 module PIN, read only when a trust root's `PINSource` is configured as `env:KEYLATCH_PKCS11_PIN`. **Blocked inside LLM sessions** — `Open()` returns `ErrLLMSessionBlocked` before reading this var if `IsLLMSession()` is true (see `internal/trust/pkcs11/pkcs11.go`). Prefer `PINSource: "prompt"` or `"keychain"`. | Yes | Never |
@@ -55,6 +56,7 @@ These variables configure cryptographic operations. They are **security-sensitiv
 |----------|---------|-------------------|-----------|
 | `KEYLATCH_AUDIT_PATH` | Override the audit log directory | No | Never |
 | `KEYLATCH_AUDIT_SALT_PATH` | Override the audit chain MAC salt file path | Yes | Never |
+| `KEYLATCH_AUDIT_KEY_PATH` | Override the path of the KEK-wrapped secret the audit chain key is derived from (`audit-key.enc` beside the audit log) | Yes | Never |
 
 ---
 
@@ -76,6 +78,17 @@ In gateway modes, the child process receives `KEYLATCH_GATEWAY_TOKEN` and `KEYLA
 | `KEYLATCH_GATEWAY_TOKENS` | Gateway token store path | No | Never |
 | `KEYLATCH_GATEWAY_TOKEN` | **Child-env only** — session token for the gateway (re-injected, not inherited) | Yes | gateway_typed/gateway_sdk only |
 | `KEYLATCH_GATEWAY_URL` | **Child-env only** — gateway base URL (re-injected, not inherited). In `gateway_proxy` mode this is re-injected to point at the local MITM proxy address instead of the gateway, alongside `KEYLATCH_SESSION_TOKEN` and `KEYLATCH_CA_CERT` — see [Proxy Variables](#proxy-variables). | No | all gateway-family modes (value differs per mode) |
+
+### Control socket
+
+`keylatchd serve` listens on a Unix socket only the current user can open. The `keylatch` client holds no key material: `status`, `list`, `doctor`, `describe`, `explain`, `call` and `run` are answered by the daemon when it is reachable, so they work by bare name inside an agent sandbox that hides Keylatch state and exposes only the socket. `get`, `export`, `backup` and `mint` are refused for agent and host callers.
+
+| Variable | Purpose | Security-sensitive | Child-env |
+|----------|---------|-------------------|-----------|
+| `KEYLATCH_SOCKET` | Control socket path. Default: `$XDG_RUNTIME_DIR/keylatch/keylatchd.sock`, else `<tmp>/keylatch-<uid>/keylatchd.sock`. Naming one makes the client ignore the system broker | No | Never |
+| `KEYLATCH_BROKER_SOCKET` | System broker socket. Default: `/run/keylatch/broker.sock`. The client uses it when it exists and `KEYLATCH_SOCKET` is unset | No | Never |
+| `KEYLATCH_SSH_AGENT_SOCKET` | ssh-agent endpoint served by `keylatchd serve`. Default: `ssh-agent.sock` next to the control socket | No | Never |
+| `KEYLATCH_LOCAL` | `1` makes the client act on local state instead of asking the daemon. The daemon sets it for the verbs it runs for a caller; it never widens what a caller may do | No | Never |
 
 ---
 
@@ -108,7 +121,8 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_BW_SERVER` | Bitwarden/Vaultwarden server URL | No | Never | — |
 | `KEYLATCH_BW_FOLDER` | Bitwarden folder filter | No | Never | — |
 | `KEYLATCH_BW_COLLECTION` | Bitwarden collection filter | No | Never | — |
-| `KEYLATCH_BW_SESSION_DIR` | Directory for cached Bitwarden session tokens and expiry metadata (default: `~/.keylatch/sessions`) | Yes | Never | — |
+| `KEYLATCH_BW_SESSION_DIR` | Directory for the sealed Bitwarden session and its expiry metadata (default: `<config dir>/sessions`) | Yes | Never | — |
+| `KEYLATCH_TEST_GITHUB_API_URL` | GitHub API root for GitHub App requests; read only by the conformance test build (`mint_test_endpoint`), ignored by every other build (see [mint conformance](../mint-conformance.md)) | No | Never | — |
 | `KEYLATCH_PROTON_PASS_BIN` | Override path to the Proton Pass CLI binary | No | Never | — |
 | `KEYLATCH_PROTON_PASS_VAULT` | Proton Pass vault name | No | Never | — |
 | `KEYLATCH_PROTON_PASS_ITEM_PREFIX` | Prefix for Proton Pass item names | No | Never | — |
@@ -161,7 +175,7 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_SESSION_TICKET` | Session ticket `keylatch launch` passes to the harness it starts. Signed, valid for 12 hours, and bound to the launching process; a valid ticket marks every descendant as an agent session. An absent, forged or foreign ticket changes nothing. | Yes | Set by `keylatch launch` only |
 | `KEYLATCH_AGENT_SESSION` | Set to `1` to mark a shell as an agent session by hand. | No | Never |
 
-> **Raw-credential access.** `keylatch get` and `keylatch run` in a raw-credential mode (`direct_brokered`, `direct_classic_sandboxed`) fail closed (exit code 2) for every session unless `allow_unverified_session: true` is set in the operator's default `config.json`: `~/.config/keylatch/config.json` on Linux, `~/.keylatch/config.json` elsewhere, with the home directory taken from the user database rather than `$HOME`. The file must belong to you and not be writable by group or others. `KEYLATCH_CONFIG`, `KEYLATCH_CONFIG_DIR` and `XDG_CONFIG_HOME` do not apply to this setting, and no environment variable or session ticket opens the gate. Gateway and proxy modes are never gated: the child receives only a scoped session token.
+> **Raw-credential access.** `keylatch get` and `keylatch run` in a raw-credential mode (`minted`, `direct_classic_sandboxed`) fail closed (exit code 2) for every session unless `allow_unverified_session: true` is set in the operator's default `config.json`: `~/.config/keylatch/config.json` on Linux, `~/.keylatch/config.json` elsewhere, with the home directory taken from the user database rather than `$HOME`. The file must belong to you and not be writable by group or others. `KEYLATCH_CONFIG`, `KEYLATCH_CONFIG_DIR` and `XDG_CONFIG_HOME` do not apply to this setting, and no environment variable or session ticket opens the gate. Gateway and proxy modes are never gated: the child receives only a scoped session token.
 
 ---
 
@@ -176,17 +190,6 @@ field and the `KEYLATCH_*` var are empty.
 | `KEYLATCH_TEAM_DIR` | Team configuration directory | No | Never |
 | `KEYLATCH_ORG_POLICY_DIR` | Org-level policy directory | No | Never |
 | `KEYLATCH_APPROVALS_DIR` | Approval records directory | No | Never |
-
----
-
-## Security-Sensitive Telemetry Variables
-
-These variables control telemetry emission and are read by the CLI process before any event is sent.
-
-| Variable | Purpose | Security-sensitive | Child-env |
-|----------|---------|-------------------|-----------|
-| `KEYLATCH_TELEMETRY_DISABLE` | Set to `1` to suppress all telemetry regardless of operating-mode configuration. This is the operator kill-switch — takes precedence over every other telemetry setting. | No | Never |
-| `KEYLATCH_TELEMETRY_URL` | Override the remote telemetry endpoint URL. Used in CI canary scans to redirect events to a local mock server. If unset, `https://telemetry.keylatch.dev/v1/events` is used. | No | Never |
 
 ---
 
@@ -206,7 +209,7 @@ The runtime mode identifier `KEYLATCH_RUNTIME` is **written to** the child env (
 
 | Variable | Value in child env | Notes |
 |----------|-------------------|-------|
-| `KEYLATCH_RUNTIME` | `gateway_typed`, `gateway_sdk`, `direct_brokered`, `gateway_proxy` | Always present in child env in all runtime modes |
+| `KEYLATCH_RUNTIME` | `gateway_typed`, `gateway_sdk`, `minted`, `gateway_proxy` | Always present in child env in all runtime modes |
 
 ---
 
@@ -217,9 +220,11 @@ The runtime mode identifier `KEYLATCH_RUNTIME` is **written to** the child env (
 #   Child receives: KEYLATCH_GATEWAY_TOKEN, KEYLATCH_GATEWAY_URL, KEYLATCH_RUNTIME
 #   Stripped:       ALL other KEYLATCH_* vars
 
-# Brokered mode (direct_brokered):
-#   Child receives: KEYLATCH_RUNTIME
-#   Stripped:       ALL other KEYLATCH_* vars
+# Minted mode (minted):
+#   Child receives: PATH, HOME, USER, LOGNAME, SHELL, TERM, LANG, LC_*, TMPDIR,
+#                   the variables --extra names, the minted credential variables
+#                   the template names, KEYLATCH_RUNTIME
+#   Stripped:       everything else, including ALL other KEYLATCH_* vars
 
 # Proxy mode (gateway_proxy):
 #   Child env is rebuilt from scratch — base env is PATH, HOME, USER, TERM,

@@ -23,7 +23,7 @@
 | `7` | BootstrapMissing | `keylatch bootstrap` has not been run |
 | `8` | InsecureArgv | A sensitive value was passed via argv (shell history leak) |
 | `9` | InternalError | Unexpected internal failure |
-| `10` | NotImplemented | Command is registered but its implementation is a stub (e.g. `keylatch trust enroll`/`trust approve`) |
+| `10` | NotImplemented | Reserved; no release command returns it |
 
 ---
 
@@ -35,7 +35,7 @@ The `--runtime` flag is used with `keylatch run`.
 |------|-------------|-------------|
 | `gateway_typed` | Allowed | Default. Credential injected via local typed gateway with schema validation. |
 | `gateway_sdk` | Allowed | SDK-compatible credential exchange through the gateway. |
-| `direct_brokered` | Allowed | Direct injection via trusted broker process. |
+| `minted` | Allowed; the mint policy refuses agents | A scoped credential minted for the command and revoked on exit. |
 | `gateway_proxy` | Allowed | Credential proxy through the local gateway. |
 
 All four modes are permitted in LLM sessions. Raw credential values are never returned to the agent process in any mode. `keylatch get` is always blocked in LLM sessions (exit 2, SecurityBlock).
@@ -91,7 +91,7 @@ Detects the project language (Go: `go.mod`, Python: `pyproject.toml`/`requiremen
 
 | Flag | Description |
 |------|-------------|
-| `--agent` | AI agent to integrate with (required). One of: `claude-code`, `gemini`, `windsurf`, `cursor`, `generic` |
+| `--agent` | AI agent to integrate with (required). One of: `claude-code`, `gemini`, `cursor`, `generic` |
 
 **Example:**
 
@@ -110,17 +110,32 @@ After running, edit `.keylatch/integration.yml` to set your actual provider name
 Initialize local keylatch configuration (scriptable).
 
 ```
-keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--insecure-file-kek]
+keylatch bootstrap [--dry-run] [--json] [--backend <name>] [--kek keystore|passphrase]
 ```
 
-Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring and fails when none is usable, unless `--insecure-file-kek` is given. Re-running it moves a plaintext identity from an older install into the keyring.
+Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.log` (mode `0600`). Idempotent — safe to run multiple times. For the `file` backend it stores the vault identity in the OS keyring. When none is usable it asks, in a terminal, for a passphrase that wraps the vault key instead, and without a terminal it fails. No flag and no environment variable keeps the key in a plaintext file; only `allow_insecure_file_kek` in the operator's own config file does. Re-running it moves a plaintext identity from an older install into the keyring.
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Print plan without writing anything |
 | `--json` | Output plan as JSON |
 | `--backend` | Set credential backend (`file`, `keychain`, `op`, `bw`) |
-| `--insecure-file-kek` | Keep the vault identity in a plaintext file next to the vault when no OS keyring is available. Any process running as you can then decrypt the vault. Same as `KEYLATCH_INSECURE_FILE_KEK=1` |
+| `--kek` | How the vault key is held: `keystore` (an OS keyring, never a passphrase) or `passphrase` (Argon2id, asked on the terminal on every use). Default: the keystore, then a passphrase when no keyring is usable and a terminal is available |
+
+---
+
+### `keylatch scan`
+
+Find credentials in text before it reaches a model or a transcript.
+
+```
+keylatch scan [--redact] [path...]
+```
+
+Reads the files, or standard input, and prints `file:line: kind` for every line that holds a credential in a
+known format (`credential`) or a Keylatch canary (`canary`). It never prints the value. Exit `2` when it finds
+anything, so a hook can stop a prompt or a tool result from leaving. With `--redact` the text is written to
+standard output with each finding replaced and the exit status is `0`.
 
 ---
 
@@ -129,8 +144,12 @@ Creates `~/.keylatch/` (mode `0700`), `config.json` (mode `0600`), and `audit.lo
 Diagnose keylatch configuration and environment.
 
 ```
-keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--quiet]
+keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--quiet] [--sandbox]
 ```
+
+`keylatch doctor --sandbox` instead reports what the host lets the contained tier (D5) do: user, mount, PID,
+network and cgroup namespaces, seccomp, Landlock and the cgroup leaf. It exits `2` when D5 cannot run, `1`
+when only an optional layer is missing and `0` otherwise. See [contained-runtime.md](contained-runtime.md).
 
 **Exit codes:**
 - `0` — all checks passed (warnings are informational only)
@@ -168,10 +187,10 @@ keylatch doctor [--json] [--verbose] [--redact-paths] [--category <cats>] [--qui
 - `bootstrap.config` — verifies `~/.keylatch/config.json` is present and parseable
 
 **KEK storage check:**
-- `backend.kek` — fails with "plaintext KEK on disk" when a plaintext vault identity has not been moved into the OS keyring or acknowledged, or remains beside a keyring item; warns when it was acknowledged with `--insecure-file-kek` or comes from `KEYLATCH_AGE_IDENTITY`
+- `backend.kek` — fails with "plaintext KEK on disk" whenever a plaintext vault identity file is in use, whether or not `allow_insecure_file_kek` permits it, or remains beside a keyring item; warns when the identity comes from `KEYLATCH_AGE_IDENTITY`
 
 **Integration check (I3):**
-- `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.windsurf/hooks`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.
+- `I3 integration-markers` — walks cwd for known agent marker files (`.claude/settings.json`, `.cursor/rules`, `AGENTS.md`, `CLAUDE.md`, `.gemini/config.yml`). If markers are found but `.keylatch/integration.yml` is absent, reports `[ok]` with an informational note and a link to the relevant integration guide (visible with `--verbose`/`--json`) — this is a suggestion, not a warning, since having an unrelated agent marker present says nothing about install health. Also passes with `[ok]` if `.keylatch/integration.yml` exists.
 
 **Optional-feature checks (informational, not warnings):** `gateway.running` (gateway not started), `plaintext_retention` (runtime monitor / `keylatch ui` not started), and `connections.configured` (no connections added yet) report `[ok]` with an informational detail rather than `[warn]` when the corresponding optional feature simply hasn't been enabled — none of these force doctor's exit code away from `0`.
 
@@ -210,6 +229,27 @@ The `fix` column is populated for unavailable modes and is empty for available o
 
 ---
 
+### `keylatch explain`
+
+Explain whether a run is allowed and how its secret would be delivered, without running anything. Reads the policy and provider templates only; never prints a secret value.
+
+```
+keylatch explain [--json] run <connection> -- <command> [args...]
+keylatch explain [--json] policy [connection]
+keylatch explain schema
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output the versioned JSON document (`schema_version`, `decision`, `tier`, `child_location`, `approval`, `hosts`, `scope`, `rejected_tiers`, `residual_risk`) |
+| `--actor` | Evaluate as this actor instead of the inferred one |
+| `--cwd` | (`run`) Evaluate for this working directory |
+| `--tier` | (`run`) Ask about one delivery tier, D1 to D6 |
+
+See [Host guards and keylatch explain](integration/host-guards.md) for the schema and a guard hook example.
+
+---
+
 ### `keylatch connect`
 
 Register a new credential connection.
@@ -227,6 +267,7 @@ keylatch connect <provider> --provider-ref api_key=<uri>  # resolve from externa
 keylatch connect openrouter
 keylatch connect sentry -f auth_token=@-
 keylatch connect github --provider-ref token=op://Keylatch/github/token
+keylatch connect billing --provider custom --host api.billing.example:443 --slot header:Authorization:Bearer --env BILLING_API_KEY -f token=@- --test-url https://api.billing.example/v1/ping --expect 200
 keylatch connect openrouter --provider-ref api_key=aws-sm://us-east-1/prod/openrouter#api_key
 keylatch connect openrouter --provider-ref api_key=hashivault://secret/prod/openrouter#api_key
 ```
@@ -238,8 +279,9 @@ keylatch connect openrouter --provider-ref api_key=hashivault://secret/prod/open
 | `op://vault/item/field` | 1Password CLI | `op` v2+ | `op://Private/Anthropic/api_key` |
 | `aws-sm://region/secret[#key]` | AWS Secrets Manager | `aws` CLI v2+ | `aws-sm://us-east-1/prod/openrouter#api_key` |
 | `hashivault://mount/path[#field]` | HashiCorp Vault | `vault` CLI v1.17+ | `hashivault://secret/prod/openrouter#api_key` |
+| `bw://<org-or-personal>/<collection>/<item>/<field>` | Bitwarden | `bw` CLI | `bw://personal/-/My%20Service/password` |
 
-**Deferred resolution (EPIC-10)**: The URI is stored verbatim in the keylatch vault.
+**Deferred resolution**: The URI is stored verbatim in the keylatch vault.
 The external PM is called at runtime (on each `keylatch run` or gateway request) —
 the plaintext is never written to disk. Credential rotation in the upstream PM is
 automatically picked up on next use.
@@ -248,10 +290,34 @@ automatically picked up on next use.
 
 | Flag | Description |
 |------|-------------|
-| `--provider-ref <field>=<uri>` | Store a field as an external reference URI (repeatable). Validation is performed locally — the external PM is not contacted at connect time. |
+| `--provider-ref <field>=<uri>` | Store a field as an external reference URI (repeatable). Validation is performed locally — the external PM is not contacted at connect time, except for `bw://`, where the item is looked up once and stored by ID. |
 | `--field <field>=<value>` | Supply a field value directly (incompatible with `--provider-ref` for the same field). |
 
 See [External Store References](./backends/external-references.md) for full documentation.
+
+**Custom connections** (`--provider custom`) declare their own binding: `--host`, `--slot`, `--env`, `--placeholder-prefix`, `--placeholder-min-length`. Creating or widening one is human-only and needs presence. `--test-url <https-url>` with `--expect <status>` (default 200) then sends one request through the placeholder tier carrying only a placeholder and fails unless the status matches, so a pass shows the stored value, the slots and the hosts agree. The URL must lie inside the declared hosts, and only a human can use the flag because the request carries the credential. `keylatch explain` reads the same binding for hosts and slots.
+
+**Local-only fields**
+
+A field the process only uses itself (a JWT, session or encryption secret) has no host to send it to. Mark it with `--local-only` and Keylatch stops storing a value for it.
+
+```
+keylatch connect <provider> --class dev --local-only JWT_SECRET=ephemeral
+keylatch local-only set <provider> <field> <ephemeral|operation|contained|none>
+```
+
+| Mode | Behaviour |
+|------|-----------|
+| `ephemeral` | `keylatch run` generates a random value (48 random bytes, base64url) once per run and gives every child the same one. It is never stored, and the stored secret is never read for that field. |
+| `operation` | Accepted and recorded; `keylatch run` refuses it with a "not available yet" error. |
+| `contained` | Accepted and recorded; `keylatch run` refuses it with a "not available yet" error. |
+
+| Flag | Description |
+|------|-------------|
+| `--class dev\|test\|prod` | Connection class. `ephemeral` needs `dev` or `test`; a `prod` or unclassified connection rejects it. |
+| `--local-only <field>=<mode>` | Set a field's mode (repeatable). |
+
+On a `dev` or `test` connection, fields named `*_SECRET`, `*_SIGNING_KEY`, `*_ENCRYPTION_KEY` or `SECRET_KEY_BASE` are suggested for `ephemeral`. The suggestion is applied only when a human confirms the prompt; agent callers and non-interactive runs get a hint. Changing a field toward weaker delivery (for example `ephemeral` to `contained`, or `none`) is human-only. `status` and `describe` show each field's mode.
 
 ---
 
@@ -260,21 +326,24 @@ See [External Store References](./backends/external-references.md) for full docu
 Export an AEAD-encrypted backup of all enrolled connections (T-12-02).
 
 ```
-keylatch backup [--output <file>] [--passphrase-file <file>]
+keylatch backup [--output <file>]
 ```
 
 Writes all enrolled connection credentials to an XChaCha20-Poly1305 encrypted
-tar archive protected by a separate backup passphrase. The passphrase is
-prompted interactively from the terminal (TTY required) or read from a file.
+tar archive protected by a separate backup passphrase. A human approves the
+export at a terminal (the prompt names how many credentials leave the store),
+and the passphrase is read from that terminal only.
 
 **Security invariants:**
 
 - Blocked in LLM sessions (exit `2`, `SecurityBlock`). Backup is a value-bearing
   operation that must not be accessible to agent sessions.
+- Needs human presence: an interactive terminal that no agent harness owns, plus
+  the platform prompt where one is installed.
 - The backup passphrase is independent of the vault KEK — compromise of the
   backup passphrase does not compromise the vault, and vice versa.
-- Passphrase is never exposed on the command line. The only safe inputs are a
-  TTY prompt or `--passphrase-file`.
+- The passphrase is never taken from the command line, a file or a pipe. There
+  is no `--passphrase-file`; passing it is a usage error.
 - Each credential entry is individually AEAD-sealed with the credential path as
   associated data (AAD), binding ciphertext to its identity.
 
@@ -293,24 +362,17 @@ the Argon2id salt and parameters needed to re-derive the KEK from the passphrase
 | Flag | Description |
 |------|-------------|
 | `--output <file>` | Output file path (default: `keylatch-backup-<timestamp>.enc` in cwd) |
-| `--passphrase-file <file>` | Read backup passphrase from this file instead of a TTY prompt |
 
-**Examples**
+**Example**
 
 ```bash
-# Interactive (TTY required):
-keylatch backup
-
-# Non-interactive (CI / scripted restore workflows):
-keylatch backup --output /mnt/secure/backup.enc --passphrase-file /run/secrets/backup-passphrase
-
-# Decrypt and inspect (using openssl or a purpose-built restore tool):
-keylatch restore backup.enc --output-dir ./restored-vault
+# At a terminal: a human approves the export and types the passphrase
+keylatch backup --output /mnt/secure/backup.enc
 ```
 
-**Restore / Decryption**
+**Decryption**
 
-Backups are self-contained. To decrypt a backup:
+There is no `restore` command. Backups are self-contained and decrypt by hand. To decrypt a backup:
 
 1. Read `keylatch-backup/header.json` from the archive for the Argon2id salt and
    parameters.
@@ -318,7 +380,29 @@ Backups are self-contained. To decrypt a backup:
 3. For each credential entry, split the payload as `nonce[24] || ciphertext`, then:
    `plaintext = XChaCha20Poly1305_Open(kek, nonce, ciphertext, AAD=<entry-path>)`.
 
-The restore command (`keylatch restore`) automates this process.
+---
+
+### `keylatch keys`
+
+Show and change how the vault key is protected.
+
+```
+keylatch keys status [--json]
+keylatch keys rewrap --to keystore|passphrase
+```
+
+`status` reports where the key-encryption key is held (`os-keyring`,
+`passphrase`, `plaintext-file` or `external`) and `plaintext_kek`, which is true
+while a plaintext identity file is on disk. Nothing is changed and no key
+material is shown.
+
+`rewrap` generates a fresh key (a new identity in the OS keyring, or a passphrase
+typed twice on the terminal) and re-wraps the vault's data keys under it. Before
+anything is deleted it proves that the new key alone opens the keyring and
+recovers the same keys, then reads every secret through it; only then is the
+plaintext identity overwritten with random bytes and removed. If the proof fails
+the keyring is wrapped back under the previous key. It needs a human at a
+terminal. A copy of the old plaintext identity opens nothing afterwards.
 
 ---
 
@@ -443,6 +527,10 @@ keylatch run <connection> [--runtime <mode>] [--dry-run] [--json] [--clean-env] 
 | `--clean-env` | `false` | Minimal child environment (PATH, HOME, USER, SHELL, TERM, LANG, and injected vars) |
 | `--extra <var>` | | Preserve a specific variable when using `--clean-env`. Repeatable. |
 | `--allow <prefix>` | | Allow an extra command prefix for this run only (blocked in LLM sessions). Repeatable. |
+| `--tier <D2..D5>` | | Delivery tier, served through a running keylatchd. `D4` runs the command against a protocol adapter (see [protocol adapters](protocol-adapters.md)). |
+| `--target <host:port>` | | `D4`: the database; must match the connection's adapter hosts. |
+| `--db-user <role>` | `postgres` | `D4`: the database role the adapter logs in as. |
+| `--database <name>` | `postgres` | `D4`: the database used when the client names none. |
 
 **`--dry-run` behaviour**
 
@@ -494,7 +582,7 @@ keylatch run openrouter -- node script.js
 keylatch run openrouter --dry-run -- node script.js
 keylatch run openrouter --dry-run --json -- node script.js
 keylatch run openrouter --runtime gateway_sdk -- python main.py
-keylatch run aws-prod --runtime direct_brokered -- ./deploy.sh
+keylatch run aws --runtime minted -- aws s3 ls
 keylatch run openrouter --clean-env -- node script.js
 keylatch run openrouter --clean-env --extra DATABASE_URL -- node script.js
 ```
@@ -513,7 +601,7 @@ Examples:
 
 ```
 error[RuntimeNotAvailable]: anthropic + gateway_typed: gateway is not running. Try: keylatch gateway up
-error[SecretNotFound]: openrouter + direct_brokered: no credential found for this connection. Try: keylatch connect openrouter --field api_key=@prompt
+error[SecretNotFound]: openrouter + gateway_typed: no credential found for this connection. Try: keylatch connect openrouter --field api_key=@prompt
 error[RuntimeNotAvailable]: openrouter + gateway_sdk: failed to mint session token. Run: keylatch doctor --category runtime
 ```
 
@@ -535,24 +623,10 @@ error[RuntimeNotAvailable]: openrouter + gateway_sdk: failed to mint session tok
 
 ### `keylatch get`
 
-Retrieve a credential value. **Blocked in LLM sessions (exit 2).** The unmasked path is not yet implemented — exits 5 (`OperationFailed`) outside LLM sessions.
+Retrieve a credential value. **Blocked in LLM sessions (exit 2).** Reading a raw value is not implemented: outside LLM sessions the command exits 5 (`OperationFailed`). Use `keylatch run` or `keylatch call` so the value never reaches the agent.
 
 ```
-keylatch get <service> <key> [--masked]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--masked` | Return masked value (`****`) — fully implemented, safe in all sessions including LLM |
-
----
-
-### `keylatch get-masked`
-
-Retrieve a masked credential value (`****`). Safe in LLM sessions. Equivalent to `keylatch get <service> <key> --masked`.
-
-```
-keylatch get-masked <service> <key>
+keylatch get <service> <key>
 ```
 
 ---
@@ -677,6 +751,52 @@ The harness and every process it starts carry `KEYLATCH_SESSION_TICKET`, a signe
 
 ---
 
+### `keylatch key`
+
+Sign, verify, encrypt or decrypt with a key that never leaves the daemon.
+
+```
+keylatch key sign <connection> [--field <name>] [--alg <alg>] [--in <file|->] [--out <file>] [--encoding raw|hex|base64]
+keylatch key verify <connection> --sig <file> [--field <name>] [--alg <alg>] [--in <file|->]
+keylatch key encrypt <connection> [--field <name>] [--aad <text>] [--in <file|->]
+keylatch key decrypt <connection> [--field <name>] [--aad <text>] [--in <file|->]
+keylatch key jwt-sign <connection> [--field <name>] [--alg HS256|ES256|EdDSA] [--kid <id>] [--in <claims.json|->]
+```
+
+The command goes to `keylatchd serve` over the control socket; without a daemon it fails, because the key is read only inside the daemon. Algorithms are named as in JOSE: `HS256`, `HS384`, `HS512`, `EdDSA` (`Ed25519`), `ES256`, `ES384`, `PS256` (RSA-PSS, SHA-256), `RS256` (RSA PKCS#1 v1.5, SHA-256) and `A256GCM` (`AES-256-GCM`). `sign` and `verify` use ASN.1 DER for ECDSA; `jwt-sign` uses the fixed-width form JWS requires and reads a JSON object from `--in` or stdin. Ciphertext is `nonce || ciphertext || tag`. Input is limited to 256 KiB.
+
+`--field` and `--alg` may be omitted when the connection has one field and the operation has one allowed algorithm. A request outside the connection's allowlist exits 2; an unknown connection exits 3; a `verify` that does not match exits 1.
+
+The allowlist is managed through the daemon:
+
+```
+keylatch key allow <connection> --field <name> [--secret <backend path>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent] [--host-key <SHA256:...>]
+keylatch key revoke <connection> [--field <name>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent]
+keylatch key list [<connection>]
+```
+
+`--secret` is the backend path of the key: a PEM private key (PKCS#8, PKCS#1, SEC1 or OpenSSH) for asymmetric algorithms, the raw bytes for HMAC, and 32 bytes (raw, hex or base64) for AES-256-GCM. `--op` takes `sign`, `verify`, `encrypt`, `decrypt` and `jwt-sign`, comma separated. Decrypt returns plaintext, so agent and host callers are refused unless the field was allowed with `--agent-decrypt`.
+
+`allow` adds or widens an entry and is refused for agent and host callers (exit 2); the refusal is audited. `revoke` narrows or removes an entry and is open to any caller; with no `--op`, `--alg` or flags it removes the field, or every field of the connection when `--field` is omitted. `list` shows the entries; agent and host callers do not see the backend path. Every change is audited as `key.policy_change` with a before and after summary.
+
+The allowlist is stored as `key-operations.json` in the Keylatch state directory, sealed with an HMAC keyed from the installation's audit salt. The daemon refuses a file whose seal does not match, so an edit made outside Keylatch grants nothing: key operations fail with an integrity error, and `keylatch doctor` reports `daemon.key_operations` as failing until the file is restored, or deleted and its entries re-added with `keylatch key allow`.
+
+Keys are read from the backend for one request and parsed per request; nothing is cached. Go cannot zero the parsed key structures of RSA and ECDSA keys or the AES key schedule, so those can remain in daemon memory until the garbage collector reuses them (the byte buffers Keylatch holds are cleared). Go's `runtime/secret` would erase such temporaries, but it requires `GOEXPERIMENT=runtimesecret` and is not part of a default build, so Keylatch does not use it.
+
+`keylatchd serve` also answers the ssh-agent protocol on `ssh-agent.sock` beside the control socket (`--ssh-agent-socket`, `KEYLATCH_SSH_AGENT_SOCKET`; `off` disables it) for fields allowed with `--ssh-agent`. It lists and signs only. With `--host-key`, a key signs only in sessions the client bound to one of those server host key fingerprints with `session-bind@openssh.com`; OpenSSH 8.9 and later sends it. Git commit signing uses this endpoint, so no gpg-agent is needed. Allow an Ed25519, ECDSA or RSA key with `--ssh-agent`, then:
+
+```
+export SSH_AUTH_SOCK=<ssh-agent.sock>
+git config gpg.format ssh
+git config user.signingkey /path/to/signing.pub     # the public key
+git config gpg.ssh.allowedSignersFile /path/to/allowed_signers
+git commit -S -m "message"
+```
+
+Every request is audited as `key.operation` with the operation, algorithm, connection, field, caller kind and the SHA-256 of the input, never the key or the data; an operation that cannot be audited is not returned.
+
+---
+
 ### `keylatch deny`
 
 Deny a pending secret-access request by token. **Blocked in LLM sessions**, requires an interactive terminal and asks for the approver passphrase.
@@ -703,7 +823,14 @@ View the local audit log (value-free).
 
 ```
 keylatch audit [--summary] [--since <time>] [--json]
+keylatch audit export [--since <RFC3339>] [--until <RFC3339>] [--format jsonl] [--output <file>]
+keylatch audit head [--json]
+keylatch audit verify [--anchor <file>] [--json]
 ```
+
+`audit export` writes the events in a time range as JSON Lines, each with its log file, sequence number and chain hash. It verifies the chain of every log file that can hold events in the range first and writes nothing if one fails. Blocked in LLM sessions.
+
+`audit head --json` prints `{"seq", "hash", "time", "key_id"}` for the last entry. Keep it somewhere the log's writer cannot reach, then run `audit verify --anchor <file>` later: the chain must verify and the anchor's entry must be in the log, so a log cut back after the anchor was taken fails. The gateway also writes the head hash to the OS log (journald with `SYSLOG_IDENTIFIER=keylatch-audit`, `os_log` on macOS, the Windows Event Log) at start and every 1000 events.
 
 ---
 
@@ -718,12 +845,14 @@ keylatch ui [--port <n>] [--scope <scope>] [--demo] [--no-open] [--unsafe-bind-a
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `7890` | Port to listen on |
-| `--scope` | `admin` | Session scope: `status-only`, `setup`, `admin`, `token-minting` |
+| `--scope` | `read` | Session scope: `read` (also `status-only`), `setup`, `admin`, `token-minting`. Anything above `read` needs a human at a terminal |
 | `--demo` | | Run with stub data |
-| `--no-open` | | Print URL without opening browser |
+| `--no-open` | | Do not open the browser; only allowed when stdout is a terminal, where the URL is shown |
 | `--unsafe-bind-all` | | Bind to `0.0.0.0` (non-LLM sessions only) |
 
-In an LLM session, scope is forced to `status-only` and `--unsafe-bind-all` is ignored.
+The one-time bootstrap URL is shown only when stdout is a terminal; otherwise it
+goes only to the OS browser opener. In an LLM session, scope is forced to
+`read` and `--unsafe-bind-all` is ignored.
 
 ---
 
@@ -741,7 +870,7 @@ keylatch gateway <subcommand>
 keylatch gateway init [--docker]
 ```
 
-Generates the gateway signing key at `~/.keylatch/gateway/signing.key` and writes `gateway-config.json`. With `--docker`, also writes a Docker Compose file.
+Generates the gateway signing key, stores it wrapped by the KEK at `~/.keylatch/gateway/signing.key.enc`, and writes `gateway-config.json`. A raw `signing.key` file from an older install is wrapped and deleted the first time the gateway starts. With `--docker`, also writes a Docker Compose file.
 
 #### `gateway up`
 
@@ -767,6 +896,9 @@ is loaded once at startup; editing the file requires a `gateway down` /
 | `--port` | `7878` | Port to listen on |
 | `--detach` | | Background mode (stub in current release) |
 | `--unsafe-bind-all` | | Bind to `0.0.0.0` (non-LLM sessions only) |
+| `--no-audit` | | Start without an audit log. A human approves it at a terminal, it runs in the foreground only (not with `--detach`), and credential reads are not recorded |
+
+The gateway refuses to start without a writable audit log unless `--no-audit` is given.
 
 #### `gateway down`
 
@@ -803,7 +935,7 @@ Mints a new gateway token (`KEYLATCH_GATEWAY_TOKEN`). The JWT is printed once �
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--allow` | | Capability to allow (e.g. `openrouter.chat.completion`). Repeatable. |
-| `--ttl` | `1h` | Token TTL (e.g. `1h`, `30m`) |
+| `--ttl` | `10m` | Token TTL (e.g. `10m`, `1h`); never more than 1 hour |
 | `--max-uses` | `0` (unlimited) | Maximum uses. LLM sessions cannot create unlimited tokens. |
 
 #### `gateway token list`
@@ -886,27 +1018,38 @@ keylatch mcp --stdio
 
 Exposes 5 tools: connection status, capability check, policy evaluation, run-under-keylatch, and receipt retrieval. Never exposes secret values.
 
+`keylatch_run` checks the command against the provider's `allowed_command_prefixes`: the executable must match by exact name (`python3evil` does not match `python3`), and an entry such as `node script.js` or `tsx scripts/` also constrains the first arguments. A permitted command runs as an agent caller through the gateway runtimes with a scoped session token and a scrubbed environment, and writes one `run` audit event. Connection policy decides first, as it does for `keylatch run`: with no policy that allows agents the tool is refused. The tool refuses when the gateway signing key or the audit log is unavailable. The socket transport (`--port`) is not offered on Windows; use stdio.
+
 ---
 
 ### `keylatch policy`
 
-Manage runtime access policies.
+Manage runtime access policies. The model, the connection policy document
+format and every example are in [`docs/policy.md`](policy.md).
 
 ```
-keylatch policy allow <actor> <path> [--capability <cap>] [--command <cmd>] [--ttl <duration>]
-keylatch policy list [--actor <actor>] [--json]
-keylatch policy revoke <id>
+keylatch policy init [--force]
+keylatch policy import <dir>
+keylatch policy export <dir> [--force]
+keylatch policy check <connection> --as agent|host|service|human [--runtime <r>] [--action <a>] [--json]
+keylatch policy check <actor> <connection> [-- <cmd...>] [--capability <cap>] [--json]
+keylatch policy allow <actor> <connection> [--capability <cap>] [--command <cmd>] [--ttl <duration>]
+keylatch policy deny <connection> --as agent|host|service|human
+keylatch policy list [--json]
+keylatch policy remove <rule-id>
 ```
 
-**`default_deny` defaults to `false`.** A policy file that only lists
-allow-style rules (no `"default_deny": true`) falls through to
-default-**allow** for every request that doesn't match any rule — not
-default-deny. If you're authoring a deny-only or allow-list policy (e.g.
-"only these connections/capabilities may be used, deny everything else"),
-you must set `"default_deny": true` explicitly for the policy to actually
-be fail-secure; omitting it is a common authoring mistake that silently
-allows everything unlisted. This applies to both the gateway (`keylatch
-gateway up`, below) and direct/CLI policy enforcement.
+**Policy denies by default.** `run`, `call` and every gateway request are
+denied with ``no policy for <connection>: run `keylatch policy init` `` until a
+policy allows them. A rules file (`policy.json`) that omits `default_deny`
+denies whatever no rule allows; only an explicit `"default_deny": false`
+allows. A connection policy document names the caller kinds that may use a
+connection; a kind it does not name is denied.
+
+`init` (with `--force` over an existing policy), `import`, `allow`, `deny` and
+`remove` need a human at a terminal (see [`docs/policy.md`](policy.md)); `check`
+and `export` are read-only and need none. `check` answers with the same function
+`run`, `call` and the gateway use.
 
 Two other constraints specific to a **gateway-loaded** policy
 (`gateway up`'s `PolicyPath`, see below):
@@ -922,9 +1065,12 @@ Two other constraints specific to a **gateway-loaded** policy
 
 ### `keylatch grant`
 
-List and revoke capability grants.
+Issue, list and revoke capability grants. A grant overrides a policy denial
+only when it was issued with a presence proof, so `create` and `revoke` need a
+human at a terminal.
 
 ```
+keylatch grant create <connection> --actor <actor> [--capability <cap>] [--ttl <duration>] [--command <cmd>] [--cwd <dir>] [--max-uses <n>]
 keylatch grant list [--json]
 keylatch grant revoke <id>
 ```
@@ -1055,129 +1201,6 @@ keylatch broker revoke --all
 keylatch broker revoke --all --yes
 keylatch broker revoke --all --yes --json
 keylatch broker revoke --all --actor alice --yes
-```
-
----
-
-### `keylatch trust`
-
-Root-of-trust management. **Experimental — not yet functional** for
-hardware enrolment and approval; see [Experimental Features](./experimental.md).
-
-Working today:
-
-```
-keylatch trust list              # List registered root-of-trust adapter types
-keylatch trust doctor            # Probe all registered adapters
-keylatch trust challenge         # Issue a pending approval challenge, print its ID
-```
-
-**Not implemented** (exit code 10, `NotImplemented`) — hidden from
-`trust --help` but still directly runnable, printing a message pointing at
-the tracking state:
-
-```
-keylatch trust enroll secure-enclave | ssh-agent | pkcs11 | gpg-card | fido2
-keylatch trust approve <challenge-id>   # challenge lookup/expiry check is real;
-                                         # the signing step itself is a stub
-```
-
-**Registered but no-op** (exits 0 without persisting anything —
-`revoke`/`allowlist add` do not yet read or write any state; treat both as
-placeholders, not functioning commands):
-
-```
-keylatch trust revoke <root-id>
-keylatch trust allowlist add <module-path>
-keylatch trust allowlist list
-```
-
----
-
-### `keylatch team`
-
-Team governance commands (requires team mode).
-
-```
-keylatch team status
-keylatch team policy baseline
-keylatch team actors list
-keylatch team access-review
-```
-
----
-
-### `keylatch receipts`
-
-View run receipts. Receipts are value-free audit records emitted for every policy-gated execution. Credential values never appear in receipt output (S-RM-9).
-
-#### `keylatch receipts list`
-
-```
-keylatch receipts list [--limit N] [--json]
-```
-
-List run receipts from the local file store.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--limit N` | `50` | Maximum number of receipts to show |
-| `--json` | — | Output as a JSON array |
-
-**Example — table output:**
-
-```
-TIMESTAMP                ACTOR       CONNECTION    CAPABILITY  DECISION  EXIT
-2026-05-18T12:00:00Z     alice       anthropic     messages    allowed   0
-2026-05-18T11:59:00Z     alice       openai        embed       allowed   0
-```
-
-**Example — JSON output:**
-
-```bash
-keylatch receipts list --json --limit 10
-```
-
-```json
-[
-  {
-    "actor": "alice",
-    "connection": "anthropic",
-    "capability": "messages",
-    "policy_decision": "allowed",
-    "exit_code": 0,
-    "timestamp": "2026-05-18T12:00:00Z"
-  }
-]
-```
-
-#### `keylatch receipts tail`
-
-```
-keylatch receipts tail [--follow]
-```
-
-Tail run receipts.
-
-| Flag | Description |
-|------|-------------|
-| `--follow`, `-f` | Follow live events via SSE from keylatchd |
-
-**Without `--follow`**: prints the latest 10 receipts from the local file store and exits.
-
-**With `--follow`**: connects to the keylatchd SSE endpoint (`/v1/receipts/stream`) and prints each incoming receipt as a newline-delimited JSON object. Press Ctrl-C to stop.
-
-The gateway address is read from `KEYLATCH_UI_ADDR` (default `127.0.0.1:7890`).
-
-**Example:**
-
-```bash
-keylatch receipts tail --follow
-```
-
-```json
-{"runtime":"gateway_typed","provider":"anthropic","capability":"messages","policy_decision":"allowed","credential_shape":"bearer","exit_code":0}
-{"runtime":"gateway_typed","provider":"openai","capability":"embed","policy_decision":"allowed","credential_shape":"bearer","exit_code":0}
 ```
 
 ---

@@ -116,7 +116,7 @@ func TestProvidersHandler_MethodNotAllowed(t *testing.T) {
 // POST /v1/connect
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestConnectHandler_POST_Success(t *testing.T) {
+func TestConnectHandler_POST_MissingStoreFailsClosed(t *testing.T) {
 	t.Parallel()
 	h := &api.WizardHandlers{}
 	body := `{"provider":"openai","api_key":"sk-test","backend":"keychain"}`
@@ -124,10 +124,10 @@ func TestConnectHandler_POST_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ConnectHandler(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
-	assert.Equal(t, true, resp["ok"])
+	assert.Equal(t, false, resp["ok"])
 }
 
 func TestConnectHandler_POST_MissingFields(t *testing.T) {

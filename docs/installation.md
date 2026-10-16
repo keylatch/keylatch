@@ -23,16 +23,16 @@ scoop install keylatch
 Download the latest release tarball from [GitHub Releases](https://github.com/keylatch/keylatch/releases):
 
 ```bash
-# Replace X.Y.Z with the latest version.
+# Replace X.Y.Z with the release version (no leading "v").
 curl -Lo keylatch.tar.gz \
-  https://github.com/keylatch/keylatch/releases/latest/download/keylatch_linux_amd64.tar.gz
+  https://github.com/keylatch/keylatch/releases/download/vX.Y.Z/keylatch_X.Y.Z_linux_amd64.tar.gz
 
 tar -xzf keylatch.tar.gz
 sudo mv keylatch /usr/local/bin/keylatch
 sudo chmod +x /usr/local/bin/keylatch
 ```
 
-Verify the checksum against the `.sha256` file published alongside each release.
+Verify the checksum against `keylatch-X.Y.Z_checksums.txt` published alongside each release (`sha256sum --check --ignore-missing keylatch-X.Y.Z_checksums.txt`).
 
 ## Docker
 

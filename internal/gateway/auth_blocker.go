@@ -1,12 +1,18 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
 )
+
+// DefaultMaxBody is the largest request body the gateway inspects and
+// forwards (10 MiB); gateway.max_body in the config overrides it.
+const DefaultMaxBody int64 = 10 << 20
 
 // blockedTokenEndpoints are provider token endpoints that agents must not call directly.
 var blockedTokenEndpoints = []string{
@@ -35,7 +41,13 @@ var blockedQueryParams = []string{"api_key", "apikey", "access_token", "token"}
 // inject logic, not by this middleware.
 //
 // Exceptions apply only when provider template explicitly permits (allowSelfAuth=true).
-func authBlockerMiddleware(next http.Handler, allowSelfAuth bool) http.Handler {
+//
+// The whole request body, up to maxBody bytes, is inspected; a larger body is
+// rejected with 413 instead of being truncated and passed on.
+func authBlockerMiddleware(next http.Handler, allowSelfAuth bool, maxBody int64) http.Handler {
+	if maxBody <= 0 {
+		maxBody = DefaultMaxBody
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if allowSelfAuth {
 			next.ServeHTTP(w, r)
@@ -55,18 +67,17 @@ func authBlockerMiddleware(next http.Handler, allowSelfAuth bool) http.Handler {
 		// Block Bearer-token-pattern in body.
 		// Only inspect if there is a body (Content-Length > 0 or chunked).
 		if r.Body != nil && r.ContentLength != 0 {
-			// Read body up to 64 KiB for inspection.
-			limited := http.MaxBytesReader(w, r.Body, 65536)
-			bodyBytes := make([]byte, 0, 512)
-			buf := make([]byte, 512)
-			for {
-				n, err := limited.Read(buf)
-				bodyBytes = append(bodyBytes, buf[:n]...)
-				if err != nil {
-					break
+			bodyBytes, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+			_ = r.Body.Close()
+			if err != nil {
+				var tooLarge *http.MaxBytesError
+				if errors.As(err, &tooLarge) {
+					writeAuthBlockedStatus(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body exceeds the gateway's maximum size")
+					return
 				}
+				writeAuthBlockedStatus(w, http.StatusBadRequest, "body_read_error", "failed to read request body")
+				return
 			}
-			r.Body.Close()
 
 			if bearerPattern.Match(bodyBytes) {
 				writeAuthBlockedError(w, "bearer_token_in_body",
@@ -75,7 +86,7 @@ func authBlockerMiddleware(next http.Handler, allowSelfAuth bool) http.Handler {
 			}
 
 			// Restore body for downstream handlers.
-			r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
 
 		// Block calls to token endpoints.
@@ -94,8 +105,12 @@ func authBlockerMiddleware(next http.Handler, allowSelfAuth bool) http.Handler {
 
 // writeAuthBlockedError writes a 403 with a value-free receipt.
 func writeAuthBlockedError(w http.ResponseWriter, code, message string) {
+	writeAuthBlockedStatus(w, http.StatusForbidden, code, message)
+}
+
+func writeAuthBlockedStatus(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
+	w.WriteHeader(status)
 	b, _ := json.Marshal(map[string]string{
 		"error":   code,
 		"message": message,

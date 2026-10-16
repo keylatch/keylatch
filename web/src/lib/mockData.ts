@@ -165,7 +165,6 @@ const mockSettingsState = {
   approval_ttl_max_seconds: 3600,
   advanced_mode: false,
   operating_mode: 'standard',
-  telemetry_disable: false,
   experimental: false,
   approval_policy: 'prompt',
   active_backend: 'keychain',

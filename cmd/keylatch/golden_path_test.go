@@ -92,7 +92,7 @@ func filesIn(t *testing.T, dir string) []string {
 // TestGoldenPath_FullUserJourney verifies the complete user journey:
 // 1. Bootstrap fresh HOME / XDG_RUNTIME_DIR.
 // 2. Connect openrouter with a canary api_key via in-memory MockBackend.
-// 3. Run `agent setup claude-code --mode mcp --dry-run` → assert no file writes.
+// 3. Run `agent setup openclaw --mode mcp --dry-run` → assert no file writes.
 // 4. Assert GenerateMCPConfig is well-formed JSON with command:"keylatch".
 // 5. Assert no canary byte, no KEYLATCH_MCP_TOKEN, no absolute paths leak.
 func TestGoldenPath_FullUserJourney(t *testing.T) {
@@ -131,10 +131,10 @@ func TestGoldenPath_FullUserJourney(t *testing.T) {
 	// Record files before dry-run so we can detect new writes.
 	filesBefore := filesIn(t, homeDir)
 
-	// --- Step 3: Run agent setup claude-code --mode mcp --dry-run ---
-	preset, err := agent.Get("claude-code")
+	// --- Step 3: Run agent setup openclaw --mode mcp --dry-run ---
+	preset, err := agent.Get("openclaw")
 	if err != nil {
-		t.Fatalf("agent.Get(claude-code): %v", err)
+		t.Fatalf("agent.Get(openclaw): %v", err)
 	}
 
 	receipt, err := preset.Setup(ctx, agent.SetupOptions{
@@ -303,7 +303,7 @@ func TestGoldenPath_DryRunNoWrites(t *testing.T) {
 
 	store := newGoldenMockStore()
 
-	presets := []string{"claude-code", "codex", "cursor", "openhands"}
+	presets := []string{"openclaw", "hermes", "nanoclaw", "openhands"}
 	for _, name := range presets {
 		name := name
 		t.Run(name, func(t *testing.T) {

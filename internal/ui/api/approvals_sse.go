@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package api — admin SSE approval inbox.
 //
 // Security invariants:

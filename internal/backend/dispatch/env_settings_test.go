@@ -25,27 +25,66 @@ func TestBuildSettings_ExternalBackendEnv(t *testing.T) {
 			"KEYLATCH_OP_CONNECT_URL":          "http://127.0.0.1:8080",
 			"KEYLATCH_OP_CONNECT_TOKEN":        "connect-token",
 			"KEYLATCH_OP_CONNECT_VAULT_ID":     "vault-id",
+			"KEYLATCH_BWS_ACCESS_TOKEN":        "bws-token",
+			"KEYLATCH_BWS_PROJECT_ID":          "proj-uuid",
+			"KEYLATCH_BWS_SERVER_URL":          "https://bw.example",
+			"KEYLATCH_BWS_BIN":                 "/opt/bws",
+			"KEYLATCH_SOPS_AGE_KEY":            "age-key",
+			"KEYLATCH_SOPS_FILE":               "/etc/secrets.yaml",
+			"KEYLATCH_SOPS_FORMAT":             "yaml",
+			"KEYLATCH_SOPS_AGE_KEY_FILE":       "/etc/age.txt",
+			"KEYLATCH_SOPS_VERIFY_MAC":         "true",
 		}
 		return values[k]
 	}
 
 	cfg := config.Default()
+	optIn := map[string]config.BackendCredentials{}
+	for _, id := range config.RemoteBackendIDs {
+		optIn[id] = config.BackendCredentials{AllowEnvCredentials: true}
+	}
+	cfg.Backends = optIn
+	resolve := func(name string) map[string]interface{} {
+		s, err := resolveSettings(name, cfg, env)
+		if err != nil {
+			t.Fatalf("resolveSettings(%s): %v", name, err)
+		}
+		return s
+	}
 
-	assertSetting(t, buildSettings("vault", cfg, env), "address", "https://vault.example")
-	assertSetting(t, buildSettings("vault", cfg, env), "token", "vault-token")
-	assertSetting(t, buildSettings("aws-sm", cfg, env), "region", "eu-central-1")
-	assertSetting(t, buildSettings("aws-sm", cfg, env), "access_key_id", "AKIAEXAMPLE")
-	assertSetting(t, buildSettings("aws-sm", cfg, env), "secret_access_key", "secret")
-	assertSetting(t, buildSettings("gcp-sm", cfg, env), "project_id", "project-1")
-	assertSetting(t, buildSettings("azure-kv", cfg, env), "vault_url", "https://example.vault.azure.net")
-	assertSetting(t, buildSettings("doppler", cfg, env), "token", "dp.st.test")
-	assertSetting(t, buildSettings("doppler", cfg, env), "project", "proj")
-	assertSetting(t, buildSettings("doppler", cfg, env), "config", "dev")
-	assertSetting(t, buildSettings("infisical", cfg, env), "client_id", "client")
-	assertSetting(t, buildSettings("infisical", cfg, env), "client_secret", "client-secret")
-	assertSetting(t, buildSettings("op-connect", cfg, env), "connect_url", "http://127.0.0.1:8080")
-	assertSetting(t, buildSettings("op-connect", cfg, env), "token", "connect-token")
-	assertSetting(t, buildSettings("op-connect", cfg, env), "vault_id", "vault-id")
+	assertSetting(t, resolve("vault"), "address", "https://vault.example")
+	assertSetting(t, resolve("vault"), "token", "vault-token")
+	assertSetting(t, resolve("aws-sm"), "region", "eu-central-1")
+	assertSetting(t, resolve("aws-sm"), "access_key_id", "AKIAEXAMPLE")
+	assertSetting(t, resolve("aws-sm"), "secret_access_key", "secret")
+	assertSetting(t, resolve("gcp-sm"), "project_id", "project-1")
+	assertSetting(t, resolve("azure-kv"), "vault_url", "https://example.vault.azure.net")
+	assertSetting(t, resolve("doppler"), "token", "dp.st.test")
+	assertSetting(t, resolve("doppler"), "project", "proj")
+	assertSetting(t, resolve("doppler"), "config", "dev")
+	assertSetting(t, resolve("infisical"), "client_id", "client")
+	assertSetting(t, resolve("infisical"), "client_secret", "client-secret")
+	assertSetting(t, resolve("op-connect"), "connect_url", "http://127.0.0.1:8080")
+	assertSetting(t, resolve("op-connect"), "token", "connect-token")
+	assertSetting(t, resolve("op-connect"), "vault_id", "vault-id")
+	assertSetting(t, resolve("bws"), "access_token", "bws-token")
+	assertSetting(t, resolve("bws"), "project_id", "proj-uuid")
+	assertSetting(t, resolve("bws"), "server_url", "https://bw.example")
+	assertSetting(t, resolve("bws"), "bin", "/opt/bws")
+	assertSetting(t, resolve("sops"), "age_key", "age-key")
+	assertSetting(t, resolve("sops"), "file", "/etc/secrets.yaml")
+	assertSetting(t, resolve("sops"), "format", "yaml")
+	assertSetting(t, resolve("sops"), "age_key_file", "/etc/age.txt")
+	assertSetting(t, resolve("sops"), "verify_mac", "true")
+
+	// The settings builder alone never carries a credential.
+	for _, name := range []string{"vault", "aws-sm", "doppler", "infisical", "op-connect", "bws", "sops"} {
+		for _, c := range envCredentials[name] {
+			if _, ok := buildSettings(name, cfg, env)[c.field]; ok {
+				t.Errorf("buildSettings(%s) carries credential %s", name, c.field)
+			}
+		}
+	}
 }
 
 func TestBuildSettings_FileBackendUsesVaultPathEnv(t *testing.T) {

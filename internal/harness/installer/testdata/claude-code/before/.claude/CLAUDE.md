@@ -1,0 +1,3 @@
+# my-rules
+
+Be concise.

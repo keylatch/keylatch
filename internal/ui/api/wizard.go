@@ -21,6 +21,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/connections"
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -98,7 +99,7 @@ type WizardHandlers struct {
 	// ProviderDetailSource overrides the registry for single-provider lookups (optional; nil → registry.Get).
 	ProviderDetailSource ProviderGetter
 	// Store is the connection store used by ConnectHandler and ReadinessHandler.
-	// When nil, ConnectHandler returns a validation-only stub response and
+	// When nil, ConnectHandler fails closed and
 	// ReadinessHandler reports provider_connected as false.
 	Store connections.Store
 	// GatewayPIDPath is the filesystem path to the gateway PID file. When set,
@@ -386,10 +387,10 @@ func (h *WizardHandlers) ConnectHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// When no store is wired (e.g. during unit tests or demo mode), return success
-	// so validation still passes but skip the actual write.
+	// Without a store nothing can be persisted; reporting success would hide that.
 	if h.Store == nil {
-		writeJSON(w, map[string]interface{}{"ok": true})
+		w.WriteHeader(http.StatusServiceUnavailable)
+		writeJSON(w, map[string]interface{}{"ok": false, "error": "connection storage unavailable"})
 		return
 	}
 
@@ -543,22 +544,19 @@ func (h *WizardHandlers) checkGatewayHealth() (ok bool, message string) {
 }
 
 // checkAgentConfigured returns true when at least one known AI agent config file exists.
-// Checked paths cover Claude Code, Codex, Cursor, and Windsurf.
+// It checks the hook and MCP files of every harness the installer supports.
 func checkAgentConfigured() (ok bool, message string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false, "cannot determine home directory"
 	}
-	knownPaths := []string{
-		home + "/.claude/settings.json",
-		home + "/.codex/config.json",
-		home + "/.cursor/settings.json",
-		home + "/.config/windsurf/settings.json",
-		home + "/.codeium/windsurf/settings.json",
-	}
-	for _, p := range knownPaths {
-		if _, statErr := os.Stat(p); statErr == nil {
-			return true, ""
+	env := harness.Env{Home: home}
+	for _, d := range harness.Installable() {
+		l := d.Layout(env)
+		for _, p := range []string{l.Hook, l.MCP} {
+			if _, statErr := os.Stat(p); p != "" && statErr == nil {
+				return true, ""
+			}
 		}
 	}
 	return false, "no agent config file found; run 'keylatch install-guard' or configure an agent"

@@ -1,0 +1,48 @@
+{
+  "description": "provider reachable only through placeholder substitution",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {
+        "id": "r1",
+        "actor": "*",
+        "connections": [
+          "openai"
+        ],
+        "capabilities": [
+          "inject"
+        ]
+      }
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "stripe",
+    "hosts": [
+      "files.stripe.com",
+      "api.stripe.com"
+    ],
+    "binding": {
+      "source": "template",
+      "hosts": ["api.stripe.com", "files.stripe.com"],
+      "slots": [{"field": "api_key", "in": "header", "name": "Authorization", "hosts": ["api.stripe.com", "files.stripe.com"]}]
+    }
+  },
+  "enabled_runtimes": [
+    "placeholder"
+  ],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "openai",
+    "argv": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": "/work/app",
+    "tier": ""
+  }
+}

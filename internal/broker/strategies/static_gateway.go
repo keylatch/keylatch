@@ -11,8 +11,8 @@ import (
 )
 
 // StaticGatewayOnlyStrategy loads a static API token into memory.
-// Returns ErrUnsupportedExchange if called from a direct_brokered context
-// (detected via the namespace convention "direct_brokered:*").
+// Returns ErrUnsupportedExchange if called from a minted context
+// (detected via the namespace convention "minted:*").
 type StaticGatewayOnlyStrategy struct {
 	provider string
 	getToken func(namespace string) ([]byte, error)
@@ -31,10 +31,10 @@ func NewStaticGatewayOnlyStrategy(provider string, getToken func(namespace strin
 func (s *StaticGatewayOnlyStrategy) Provider() string { return s.provider }
 
 // Exchange returns the static token. Returns ErrUnsupportedExchange if the
-// namespace signals a direct_brokered context.
+// namespace signals a minted context.
 func (s *StaticGatewayOnlyStrategy) Exchange(_ context.Context, _, _, namespace string) (broker.ExchangeResult, error) {
-	// Gate: static tokens are not available in direct_brokered mode.
-	if strings.HasPrefix(namespace, "direct_brokered:") {
+	// Gate: a static token is a root credential, which the minted runtime never hands out.
+	if strings.HasPrefix(namespace, "minted:") {
 		return broker.ExchangeResult{}, broker.ErrUnsupportedExchange
 	}
 

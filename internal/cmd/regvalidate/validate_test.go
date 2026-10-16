@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/cmd/regvalidate"
@@ -140,4 +141,11 @@ runtime_support:
 	assert.Contains(t, err.Error(), "TODO placeholder")
 	// The bare-TODO fallback returns "unknown" as the field name.
 	assert.Contains(t, err.Error(), "unknown")
+}
+
+func TestValidateTemplatePath_CoreProviderWithoutBindings(t *testing.T) {
+	path := writeTemp(t, strings.Replace(validTemplate, "test-provider", "stripe", 1))
+	err := regvalidate.ValidateTemplatePath(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bindings")
 }

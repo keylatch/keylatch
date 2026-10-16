@@ -19,21 +19,21 @@ func (d *spyDriver) Run(context.Context, runner.ExecRequest, registry.Connection
 }
 
 // TestSecurityRegression_DirectRuntimesUnreachable verifies that
-// direct_brokered, gateway_proxy, and direct_classic_sandboxed are all
-// gated Unavailable in the support manifest, and that WithManifestGuard actually
+// direct_brokered and gateway_proxy are gated Unavailable in the support
+// manifest, and that WithManifestGuard actually
 // refuses to invoke the wrapped driver for a gated mode — the real
 // production wiring (internal/cli/root.go) uses this exact guard, so any
 // CLI/API/MCP caller is denied before a direct secret-injection mode can
 // run, with no fallback path.
 func TestSecurityRegression_DirectRuntimesUnreachable(t *testing.T) {
 	m := manifest.Current()
-	for _, id := range []string{"direct_brokered", "gateway_proxy", "direct_classic_sandboxed"} {
+	for _, id := range []string{"direct_brokered", "gateway_proxy"} {
 		if m.Enabled(id) {
 			t.Errorf("manifest: %q must remain Unavailable", id)
 		}
 	}
 
-	for _, id := range []string{"direct_brokered", "gateway_proxy", "direct_classic_sandboxed"} {
+	for _, id := range []string{"direct_brokered", "gateway_proxy"} {
 		spy := &spyDriver{}
 		guarded := runner.WithManifestGuard(spy, m, id)
 		_, err := guarded.Run(context.Background(), runner.ExecRequest{Runtime: id}, registry.ConnectionTemplate{})

@@ -21,8 +21,6 @@ func legacyIdentity(t *testing.T, store kek.IdentityStore) kek.VaultIdentity {
 	return kek.VaultIdentity{Path: path, Store: store}
 }
 
-func noEnv(string) string { return "" }
-
 func resetWarnOnce(t *testing.T) {
 	t.Helper()
 	plaintextIdentityWarned = sync.Once{}
@@ -35,7 +33,7 @@ func TestSecureVaultIdentity_MigratesOnOpen(t *testing.T) {
 	vi := legacyIdentity(t, store)
 	var out bytes.Buffer
 
-	secureVaultIdentity(vi, noEnv, &out)
+	secureVaultIdentity(vi, &out)
 
 	loc, onDisk, err := vi.Location()
 	require.NoError(t, err)
@@ -49,8 +47,8 @@ func TestSecureVaultIdentity_WarnsOnceWithoutKeyring(t *testing.T) {
 	vi := legacyIdentity(t, nil)
 	var out bytes.Buffer
 
-	secureVaultIdentity(vi, noEnv, &out)
-	secureVaultIdentity(vi, noEnv, &out)
+	secureVaultIdentity(vi, &out)
+	secureVaultIdentity(vi, &out)
 
 	assert.Equal(t, 1, bytes.Count(out.Bytes(), []byte("WARNING")))
 	_, err := os.Stat(vi.Path)
@@ -64,16 +62,25 @@ func TestSecureVaultIdentity_RespectsOptIn(t *testing.T) {
 	acked := legacyIdentity(t, store)
 	require.NoError(t, acked.Acknowledge())
 	var out bytes.Buffer
-	secureVaultIdentity(acked, noEnv, &out)
-
-	viaEnv := legacyIdentity(t, store)
-	secureVaultIdentity(viaEnv, func(k string) string {
-		if k == kek.InsecureFileKEKEnv {
-			return "1"
-		}
-		return ""
-	}, &out)
+	secureVaultIdentity(acked, &out)
 
 	assert.Zero(t, store.Len())
 	assert.Empty(t, out.String())
+}
+
+// No environment variable keeps a plaintext identity from being moved into
+// the keyring.
+func TestSecureVaultIdentity_IgnoresTheOldEnvironmentOptIn(t *testing.T) {
+	resetWarnOnce(t)
+	t.Setenv("KEYLATCH_INSECURE_FILE_KEK", "1")
+	store := testutil.NewMemoryIdentityStore()
+	vi := legacyIdentity(t, store)
+	var out bytes.Buffer
+
+	secureVaultIdentity(vi, &out)
+
+	loc, onDisk, err := vi.Location()
+	require.NoError(t, err)
+	assert.Equal(t, kek.IdentityInKeyring, loc)
+	assert.False(t, onDisk)
 }

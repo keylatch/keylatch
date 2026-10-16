@@ -25,9 +25,8 @@ trust_level: 0
 multi_account: true
 
 runtime_support:
-  preferred: direct_brokered
+  preferred: gateway_proxy
   supported:
-    - direct_brokered
     - gateway_proxy
 
 capabilities:
@@ -51,6 +50,15 @@ injection_rules:
 redaction:
   - pattern: 'ya29\.[A-Za-z0-9\-_]{50,}'
     replacement: "****"
+
+# Routes that issue tokens or create, read or list service account keys.
+deny_routes:
+  - "/token"
+  - "/oauth2/*/token"
+  - "/v1/projects/*/serviceAccounts/*/keys/**"
+  - "/v1/projects/*/serviceAccounts/*:generateAccessToken"
+  - "/v1/projects/*/serviceAccounts/*:generateIdToken"
+  - "/v1/projects/*/serviceAccounts/*:signJwt"
 
 test_strategy:
   kind: http_get

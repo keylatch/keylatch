@@ -14,6 +14,8 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	internalexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/localonly"
+	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/store"
 )
@@ -67,6 +69,8 @@ type ProcessRunner struct {
 	Stderr     io.Writer
 	ExecRunner internalexec.CommandRunner
 	Resolver   URIResolver
+	// Session supplies ephemeral values; nil gives each Run its own.
+	Session *localonly.Session
 }
 
 // Compile-time assertion: ProcessRunner must satisfy the Runner interface.
@@ -135,7 +139,19 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 		return Receipt{}, fmt.Errorf("runner: provider %q not registered: %w", conn.Name, err)
 	}
 
+	session := p.Session
+	if session == nil {
+		session = localonly.NewSession()
+	}
+	localEnv, skip, err := localOnlyEnv(tmpl, conn.LocalOnly, session)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("runner: %w", err)
+	}
+
 	for _, rule := range tmpl.InjectionRules {
+		if skip[rule.Source] {
+			continue
+		}
 		// Build the canonical storage path: namespace/category/provider/field.
 		category := tmpl.Category
 		if category == "" {
@@ -165,10 +181,11 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 	}
 
 	// Step 3: build subprocess env.
-	env := os.Environ()
+	env := ScrubChildEnv(os.Environ())
 	for _, c := range creds {
 		env = append(env, c.envVar+"="+string(c.value))
 	}
+	env = mergeEnvPairs(env, localEnv)
 	// Merge any extra env from opts.
 	for k, v := range opts.Env {
 		env = append(env, k+"="+v)
@@ -196,18 +213,25 @@ func (p ProcessRunner) Run(ctx context.Context, conn Connection, command []strin
 		stdout = &redactingWriter{w: stdout, patterns: redactPatterns}
 		stderr = &redactingWriter{w: stderr, patterns: redactPatterns}
 	}
+	secrets := make([][]byte, 0, len(creds))
+	for _, c := range creds {
+		secrets = append(secrets, c.value)
+	}
+	guard := newOutputGuard(stdout, stderr, "", redactor.ScanReport, secrets...)
 	//nolint:gosec // G204: command is user-supplied and allowlist-checked above.
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Env = env
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if opts.Stdin != nil {
 		cmd.Stdin = opts.Stdin
 	} else {
 		cmd.Stdin = os.Stdin
 	}
 
-	if err := cmd.Run(); err != nil {
+	runErr := cmd.Run()
+	guard.Finish()
+	if err := runErr; err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return Receipt{ExitCode: exitErr.ExitCode()}, nil

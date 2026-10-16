@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/canary"
-	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -105,28 +103,12 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	if actor == "" {
 		actor = "typed_driver"
 	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = 1 * time.Hour
-	}
-
-	cap := tmpl.Provider + "." + req.Capability
-	if req.Capability == "" || req.Capability == "inject" {
-		cap = tmpl.Provider + ".*"
-	}
-
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        actor,
-		Capabilities: []string{cap},
-		TTL:          ttl,
-		LLMSession:   false,
-		SigningKey:   d.signingKey,
-		StorePath:    d.tokenStorePath,
-	})
+	jwtStr, revoke, err := sessionToken(d.signingKey, d.tokenStorePath, actor, req.Caller, sessionCapabilities(tmpl, req.Capability), req.TTL)
 	if err != nil {
 		receipt.PolicyDecision = "token_mint_failed"
 		return receipt, fmt.Errorf("gateway_typed driver: mint token: %w", err)
 	}
+	defer revoke()
 
 	// Step 3: build child env: gateway URL + session token. No provider API key.
 	// Strip provider keys declared in InjectionRules, then inject
@@ -135,12 +117,15 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	gatewayURL := "http://" + addr
 
 	childEnv := gatewayTypedChildEnv(tmpl, gatewayURL, jwtStr, req.CleanEnv, req.ExtraEnvVars)
+	childEnv = mergeEnvPairs(childEnv, req.LocalEnv)
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.
+	secrets := [][]byte{[]byte(jwtStr)}
 	if d.settings.CanaryInjectionEnabled {
 		canaryToken, canaryErr := canary.BuildCanary(tmpl.Provider)
 		if canaryErr == nil {
+			secrets = append(secrets, []byte(canaryToken))
 			envVar := canary.EnvVarName(tmpl.Provider)
 			childEnv = appendOrReplace(childEnv, envVar, canaryToken)
 			// Emit audit event with metadata only — no token value.
@@ -171,8 +156,9 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	//nolint:gosec // G204: command allowlist enforcement is caller-side (DispatchRunner.Run).
 	cmd := exec.CommandContext(ctx, req.Command[0], req.Command[1:]...)
 	cmd.Env = childEnv
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	guard := newOutputGuard(stdout, stderr, req.WorkingDir, req.FileScan, secrets...)
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if req.Stdin != nil {
 		cmd.Stdin = req.Stdin
 	} else {
@@ -185,6 +171,7 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	start := time.Now()
 	runErr := cmd.Run()
 	receipt.TTL = time.Since(start)
+	receipt.LeakedFiles = guard.Finish()
 
 	if runErr != nil {
 		var exitErr *exec.ExitError
@@ -200,53 +187,9 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 	return receipt, nil
 }
 
-// gatewayTypedChildEnv builds the child environment for gateway_typed mode.
-//
-// Rules:
-//  1. Strip every provider API key env var declared in tmpl.InjectionRules.
-//  2. Strip every KEYLATCH_* configuration var (FilterChildEnv).
-//  3. Re-inject only KEYLATCH_GATEWAY_URL, KEYLATCH_GATEWAY_TOKEN, KEYLATCH_RUNTIME.
-//
-// When cleanEnv is true, step 2 is replaced by CleanBaseEnv which
-// starts from a minimal set (PATH, HOME, USER, …, LC_*) rather than the full
-// parent env. extra lists additional var names to preserve in that case.
-//
-// The child process never sees the raw API key or any Keylatch internal
-// configuration that could be used for reconnaissance.
+// gatewayTypedChildEnv builds the child environment for gateway_typed mode:
+// provider key variables are stripped, KEYLATCH_* configuration is dropped and
+// only the gateway URL, session token and runtime name are set.
 func gatewayTypedChildEnv(tmpl registry.ConnectionTemplate, gatewayURL, jwtStr string, cleanEnv bool, extra []string) []string {
-	denyVars := make(map[string]struct{}, len(tmpl.InjectionRules))
-	for _, rule := range tmpl.InjectionRules {
-		denyVars[rule.EnvVar] = struct{}{}
-	}
-
-	raw := os.Environ()
-	// First strip provider API key vars.
-	stripped := make([]string, 0, len(raw))
-	for _, e := range raw {
-		idx := strings.IndexByte(e, '=')
-		if idx < 0 {
-			stripped = append(stripped, e)
-			continue
-		}
-		if _, skip := denyVars[e[:idx]]; !skip {
-			stripped = append(stripped, e)
-		}
-	}
-
-	var childEnv []string
-	if cleanEnv {
-		// Start from a minimal base env, then append gateway vars.
-		childEnv = runtime.CleanBaseEnv(stripped, extra...)
-	} else {
-		// Then strip all remaining KEYLATCH_* vars; re-inject only the gateway vars.
-		childEnv = runtime.FilterChildEnv(stripped,
-			"KEYLATCH_GATEWAY_URL",
-			"KEYLATCH_GATEWAY_TOKEN",
-			"KEYLATCH_RUNTIME",
-		)
-	}
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_URL", gatewayURL)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewayTypedMode)
-	return childEnv
+	return GatewaySessionEnv(runtime.RuntimeGatewayTyped, tmpl, gatewayURL, jwtStr).Apply(os.Environ(), cleanEnv, extra)
 }

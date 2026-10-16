@@ -1,0 +1,32 @@
+{
+  "description": "a database connection asked for at D4 is served by the protocol adapter with no secret in the child",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {"id": "r1", "actor": "*", "connections": ["supabase"], "capabilities": ["inject"]}
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "supabase",
+    "hosts": ["*.supabase.co:5432"],
+    "adapter": "postgres",
+    "binding": {
+      "source": "template",
+      "hosts": ["*.supabase.co:5432"],
+      "slots": [{"field": "service_role_key", "in": "header", "name": "apikey", "hosts": ["*.supabase.co"]}]
+    }
+  },
+  "enabled_runtimes": ["placeholder", "adapter", "contained"],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "supabase",
+    "argv": ["psql"],
+    "cwd": "/work/app",
+    "tier": "D4"
+  }
+}

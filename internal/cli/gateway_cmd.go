@@ -4,7 +4,6 @@ package cli
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,7 +19,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
@@ -28,6 +29,8 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/presence"
+	"github.com/keylatch/keylatch/internal/proc"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -125,20 +128,23 @@ func newGatewayInitCmd() *cobra.Command {
 				return fmt.Errorf("gateway init: mkdir %q: %w", gatewayDir, err)
 			}
 
-			// Generate signing key if absent.
-			keyPath := paths.GatewaySigningKey(env)
-			if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-				key := make([]byte, 32)
-				if _, err := rand.Read(key); err != nil {
-					return fmt.Errorf("gateway init: generate signing key: %w", err)
-				}
-				if err := os.WriteFile(keyPath, key, 0o600); err != nil {
-					return fmt.Errorf("gateway init: write signing key: %w", err)
-				}
-				_ = os.Chmod(keyPath, 0o600)
-				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key generated")
-			} else {
+			// The signing key lives wrapped by the KEK; a raw key file from
+			// an older install is migrated here.
+			_, wrappedErr := os.Stat(paths.GatewaySigningKeyWrapped(env))
+			_, legacyErr := os.Stat(paths.GatewaySigningKey(env))
+			keyExisted := wrappedErr == nil || legacyErr == nil
+			key, err := LoadGatewaySigningKey(env, true)
+			if err != nil {
+				return fmt.Errorf("gateway init: signing key: %w", err)
+			}
+			clear(key)
+			switch {
+			case legacyErr == nil:
+				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key migrated under the KEK")
+			case keyExisted:
 				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key already exists")
+			default:
+				fmt.Fprintln(c.OutOrStdout(), "gateway: signing key generated")
 			}
 
 			// Write gateway config. A re-run must not clobber a
@@ -221,11 +227,10 @@ func newGatewayUpCmd() *cobra.Command {
 		detach        bool
 		unsafeBindAll bool
 		listenAddr    string
-		withProxy     bool
-		proxyPort     int
 		budgetPerHour float64
 		budgetPerDay  float64
 		force         bool
+		noAudit       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -251,6 +256,16 @@ func newGatewayUpCmd() *cobra.Command {
 			case gatewayUpProceed:
 				if note != "" {
 					fmt.Fprintf(c.OutOrStdout(), "gateway: %s\n", note)
+				}
+			}
+
+			if noAudit {
+				if detach {
+					return withExitCode(exitcode.UserError, fmt.Errorf("gateway up: --no-audit needs a human at the terminal and cannot be combined with --detach"))
+				}
+				if _, err := requirePresence(c.Context(), presence.ActionGatewayNoAudit,
+					"Start the gateway without an audit log: credential reads will not be recorded"); err != nil {
+					return err
 				}
 			}
 
@@ -306,14 +321,16 @@ func newGatewayUpCmd() *cobra.Command {
 				return nil
 			}
 
-			// Load signing key.
-			keyPath := paths.GatewaySigningKey(env)
-			signingKey, err := os.ReadFile(keyPath)
-			if err != nil {
-				return fmt.Errorf("gateway up: read signing key %q: %w", keyPath, err)
+			// The gateway holds the unwrapped signing key and credentials in
+			// memory: keep other processes of this user from reading them.
+			if err := proc.Harden(); err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: process hardening incomplete: %v\n", err)
 			}
-			if len(signingKey) != 32 {
-				return fmt.Errorf("gateway up: signing key must be 32 bytes (run 'gateway init' first)")
+
+			// Load signing key (migrating a raw key file on first start).
+			signingKey, err := LoadGatewaySigningKey(env, false)
+			if err != nil {
+				return fmt.Errorf("gateway up: read signing key: %w", err)
 			}
 
 			// LLM sessions never get a non-loopback bind, regardless of flags/env
@@ -356,18 +373,34 @@ func newGatewayUpCmd() *cobra.Command {
 			// The gateway's job is to inject the provider credential into the
 			// upstream request; without a vault it would forward requests
 			// unauthenticated, so an unusable backend is fatal here.
-			vaultReader, err := newGatewayVaultReader(ctx, loadCLIConfig(c), env)
+			cliCfg := loadCLIConfig(c)
+			var maxBody int64
+			if cliCfg.Gateway != nil {
+				maxBody = cliCfg.Gateway.MaxBody
+			}
+			vaultReader, err := newGatewayVaultReader(ctx, cliCfg, env)
 			if err != nil {
 				return NewBackendUnavailable("gateway up: %v", err)
 			}
 
 			// Every credential read is audited; without a log the gateway
 			// would hand credentials upstream with no trail.
-			auditLogger, auditCleanup, err := requireAuditLogger("gateway up")
-			if err != nil {
-				return err
+			var auditLogger *audit.Logger
+			if noAudit {
+				fmt.Fprintln(c.ErrOrStderr(), "gateway: audit log disabled for this run; credential reads are not recorded")
+			} else {
+				l, auditCleanup, err := requireAuditLogger("gateway up")
+				if err != nil {
+					return err
+				}
+				defer auditCleanup()
+				auditLogger = l
+				// The head hash goes to the OS log at start so a log truncated
+				// while the gateway was down can be caught later.
+				if err := auditLogger.Anchor(); err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: audit anchor not written to the OS log: %v\n", err)
+				}
 			}
-			defer auditCleanup()
 
 			opts := gateway.ServerOptions{
 				Bind:              bind,
@@ -378,8 +411,10 @@ func newGatewayUpCmd() *cobra.Command {
 				TokenStorePath:    paths.GatewayTokens(env),
 				AllowExternalBind: unsafeBindAll,
 				AuditLogger:       auditLogger,
+				NoAudit:           noAudit,
 				Budget:            budgetCounter,
 				Vault:             vaultReader,
+				MaxBody:           maxBody,
 				// PolicyPath: default policy location. New() treats a
 				// missing file as "not configured" and stays pass-through —
 				// this does not change behavior for operators who have
@@ -401,33 +436,6 @@ func newGatewayUpCmd() *cobra.Command {
 
 			fmt.Fprintf(c.OutOrStdout(), "gateway: listening on %s\n", bind)
 
-			// --with-proxy: start the proxy alongside the gateway.
-			// W5: check both PID liveness AND stored port to determine whether the
-			// running proxy is already on the requested port.
-			if withProxy {
-				proxyPidPath := proxyPIDPath(env)
-				proxyStatePth := proxyStatePathFromDir(paths.ConfigDir(env))
-				proxyAlreadyRunning := false
-				if _, pidRunning := gateway.IsRunning(proxyPidPath); pidRunning {
-					// Check if the running proxy is on the same port.
-					if st, stErr := readProxyState(proxyStatePth); stErr == nil && st.Port == proxyPort {
-						proxyAlreadyRunning = true
-					}
-					// If port differs, fall through and start on the requested port.
-				}
-				if proxyAlreadyRunning {
-					fmt.Fprintf(c.OutOrStdout(), "gateway: proxy already running on the same port — skipping proxy start\n")
-				} else {
-					if _, proxyErr := startProxyWithGateway(ctx, proxyPort, proxyPidPath); proxyErr != nil {
-						// Proxy failed to start — roll back gateway.
-						fmt.Fprintf(c.ErrOrStderr(), "gateway up: proxy start failed (%v) — rolling back gateway\n", proxyErr)
-						cancel()
-						return fmt.Errorf("gateway up --with-proxy: %w", proxyErr)
-					}
-					fmt.Fprintf(c.OutOrStdout(), "gateway: proxy started on 127.0.0.1:%d\n", proxyPort)
-				}
-			}
-
 			return srv.Serve(ctx)
 		},
 	}
@@ -435,10 +443,9 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&detach, "detach", false, "run gateway as a background process")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "allow non-loopback bind (non-LLM sessions only)")
 	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7878 (Docker; non-LLM sessions only; overrides KEYLATCH_GATEWAY_LISTEN)")
-	cmd.Flags().BoolVar(&withProxy, "with-proxy", false, "also start the CONNECT proxy alongside the gateway")
-	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
+	cmd.Flags().BoolVar(&noAudit, "no-audit", false, "start without an audit log (needs a human at the terminal; foreground only)")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }
@@ -692,7 +699,7 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				return fmt.Errorf("gateway token create: MaxUses=0 (unlimited) tokens are not allowed in LLM sessions")
 			}
 
-			ttl := 1 * time.Hour
+			ttl := token.DefaultTTL
 			if ttlStr != "" {
 				var err error
 				ttl, err = time.ParseDuration(ttlStr)
@@ -701,12 +708,20 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				}
 			}
 
-			// Load signing key.
-			keyPath := paths.GatewaySigningKey(env)
-			signingKey, err := os.ReadFile(keyPath)
+			// A token without capabilities reaches nothing; any capability
+			// widens what its holder can do, so a human approves it.
+			if len(allow) > 0 {
+				if _, err := requirePresence(c.Context(), presence.ActionGatewayToken,
+					"Allow gateway token for %q: %s, ttl %s, max uses %d", actor, strings.Join(allow, ", "), ttl, maxUses); err != nil {
+					return err
+				}
+			}
+
+			signingKey, err := LoadGatewaySigningKey(env, false)
 			if err != nil {
 				return fmt.Errorf("gateway token create: read signing key: %w", err)
 			}
+			defer clear(signingKey)
 
 			storePath := paths.GatewayTokens(env)
 			spec := token.TokenSpec{
@@ -715,6 +730,7 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 				TTL:          ttl,
 				MaxUses:      maxUses,
 				LLMSession:   isLLM,
+				Caller:       callerkind.Local(env, interactiveStdin()).Kind,
 				StorePath:    storePath,
 				SigningKey:   signingKey,
 			}
@@ -738,7 +754,7 @@ func newGatewayTokenCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringArrayVar(&allow, "allow", nil, "capability to allow (e.g. openrouter.chat)")
-	cmd.Flags().StringVar(&ttlStr, "ttl", "1h", "token TTL (e.g. 1h, 30m)")
+	cmd.Flags().StringVar(&ttlStr, "ttl", "10m", "token TTL (e.g. 10m, 1h; at most 1h)")
 	cmd.Flags().IntVar(&maxUses, "max-uses", 0, "maximum uses (0=unlimited)")
 	return cmd
 }
@@ -803,7 +819,12 @@ func newGatewayTokenRevokeCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			env := llmcontext.DefaultLookup
 			storePath := paths.GatewayTokens(env)
-			if err := token.Revoke(args[0], storePath); err != nil {
+			signingKey, err := LoadGatewaySigningKey(env, false)
+			if err != nil {
+				return fmt.Errorf("gateway token revoke: read signing key: %w", err)
+			}
+			defer clear(signingKey)
+			if err := token.Revoke(args[0], storePath, signingKey); err != nil {
 				return fmt.Errorf("gateway token revoke: %w", err)
 			}
 			fmt.Fprintf(c.OutOrStdout(), "gateway: token %s revoked\n", args[0])

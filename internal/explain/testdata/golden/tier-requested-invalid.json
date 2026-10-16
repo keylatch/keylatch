@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "deny",
+  "tier": null,
+  "tier_name": null,
+  "runtime": null,
+  "child_location": "none",
+  "containment": {
+    "verdict": "not_applicable",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "openai",
+    "executable": "pnpm",
+    "argc": 2,
+    "argv_sha256": "14be65cb19b07e66fb156242a8d423368865d03c65598f8a9a6fd5ae8839f731",
+    "cwd": "/work/app"
+  },
+  "hosts": [],
+  "scope": {
+    "rule_id": null,
+    "capabilities": [],
+    "connections": [],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "tier must be one of D1..D6"
+  ],
+  "rejected_tiers": [],
+  "residual_risk": "No secret is delivered and no child process is started.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true
+  },
+  "error": {
+    "code": "invalid_request",
+    "message": "tier must be one of D1..D6"
+  }
+}

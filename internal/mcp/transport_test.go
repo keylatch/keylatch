@@ -31,6 +31,7 @@ func TestServeStdioWrongTransport(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeTCPBranchViaSerre(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
 		ConnectionAuth: AuthBearerLegacy,

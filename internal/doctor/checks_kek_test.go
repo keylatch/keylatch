@@ -53,17 +53,17 @@ func TestCheckPlaintextKEK(t *testing.T) {
 		st := checkPlaintextKEK(env)(ctx)
 		assert.False(t, st.OK)
 		assert.Contains(t, st.Detail, "plaintext KEK on disk")
-		assert.Contains(t, st.Fix, "--insecure-file-kek")
+		assert.Contains(t, st.Fix, "passphrase")
 	})
 
-	t.Run("acknowledged file warns", func(t *testing.T) {
+	t.Run("acknowledged file fails", func(t *testing.T) {
 		env := kekCheckEnv(t, nil)
 		vi := kek.VaultIdentity{Path: paths.KeyringIdentityPath(env)}
 		require.NoError(t, vi.Provision(true))
 		st := checkPlaintextKEK(env)(ctx)
-		assert.True(t, st.OK)
-		assert.True(t, st.Warn)
+		assert.False(t, st.OK)
 		assert.Contains(t, st.Detail, "plaintext KEK on disk")
+		assert.Contains(t, st.Fix, "allow_insecure_file_kek")
 	})
 
 	t.Run("leftover file beside keyring fails", func(t *testing.T) {

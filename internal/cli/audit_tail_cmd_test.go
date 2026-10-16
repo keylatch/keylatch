@@ -109,11 +109,12 @@ func TestSecurityCmd_PrintsInvariants(t *testing.T) {
 	require.NoError(t, err)
 
 	out := outBuf.String()
-	assert.Contains(t, out, "secrets never touch agent memory")
+	assert.Contains(t, out, "Agents use secrets only through brokered actions")
+	assert.Contains(t, out, "not a boundary against an agent running as")
 	assert.Contains(t, out, "Every secret use is logged")
 	assert.Contains(t, out, "Revoking access is instant")
 	assert.Contains(t, out, "Approvals expire automatically")
-	assert.Contains(t, out, "No secret leaves your machine")
+	assert.Contains(t, out, "The raw credential is sent only to the allowlisted provider endpoint")
 	assert.Contains(t, out, "audit tail")
 	assert.Contains(t, out, "doctor")
 }

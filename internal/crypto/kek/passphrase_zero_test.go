@@ -11,6 +11,7 @@ import (
 // TestPassphraseZeroedAfterDeriveUnsafe uses unsafe.Pointer to inspect the
 // backing array bytes after PassphraseKEK returns.
 func TestPassphraseZeroedAfterDeriveUnsafe(t *testing.T) {
+	skipIfShort(t)
 	passphrase := []byte("ZERO-ME-0xDEADBEEF-SENTINEL")
 	originalLen := len(passphrase)
 

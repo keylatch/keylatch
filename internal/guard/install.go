@@ -5,548 +5,267 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/harness/installer"
+	"github.com/keylatch/keylatch/internal/harness/merge"
 )
 
-// Agent identifies a supported agent integration.
+// Agent identifies a supported agent integration by its harness ID.
 type Agent string
 
-const (
-	AgentClaudeCode  Agent = "claude-code"
-	AgentCursor      Agent = "cursor"
-	AgentAider       Agent = "aider"
-	AgentWindsurf    Agent = "windsurf"
-	AgentCodex       Agent = "codex"
-	AgentCopilot     Agent = "copilot"
-	AgentGemini      Agent = "gemini"
-	AgentOpenCode    Agent = "opencode"
-	AgentAntigravity Agent = "antigravity"
-)
+// AgentClaudeCode is the harness whose settings the guard package merges
+// itself; every other harness goes through internal/harness.
+const AgentClaudeCode Agent = "claude-code"
 
-// SupportedAgents lists all agents that have a guard available.
-var SupportedAgents = []Agent{
-	AgentClaudeCode,
-	AgentCursor,
-	AgentAider,
-	AgentWindsurf,
-	AgentCodex,
-	AgentCopilot,
-	AgentGemini,
-	AgentOpenCode,
-	AgentAntigravity,
+// SupportedAgents lists every agent a guard can be installed for.
+var SupportedAgents = func() []Agent {
+	var out []Agent
+	for _, d := range harness.Installable() {
+		out = append(out, Agent(d.ID))
+	}
+	return out
+}()
+
+// AgentHookMechanism describes the hook each agent uses and where it lives.
+var AgentHookMechanism = func() map[Agent]string {
+	out := map[Agent]string{}
+	for _, d := range harness.Installable() {
+		out[Agent(d.ID)] = fmt.Sprintf("%s (%s)", strings.Join(d.Hook.Events, ", "), d.HookDisplay())
+	}
+	return out
+}()
+
+// ProtectedPaths are the home-relative credential locations the guard script
+// denies for direct agent reads. They are parsed from the script so the script
+// holds the only list.
+func ProtectedPaths() []string {
+	m := protectedPathsRe.FindSubmatch(GuardScript)
+	if m == nil {
+		return nil
+	}
+	return strings.Fields(string(m[1]))
 }
 
-// AgentHookMechanism describes the hook mechanism used by each agent.
-var AgentHookMechanism = map[Agent]string{
-	AgentClaudeCode:  "PreToolUse (settings.json)",
-	AgentCursor:      "PreToolUse (settings.json)",
-	AgentAider:       "pre-tool-use-hook (.aider.conf.yml)",
-	AgentWindsurf:    "not supported — gateway mode recommended",
-	AgentCodex:       "PreToolUse (hooks.json)",
-	AgentCopilot:     "shell wrapper (patches shell rc)",
-	AgentGemini:      "BeforeTool (settings.json)",
-	AgentOpenCode:    "tool.execute.before (TypeScript plugin)",
-	AgentAntigravity: "not supported — gateway mode recommended",
+var protectedPathsRe = regexp.MustCompile(`(?m)^PROTECTED_PATHS="([^"]*)"`)
+
+// CursorIgnorePatterns are the .cursorignore entries that keep agent file
+// access away from the protected credential locations and .env files.
+func CursorIgnorePatterns() []string {
+	return append(ProtectedPaths(), ".env", ".env.*")
 }
 
 // InstallOpts controls where the hook is installed.
 type InstallOpts struct {
-	// ProjectDir installs into <ProjectDir>/.claude/settings.json instead of global.
-	// When empty the global ~/.claude/settings.json is used.
+	// ProjectDir installs into the project's own files instead of the user's.
+	// "." means the current directory.
 	ProjectDir string
+	// ConfigDirs are extra Claude Code configuration directories to install
+	// into, besides ~/.claude and $CLAUDE_CONFIG_DIR. Claude Code only.
+	ConfigDirs []string
+	// Upgrade rewrites an installed guard entry in place (new binary path,
+	// matcher, timeout).
+	Upgrade bool
+	// DryRun computes the change and writes nothing.
+	DryRun bool
+	// KeylatchPath is the binary the hook runs; the running executable when
+	// empty.
+	KeylatchPath string
 }
 
-// InstallResult carries the result of an Install call.
-type InstallResult struct {
-	// SettingsPath is the path to the settings file that was modified.
-	// Empty for agents that don't modify a settings file (e.g. Antigravity).
-	SettingsPath string
-	// Message is a human-readable summary of what was done.
-	Message string
-}
-
-// Install writes the guard script for agent to disk and wires it into the agent's
-// hook configuration. It is idempotent: if the hook is already present the function
-// returns nil without modifying anything.
-//
-// On success it returns the path to the settings file that was modified (empty for
-// agents that use message-only responses like Windsurf and Antigravity).
+// Install wires the guard for agent into its hook configuration and returns the
+// hook file's path. It is idempotent.
 func Install(agent Agent, opts InstallOpts) (settingsPath string, err error) {
-	switch agent {
-	case AgentClaudeCode:
-		return installClaudeCode(opts)
-	case AgentCursor:
-		return installCursor(opts)
-	case AgentAider:
-		return installAider(opts)
-	case AgentWindsurf:
-		return installWindsurf(opts)
-	case AgentCodex:
-		return installCodex(opts)
-	case AgentCopilot:
-		return installCopilot(opts)
-	case AgentGemini:
-		return installGemini(opts)
-	case AgentOpenCode:
-		return installOpenCode(opts)
-	case AgentAntigravity:
-		return installAntigravity(opts)
-	default:
-		return "", fmt.Errorf("install-guard: unsupported agent %q (supported: %v)", agent, SupportedAgents)
+	d, err := descriptor(agent)
+	if err != nil {
+		return "", err
 	}
+	res, err := InstallHarness(d, installer.Options{Parts: installer.Parts{Guard: true}}, opts)
+	if err != nil {
+		return "", err
+	}
+	if len(res.Changes) == 0 {
+		return "", fmt.Errorf("install-guard: %s: nothing to install", agent)
+	}
+	return res.Changes[0].Path, nil
 }
 
 // IsInstalled returns true when the guard for agent is already wired into the
-// agent's hook configuration. This is the same idempotency check used by Install.
+// agent's hook configuration.
 func IsInstalled(agent Agent, opts InstallOpts) (bool, error) {
-	switch agent {
-	case AgentClaudeCode:
-		settingsPath, err := resolveSettingsPath(opts)
-		if err != nil {
-			return false, err
-		}
-		settings, err := loadSettings(settingsPath)
-		if err != nil {
-			// If the file does not exist the guard is definitely not installed.
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		scriptPath, err := guardScriptPath(agent, opts)
-		if err != nil {
-			return false, err
-		}
-		return hookAlreadyInstalled(settings, scriptPath), nil
-
-	case AgentCursor:
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-		}
-		settingsPath := filepath.Join(home, ".cursor", "settings.json")
-		data, err := os.ReadFile(settingsPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		return contains(string(data), "block-keylatch-exfiltration"), nil
-
-	case AgentAider:
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-		}
-		confPath := filepath.Join(home, ".aider.conf.yml")
-		data, err := os.ReadFile(confPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		for _, line := range splitLines(string(data)) {
-			if contains(line, "pre-tool-use-hook") && contains(line, "block-keylatch-exfiltration") {
-				return true, nil
-			}
-		}
-		return false, nil
-
-	case AgentCodex:
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-		}
-		hooksPath := filepath.Join(home, ".codex", "hooks.json")
-		data, err := os.ReadFile(hooksPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		return contains(string(data), "block-keylatch-exfiltration"), nil
-
-	case AgentGemini:
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-		}
-		settingsPath := filepath.Join(home, ".gemini", "settings.json")
-		if _, statErr := os.Stat(settingsPath); os.IsNotExist(statErr) {
-			alt := filepath.Join(home, ".config", "gemini", "settings.json")
-			if _, statErr2 := os.Stat(alt); statErr2 == nil {
-				settingsPath = alt
-			}
-		}
-		data, err := os.ReadFile(settingsPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		return contains(string(data), "block-keylatch-exfiltration"), nil
-
-	case AgentOpenCode:
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-		}
-		pluginDir := filepath.Join(home, ".config", "opencode", "plugins", "keylatch-guard")
-		_, err = os.Stat(pluginDir)
-		return err == nil, nil
-
-	case AgentWindsurf, AgentCopilot, AgentAntigravity:
-		// These agents rely on env-var-only Layer 1 guard.
-		return os.Getenv(harness.LegacyManualLabel) != "", nil
-
-	default:
-		return false, fmt.Errorf("install-guard: unsupported agent %q (supported: %v)", agent, SupportedAgents)
+	d, err := descriptor(agent)
+	if err != nil {
+		return false, err
 	}
+	env, err := harnessEnv(opts)
+	if err != nil {
+		return false, err
+	}
+	st := installer.Inspect(d, env)
+	return st.Hook.Present, st.Hook.Err
 }
 
-// --- agent-specific install functions ---
-
-func installClaudeCode(opts InstallOpts) (string, error) {
-	// Resolve the settings file path.
-	settingsPath, err := resolveSettingsPath(opts)
-	if err != nil {
-		return "", err
+func descriptor(agent Agent) (harness.Descriptor, error) {
+	d, ok := harness.Resolve(string(agent))
+	if !ok || d.Support != harness.SupportGuard {
+		return harness.Descriptor{}, fmt.Errorf("install-guard: unsupported agent %q (supported: %v)", agent, SupportedAgents)
 	}
-
-	// Write the guard script to ~/.keylatch/hooks/ (or project-local equivalent).
-	scriptPath, err := writeGuardScript(AgentClaudeCode, opts)
-	if err != nil {
-		return "", err
-	}
-
-	// Load (or create) the settings file.
-	settings, err := loadSettings(settingsPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Repair the legacy array-format "hooks" field first (written by older
-	// keylatch versions; silently ignored by current Claude Code), so an
-	// already-present-but-broken hook gets fixed instead of skipped.
-	settings, migrated := migrateLegacyClaudeCodeHooks(settings)
-
-	// Check for idempotency before mutating further.
-	if hookAlreadyInstalled(settings, scriptPath) {
-		if migrated {
-			if err := saveSettings(settingsPath, settings); err != nil {
-				return "", err
-			}
-		}
-		return settingsPath, nil
-	}
-
-	// Append the PreToolUse hook.
-	settings = appendClaudeCodePreToolUseHook(settings, scriptPath)
-
-	// Persist the modified settings.
-	if err := saveSettings(settingsPath, settings); err != nil {
-		return "", err
-	}
-
-	return settingsPath, nil
+	return d, nil
 }
 
-func installCursor(opts InstallOpts) (string, error) {
-	home, err := os.UserHomeDir()
+func harnessEnv(opts InstallOpts) (harness.Env, error) {
+	env, err := harness.SystemEnv()
 	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		return env, fmt.Errorf("install-guard: cannot determine home directory: %w", err)
 	}
-	settingsPath := filepath.Join(home, ".cursor", "settings.json")
-
-	scriptPath, err := writeGuardScriptTo(AgentCursor, CursorScript, opts)
-	if err != nil {
-		return "", err
-	}
-
-	settings, err := loadSettings(settingsPath)
-	if err != nil {
-		return "", err
-	}
-
-	if hookAlreadyInstalled(settings, scriptPath) {
-		return settingsPath, nil
-	}
-
-	settings = appendPreToolUseHook(settings, scriptPath)
-	if err := saveSettings(settingsPath, settings); err != nil {
-		return "", err
-	}
-	return settingsPath, nil
-}
-
-func installAider(opts InstallOpts) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-	}
-
-	scriptPath, err := writeGuardScriptTo(AgentAider, AiderScript, opts)
-	if err != nil {
-		return "", err
-	}
-
-	confPath := filepath.Join(home, ".aider.conf.yml")
-	// Check if already installed.
-	data, readErr := os.ReadFile(confPath)
-	if readErr == nil {
-		for _, line := range splitLines(string(data)) {
-			if contains(line, "pre-tool-use-hook") {
-				return confPath, nil // already present
-			}
-		}
-	}
-
-	// Append the hook config.
-	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return "", fmt.Errorf("install-guard: open aider config: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-	if _, err := fmt.Fprintf(f, "\npre-tool-use-hook: %s\n", scriptPath); err != nil {
-		return "", fmt.Errorf("install-guard: write aider config: %w", err)
-	}
-	return confPath, nil
-}
-
-func installWindsurf(_ InstallOpts) (string, error) {
-	// Windsurf does not currently expose a hook API for tool interception.
-	// Return an informational message via a sentinel path.
-	return "", fmt.Errorf("windsurf: hook API not yet available — for manual guard instructions see keylatch.dev/integrations/windsurf. Use gateway mode for strongest protection: keylatch proxy start")
-}
-
-func installCodex(opts InstallOpts) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-	}
-	hooksPath := filepath.Join(home, ".codex", "hooks.json")
-
-	scriptPath, err := writeGuardScriptTo(AgentCodex, CodexScript, opts)
-	if err != nil {
-		return "", err
-	}
-
-	settings, err := loadSettings(hooksPath)
-	if err != nil {
-		return "", err
-	}
-
-	if hookAlreadyInstalled(settings, scriptPath) {
-		return hooksPath, nil
-	}
-
-	settings = appendPreToolUseHook(settings, scriptPath)
-	if err := saveSettings(hooksPath, settings); err != nil {
-		return "", err
-	}
-	return hooksPath, nil
-}
-
-func installCopilot(opts InstallOpts) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-	}
-
-	_, err = writeGuardScriptTo(AgentCopilot, CopilotScript, opts)
-	if err != nil {
-		return "", err
-	}
-
-	// For Copilot, we use a shell wrapper approach since native hook path is unconfirmed.
-	// The settings path here is the ~/.zshrc or ~/.bashrc we patch.
-	rcPath := filepath.Join(home, ".zshrc")
-	if _, statErr := os.Stat(rcPath); os.IsNotExist(statErr) {
-		rcPath = filepath.Join(home, ".bashrc")
-	}
-	return rcPath, nil
-}
-
-func installGemini(opts InstallOpts) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-	}
-
-	// Try both common settings paths.
-	settingsPath := filepath.Join(home, ".gemini", "settings.json")
-	if _, statErr := os.Stat(settingsPath); os.IsNotExist(statErr) {
-		alt := filepath.Join(home, ".config", "gemini", "settings.json")
-		if _, statErr2 := os.Stat(alt); statErr2 == nil {
-			settingsPath = alt
-		}
-	}
-
-	scriptPath, err := writeGuardScriptTo(AgentGemini, GeminiScript, opts)
-	if err != nil {
-		return "", err
-	}
-
-	settings, err := loadSettings(settingsPath)
-	if err != nil {
-		return "", err
-	}
-
-	if hookAlreadyInstalled(settings, scriptPath) {
-		return settingsPath, nil
-	}
-
-	settings = appendBeforeToolHook(settings, scriptPath)
-	if err := saveSettings(settingsPath, settings); err != nil {
-		return "", err
-	}
-	return settingsPath, nil
-}
-
-func installOpenCode(opts InstallOpts) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
-	}
-
-	pluginDir := filepath.Join(home, ".config", "opencode", "plugins", "keylatch-guard")
-	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
-		return "", fmt.Errorf("install-guard: create plugin dir: %w", err)
-	}
-	pluginPath := filepath.Join(pluginDir, "index.ts")
-	if err := os.WriteFile(pluginPath, OpenCodeScript, 0o600); err != nil {
-		return "", fmt.Errorf("install-guard: write opencode plugin: %w", err)
-	}
-
-	// Patch opencode.json.
-	configPath := filepath.Join(home, ".config", "opencode", "opencode.json")
-	settings, err := loadSettings(configPath)
-	if err != nil {
-		return "", err
-	}
-
-	pluginsRaw, _ := settings["plugins"].([]any)
-	for _, p := range pluginsRaw {
-		if ps, ok := p.(string); ok && ps == pluginPath {
-			return configPath, nil // already registered
-		}
-	}
-	pluginsRaw = append(pluginsRaw, pluginPath)
-	settings["plugins"] = pluginsRaw
-
-	if err := saveSettings(configPath, settings); err != nil {
-		return "", err
-	}
-	return configPath, nil
-}
-
-func installAntigravity(_ InstallOpts) (string, error) {
-	return "", fmt.Errorf("antigravity: Google Antigravity does not currently expose a hook API for tool interception.\n\nRecommended alternative: run Keylatch in gateway mode, which intercepts\nall outbound credential requests at the network level regardless of agent:\n\n keylatch proxy start --port 8080\n # Point Antigravity's network proxy setting to http://localhost:8080\n\nSee: https://keylatch.dev/integrations/antigravity")
-}
-
-// --- internal helpers ---
-
-// resolveSettingsPath returns the path to the Claude Code settings JSON file.
-func resolveSettingsPath(opts InstallOpts) (string, error) {
 	if opts.ProjectDir != "" {
-		return filepath.Join(opts.ProjectDir, ".claude", "settings.json"), nil
+		if env.Project, err = filepath.Abs(opts.ProjectDir); err != nil {
+			return env, fmt.Errorf("install-guard: resolve the project directory: %w", err)
+		}
 	}
+	return env, nil
+}
+
+func keylatchBinary(path string) (string, error) {
+	if path == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return "", fmt.Errorf("install-guard: cannot locate the keylatch binary: %w", err)
+		}
+		path = exe
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("install-guard: cannot resolve the keylatch binary path: %w", err)
+	}
+	return abs, nil
+}
+
+// InstallHarness installs the parts of o.Parts for d: the hook, the MCP server
+// and the rules block. The hook file of Claude Code is merged by this package
+// (see InstallClaudeCode); everything else by internal/harness. The caller sets
+// o.Parts; opts supplies the scope and the binary.
+func InstallHarness(d harness.Descriptor, o installer.Options, opts InstallOpts) (installer.Result, error) {
+	var err error
+	if o.Env.Home == "" {
+		if o.Env, err = harnessEnv(opts); err != nil {
+			return installer.Result{}, err
+		}
+	}
+	bin, err := keylatchBinary(opts.KeylatchPath)
+	if err != nil {
+		return installer.Result{}, err
+	}
+	o.Command, o.Binary = installer.GuardCommand(d, bin), bin
+	if o.Server.Command == "" {
+		o.Server.Command = bin
+	}
+	o.Upgrade, o.DryRun = opts.Upgrade, opts.DryRun
+	res, err := installer.Install(d, o)
+	if err == nil && !opts.DryRun && opts.ProjectDir == "" && o.Parts.Resolve().Guard {
+		removeLegacyScripts(d)
+		removeUnusedScript(opts)
+	}
+	if err != nil || d.ID != string(AgentClaudeCode) || !o.Parts.Resolve().Guard {
+		return res, err
+	}
+	co := opts
+	co.KeylatchPath = bin
+	changes, err := InstallClaudeCode(co)
+	var hook []installer.Change
+	for _, c := range changes {
+		hook = append(hook, installer.Change{Change: merge.Change{Path: c.Path, Changed: c.Changed, Diff: c.Diff, Backup: c.Backup}, Roles: []string{installer.RoleHook}})
+	}
+	res.Changes = append(hook, res.Changes...)
+	return res, err
+}
+
+// UninstallHarness removes what InstallHarness wrote for d.
+func UninstallHarness(d harness.Descriptor, o installer.Options, opts InstallOpts) (installer.Result, error) {
+	var err error
+	if o.Env.Home == "" {
+		if o.Env, err = harnessEnv(opts); err != nil {
+			return installer.Result{}, err
+		}
+	}
+	o.DryRun = opts.DryRun
+	res, err := installer.Uninstall(d, o)
+	if err != nil || d.ID != string(AgentClaudeCode) || !o.Parts.Resolve().Guard {
+		return res, err
+	}
+	var path string
+	var removed bool
+	if opts.DryRun {
+		st := installer.Inspect(d, o.Env)
+		path, removed = st.Hook.Path, st.Hook.Present
+	} else if path, removed, err = uninstallClaudeCode(opts); err != nil {
+		return res, err
+	}
+	res.Changes = append([]installer.Change{{Change: merge.Change{Path: path, Changed: removed}, Roles: []string{installer.RoleHook}}}, res.Changes...)
+	removeUnusedScript(opts)
+	return res, nil
+}
+
+// Uninstall removes the guard hook for agent. A guard that is not installed is
+// not an error. It returns the hook file it edited and whether anything was
+// removed.
+func Uninstall(agent Agent, opts InstallOpts) (settingsPath string, removed bool, err error) {
+	d, err := descriptor(agent)
+	if err != nil {
+		return "", false, err
+	}
+	res, err := UninstallHarness(d, installer.Options{Parts: installer.Parts{Guard: true}}, opts)
+	if err != nil {
+		return "", false, err
+	}
+	for _, c := range res.Changes {
+		settingsPath = c.Path
+		removed = removed || c.Changed
+	}
+	return settingsPath, removed, nil
+}
+
+// legacyScriptNames are the names earlier releases gave the per-agent scripts
+// when they differ from the harness ID.
+var legacyScriptNames = map[string]string{"gemini-cli": "gemini", "copilot-cli": "copilot"}
+
+// removeLegacyScripts deletes the per-agent guard script earlier releases wrote
+// for d, now that a hook runs the Go guard instead.
+func removeLegacyScripts(d harness.Descriptor) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+		return
 	}
-	return filepath.Join(home, ".claude", "settings.json"), nil
+	name := d.ID
+	if legacy, ok := legacyScriptNames[d.ID]; ok {
+		name = legacy
+	}
+	for _, dir := range []string{"hooks", "guards"} {
+		_ = os.Remove(filepath.Join(home, ".keylatch", dir, name+"-guard.sh"))
+	}
 }
 
-// guardScriptDir returns the directory where guard scripts are stored.
-func guardScriptDir(agent Agent, opts InstallOpts) (string, error) {
-	if opts.ProjectDir != "" {
-		return filepath.Join(opts.ProjectDir, ".keylatch", "hooks"), nil
-	}
+// removeUnusedScript deletes the guard script earlier releases wrote, unless a
+// harness's hook file still runs it.
+func removeUnusedScript(opts InstallOpts) {
 	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("install-guard: cannot determine home directory: %w", err)
+	if err != nil || opts.ProjectDir != "" {
+		return
 	}
-	return filepath.Join(home, ".keylatch", "hooks"), nil
+	env := harness.Env{Home: home}
+	for _, d := range harness.Installable() {
+		if layout := d.Layout(env); layout.Hook != "" {
+			if data, err := os.ReadFile(layout.Hook); err != nil && !os.IsNotExist(err) || strings.Contains(string(data), sharedGuardScript) {
+				return
+			}
+		}
+	}
+	_ = os.Remove(filepath.Join(home, ".keylatch", "hooks", sharedGuardScript))
 }
 
-// guardScriptPath returns the expected on-disk path for the guard script.
-func guardScriptPath(agent Agent, opts InstallOpts) (string, error) {
-	dir, err := guardScriptDir(agent, opts)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, scriptName(agent)), nil
-}
-
-func scriptName(agent Agent) string {
-	switch agent {
-	case AgentClaudeCode:
-		return "block-keylatch-exfiltration.sh"
-	case AgentOpenCode:
-		return "keylatch-guard.ts"
-	default:
-		return string(agent) + "-guard.sh"
-	}
-}
-
-// writeGuardScript writes the embedded guard script to disk and returns its path.
-func writeGuardScript(agent Agent, opts InstallOpts) (string, error) {
-	scriptBytes, err := scriptContent(agent)
-	if err != nil {
-		return "", err
-	}
-	return writeGuardScriptTo(agent, scriptBytes, opts)
-}
-
-// writeGuardScriptTo writes scriptBytes to the guard script path and returns it.
-func writeGuardScriptTo(agent Agent, scriptBytes []byte, opts InstallOpts) (string, error) {
-	dir, err := guardScriptDir(agent, opts)
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("install-guard: create hooks dir: %w", err)
-	}
-
-	path := filepath.Join(dir, scriptName(agent))
-	mode := os.FileMode(0o700)
-	if agent == AgentOpenCode {
-		mode = 0o600 // .ts file, not executable
-	}
-	if err := os.WriteFile(path, scriptBytes, mode); err != nil {
-		return "", fmt.Errorf("install-guard: write script %q: %w", path, err)
-	}
-	return path, nil
-}
-
-func scriptContent(agent Agent) ([]byte, error) {
-	switch agent {
-	case AgentClaudeCode:
-		return ClaudeCodeScript, nil
-	case AgentCursor:
-		return CursorScript, nil
-	case AgentAider:
-		return AiderScript, nil
-	case AgentWindsurf:
-		return WindsurfScript, nil
-	case AgentCodex:
-		return CodexScript, nil
-	case AgentCopilot:
-		return CopilotScript, nil
-	case AgentGemini:
-		return GeminiScript, nil
-	case AgentOpenCode:
-		return OpenCodeScript, nil
-	default:
-		return nil, fmt.Errorf("install-guard: no script for agent %q", agent)
-	}
-}
+// --- Claude Code settings helpers ---
 
 // loadSettings reads the agent settings file. If the file does not exist
 // an empty settings map is returned (no error).
@@ -570,11 +289,10 @@ func saveSettings(path string, settings map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("install-guard: create settings dir: %w", err)
 	}
-	data, err := json.MarshalIndent(settings, "", " ")
+	data, err := encodeSettings(settings)
 	if err != nil {
-		return fmt.Errorf("install-guard: marshal settings: %w", err)
+		return err
 	}
-	data = append(data, '\n')
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".settings-*.tmp")
 	if err != nil {
@@ -602,76 +320,18 @@ func saveSettings(path string, settings map[string]any) error {
 	return nil
 }
 
-// hookAlreadyInstalled returns true when scriptPath already appears as a hook
-// command in the "hooks" section of settings.
-func hookAlreadyInstalled(settings map[string]any, scriptPath string) bool {
-	hooksRaw, ok := settings["hooks"]
-	if !ok {
-		return false
-	}
-	// Handle both array-style (Claude Code / Cursor) and object-style hooks.
-	switch h := hooksRaw.(type) {
-	case []any:
-		for _, raw := range h {
-			entry, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			if matchesHookEntry(entry, scriptPath) {
-				return true
-			}
-		}
-	case map[string]any:
-		// Check PreToolUse and BeforeTool arrays.
-		for _, key := range []string{"PreToolUse", "BeforeTool"} {
-			arr, _ := h[key].([]any)
-			for _, raw := range arr {
-				entry, ok := raw.(map[string]any)
-				if !ok {
-					continue
-				}
-				if matchesHookEntry(entry, scriptPath) {
-					return true
-				}
-			}
-		}
-	}
-	return false
+// quoteArg wraps s in double quotes for a POSIX shell, escaping the characters
+// that stay special inside them.
+func quoteArg(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "`", "\\`").Replace(s) + `"`
 }
 
-// matchesHookEntry checks whether an individual hook entry references scriptPath.
-func matchesHookEntry(entry map[string]any, scriptPath string) bool {
-	// Top-level command field.
-	if cmd, ok := entry["command"].(string); ok && cmd == scriptPath {
-		return true
-	}
-	// Nested hooks array.
-	innerRaw, ok := entry["hooks"]
-	if !ok {
-		return false
-	}
-	inner, ok := innerRaw.([]any)
-	if !ok {
-		return false
-	}
-	for _, h := range inner {
-		hm, ok := h.(map[string]any)
-		if !ok {
-			continue
-		}
-		if cmd, ok := hm["command"].(string); ok && cmd == scriptPath {
-			return true
-		}
-	}
-	return false
-}
-
-// migrateLegacyClaudeCodeHooks converts a legacy array-format "hooks" field
+// migrateLegacyHooks converts a legacy array-format "hooks" field
 // (written by older keylatch versions; silently ignored by current Claude
 // Code) into the object format keyed by each entry's "event" field. Returns
 // the settings and whether a migration took place. Settings without a legacy
 // array are returned unchanged.
-func migrateLegacyClaudeCodeHooks(settings map[string]any) (map[string]any, bool) {
+func migrateLegacyHooks(settings map[string]any) (map[string]any, bool) {
 	legacy, isArr := settings["hooks"].([]any)
 	if !isArr {
 		return settings, false
@@ -707,98 +367,69 @@ func migrateLegacyClaudeCodeHooks(settings map[string]any) (map[string]any, bool
 	return settings, true
 }
 
-// appendClaudeCodePreToolUseHook adds a PreToolUse hook entry for scriptPath
-// using the Claude Code settings schema, where "hooks" is an object mapping
-// event names to matcher groups:
-//
-//	"hooks": { "PreToolUse": [{ "hooks": [{ "type": "command", "command": "<script>" }] }] }
-func appendClaudeCodePreToolUseHook(settings map[string]any, scriptPath string) map[string]any {
-	hooksObj, ok := settings["hooks"].(map[string]any)
-	if !ok {
-		hooksObj = map[string]any{}
-	}
+// legacyGuardRe matches the per-agent scripts older versions installed under
+// ~/.keylatch/hooks or ~/.keylatch/guards.
+var legacyGuardRe = regexp.MustCompile(`\.keylatch[/\\](hooks|guards)[/\\][a-z-]+-guard\.sh`)
 
-	arr, _ := hooksObj["PreToolUse"].([]any)
-	hooksObj["PreToolUse"] = append(arr, map[string]any{
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": scriptPath,
-			},
-		},
-	})
-	settings["hooks"] = hooksObj
-	return settings
-}
+const sharedGuardScript = "block-keylatch-exfiltration.sh"
 
-// appendPreToolUseHook adds a PreToolUse hook entry for scriptPath.
-// Cursor / Codex settings format: hooks is an array of objects like:
-//
-//	{ "event": "PreToolUse", "hooks": [{ "type": "command", "command": "<script>" }] }
-func appendPreToolUseHook(settings map[string]any, scriptPath string) map[string]any {
-	newEntry := map[string]any{
-		"event": "PreToolUse",
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": scriptPath,
-			},
-		},
-	}
-
-	existing, ok := settings["hooks"].([]any)
-	if !ok {
-		existing = []any{}
-	}
-	settings["hooks"] = append(existing, newEntry)
-	return settings
-}
-
-// appendBeforeToolHook adds a BeforeTool hook entry for Gemini CLI.
-func appendBeforeToolHook(settings map[string]any, scriptPath string) map[string]any {
-	newEntry := map[string]any{
-		"event": "BeforeTool",
-		"hooks": []any{
-			map[string]any{
-				"type":    "command",
-				"command": scriptPath,
-			},
-		},
-	}
-
-	existing, ok := settings["hooks"].([]any)
-	if !ok {
-		existing = []any{}
-	}
-	settings["hooks"] = append(existing, newEntry)
-	return settings
-}
-
-// splitLines splits a string into lines (handles \n and \r\n).
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
-
-// contains reports whether s contains substr (simple substring check).
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
+func pruneHooks(v any, stale func(string) bool) (any, bool) {
+	switch t := v.(type) {
+	case []any:
+		out := make([]any, 0, len(t))
+		changed := false
+		for _, e := range t {
+			em, isMap := e.(map[string]any)
+			if isMap && entryIsStale(em, stale) {
+				changed = true
+				continue
+			}
+			_, hadHooks := em["hooks"]
+			ne, c := pruneHooks(e, stale)
+			if c {
+				changed = true
+				nm, _ := ne.(map[string]any)
+				if _, hasHooks := nm["hooks"]; isMap && hadHooks && !hasHooks {
+					continue
 				}
 			}
-			return false
-		}())
+			out = append(out, ne)
+		}
+		return out, changed
+	case map[string]any:
+		changed := false
+		for k, e := range t {
+			ne, c := pruneHooks(e, stale)
+			if !c {
+				continue
+			}
+			changed = true
+			if isEmptyContainer(ne) {
+				delete(t, k)
+			} else {
+				t[k] = ne
+			}
+		}
+		return t, changed
+	}
+	return v, false
+}
+
+func entryIsStale(m map[string]any, stale func(string) bool) bool {
+	for _, key := range []string{"command", "bash"} {
+		if cmd, ok := m[key].(string); ok && stale(cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEmptyContainer(v any) bool {
+	switch t := v.(type) {
+	case []any:
+		return len(t) == 0
+	case map[string]any:
+		return len(t) == 0
+	}
+	return false
 }

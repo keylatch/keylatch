@@ -12,11 +12,14 @@ import (
 // See docs/security/invariants.md for the security-invariant catalog.
 const securityInvariants = `Keylatch security model:
 
-  * Your secrets never touch agent memory
+  * Agents use secrets only through brokered actions
   * Every secret use is logged
   * Revoking access is instant
   * Approvals expire automatically
-  * No secret leaves your machine without your say-so
+  * The raw credential is sent only to the allowlisted provider endpoint
+
+In-user mode is defense in depth, not a boundary against an agent running as
+your own user; docs/security/threat-model.md says what each mode protects.
 
 Run ` + "`keylatch audit tail`" + ` to watch the log live.
 Run ` + "`keylatch doctor`" + ` for a system health check.

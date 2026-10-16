@@ -56,6 +56,8 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"reason": "ssrf_denied", "host": "api.example.com", "error": "capability_mismatch",
 			// proxy lifecycle keys (proxy.started / proxy.stopped).
 			"port": 8888, "pid": os.Getpid(),
+			// placeholder proxy keys.
+			"field": "secret_key", "where": "header", "hosts": "api.example.com", "substitutions": 1,
 			// audit_rotate cross-file chain continuity keys.
 			"rotated_to": "/path/to/log.1", "rotated_from": "/path/to/log.1",
 			"prev_file_hmac": "abcdef0123456789",
@@ -81,6 +83,18 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"permissions": "contents=write,metadata=read",
 			"expires_at":  "2026-10-07T13:00:00Z",
 			"caller_kind": "service",
+			// brokered-action event keys.
+			"decision": "allowed", "exit": 0, "duration_ms": int64(12),
+			"action": "list-models", "status": 200, "signals": "claude_code",
+			"destination_kind": "file", "rule": "exfiltration", "change": "allow",
+			"actor": "agent", "before": "none", "after": "allow",
+			"operation": "backup", "method": "tty", "digest": "abcdef0123456789",
+			// contained-run keys.
+			"run_id": "0123456789abcdef", "files": 2,
+			// protocol adapter connection keys.
+			"adapter": "postgres", "connections": 1,
+			// service release keys.
+			"unit": "app.service",
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)

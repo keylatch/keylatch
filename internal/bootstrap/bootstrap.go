@@ -20,6 +20,7 @@ import (
 
 	backendpkg "github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/crypto/argon2"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 	"github.com/keylatch/keylatch/internal/crypto/kek"
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
@@ -39,12 +40,27 @@ type Options struct {
 	Force   bool
 	Confirm bool // skip the [y/N] prompt when Force=true
 	// InsecureFileKEK keeps the vault identity in a plaintext file next to
-	// the vault instead of an OS keyring. KEYLATCH_INSECURE_FILE_KEK=1 is
-	// equivalent.
+	// the vault when there is no OS keyring and no terminal for a passphrase.
+	// Callers set it only from the operator's own config file: no flag and no
+	// environment variable may switch it on.
 	InsecureFileKEK bool
+	// KEKMode selects how the keyring's key-encryption key is held: "keystore"
+	// (an OS keyring), "passphrase" (Argon2id, asked on the terminal every
+	// time) or "" for the keystore with the passphrase as the fallback.
+	KEKMode string
+	// Passphrase chooses a new passphrase on the terminal. Nil means no
+	// terminal is available, so the passphrase is never offered as a fallback.
+	Passphrase func() ([]byte, error)
 	// IdentityStore overrides the OS keyring; nil selects the platform default.
 	IdentityStore kek.IdentityStore
 }
+
+const (
+	// KEKModeKeystore holds the vault identity in an OS keyring.
+	KEKModeKeystore = "keystore"
+	// KEKModePassphrase wraps the keyring under a passphrase typed on a terminal.
+	KEKModePassphrase = "passphrase"
+)
 
 // PlanStep describes a single action that bootstrap will take (or skipped as noop).
 type PlanStep struct {
@@ -178,15 +194,34 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 			store = kek.DefaultIdentityStore()
 		}
 		vi := kek.VaultIdentity{Path: paths.KeyringIdentityPath(env), Store: store}
-		insecure := opts.InsecureFileKEK || kek.InsecureFileKEKRequested(env)
+		insecure := opts.InsecureFileKEK
+		if opts.KEKMode != "" && opts.KEKMode != KEKModeKeystore && opts.KEKMode != KEKModePassphrase {
+			return plan, fmt.Errorf("unknown KEK mode %q: use %s or %s", opts.KEKMode, KEKModeKeystore, KEKModePassphrase)
+		}
 
 		if err := planMkdir(&plan, krDir, opts.DryRun); err != nil {
 			return plan, fmt.Errorf("keyring dir: %w", err)
 		}
-		if err := planIdentity(&plan, vi, insecure, opts.DryRun, opts.Force); err != nil {
-			return plan, fmt.Errorf("vault identity: %w", err)
+		usePassphrase := opts.KEKMode == KEKModePassphrase
+		if !usePassphrase {
+			err := planIdentity(&plan, vi, insecure, opts.DryRun, opts.Force)
+			if errors.Is(err, kek.ErrNoOSKeyring) && opts.KEKMode == "" && opts.Passphrase != nil {
+				// No keystore here, but a human is at a terminal: ask for a passphrase.
+				plan.Warnings = append(plan.Warnings, "no OS keyring is usable; the vault key is wrapped under a passphrase you will be asked for on every use")
+				usePassphrase, err = true, nil
+			}
+			if err != nil {
+				return plan, fmt.Errorf("vault identity: %w", err)
+			}
 		}
-		if err := planWriteKeyring(&plan, krPath, vi, opts.DryRun, opts.Force); err != nil {
+		if usePassphrase {
+			if opts.Passphrase == nil {
+				return plan, errors.New("keyring: a passphrase needs an interactive terminal; run bootstrap yourself in a terminal")
+			}
+			if err := planPassphraseKeyring(&plan, krPath, opts); err != nil {
+				return plan, fmt.Errorf("keyring: %w", err)
+			}
+		} else if err := planWriteKeyring(&plan, krPath, vi, opts.DryRun, opts.Force); err != nil {
 			return plan, fmt.Errorf("keyring: %w", err)
 		}
 	}
@@ -194,9 +229,9 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 	return plan, nil
 }
 
-const insecureFileKEKWarning = "INSECURE: the vault key is stored in plaintext at %s. Any process running as your user can copy it and decrypt the vault offline. Use an OS keyring (macOS Keychain or a Secret Service such as GNOME Keyring/KWallet) and rerun `keylatch bootstrap` without --insecure-file-kek to move it there."
+const insecureFileKEKWarning = "INSECURE: the vault key is stored in plaintext at %s. Any process running as your user can copy it and decrypt the vault offline. Use an OS keyring (macOS Keychain or a Secret Service such as GNOME Keyring/KWallet) and rerun `keylatch bootstrap` with allow_insecure_file_kek removed from the config file to move it there."
 
-const noKeyringHint = "rerun with --insecure-file-kek (or KEYLATCH_INSECURE_FILE_KEK=1) to keep the vault key in a plaintext file next to the vault; any process running as your user can then decrypt the vault"
+const noKeyringHint = "install a Secret Service provider (GNOME Keyring or KWallet) or run bootstrap from a terminal to protect the vault key with a passphrase; an operator who accepts that any process running as the user can then decrypt the vault can set allow_insecure_file_kek in the config file"
 
 // planIdentity provisions the vault identity, preferring the OS keyring, and
 // moves a plaintext identity from an older install into the keyring.
@@ -230,7 +265,7 @@ func planIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, force bool
 
 	case kek.IdentityInFileAcknowledged:
 		if insecure {
-			plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.Path, Mode: 0o600, Reason: "plaintext vault identity (--insecure-file-kek)", Done: true})
+			plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: vi.Path, Mode: 0o600, Reason: "plaintext vault identity (allow_insecure_file_kek)", Done: true})
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
 			return nil
 		}
@@ -240,7 +275,7 @@ func planIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, force bool
 		if insecure {
 			if !dryRun {
 				if err := vi.Acknowledge(); err != nil {
-					return fmt.Errorf("record --insecure-file-kek: %w", err)
+					return fmt.Errorf("record the plaintext vault identity opt-in: %w", err)
 				}
 			}
 			plan.Steps = append(plan.Steps, PlanStep{Action: "acknowledge", Path: vi.InsecureMarkerPath(), Mode: 0o600, Reason: "record opt-in to the plaintext vault identity", Done: !dryRun})
@@ -258,9 +293,9 @@ func planProvisionIdentity(plan *Plan, vi kek.VaultIdentity, insecure, dryRun, r
 				return err
 			}
 		}
-		reason := "create plaintext vault identity (--insecure-file-kek)"
+		reason := "create plaintext vault identity (allow_insecure_file_kek)"
 		if replaced {
-			reason = "force re-create plaintext vault identity (--insecure-file-kek)"
+			reason = "force re-create plaintext vault identity (allow_insecure_file_kek)"
 		}
 		plan.Steps = append(plan.Steps, PlanStep{Action: "writeFile", Path: vi.Path, Mode: 0o600, Reason: reason, Done: !dryRun})
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(insecureFileKEKWarning, vi.Path))
@@ -358,6 +393,49 @@ func planWriteKeyring(plan *Plan, krPath string, vi kek.VaultIdentity, dryRun, f
 		Mode:   0o600,
 		Reason: reason,
 		Done:   !dryRun,
+	})
+	return nil
+}
+
+// planPassphraseKeyring creates keyring.json wrapped under a passphrase chosen
+// on the terminal. Only the random salt is stored; no identity file exists.
+func planPassphraseKeyring(plan *Plan, krPath string, opts Options) error {
+	exists, err := fileExists(krPath)
+	if err != nil {
+		return err
+	}
+	if exists && !opts.Force {
+		plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: krPath, Mode: 0o600, Reason: "keyring.json already exists", Done: true})
+		return nil
+	}
+	if !opts.DryRun {
+		if exists {
+			if err := os.Remove(krPath); err != nil {
+				return fmt.Errorf("remove existing keyring %q: %w", krPath, err)
+			}
+		}
+		salt := make([]byte, 32)
+		if _, err := rand.Read(salt); err != nil {
+			return fmt.Errorf("generate keyring salt: %w", err)
+		}
+		pass, err := opts.Passphrase()
+		if err != nil {
+			return err
+		}
+		k, err := kek.PassphraseKEK(pass, salt, argon2.Recommended2026)
+		if err != nil {
+			return err
+		}
+		if err := keyring.NewWithSalt(krPath, k, envelope.XChaCha20Poly1305, 0, salt); err != nil {
+			return fmt.Errorf("write keyring %q: %w", krPath, err)
+		}
+	}
+	plan.Steps = append(plan.Steps, PlanStep{
+		Action: "writeFile",
+		Path:   krPath,
+		Mode:   0o600,
+		Reason: "create keyring.json wrapped under a passphrase (asked on the terminal on every use)",
+		Done:   !opts.DryRun,
 	})
 	return nil
 }

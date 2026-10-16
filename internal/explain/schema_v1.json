@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keylatch.dev/schemas/explain/v1.json",
+  "title": "keylatch explain output",
+  "description": "Output of `keylatch explain --json run` and `keylatch explain --json policy`. schema_version changes only when an existing field is removed or changes meaning; new optional fields may appear within a version.",
+  "oneOf": [
+    { "$ref": "#/$defs/run" },
+    { "$ref": "#/$defs/policy" }
+  ],
+  "$defs": {
+    "tier": { "enum": ["D1", "D2", "D3", "D4", "D5", "D6"] },
+    "tierName": {
+      "enum": [
+        "typed_action",
+        "gateway_session",
+        "placeholder_substitution",
+        "protocol_adapter",
+        "contained_raw",
+        "uncontained_raw"
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "hosts", "slots"],
+      "properties": {
+        "source": { "enum": ["template", "custom"] },
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "in", "hosts"],
+            "properties": {
+              "field": { "type": "string" },
+              "in": { "enum": ["header", "query", "basic"] },
+              "name": { "type": "string" },
+              "hosts": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "kind", "decision", "tier", "tier_name", "runtime",
+        "child_location", "containment", "approval", "request", "hosts", "scope",
+        "reasons", "rejected_tiers", "residual_risk", "policy"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "run" },
+        "decision": { "enum": ["allow", "approval", "deny"] },
+        "tier": { "oneOf": [{ "$ref": "#/$defs/tier" }, { "type": "null" }] },
+        "tier_name": { "oneOf": [{ "$ref": "#/$defs/tierName" }, { "type": "null" }] },
+        "runtime": { "type": ["string", "null"] },
+        "child_location": { "enum": ["caller", "keylatch_sandbox", "unsandboxed", "none"] },
+        "containment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verdict", "secret_in_child"],
+          "properties": {
+            "verdict": { "enum": ["no_secret_in_child", "contained_by_keylatch", "uncontained", "not_applicable"] },
+            "secret_in_child": { "type": "boolean" }
+          }
+        },
+        "approval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "mode"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "mode": { "enum": ["none", "ask", "presence"] }
+          }
+        },
+        "request": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["caller_kind", "actor", "connection", "executable", "argc", "argv_sha256", "cwd"],
+          "properties": {
+            "caller_kind": { "enum": ["human", "agent", "service"] },
+            "actor": { "type": "string" },
+            "connection": { "type": "string" },
+            "executable": { "type": "string" },
+            "argc": { "type": "integer", "minimum": 0 },
+            "argv_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "cwd": { "type": "string" }
+          }
+        },
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule_id", "capabilities", "connections", "ttl_seconds"],
+          "properties": {
+            "rule_id": { "type": ["string", "null"] },
+            "capabilities": { "type": "array", "items": { "type": "string" } },
+            "connections": { "type": "array", "items": { "type": "string" } },
+            "ttl_seconds": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "rejected_tiers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tier", "tier_name", "why"],
+            "properties": {
+              "tier": { "$ref": "#/$defs/tier" },
+              "tier_name": { "$ref": "#/$defs/tierName" },
+              "why": { "type": "string" },
+              "code": { "enum": ["no_binding"] },
+              "fix": { "type": "string" }
+            }
+          }
+        },
+        "binding": { "$ref": "#/$defs/binding" },
+        "residual_risk": { "type": "string" },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "default_deny"],
+          "properties": {
+            "mode": { "type": "string" },
+            "default_deny": { "type": "boolean" }
+          }
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "enum": ["unknown_connection", "invalid_request", "tier_unavailable"] },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "policy", "callers", "notes"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "policy" },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "default_deny", "rule_count"],
+          "properties": {
+            "mode": { "type": "string" },
+            "default_deny": { "type": "boolean" },
+            "rule_count": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "callers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["actor", "caller_kind", "connections"],
+            "properties": {
+              "actor": { "type": "string" },
+              "caller_kind": { "enum": ["human", "agent", "service"] },
+              "connections": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["connection", "known", "hosts", "tiers"],
+                  "properties": {
+                    "connection": { "type": "string" },
+                    "known": { "type": "boolean" },
+                    "hosts": { "type": "array", "items": { "type": "string" } },
+                    "binding": { "$ref": "#/$defs/binding" },
+                    "tiers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["tier", "tier_name", "status", "runtime", "restricted", "why"],
+                        "properties": {
+                          "tier": { "$ref": "#/$defs/tier" },
+                          "tier_name": { "$ref": "#/$defs/tierName" },
+                          "status": { "enum": ["allowed", "approval", "denied", "unavailable"] },
+                          "runtime": { "type": "string" },
+                          "restricted": { "type": "boolean" },
+                          "why": { "type": "string" },
+                          "code": { "enum": ["no_binding"] },
+                          "fix": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

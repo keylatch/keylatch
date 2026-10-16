@@ -143,3 +143,20 @@ func TestParsePermission(t *testing.T) {
 		assert.Error(t, err, bad)
 	}
 }
+
+func TestCheckGitHubAppPlaceholderAdmitsListedCallersOnly(t *testing.T) {
+	p := &config.GitHubAppMintPolicy{
+		PlaceholderCallers: []string{"agent"},
+		AllowOwners:        []string{"octo"},
+		PermissionCeiling:  map[string]string{"contents": "write"},
+	}
+	req := mint.Request{Repository: "octo/app", Permissions: map[string]string{"contents": "write"}}
+	require.NoError(t, mint.CheckGitHubAppPlaceholder(p, mint.CallerAgent, req))
+	assert.ErrorIs(t, mint.CheckGitHubAppPlaceholder(p, mint.CallerHost, req), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerAgent, req), mint.ErrDenied, "an agent still cannot mint a token for itself")
+	over := mint.Request{Repository: "octo/app", Permissions: map[string]string{"contents": "admin"}}
+	assert.ErrorIs(t, mint.CheckGitHubAppPlaceholder(p, mint.CallerAgent, over), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubAppPlaceholder(nil, mint.CallerAgent, req), mint.ErrDenied)
+	p.PlaceholderCallers = []string{"robot"}
+	assert.ErrorIs(t, mint.CheckGitHubAppPlaceholder(p, mint.CallerAgent, req), mint.ErrInvalidPolicy)
+}

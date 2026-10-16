@@ -13,9 +13,6 @@ import (
 	"strings"
 )
 
-// InsecureFileKEKEnv is the environment equivalent of --insecure-file-kek.
-const InsecureFileKEKEnv = "KEYLATCH_INSECURE_FILE_KEK"
-
 const identitySize = 32
 
 var (
@@ -67,16 +64,6 @@ func (v VaultIdentity) RefPath() string { return v.Path + ".keyring" }
 
 // InsecureMarkerPath records the user's opt-in to a plaintext identity file.
 func (v VaultIdentity) InsecureMarkerPath() string { return v.Path + ".insecure" }
-
-// InsecureFileKEKRequested reports whether the environment opts into a
-// plaintext identity file.
-func InsecureFileKEKRequested(lookup func(string) string) bool {
-	switch strings.ToLower(strings.TrimSpace(lookup(InsecureFileKEKEnv))) {
-	case "1", "true", "yes":
-		return true
-	}
-	return false
-}
 
 // Location reports where the identity lives and whether a plaintext copy is
 // still on disk.
@@ -196,6 +183,30 @@ func (v VaultIdentity) MigrateToKeyring() (bool, error) {
 		return true, err
 	}
 	return true, nil
+}
+
+// RemoveKeyringItem deletes the keyring item and the reference to it, leaving a
+// plaintext identity file alone. It undoes Provision.
+func (v VaultIdentity) RemoveKeyringItem() error {
+	ref, ok, err := v.readRef()
+	if err != nil || !ok {
+		return err
+	}
+	if v.Store != nil && v.Store.Name() == ref.Store {
+		if err := v.Store.Delete(ref.Account); err != nil && !errors.Is(err, ErrIdentityNotFound) {
+			return fmt.Errorf("delete keyring item: %w", err)
+		}
+	}
+	return removeIfExists(v.RefPath())
+}
+
+// RemovePlaintext overwrites and unlinks the plaintext identity file and its
+// opt-in marker, leaving a keyring item and its reference alone.
+func (v VaultIdentity) RemovePlaintext() error {
+	if err := shredFile(v.Path); err != nil {
+		return err
+	}
+	return removeIfExists(v.InsecureMarkerPath())
 }
 
 // Acknowledge records the opt-in for an existing plaintext identity.

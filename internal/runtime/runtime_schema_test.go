@@ -7,13 +7,8 @@ package runtime_test
 // in the registry's valid-modes enumeration, and that direct_classic is
 // intentionally absent from that set.
 //
-// Note: direct_classic_sandboxed has been reinstated as a new sibling
-// mode. It is NOT schema-declarable (providers do not declare it in YAML) but it
-// IS present in runtime.AllModes so the runtime layer can route it. This is
-// distinct from direct_classic which remains permanently removed.
-//
-// This test FAILS if someone re-adds direct_classic to the registry enum.
-// It went green when direct_classic was removed from AllModes.
+// This test FAILS if someone re-adds direct_classic or
+// direct_classic_sandboxed to the registry enum or to runtime.AllModes.
 
 import (
 	"testing"
@@ -23,12 +18,11 @@ import (
 )
 
 // schemaDeclarableModes is the set of modes that may appear in provider
-// template YAML files. direct_classic must not be here.
-// direct_classic_sandboxed is a CLI-only mode and is also not schema-declarable.
+// template YAML files. The removed classic modes must not be here.
 var schemaDeclarableModes = []registry.RuntimeMode{
 	registry.RuntimeGatewayTyped,
 	registry.RuntimeGatewaySDK,
-	registry.RuntimeDirectBrokered,
+	registry.RuntimeMinted,
 	registry.RuntimeGatewayProxy,
 }
 
@@ -42,32 +36,15 @@ func TestRuntimeSchemaConsistency(t *testing.T) {
 		}
 	}
 
-	// direct_classic must NOT be schema-declarable — it was permanently removed.
-	// direct_classic_sandboxed is a CLI-only mode and must not be schema-declarable.
-	forbiddenInSchema := []string{"direct_classic", "direct_classic_sandboxed"}
-	for _, forbidden := range forbiddenInSchema {
-		if registry.IsValidRuntimeMode(registry.RuntimeMode(forbidden)) {
-			t.Errorf("mode %q must not be schema-declarable — it is removed or CLI-only", forbidden)
+	forbidden := []string{"direct_classic", "direct_classic_sandboxed"}
+	for _, f := range forbidden {
+		if registry.IsValidRuntimeMode(registry.RuntimeMode(f)) {
+			t.Errorf("mode %q must not be schema-declarable — it was removed", f)
 		}
-	}
-
-	// AllModes must not contain direct_classic (permanently removed).
-	// direct_classic_sandboxed IS allowed in AllModes (reinstated).
-	for _, m := range runtime.AllModes {
-		if string(m) == "direct_classic" {
-			t.Errorf("runtime.AllModes still contains permanently removed mode %q", m)
+		for _, m := range runtime.AllModes {
+			if string(m) == f {
+				t.Errorf("runtime.AllModes still contains removed mode %q", m)
+			}
 		}
-	}
-
-	// Verify direct_classic_sandboxed IS present in AllModes.
-	found := false
-	for _, m := range runtime.AllModes {
-		if m == runtime.RuntimeDirectClassicSandboxed {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("runtime.AllModes must contain RuntimeDirectClassicSandboxed")
 	}
 }

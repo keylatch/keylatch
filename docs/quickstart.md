@@ -91,10 +91,10 @@ The default runtime mode is `gateway_typed`, which routes through the local gate
 keylatch gateway up --detach
 ```
 
-For a mode that does not require the gateway, use `direct_brokered`:
+For a mode that does not require the gateway, use `minted` with a connection whose template mints credentials, such as `aws` or `github-app`:
 
 ```bash
-keylatch run openrouter --runtime direct_brokered -- echo hello
+keylatch run aws --runtime minted -- aws s3 ls
 ```
 
 See [Runtime Modes](architecture/modes.md) for the full five-mode explanation and when to use each.
@@ -132,5 +132,5 @@ Use `keylatch doctor --json` for machine-readable output.
 
 - [Gateway setup](getting-started.md#gateway) — start and manage the local credential gateway
 - [Agent setup](getting-started.md#agent-setup) — write agent profiles for Claude Code and others
-- [Runtime modes](architecture/modes.md) — understand `gateway_typed`, `gateway_sdk`, `direct_brokered`, and more
+- [Runtime modes](architecture/modes.md) — understand `gateway_typed`, `gateway_sdk`, `minted`, and more
 - [Provider catalog](providers/index.md) — all 35 supported providers with connect examples

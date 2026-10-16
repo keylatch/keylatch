@@ -52,9 +52,9 @@ This allows `keylatch audit verify` to check chain integrity in header-only mode
 
 4. The `keylatch doctor` check A5 asserts salt file permissions (`0600`) and directory permissions (`0700`) on every health check, providing a continuous monitoring signal if permissions are inadvertently relaxed.
 
-5. The CI script `scripts/lint-audit-perms.sh` (T-11-02, S-FIND-14) asserts the same permission invariants in continuous integration. It is run as part of the `policy-lint` job in `.github/workflows/ci.yml`. See [EPIC-06 P1 security findings](#security-invariants) for the full finding.
+5. The CI script `scripts/lint-audit-perms.sh` asserts the same permission invariants in continuous integration. It is run as part of the `policy-lint` job in `.github/workflows/ci.yml`.
 
-6. For environments where stronger audit integrity is required, Keylatch supports forwarding audit events to an external SIEM via `audit.ForwardURL`. The external sink is the authoritative tamper-evident log in that configuration. See EPIC-12 (`keylatch doctor` and health-check improvements) for planned enhancements to automated permission repair and alerting.
+6. For environments where stronger audit integrity is required, Keylatch supports forwarding audit events to an external SIEM via `audit.ForwardURL`. The external sink is the authoritative tamper-evident log in that configuration. `keylatch doctor` reports an audit log that is unwritable or whose chain does not verify.
 
 ---
 
@@ -67,8 +67,8 @@ MAC continuity is preserved across the boundary using two sentinel events:
 
 ```
 OLD FILE (audit.log.1):
-  ... event[N-1]
-  event[N]  — ActionAuditRotate, Extra["rotated_to"] = "audit.log.1"
+  ... the second-to-last event
+  last event — ActionAuditRotate, Extra["rotated_to"] = "audit.log.1"
               (this is the LAST line of the old file)
 
 NEW FILE (audit.log):
@@ -81,7 +81,7 @@ Each rotation shifts older generations up by one (`audit.log.1` becomes
 `audit.log.2`, and so on). Twenty rotated generations are kept; the oldest is
 removed. `rotated_to` and `rotated_from` name the generation at the time of
 rotation. The keylatchd retention sweep removes only `audit.log.<n>` files
-older than `audit.retention_days` and never touches other files in the
+older than `audit.retain_days` and never touches other files in the
 configuration directory.
 
 If a rotation fails (for example the new file cannot be created), the logger
@@ -89,6 +89,34 @@ puts the full file back, keeps appending to it and retries a minute later. If
 no file can be written at all, `Log` returns `audit.ErrUnavailable` and every
 audited secret access through the broker and the vault is refused until the
 log can be opened again. `keylatch doctor` reports this as `audit.writable`.
+
+### Chain key
+
+The chain MAC key is derived from `HKDF(secret, audit-salt, "keylatch/audit/v1")`,
+where `secret` is a random value stored wrapped by the KEK
+(`audit-key.enc` next to the audit log). The audit salt is a readable file, so
+the key cannot be recomputed from it, and the secret is independent of the
+vault DEK. Verifying a chain therefore needs the KEK, as `keylatch audit
+--verify-chain` does. The first time the secret is created, an existing log
+written under the old salt-only key is moved to `audit.log.1` so the new chain
+starts in an empty file.
+
+### Event vocabulary
+
+`internal/audit/events.go` lists the brokered-action events: `run`, `call`,
+`mint`, `release`, `connect`, `set`, `policy.change`, `presence.decision`,
+`security.block`, `guard.block`, `backup.export`, plus `run.decided`,
+`run.exited`, `approval.*` and `binding.*`. Their fields are allowlisted in
+`internal/audit/fields`; none carries a value, key or token. Every `keylatch
+run` writes exactly one `run` event, and a run is refused while the log cannot
+record it.
+
+`connect`, `set`, `policy.change` (policy rules, connection policy documents and
+grants, including refused attempts), `presence.decision` (every human-presence
+outcome) and `guard.block` (a runtime mode refused for an agent before a run
+starts) are written by the CLI after the action or refusal, so a log that
+cannot be opened loses the event but never undoes the action. `release` is
+reserved for a verb that hands a stored value to a caller; none exists.
 
 Audit is required, not best-effort. The broker and the vault refuse any
 operation that carries no audit emitter. `keylatch gateway up`, `keylatch set`
@@ -128,7 +156,7 @@ lines themselves.
   OR it may be a `rotation-continued` sentinel with `prev_file_hmac` in `Extra`.
 - `VerifyChain` verifies the intra-file chain from line 1 → last line.
 - Cross-file verification is the responsibility of the auditor tool
-  (see `keylatch audit verify-chain --multi-file`).
+  (`keylatch audit --verify-chain` checks the current file only).
 
 ### Test Coverage
 
@@ -180,7 +208,7 @@ Exit 0 = permissions correct. Exit 1 = at least one permission is wrong (fix wit
 
 The following table lists all audit event types emitted by the vault layer. The `action` field is the string constant written to the log entry.
 
-### Vault Credential Events (EPIC-14)
+### Vault Credential Events
 
 | Action constant | `action` string | Triggered by | Required fields | Notes |
 |----------------|-----------------|--------------|-----------------|-------|
@@ -193,7 +221,7 @@ The following table lists all audit event types emitted by the vault layer. The 
 
 **Safe-log-fields allowlist:** `fields.safeLogFields` permits `"count"` and `"prefix"` for the `"list"` action; `"version"`, `"backend"`, and `"key_term"` for `"read"` and `"write"` (note: `"delete"` does not permit `key_term` — only `"version"` and `"backend"`). All other `Extra` keys are HMAC-redacted before writing to the log.
 
-**Emitter injection:** The vault layer retrieves the `audit.Emitter` from the `context.Context` via `audit.EmitterFromCtx`. The gateway handler (`handler.go`) and brokered runner (`driver_brokered.go`) inject the emitter before calling vault operations. The `list_cmd.go` CLI command also injects it. Commands using `vault.RotateValue` (e.g. `set_cmd.go`) emit via the `RotateValue` path fixed in EPIC-14. Commands using `vault.DestroyVersion` or other versioned operations do not yet inject the emitter. If no emitter is present, vault events are silently dropped — audit failures do not interrupt vault operations.
+**Emitter injection:** The vault layer retrieves the `audit.Emitter` from the `context.Context` via `audit.EmitterFromCtx`. The gateway handler (`handler.go`) and brokered runner (`driver_brokered.go`) inject the emitter before calling vault operations. The `list_cmd.go` CLI command also injects it. Commands using `vault.RotateValue` (e.g. `set_cmd.go`) emit via the `RotateValue` path. Commands using `vault.DestroyVersion` or other versioned operations do not yet inject the emitter. If no emitter is present, vault events are silently dropped — audit failures do not interrupt vault operations.
 
 ---
 

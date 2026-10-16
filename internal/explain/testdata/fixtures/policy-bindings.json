@@ -1,0 +1,28 @@
+{
+  "description": "the policy view lists each connection's binding and flags the tiers that need one",
+  "mode": "policy",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {"id": "r1", "actor": "claude-code", "connections": ["billing-internal"], "capabilities": ["inject"]}
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "custom",
+    "binding": {
+      "source": "custom",
+      "hosts": ["api.billing.example:443"],
+      "slots": [{"field": "token", "in": "header", "name": "Authorization", "hosts": ["api.billing.example:443"]}]
+    },
+    "hosts": ["api.billing.example:443"]
+  },
+  "enabled_runtimes": ["placeholder", "contained"],
+  "request": {
+    "actor": "claude-code",
+    "connection": "billing-internal",
+    "argv": []
+  }
+}

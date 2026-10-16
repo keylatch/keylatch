@@ -16,7 +16,6 @@
 export type RuntimeMode =
   | 'gateway_typed'
   | 'gateway_classic'
-  | 'direct_classic_sandboxed'
   | 'absent'
 
 // @ts-expect-error -- compile-time guard: 'direct_run' must NOT be assignable to RuntimeMode

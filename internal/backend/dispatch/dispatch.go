@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/childstore"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -66,8 +67,24 @@ func ClearCached() {
 	initErr = nil
 }
 
+// Open creates an uncached backend. The caller must close it after use.
+// Long-running services use this to recover after configuration or unlock changes.
+func Open(ctx context.Context, cfg config.Config, env llmcontext.Lookup) (backend.Backend, error) {
+	return selectBackend(ctx, cfg, env)
+}
+
 // selectBackend performs the actual backend resolution (called once via Once).
 func selectBackend(ctx context.Context, cfg config.Config, env llmcontext.Lookup) (backend.Backend, error) {
+	// A verb the system broker runs for a user reads that user's partition
+	// through the descriptor the broker passed.
+	if env != nil {
+		if st, ok, err := childstore.FromEnv(env); ok {
+			if err != nil {
+				return nil, err
+			}
+			return st, nil
+		}
+	}
 	// Resolution order: cfg.Backend → env("KEYLATCH_BACKEND") → "file"
 	name := cfg.Backend
 	if name == "" && env != nil {
@@ -83,7 +100,12 @@ func selectBackend(ctx context.Context, cfg config.Config, env llmcontext.Lookup
 	name = canonicalName
 
 	// Build Settings from config fields so factory functions can decode them.
-	settings := buildSettings(name, cfg, env)
+	// Credentials come from the stored credential_ref, never from the
+	// environment unless the config opts in.
+	settings, err := resolveSettings(name, cfg, env)
+	if err != nil {
+		return nil, err
+	}
 
 	factory, ok := backend.Default.Get(name)
 	if !ok {
@@ -145,6 +167,8 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 			s["server"] = cfg.BW.Server
 			s["folder"] = cfg.BW.Folder
 			s["collection"] = cfg.BW.Collection
+			s["organization_id"] = cfg.BW.OrganizationID
+			s["namespaces"] = cfg.BW.Namespaces
 			s["bin"] = cfg.BW.Bin
 		}
 		if env != nil {
@@ -177,9 +201,6 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 	case "vault":
 		if env != nil {
 			setIfEnv(s, "address", env, "KEYLATCH_VAULT_ADDR", "VAULT_ADDR")
-			setIfEnv(s, "token", env, "KEYLATCH_VAULT_TOKEN", "VAULT_TOKEN")
-			setIfEnv(s, "role_id", env, "KEYLATCH_VAULT_ROLE_ID")
-			setIfEnv(s, "secret_id", env, "KEYLATCH_VAULT_SECRET_ID")
 			setIfEnv(s, "mount", env, "KEYLATCH_VAULT_MOUNT")
 			setIfEnv(s, "kv_version", env, "KEYLATCH_VAULT_KV_VERSION")
 			setIfEnv(s, "namespace", env, "KEYLATCH_VAULT_NAMESPACE", "VAULT_NAMESPACE")
@@ -188,15 +209,12 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 	case "aws-sm":
 		if env != nil {
 			setIfEnv(s, "region", env, "KEYLATCH_AWS_SM_REGION", "AWS_REGION", "AWS_DEFAULT_REGION")
-			setIfEnv(s, "access_key_id", env, "KEYLATCH_AWS_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID")
-			setIfEnv(s, "secret_access_key", env, "KEYLATCH_AWS_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY")
 			setIfEnv(s, "force_delete", env, "KEYLATCH_AWS_SM_FORCE_DELETE")
 		}
 
 	case "gcp-sm":
 		if env != nil {
 			setIfEnv(s, "project_id", env, "KEYLATCH_GCP_PROJECT_ID", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT")
-			setIfEnv(s, "credentials_json", env, "KEYLATCH_GCP_CREDENTIALS_JSON", "GOOGLE_APPLICATION_CREDENTIALS")
 		}
 
 	case "azure-kv":
@@ -204,12 +222,10 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 			setIfEnv(s, "vault_url", env, "KEYLATCH_AZURE_KV_URL", "KEYLATCH_AZURE_VAULT_URL")
 			setIfEnv(s, "tenant_id", env, "KEYLATCH_AZURE_TENANT_ID", "AZURE_TENANT_ID")
 			setIfEnv(s, "client_id", env, "KEYLATCH_AZURE_CLIENT_ID", "AZURE_CLIENT_ID")
-			setIfEnv(s, "client_secret", env, "KEYLATCH_AZURE_CLIENT_SECRET", "AZURE_CLIENT_SECRET")
 		}
 
 	case "doppler":
 		if env != nil {
-			setIfEnv(s, "token", env, "KEYLATCH_DOPPLER_TOKEN", "DOPPLER_TOKEN")
 			setIfEnv(s, "project", env, "KEYLATCH_DOPPLER_PROJECT", "DOPPLER_PROJECT")
 			setIfEnv(s, "config", env, "KEYLATCH_DOPPLER_CONFIG", "DOPPLER_CONFIG")
 			setIfEnv(s, "base_url", env, "KEYLATCH_DOPPLER_BASE_URL")
@@ -218,17 +234,30 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 	case "infisical":
 		if env != nil {
 			setIfEnv(s, "base_url", env, "KEYLATCH_INFISICAL_BASE_URL", "INFISICAL_API_URL")
-			setIfEnv(s, "client_id", env, "KEYLATCH_INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_ID")
-			setIfEnv(s, "client_secret", env, "KEYLATCH_INFISICAL_CLIENT_SECRET", "INFISICAL_CLIENT_SECRET")
 			setIfEnv(s, "workspace_id", env, "KEYLATCH_INFISICAL_WORKSPACE_ID", "INFISICAL_WORKSPACE_ID")
 			setIfEnv(s, "environment", env, "KEYLATCH_INFISICAL_ENVIRONMENT", "INFISICAL_ENVIRONMENT")
 			setIfEnv(s, "secret_path", env, "KEYLATCH_INFISICAL_SECRET_PATH", "INFISICAL_SECRET_PATH")
 		}
 
+	case "bws":
+		s["env"] = env
+		if env != nil {
+			setIfEnv(s, "project_id", env, "KEYLATCH_BWS_PROJECT_ID", "BWS_PROJECT_ID")
+			setIfEnv(s, "server_url", env, "KEYLATCH_BWS_SERVER_URL")
+			setIfEnv(s, "bin", env, "KEYLATCH_BWS_BIN")
+		}
+
+	case "sops":
+		if env != nil {
+			setIfEnv(s, "file", env, "KEYLATCH_SOPS_FILE")
+			setIfEnv(s, "format", env, "KEYLATCH_SOPS_FORMAT")
+			setIfEnv(s, "age_key_file", env, "KEYLATCH_SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_FILE")
+			setIfEnv(s, "verify_mac", env, "KEYLATCH_SOPS_VERIFY_MAC")
+		}
+
 	case "op-connect":
 		if env != nil {
 			setIfEnv(s, "connect_url", env, "KEYLATCH_OP_CONNECT_URL", "OP_CONNECT_HOST")
-			setIfEnv(s, "token", env, "KEYLATCH_OP_CONNECT_TOKEN", "OP_CONNECT_TOKEN")
 			setIfEnv(s, "vault_id", env, "KEYLATCH_OP_CONNECT_VAULT_ID", "OP_CONNECT_VAULT_ID")
 		}
 	}

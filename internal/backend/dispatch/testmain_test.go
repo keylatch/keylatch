@@ -3,16 +3,20 @@ package dispatch_test
 import (
 	"os"
 	"testing"
-
-	"github.com/keylatch/keylatch/internal/crypto/kek"
 )
 
 // Some tests here open the file backend through the default config paths;
-// the opt-in keeps them from moving a developer's real vault key into the
-// OS keyring.
+// pointing them at a scratch directory keeps them away from a developer's
+// real vault and vault key.
 func TestMain(m *testing.M) {
-	if err := os.Setenv(kek.InsecureFileKEKEnv, "1"); err != nil {
+	dir, err := os.MkdirTemp("", "keylatch-dispatch-test-*")
+	if err != nil {
 		panic(err)
 	}
-	os.Exit(m.Run())
+	if err := os.Setenv("KEYLATCH_CONFIG_DIR", dir); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
 }

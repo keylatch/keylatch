@@ -291,35 +291,30 @@ func TestSettings_InvalidApprovalPolicyReturns400(t *testing.T) {
 	}
 }
 
-// TestSettings_TelemetryAndExperimentalRoundTrip verifies that telemetry_disable
-// and experimental fields persist correctly.
-func TestSettings_TelemetryAndExperimentalRoundTrip(t *testing.T) {
+// TestSettings_ExperimentalRoundTrip verifies that the experimental field
+// persists correctly.
+func TestSettings_ExperimentalRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	store := api.NewSettingsStore()
 	h := &api.SettingsHandler{Store: store}
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"telemetry_disable": true,
-		"experimental":      true,
+		"experimental": true,
 	})
 	putReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
 	putReq.Header.Set("Content-Type", "application/json")
 	putRec := httptest.NewRecorder()
 	h.ServeHTTP(putRec, putReq)
 	if putRec.Code != http.StatusOK {
-		t.Fatalf("PUT telemetry+experimental: want 200, got %d\nbody: %s", putRec.Code, putRec.Body.String())
+		t.Fatalf("PUT experimental: want 200, got %d\nbody: %s", putRec.Code, putRec.Body.String())
 	}
 
 	var resp struct {
-		TelemetryDisable bool `json:"telemetry_disable"`
-		Experimental     bool `json:"experimental"`
+		Experimental bool `json:"experimental"`
 	}
 	if err := json.NewDecoder(putRec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode PUT response: %v", err)
-	}
-	if !resp.TelemetryDisable {
-		t.Error("PUT response: telemetry_disable should be true")
 	}
 	if !resp.Experimental {
 		t.Error("PUT response: experimental should be true")
@@ -330,14 +325,10 @@ func TestSettings_TelemetryAndExperimentalRoundTrip(t *testing.T) {
 	getRec := httptest.NewRecorder()
 	h.ServeHTTP(getRec, getReq)
 	var updated struct {
-		TelemetryDisable bool `json:"telemetry_disable"`
-		Experimental     bool `json:"experimental"`
+		Experimental bool `json:"experimental"`
 	}
 	if err := json.NewDecoder(getRec.Body).Decode(&updated); err != nil {
 		t.Fatalf("decode GET response: %v", err)
-	}
-	if !updated.TelemetryDisable {
-		t.Error("GET after PUT: telemetry_disable should be true")
 	}
 	if !updated.Experimental {
 		t.Error("GET after PUT: experimental should be true")

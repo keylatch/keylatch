@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
+
+	"github.com/keylatch/keylatch/internal/harness"
 )
 
 // integrationConfig is the path (relative to cwd) where the Keylatch
@@ -21,15 +25,26 @@ type agentMarker struct {
 
 // agentMarkers is the ordered list of known agent marker paths.
 // A file or directory matching path signals that the given agent is in use.
-var agentMarkers = []agentMarker{
-	{".claude/settings.json", "claude-code", "docs/integration/agents/claude-code.md"},
-	{"CLAUDE.md", "claude-code", "docs/integration/agents/claude-code.md"},
-	{".windsurf/hooks", "windsurf", "docs/integration/agents/windsurf.md"},
-	{".cursor/rules", "cursor", "docs/integration/agents/cursor.md"},
-	{"AGENTS.md", "generic", "docs/integration/agents/generic.md"},
-	{".gemini/config.yml", "gemini", "docs/integration/agents/gemini.md"},
-	{".gemini/settings.json", "gemini", "docs/integration/agents/gemini.md"},
-}
+var agentMarkers = func() []agentMarker {
+	var out []agentMarker
+	for _, id := range []string{"claude-code", "cursor", "gemini-cli"} {
+		d, _ := harness.Lookup(id)
+		doc := "docs/integration/agents/" + strings.TrimSuffix(d.ID, "-cli") + ".md"
+		project := d.Layout(harness.Env{Project: "."})
+		if id == "cursor" {
+			out = append(out, agentMarker{filepath.FromSlash(path.Dir(d.Rules.ProjectFile)), d.ID, doc})
+			continue
+		}
+		out = append(out, agentMarker{filepath.Clean(project.Hook), d.ID, doc})
+		switch id {
+		case "claude-code":
+			out = append(out, agentMarker{filepath.Clean(project.Rules), d.ID, doc})
+		case "gemini-cli":
+			out = append(out, agentMarker{filepath.Join(filepath.Dir(project.Hook), "config.yml"), d.ID, doc})
+		}
+	}
+	return append(out, agentMarker{"AGENTS.md", "generic", "docs/integration/agents/generic.md"})
+}()
 
 // checkIntegrationMarkers implements the I3: integration-markers doctor check.
 //

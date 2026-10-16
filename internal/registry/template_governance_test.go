@@ -235,6 +235,9 @@ func TestInjectionRulesMatchSecretFields(t *testing.T) {
 		for _, sf := range tmpl.SecretFields {
 			secretFieldNames[sf.Name] = struct{}{}
 		}
+		for _, f := range tmpl.MintedFields {
+			secretFieldNames[f] = struct{}{}
+		}
 
 		// Every secret_field with a non-empty env_var must have a matching
 		// injection_rules entry.
@@ -250,7 +253,7 @@ func TestInjectionRulesMatchSecretFields(t *testing.T) {
 		// Every injection_rules source must reference an existing secret_field.
 		for _, ir := range tmpl.InjectionRules {
 			if _, ok := secretFieldNames[ir.Source]; !ok {
-				t.Errorf("template %q: injection_rules source %q does not match any secret_field name", p, ir.Source)
+				t.Errorf("template %q: injection_rules source %q does not match any secret or minted field name", p, ir.Source)
 			}
 		}
 

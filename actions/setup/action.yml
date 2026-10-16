@@ -1,0 +1,81 @@
+name: Set up Keylatch
+description: >-
+  Installs a pinned Keylatch release after verifying its cosign signature and
+  checksum, then exchanges the job's OIDC token for a session limited to the
+  connections the operator's ci.trust configuration names.
+
+inputs:
+  version:
+    description: Release tag to install, for example v0.13.0. Required; there is no "latest".
+    required: true
+  exchange:
+    description: Set to "false" to install the binary without running `keylatch ci exchange`.
+    required: false
+    default: "true"
+  audience:
+    description: Audience requested for the OIDC token. Defaults to the only audience in ci.trust.
+    required: false
+    default: ""
+  repository:
+    description: Repository that publishes the release.
+    required: false
+    default: keylatch/keylatch
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        REPOSITORY: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+        [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]] || { echo "::error::version must be a release tag such as v0.13.0"; exit 1; }
+        [[ "$REPOSITORY" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || { echo "::error::repository must be owner/name"; exit 1; }
+    - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+    - name: Download and verify Keylatch
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        REPOSITORY: ${{ inputs.repository }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) platform=linux_amd64 ;;
+          Linux-ARM64) platform=linux_arm64 ;;
+          macOS-X64) platform=darwin_amd64 ;;
+          macOS-ARM64) platform=darwin_arm64 ;;
+          *) echo "::error::no Keylatch release for $RUNNER_OS $RUNNER_ARCH"; exit 1 ;;
+        esac
+        bare="${VERSION#v}"
+        sums="keylatch-${bare}_checksums.txt"
+        archive="keylatch_${bare}_${platform}.tar.gz"
+        dir="$RUNNER_TEMP/keylatch-release"
+        rm -rf "$dir"
+        mkdir -p "$dir"
+        gh release download "$VERSION" --repo "$REPOSITORY" --dir "$dir" \
+          --pattern "$sums" --pattern "$sums.sig" --pattern "$sums.pem" --pattern "$archive"
+        # The signature must come from the release workflow of the Keylatch repository.
+        cosign verify-blob \
+          --certificate-identity-regexp '^https://github\.com/keylatch/keylatch/\.github/workflows/(release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?|attest-release\.yml@refs/heads/main)$' \
+          --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+          --certificate "$dir/$sums.pem" --signature "$dir/$sums.sig" "$dir/$sums" >/dev/null
+        expected="$(awk -v f="$archive" '$2 == f { print $1 }' "$dir/$sums")"
+        [[ -n "$expected" ]] || { echo "::error::$archive is not listed in the signed checksums"; exit 1; }
+        if command -v sha256sum >/dev/null; then actual="$(sha256sum "$dir/$archive" | awk '{ print $1 }')"; else actual="$(shasum -a 256 "$dir/$archive" | awk '{ print $1 }')"; fi
+        [[ "$actual" == "$expected" ]] || { echo "::error::checksum mismatch for $archive"; exit 1; }
+        mkdir -p "$dir/bin"
+        tar -xzf "$dir/$archive" -C "$dir/bin" keylatch
+        echo "$dir/bin" >> "$GITHUB_PATH"
+    - name: Exchange the job's OIDC token
+      if: ${{ inputs.exchange == 'true' }}
+      shell: bash
+      env:
+        AUDIENCE: ${{ inputs.audience }}
+      run: |
+        set -euo pipefail
+        args=(ci exchange --provider github-actions)
+        [[ -z "$AUDIENCE" ]] || args+=(--audience "$AUDIENCE")
+        "$RUNNER_TEMP/keylatch-release/bin/keylatch" "${args[@]}"

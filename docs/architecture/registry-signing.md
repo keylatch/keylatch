@@ -3,8 +3,8 @@
 > Architecture decision: [ADR-001-cosign-keyless-templates](decisions/ADR-001-cosign-keyless-templates.md)
 
 Provider template bundles (community JSON archives) are cosign-signed before publication
-and verified at runtime by the registry loader. EPIC-08 introduced **keyless OIDC signing**
-as the default, with keyed ECDSA-P256 signing available as an opt-in for environments
+and verified at runtime by the registry loader. They use **keyless OIDC signing**
+by default, with keyed ECDSA-P256 signing available as an opt-in for environments
 that cannot use OIDC.
 
 ---
@@ -34,7 +34,7 @@ https://github.com/keylatch/keylatch/.github/workflows/publish-registry.yml@refs
 **OIDC issuer:** `https://token.actions.githubusercontent.com`
 
 **CI requirement:** the `publish-registry.yml` workflow must have `id-token: write` in
-its permissions block (already set in EPIC-08).
+its permissions block (it is set).
 
 ### Keyed ECDSA-P256 (opt-in)
 

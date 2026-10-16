@@ -2,8 +2,16 @@ package runner
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/localonly"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -38,6 +46,13 @@ type DispatchRunner struct {
 	Drivers map[string]Driver
 	// Guard is the LLM session guard hook. When nil, all sessions are permitted — only set nil in tests.
 	Guard GuardFunc
+	// Enforce decides whether the request may use the connection. It runs
+	// after the runtime is resolved and before any credential is read.
+	// Production wires enforce.Decide; nil skips the check and is for tests.
+	Enforce func(context.Context, enforce.Request) enforce.Decision
+	// Audit receives one `run` event per Run. When set, a Run is refused
+	// while the event could not be recorded.
+	Audit audit.Emitter
 }
 
 // Dispatcher is the contract for the new ExecRequest-based dispatch path.
@@ -56,13 +71,58 @@ var _ Dispatcher = DispatchRunner{}
 //
 // A RuntimeReceipt is returned on every path including errors.
 func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceipt, error) {
+	if d.Audit != nil {
+		if err := audit.Ready(d.Audit); err != nil {
+			return RuntimeReceipt{Provider: req.ConnectionSlug, Capability: req.Capability, PolicyDecision: "audit_unavailable"}, err
+		}
+	}
+	start := time.Now()
+	receipt, err := d.run(ctx, req)
+	if d.Audit != nil {
+		if aerr := d.Audit.Emit(ctx, runEvent(req, receipt, err, time.Since(start))); aerr != nil {
+			err = errors.Join(err, fmt.Errorf("record run event: %w", aerr))
+		}
+	}
+	return receipt, err
+}
+
+// runEvent is the single value-free audit event for one Run.
+func runEvent(req ExecRequest, r RuntimeReceipt, runErr error, took time.Duration) audit.Event {
+	kind := req.Caller
+	if kind == "" {
+		kind = callerkind.Local(llmcontext.DefaultLookup, false).Kind
+	}
+	outcome := audit.OutcomeOK
+	if runErr != nil {
+		outcome = audit.OutcomeDenied
+	}
+	decision := r.PolicyDecision
+	if decision == "" && runErr == nil {
+		decision = "allowed"
+	}
+	return audit.Event{
+		Action:  audit.ActionRun,
+		Outcome: outcome,
+		Extra: map[string]any{
+			"connection":  req.ConnectionSlug,
+			"runtime":     r.Runtime,
+			"capability":  r.Capability,
+			"caller_kind": string(kind),
+			"decision":    decision,
+			"exit":        r.ExitCode,
+			"duration_ms": took.Milliseconds(),
+		},
+	}
+}
+
+func (d DispatchRunner) run(ctx context.Context, req ExecRequest) (RuntimeReceipt, error) {
 	cap := req.Capability
 	if cap == "" {
 		cap = "inject"
 	}
 	empty := RuntimeReceipt{Provider: req.ConnectionSlug, Capability: cap}
 
-	// Step 1: LLM session guard before any credential read.
+	// LLM session guard before any credential read.
 	mode := runtime.RuntimeMode(req.Runtime)
 	if d.Guard != nil {
 		if blocked := d.Guard(mode, req.ApprovalJWT); blocked {
@@ -71,14 +131,14 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		}
 	}
 
-	// Step 2: provider template lookup.
+	// Provider template lookup.
 	tmpl, err := registry.Get(req.ConnectionSlug)
 	if err != nil {
 		empty.PolicyDecision = "provider_not_found"
 		return empty, err
 	}
 
-	// Step 2b: allowlist enforcement. Mirrors ProcessRunner matching rules:
+	// Allowlist enforcement. Mirrors ProcessRunner matching rules:
 	//   - Exact match:   exe == allowed
 	//   - Dot-suffix:    exe starts with allowed+"." (e.g. "python3.12" matches "python3")
 	//   - Path-suffix:   exe starts with allowed+"/" (e.g. "python3/bin" matches "python3")
@@ -105,7 +165,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, ErrCommandNotAllowed
 	}
 
-	// Step 3: resolve runtime mode.
+	// Resolve runtime mode.
 	resolveReq := runtime.ResolveRequest{
 		RequestedMode:  mode,
 		ConnectionSlug: req.ConnectionSlug,
@@ -116,7 +176,44 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, err
 	}
 
-	// Step 4: driver lookup.
+	if d.Enforce != nil {
+		if req.Caller == "" {
+			req.Caller = callerkind.Local(llmcontext.DefaultLookup, false).Kind
+		}
+		verdict := d.Enforce(ctx, enforce.Request{
+			Connection:  req.ConnectionSlug,
+			Action:      cap,
+			Runtime:     string(decision.Mode),
+			Caller:      req.Caller,
+			Actor:       req.Actor,
+			Command:     req.Command,
+			CWD:         req.WorkingDir,
+			Unit:        req.CallerUnit,
+			ApprovalJWT: req.ApprovalJWT,
+		})
+		if !verdict.Allow || verdict.ApprovalRequired {
+			empty.Runtime = string(decision.Mode)
+			empty.PolicyDecision = "policy_denied"
+			return empty, &PolicyDeniedError{Decision: verdict}
+		}
+		if verdict.MaxTTL > 0 && (req.TTL <= 0 || req.TTL > verdict.MaxTTL) {
+			req.TTL = verdict.MaxTTL
+		}
+	}
+
+	// Ephemeral values for local-only fields; unsupported modes stop here.
+	if req.LocalSession == nil {
+		req.LocalSession = localonly.NewSession()
+	}
+	localEnv, _, err := localOnlyEnv(tmpl, req.LocalOnly, req.LocalSession)
+	if err != nil {
+		empty.Runtime = string(decision.Mode)
+		empty.PolicyDecision = "local_only_refused"
+		return empty, err
+	}
+	req.LocalEnv = localEnv
+
+	// Driver lookup.
 	driver, ok := d.Drivers[string(decision.Mode)]
 	if !ok {
 		empty.Runtime = string(decision.Mode)
@@ -124,7 +221,7 @@ func (d DispatchRunner) Run(ctx context.Context, req ExecRequest) (RuntimeReceip
 		return empty, ErrUnknownRuntime
 	}
 
-	// Step 5: delegate to driver.
+	// Delegate to driver.
 	receipt, runErr := driver.Run(ctx, req, tmpl)
 	receipt.Provider = req.ConnectionSlug
 	receipt.Runtime = string(decision.Mode)

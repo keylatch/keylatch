@@ -7,6 +7,10 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/keylatch/keylatch/internal/callerkind"
+	"github.com/keylatch/keylatch/internal/localonly"
+	"github.com/keylatch/keylatch/internal/redactor"
 )
 
 // ErrCommandNotAllowed is returned by Runner.Run when the command does not
@@ -21,8 +25,7 @@ var ErrUnknownRuntime = errors.New("runner: no driver registered for runtime mod
 var ErrGuardDenied = errors.New("runner: guard denied execution")
 
 // ErrModeNotAvailable is returned by a placeholder Driver registered for a mode
-// that is declared but not yet implemented in this release (e.g.
-// direct_classic_sandboxed in 0.1.0).
+// that is declared but not yet implemented in this release.
 var ErrModeNotAvailable = errors.New("runner: runtime mode not available in this release")
 
 // Connection describes a named credential connection and the commands
@@ -32,6 +35,7 @@ var ErrModeNotAvailable = errors.New("runner: runtime mode not available in this
 type Connection struct {
 	Name                   string
 	AllowedCommandPrefixes []string // Per-template allowlist; empty = run REJECTED
+	LocalOnly              LocalOnly
 }
 
 // RunOptions carries per-invocation options.
@@ -44,6 +48,8 @@ type RunOptions struct {
 type ExecRequest struct {
 	// Connection is the provider slug identifying which stored credential to use.
 	ConnectionSlug string
+	// Namespace is the vault namespace of the connection; empty is "default".
+	Namespace string
 	// Command is the argv to execute.
 	Command []string
 	// WorkingDir is the subprocess working directory ("" inherits the current dir).
@@ -58,6 +64,12 @@ type ExecRequest struct {
 	Runtime string
 	// ApprovalJWT is the hardware/two-person approval token for sandboxed modes.
 	ApprovalJWT string
+	// Caller is the kind of process that asked for the run: it decides which
+	// callers entry of the connection's policy applies and is carried by any
+	// token issued. Empty is classified from the current process.
+	Caller callerkind.Kind
+	// CallerUnit is the systemd unit of a Service caller.
+	CallerUnit string
 	// Stdin, Stdout, Stderr allow tests to capture subprocess I/O.
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -67,7 +79,7 @@ type ExecRequest struct {
 	// before the allowlist check in DispatchRunner. Use for CLI --allow flag.
 	ExtraAllowedPrefixes []string
 	// FeatureFlags carries per-request feature gate flags. Drivers may require
-	// specific flags to be true before executing (e.g. "direct_classic_sandboxed").
+	// specific flags to be true before executing.
 	FeatureFlags map[string]bool
 	// CleanEnv, when true, instructs the driver to start the child process with
 	// a minimal environment rather than inheriting os.Environ(). The minimal set
@@ -78,6 +90,16 @@ type ExecRequest struct {
 	// ExtraEnvVars lists additional env var names to preserve when CleanEnv is true.
 	// Ignored when CleanEnv is false.
 	ExtraEnvVars []string
+	// FileScan selects what happens to files the child wrote that contain a
+	// secret value or encoding. The zero value reports them.
+	FileScan redactor.ScanPolicy
+	// LocalOnly holds the connection's class and local-only field modes.
+	LocalOnly LocalOnly
+	// LocalSession supplies ephemeral values; nil gives each Run its own.
+	LocalSession *localonly.Session
+	// LocalEnv is filled by DispatchRunner with the KEY=VALUE pairs generated
+	// for ephemeral fields. Drivers add them to the child environment.
+	LocalEnv []string
 }
 
 // RuntimeReceipt is the value-free record emitted for every execution path
@@ -90,6 +112,8 @@ type RuntimeReceipt struct {
 	CredentialShape string        `json:"credential_shape"`
 	ExitCode        int           `json:"exit_code,omitempty"`
 	TTL             time.Duration `json:"ttl,omitempty"`
+	// LeakedFiles counts files written by the child that held a secret.
+	LeakedFiles int `json:"leaked_files,omitempty"`
 }
 
 // Runner executes commands under a named connection's allowed prefix list.

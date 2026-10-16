@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -266,82 +267,6 @@ func checkAgentGuard() Check {
 			Detail:  "no agent exfiltration guard detected",
 			Fix:     "keylatch install-guard <agent>",
 			Tags:    []string{"guard"},
-		}
-	}
-}
-
-// checkHookPreToolUse checks whether the keylatch pre-tool-use hook is installed
-// in ~/.claude/settings.json. Best-effort, value-free.
-func checkHookPreToolUse(env llmcontext.Lookup) Check {
-	return func(_ context.Context) Status {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Status{
-				Name:    "hook.preToolUse",
-				Section: "environment",
-				OK:      true,
-				Warn:    true,
-				Detail:  "could not determine home directory; skipping hook check",
-				Tags:    []string{"hook"},
-			}
-		}
-
-		settingsPath := filepath.Join(home, ".claude", "settings.json")
-		data, err := os.ReadFile(settingsPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return Status{
-					Name:    "hook.preToolUse",
-					Section: "environment",
-					OK:      true,
-					Warn:    true,
-					Detail:  "~/.claude/settings.json not found; preToolUse hook not installed",
-					Fix:     "Install the keylatch hook: see contrib/agent-guards/claude-code/README",
-					Tags:    []string{"hook"},
-				}
-			}
-			return Status{
-				Name:    "hook.preToolUse",
-				Section: "environment",
-				OK:      true,
-				Warn:    true,
-				Detail:  fmt.Sprintf("could not read ~/.claude/settings.json: %v", err),
-				Tags:    []string{"hook"},
-			}
-		}
-
-		// Check for keylatch in the hooks section without revealing full paths.
-		var settings map[string]any
-		if jsonErr := json.Unmarshal(data, &settings); jsonErr != nil {
-			return Status{
-				Name:    "hook.preToolUse",
-				Section: "environment",
-				OK:      true,
-				Warn:    true,
-				Detail:  "~/.claude/settings.json could not be parsed",
-				Tags:    []string{"hook"},
-			}
-		}
-
-		// Look for "keylatch" keyword in the file (value-free check).
-		if strings.Contains(string(data), "keylatch") {
-			return Status{
-				Name:    "hook.preToolUse",
-				Section: "environment",
-				OK:      true,
-				Detail:  "keylatch preToolUse hook detected in ~/.claude/settings.json",
-				Tags:    []string{"hook"},
-			}
-		}
-
-		return Status{
-			Name:    "hook.preToolUse",
-			Section: "environment",
-			OK:      true,
-			Warn:    true,
-			Detail:  "keylatch hook not found in ~/.claude/settings.json",
-			Fix:     "Install the keylatch hook: see contrib/agent-guards/claude-code/README",
-			Tags:    []string{"hook"},
 		}
 	}
 }
@@ -723,57 +648,90 @@ func checkBootstrapConfig(env llmcontext.Lookup) Check {
 }
 
 // namedCheck pairs a section label with its check function so that category
-// filtering can skip checks before they are executed (W5).
+// filtering can skip checks before they are executed. A check that provides a
+// root cause is skipped-over by the checks that need it when it fails, so one
+// underlying problem produces one FAIL.
 type namedCheck struct {
-	section string
-	fn      func(ctx context.Context) Status
+	section  string
+	name     string // reported when the check is skipped
+	fn       func(ctx context.Context) Status
+	provides string
+	needs    []string
+}
+
+// Root causes other checks can depend on.
+const (
+	causeBootstrap = "bootstrap"
+	causeGuard     = "guard"
+)
+
+func plain(section string, fn Check) namedCheck { return namedCheck{section: section, fn: fn} }
+
+func rootCause(section, cause string, fn Check) namedCheck {
+	return namedCheck{section: section, fn: fn, provides: cause}
+}
+
+func dependent(section, name string, fn Check, needs ...string) namedCheck {
+	return namedCheck{section: section, name: name, fn: fn, needs: needs}
 }
 
 // gatherChecks returns all checks in canonical order as namedCheck values.
 // The section field enables pre-execution category filtering.
 func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.CommandRunner) []namedCheck {
-	return []namedCheck{
-		// Bootstrap presence checks — run first so other checks have context.
-		{"environment", checkBootstrapKeyring(env)},
-		{"environment", checkBootstrapConfig(env)},
-		{"environment", checkVersionBinary()},
-		{"environment", checkPlatform()},
-		{"environment", checkLLMSession(env)},
-		{"environment", checkAgentGuard()},
-		{"environment", checkPathsConfig(env)},
-		{"environment", checkPathsVault(env)},
-		{"environment", checkPathsAudit(env)},
-		{"environment", checkAuditWritable(env)},
-		// Operating mode check.
-		{"environment", checkOperatingMode(env)},
-		{"backends", checkBackendSelected(env)},
-		{"backends", checkBackendKeychain(probe)},
-		{"backends", checkBackendOP(env, probe)},
-		{"backends", checkBackendOPAuth(env, probe, runner)},
-		{"backends", checkBackendBW(env, probe)},
-		{"backends", checkBackendBWSession(env, probe)},
-		{"backends", checkBackendProtonPass(probe)},
-		{"backends", checkBackendKeeper(probe)},
-		{"backends", checkBackendLastPass(probe)},
-		{"backends", checkBackendFile(env)},
-		{"backends", checkPlaintextKEK(env)},
-		{"daemon", checkExternalDocker(env, probe)},
-		{"daemon", checkExternalSOPS(probe)},
+	checks := []namedCheck{
+		// Root causes first so the checks that depend on them can be skipped.
+		rootCause("environment", causeBootstrap, checkBootstrapKeyring(env)),
+		dependent("environment", "bootstrap.config", checkBootstrapConfig(env), causeBootstrap),
+		plain("environment", checkVersionBinary()),
+		plain("environment", checkPlatform()),
+		plain("environment", checkLLMSession(env)),
+		plain("environment", checkAgentGuard()),
+		rootCause("environment", causeGuard, checkClaudeGuardInstalled(env)),
+		dependent("environment", "guard.current", checkClaudeGuardCurrent(env), causeGuard),
+		dependent("environment", "guard.matcher", checkClaudeGuardMatcher(env), causeGuard),
+		dependent("environment", "paths.config", checkPathsConfig(env), causeBootstrap),
+		dependent("environment", "paths.vault", checkPathsVault(env), causeBootstrap),
+		dependent("environment", "paths.audit", checkPathsAudit(env), causeBootstrap),
+		dependent("environment", "audit.writable", checkAuditWritable(env), causeBootstrap),
+		dependent("environment", "audit.chain", checkAuditChain(env), causeBootstrap),
+		plain("environment", checkPolicyDefaultDeny(env)),
+		plain("environment", checkBackendCredentialsInEnvironment(env)),
+		plain("environment", checkLeftoverBWSession(env)),
+		plain("environment", checkOperatingMode(env)),
+		plain("backends", checkBackendSelected(env)),
+		plain("backends", checkBackendTier(env)),
+		plain("backends", checkBackendKeychain(probe)),
+		plain("backends", checkBackendOP(env, probe)),
+		plain("backends", checkBackendOPAuth(env, probe, runner)),
+		plain("backends", checkBackendBW(env, probe)),
+		plain("backends", checkBackendBWSession(env, probe)),
+		plain("backends", checkBackendProtonPass(probe)),
+		plain("backends", checkBackendKeeper(probe)),
+		plain("backends", checkBackendLastPass(probe)),
+		dependent("backends", "backend.file", checkBackendFile(env), causeBootstrap),
+		dependent("backends", "backend.kek", checkPlaintextKEK(env), causeBootstrap),
+		plain("backends", checkBackendEnvCredentials(env)),
+		plain("daemon", checkExternalDocker(env, probe)),
+		plain("daemon", checkExternalSOPS(probe)),
 		// External password-manager CLI checks (op, aws, vault) — skipped when no
 		// --provider-ref connections are configured.
-		{"external", checkExternalOP(env, probe, runner)},
-		{"external", checkExternalAWSSM(env, probe)},
-		{"external", checkExternalHashiVault(env, probe)},
-		{"providers", checkACLKeychainUnlock()},
-		{"providers", checkKeychainDBPermissions()},
-		{"environment", checkHookPreToolUse(env)},
-		{"environment", checkCosignInstalled(probe)},
+		plain("external", checkExternalOP(env, probe, runner)),
+		plain("external", checkExternalAWSSM(env, probe)),
+		plain("external", checkExternalHashiVault(env, probe)),
+		plain("providers", checkACLKeychainUnlock()),
+		plain("providers", checkKeychainDBPermissions()),
+		plain("environment", checkCosignInstalled(probe)),
 		// Soft checks.
-		{"providers", checkNoConnections(env)},
-		{"daemon", checkGatewayRunning(env)},
+		plain("providers", checkNoConnections(env)),
+		plain("daemon", checkGatewayRunning(env)),
+		plain("daemon", checkKeyOperations(env)),
+		plain("daemon", checkRelay(exec.LookPath)),
 		// Plaintext retention after run.
-		{"daemon", checkPlaintextRetention(env)},
+		plain("daemon", checkPlaintextRetention(env)),
 		// Integration-marker checks.
-		{"environment", checkIntegrationMarkers()},
+		plain("environment", checkIntegrationMarkers()),
 	}
+	checks = append(checks, brokerChecks(env, runner, probeBroker)...)
+	checks = append(checks, syncChecks(env, probeSync)...)
+	return append(checks, serviceChecks(env, probeServices)...)
 }

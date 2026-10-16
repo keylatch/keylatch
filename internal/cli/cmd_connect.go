@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/connections"
+	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/store"
 	"github.com/spf13/cobra"
@@ -98,6 +101,9 @@ func newConnectCmd() *cobra.Command {
 			store := newDispatchedStore(cfg, llmcontext.DefaultLookup)
 
 			provider := args[0]
+			if kind, _ := c.Flags().GetString("provider"); kind == customProvider {
+				return connectCustomFromFlags(c, provider)
+			}
 			namespace, _ := c.Flags().GetString("namespace")
 			account, _ := c.Flags().GetString("account")
 			nonInteractive, _ := c.Flags().GetBool("non-interactive")
@@ -209,7 +215,7 @@ func newConnectCmd() *cobra.Command {
 
 			// --provider-ref: resolve external store URI for a field.
 			// Format: --provider-ref <field>=<uri>
-			// Supported URIs: op://vault/item/field, aws-sm://region/secret, hashivault://mount/path#field
+			// Supported URIs: op://vault/item/field, aws-sm://region/secret, hashivault://mount/path#field, bw://org/collection/item/field
 			if len(providerRefFlags) > 0 {
 				if err := resolveProviderRefs(ctx, providerRefFlags, fields); err != nil {
 					fmt.Fprintf(c.ErrOrStderr(), "Error: --provider-ref: %v\n", err)
@@ -218,11 +224,24 @@ func newConnectCmd() *cobra.Command {
 				}
 			}
 
-			// Interactive prompting when stdin is a TTY and --json is not set.
 			tty := stdinIsTTY()
+
+			class, modes, lerr := parseLocalOnlyFlags(c)
+			if lerr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", lerr)
+				os.Exit(exitcode.UserError)
+				return nil
+			}
+			var confirm func(string) bool
+			if !nonInteractive && !useJSON && tty && !llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
+				confirm = confirmEphemeral(c)
+			}
+			suggestLocalOnly(c, tmpl, class, modes, confirm)
+
+			// Interactive prompting when stdin is a TTY and --json is not set.
 			if !nonInteractive && !useJSON && tty {
 				for _, sf := range tmpl.SecretFields {
-					if _, alreadySet := fields[sf.Name]; alreadySet {
+					if _, alreadySet := fields[sf.Name]; alreadySet || modes[sf.Name] == localonly.Ephemeral {
 						continue
 					}
 					label := sf.Label
@@ -257,7 +276,7 @@ func newConnectCmd() *cobra.Command {
 			// Non-interactive with no TTY and no values provided → actionable error.
 			if !tty || nonInteractive {
 				for _, sf := range tmpl.SecretFields {
-					if sf.Required {
+					if sf.Required && modes[sf.Name] != localonly.Ephemeral {
 						if _, ok := fields[sf.Name]; !ok {
 							printConnectActionableError(c, provider, sf, tmpl)
 							os.Exit(exitcode.UserError)
@@ -272,6 +291,8 @@ func newConnectCmd() *cobra.Command {
 				Account:        account,
 				NonInteractive: nonInteractive || !tty,
 				Fields:         fields,
+				Class:          class,
+				LocalOnly:      modes,
 			}, store)
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
@@ -279,8 +300,18 @@ func newConnectCmd() *cobra.Command {
 				return nil
 			}
 
+			// A connection whose secret fields are all ephemeral has nothing stored to test.
+			allEphemeral := len(tmpl.SecretFields) > 0
+			for _, sf := range tmpl.SecretFields {
+				if modes[sf.Name] != localonly.Ephemeral {
+					allEphemeral = false
+				}
+			}
+
 			// Automatically test the connection after writing (skip if --no-test is set).
-			if noTest {
+			// The broker never returns a value, so a stored connection cannot be
+			// tested from here.
+			if noTest || allEphemeral || brokerStoreActive(llmcontext.DefaultLookup) {
 				if useJSON {
 					data, _ := json.Marshal(map[string]interface{}{"connection": conn})
 					fmt.Fprintln(c.OutOrStdout(), string(data))
@@ -357,9 +388,14 @@ func newConnectCmd() *cobra.Command {
 	connectCmd.Flags().StringArrayP("field", "f", nil, "supply a field value: -f name=value (repeatable; use @- for stdin)")
 	connectCmd.Flags().String("stdin-field", "", "read this named field from stdin")
 	connectCmd.Flags().Bool("json", false, "output as JSON")
+	connectCmd.Flags().String("class", "", "connection class: dev, test or prod")
+	connectCmd.Flags().StringArray("local-only", nil,
+		"deliver a field without a stored value: --local-only FIELD=ephemeral|operation|contained (repeatable)")
 	connectCmd.Flags().StringArray("provider-ref", nil,
 		"resolve a field from an external store URI: --provider-ref field=op://vault/item/field\n"+
-			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]")
+			"  Supported: op://vault/item/field  aws-sm://region/secret[#key]  hashivault://mount/path[#field]  bw://<org-or-personal>/<collection>/<item>/<field>")
+
+	addCustomConnectFlags(connectCmd)
 
 	// Subcommand: connect custom — interactive flow for non-registry providers.
 	customCmd := &cobra.Command{
@@ -456,11 +492,24 @@ func newConnectCmd() *cobra.Command {
 				return nil
 			}
 
+			recordConnect(ctx, name, cfg.Backend, nil)
 			fmt.Fprintf(c.OutOrStdout(), "  Connected: custom/%s (%s saved)\n", name, field)
 			return nil
 		},
 	}
 	connectCmd.AddCommand(customCmd)
+
+	// A connection written or updated is recorded once, by name.
+	audited := func(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+		return func(c *cobra.Command, args []string) error {
+			err := run(c, args)
+			if len(args) > 0 {
+				recordConnect(c.Context(), args[0], loadCLIConfig(c).Backend, err)
+			}
+			return err
+		}
+	}
+	connectCmd.RunE = audited(connectCmd.RunE)
 
 	return connectCmd
 }
@@ -531,6 +580,12 @@ func newListCmd() *cobra.Command {
 	}
 }
 
+// bwCanonicalizeRef rewrites a bw:// reference to its ID-based form by looking
+// the item up in Bitwarden. Tests replace it.
+var bwCanonicalizeRef = func(ctx context.Context, ref store.BWRef) (store.BWRef, error) {
+	return bw.CanonicalizeRef(ctx, kexec.DefaultRunner, "", ref)
+}
+
 // resolveProviderRefs validates --provider-ref field=URI flags and stores the
 // URI (not the resolved plaintext) in fields.
 //
@@ -544,10 +599,12 @@ func newListCmd() *cobra.Command {
 //   - op://vault/item/field
 //   - aws-sm://region/secret-id[#key]
 //   - hashivault://mount/path[#field]
+//   - bw://<org-or-personal>/<collection>/<item>/<field>; the item is resolved
+//     to its ID here and the ID-based reference is stored
 //
 // Dry-run validation: the URI is parsed and scheme-checked before any write
 // occurs. An invalid URI returns a UsageError (exit UserError) before persistence.
-func resolveProviderRefs(_ context.Context, flags []string, fields map[string][]byte) error {
+func resolveProviderRefs(ctx context.Context, flags []string, fields map[string][]byte) error {
 	for i, kv := range flags {
 		idx := strings.Index(kv, "=")
 		if idx < 0 {
@@ -569,6 +626,15 @@ func resolveProviderRefs(_ context.Context, flags []string, fields map[string][]
 		// Dry-run validation: confirm scheme is supported before any write.
 		if err := store.ValidateProviderRefURI(uri); err != nil {
 			return NewUsageError("--provider-ref field %q: %v", fieldName, err)
+		}
+
+		if rest, ok := strings.CutPrefix(uri, "bw://"); ok {
+			ref, _ := store.ParseBWRef(rest)
+			canon, err := bwCanonicalizeRef(ctx, ref)
+			if err != nil {
+				return fmt.Errorf("field %q: %w", fieldName, err)
+			}
+			uri = canon.String()
 		}
 
 		// Store the URI verbatim. Resolution is deferred to runtime via

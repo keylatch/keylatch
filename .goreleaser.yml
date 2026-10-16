@@ -12,8 +12,11 @@ builds:
   - id: keylatch
     main: ./cmd/keylatch
     binary: keylatch
+    # Never add `experimental`: it compiles unfinished team and trust features.
     tags:
       - embedded_ui
+      - production
+      - release
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -33,8 +36,11 @@ builds:
   - id: keylatchd
     main: ./cmd/keylatchd
     binary: keylatchd
+    # Never add `experimental`: it compiles unfinished team and trust features.
     tags:
       - embedded_ui
+      - production
+      - release
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -48,8 +54,48 @@ builds:
       - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
       - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
 
+  # Conformance test build of keylatch: it takes the GitHub API root from
+  # KEYLATCH_TEST_GITHUB_API_URL, so it is published only as its own archive,
+  # never in the packages, the images or the default archives.
+  - id: keylatch-testendpoint
+    main: ./cmd/keylatch
+    binary: keylatch
+    tags:
+      - embedded_ui
+      - production
+      - release
+      - mint_test_endpoint
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64]
+    ldflags:
+      - -s -w
+      - -X 'github.com/keylatch/keylatch/internal/version.Version={{.Version}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.Commit={{.Commit}}'
+      - -X 'github.com/keylatch/keylatch/internal/version.BuildDate={{.Date}}'
+
+  # docker-credential-keylatch is the Docker credential helper behind
+  # "credsStore": "keylatch". It prints placeholders, never real credentials.
+  - id: docker-credential-keylatch
+    main: ./cmd/docker-credential-keylatch
+    binary: docker-credential-keylatch
+    tags:
+      - production
+      - release
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+
 archives:
   - id: default
+    ids: [keylatch, keylatchd]
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -57,6 +103,46 @@ archives:
     files:
       - LICENSE
       - README.md
+
+  - id: testendpoint
+    ids: [keylatch-testendpoint]
+    formats: [tar.gz]
+    name_template: "keylatch-testendpoint_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+# .deb and .rpm packages carry the broker's units, system user definition and
+# polkit policy. The postinstall script creates the keylatch user and reloads
+# systemd; starting the broker stays with 'sudo keylatch broker install'.
+nfpms:
+  - id: keylatch-linux
+    package_name: keylatch
+    ids: [keylatch, keylatchd]
+    formats: [deb, rpm]
+    vendor: Keylatch
+    homepage: https://github.com/keylatch/keylatch
+    maintainer: Keylatch <security@keylatch.dev>
+    description: Brokered credentials for AI agents
+    license: Apache-2.0
+    bindir: /usr/bin
+    file_name_template: "{{ .ConventionalFileName }}"
+    dependencies:
+      - systemd
+    recommends:
+      - polkitd
+    contents:
+      - src: packaging/linux/systemd/keylatchd.service
+        dst: /usr/lib/systemd/system/keylatchd.service
+      - src: packaging/linux/systemd/keylatchd.socket
+        dst: /usr/lib/systemd/system/keylatchd.socket
+      - src: packaging/linux/sysusers.d/keylatch.conf
+        dst: /usr/lib/sysusers.d/keylatch.conf
+      - src: packaging/linux/polkit/dev.keylatch.policy
+        dst: /usr/share/polkit-1/actions/dev.keylatch.policy
+    scripts:
+      postinstall: packaging/linux/scripts/postinstall.sh
+      postremove: packaging/linux/scripts/postremove.sh
 
 checksum:
   name_template: "keylatch-{{ .Version }}_checksums.txt"
@@ -71,9 +157,15 @@ changelog:
 release:
   draft: true
   replace_existing_draft: true
+  footer: |
+    `keylatch-testendpoint_{{ .Version }}_linux_amd64.tar.gz` is for conformance testing only. Its
+    `keylatch version` prints `testendpoint`, and it sends GitHub App requests to the server named
+    by `KEYLATCH_TEST_GITHUB_API_URL`. Do not install it and do not run it with real credentials.
+    The checksums list it and it is signed like the other archives.
 
 dockers:
   - id: keylatch-linux-amd64
+    ids: [keylatch, keylatchd]
     goos: linux
     goarch: amd64
     image_templates:
@@ -83,6 +175,7 @@ dockers:
     build_flag_templates:
       - --platform=linux/amd64
   - id: keylatch-linux-arm64
+    ids: [keylatch, keylatchd]
     goos: linux
     goarch: arm64
     image_templates:

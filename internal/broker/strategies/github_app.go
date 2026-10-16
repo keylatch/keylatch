@@ -80,6 +80,9 @@ func NewGitHubAppInstallationStrategy(appID, installationID string, privateKey *
 	for _, o := range opts {
 		o(s)
 	}
+	if base := apiBaseOverride(); base != "" {
+		s.apiBase = base
+	}
 	return s
 }
 

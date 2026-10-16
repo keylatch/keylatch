@@ -10,13 +10,12 @@ import (
 	"github.com/keylatch/keylatch/internal/runtime"
 )
 
-// uiValidRuntimeModes lists the v1.0.0 runtime modes surfaced in the UI.
-// direct_classic and direct_classic_sandboxed are removed in v1.0.0.
+// uiValidRuntimeModes lists the runtime modes surfaced in the UI.
 var uiValidRuntimeModes = map[runtime.RuntimeMode]bool{
-	runtime.RuntimeGatewayTyped:   true,
-	runtime.RuntimeGatewaySDK:     true,
-	runtime.RuntimeDirectBrokered: true,
-	runtime.RuntimeGatewayProxy:   true,
+	runtime.RuntimeGatewayTyped: true,
+	runtime.RuntimeGatewaySDK:   true,
+	runtime.RuntimeMinted:       true,
+	runtime.RuntimeGatewayProxy: true,
 }
 
 // RuntimeTestHandler handles POST /api/connections/{name}/test.

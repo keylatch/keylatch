@@ -19,8 +19,7 @@ func BenchmarkKeychainGet(b *testing.B) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("bench-unlock-password\n"),
 			},
-			secBin + "|unlock-keychain|-p|bench-unlock-password|" + testKeychainPath: {},
-			secBin + "|lock-keychain|" + testKeychainPath:                            {},
+			secBin + "|lock-keychain|" + testKeychainPath: {},
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + testKeychainPath: {
 				Stdout: []byte(`{"version":1,"items":[{"connection":"benchconn","fields":["api_key"]}]}`),
 			},

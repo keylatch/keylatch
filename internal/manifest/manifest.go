@@ -9,8 +9,17 @@ import "fmt"
 type Status string
 
 const (
-	// Supported: enabled in this build. Fully wired and enforced.
+	// Supported: enabled in this build. Fully wired, enforced and covered by
+	// a live compliance suite.
 	Supported Status = "supported"
+	// Preview: enabled, but not yet certified on this platform or path.
+	Preview Status = "preview"
+	// Community: builds and passes fake-based unit tests only. Listed but
+	// never enabled by this manifest; use needs an explicit opt-in.
+	Community Status = "community"
+	// Deprecated marks an entry kept for migration only and removed in a later
+	// release. This manifest never enables it.
+	Deprecated Status = "deprecated"
 	// Unavailable: gated out of this build. Unreachable via CLI/API/MCP/UI
 	// entry points, regardless of feature flags or environment overrides.
 	Unavailable Status = "unavailable"
@@ -52,28 +61,37 @@ type Manifest struct {
 func Current() Manifest {
 	return Manifest{
 		Entries: []Entry{
-			// Managers — backend registry IDs where one exists.
-			{ID: "op", Category: CategoryManager, Status: Supported, Note: "1Password CLI; concurrent with bw in one broker process"},
-			{ID: "bw", Category: CategoryManager, Status: Supported, Note: "Bitwarden CLI; concurrent with op in one broker process"},
-			{ID: "vaultwarden", Category: CategoryManager, Status: Unavailable, Note: "needs a separately certified Bitwarden server profile"},
-			{ID: "opconnect", Category: CategoryManager, Status: Unavailable, Note: "1Password Connect; enabled on demand"},
-			{ID: "keeper", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
-			{ID: "proton-pass", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
-			{ID: "lastpass", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
-			{ID: "keychain", Category: CategoryManager, Status: Unavailable, Note: "macOS is not a certified platform yet"},
-			{ID: "file", Category: CategoryManager, Status: Unavailable, Note: "encrypted-file secret backend unavailable pending recovery, integrity and migration checks"},
+			// Managers — backend registry IDs; tiers follow the backend support policy.
+			{ID: "bw", Category: CategoryManager, Status: Supported, Note: "Bitwarden CLI, including Vaultwarden servers"},
+			{ID: "op", Category: CategoryManager, Status: Supported, Note: "1Password CLI"},
+			{ID: "file", Category: CategoryManager, Status: Supported, Note: "encrypted in-user file store"},
+			{ID: "vault", Category: CategoryManager, Status: Community, Note: "HashiCorp Vault KV; no live suite yet"},
+			{ID: "awssm", Category: CategoryManager, Status: Community, Note: "AWS Secrets Manager; no live suite yet"},
+			{ID: "gcpsm", Category: CategoryManager, Status: Community, Note: "Google Cloud Secret Manager; no live suite"},
+			{ID: "azurekv", Category: CategoryManager, Status: Community, Note: "Azure Key Vault; no live suite"},
+			{ID: "doppler", Category: CategoryManager, Status: Community, Note: "Doppler; no live suite"},
+			{ID: "infisical", Category: CategoryManager, Status: Community, Note: "Infisical; no live suite"},
+			{ID: "opconnect", Category: CategoryManager, Status: Community, Note: "1Password Connect server; no live suite"},
+			{ID: "bws", Category: CategoryManager, Status: Community, Note: "Bitwarden Secrets Manager, read-only, machine-account token held by Keylatch; no live suite"},
+			{ID: "sops", Category: CategoryManager, Status: Community, Note: "SOPS files encrypted to age, read-only, decrypted in memory by the daemon"},
+			{ID: "keychain", Category: CategoryManager, Status: Deprecated, Note: "macOS Keychain secrets; the Keychain stays as a key store, not as a backend"},
+			{ID: "keeper", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
+			{ID: "lastpass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
+			{ID: "proton-pass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
 
 			// Runtimes — internal/runtime, internal/runner driver mode names.
 			{ID: "gateway_typed", Category: CategoryRuntime, Status: Supported, Note: "typed gateway actions; certified provider contract"},
 			{ID: "gateway_sdk", Category: CategoryRuntime, Status: Supported, Note: "certified provider SDK routes only"},
+			{ID: "placeholder", Category: CategoryRuntime, Status: Supported, Note: "tier D3 placeholder substitution; Linux only, proven by the containment tests"},
+			{ID: "contained", Category: CategoryRuntime, Status: Supported, Note: "tier D5 raw value in the Keylatch sandbox: user, mount, PID and network namespaces, Landlock, seccomp, cgroup v2 and proxy-only egress; Linux only, proven by the containment tests"},
+			{ID: "adapter", Category: CategoryRuntime, Status: Supported, Note: "tier D4 protocol adapters: the Postgres adapter terminates the child's login with a session token and authenticates upstream with the stored password"},
 			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect, authority and credential-boundary fixes"},
-			{ID: "direct_brokered", Category: CategoryRuntime, Status: Unavailable, Note: "excluded: no exchange strategies are wired"},
-			{ID: "direct_classic_sandboxed", Category: CategoryRuntime, Status: Unavailable, Note: "not equivalent to the isolated agent boundary; excluded"},
+			{ID: "minted", Category: CategoryRuntime, Status: Supported, Note: "a scoped credential minted for one command and revoked on exit; GitHub App installation tokens today, AWS STS and Vault dynamic secrets through the same path"},
 
 			// Platforms.
 			{ID: "linux", Category: CategoryPlatform, Status: Supported, Note: "Linux broker plus isolated agent environment"},
-			{ID: "macos", Category: CategoryPlatform, Status: Unavailable, Note: "not certified yet"},
-			{ID: "windows", Category: CategoryPlatform, Status: Unavailable, Note: "not certified yet"},
+			{ID: "macos", Category: CategoryPlatform, Status: Preview, Note: "in-user mode only; no broker daemon yet"},
+			{ID: "windows", Category: CategoryPlatform, Status: Preview, Note: "in-user mode only; no broker daemon yet"},
 			{ID: "tauri_desktop", Category: CategoryPlatform, Status: Unavailable, Note: "packaged desktop excluded"},
 
 			// Cross-cutting features — explicit exclusions list.
@@ -109,13 +127,15 @@ func (m Manifest) Status(id string) Status {
 	return Unavailable
 }
 
-// Enabled reports whether id may be used by this build. Only Supported
-// entries are enabled — Experimental entries are always excluded, so no
-// environment variable, feature flag, or config override can turn on an
-// experimental credential path. This is the sole enforcement
-// point consumers should call before allowing an operation to proceed.
+// Enabled reports whether id may be used by this build. Only Supported and
+// Preview entries are enabled — Community, Deprecated and Experimental entries
+// are always excluded, so no environment variable, feature flag, or config
+// override can turn on an uncertified credential path. This is the sole
+// enforcement point consumers should call before allowing an operation to
+// proceed.
 func (m Manifest) Enabled(id string) bool {
-	return m.Status(id) == Supported
+	s := m.Status(id)
+	return s == Supported || s == Preview
 }
 
 // ByCategory returns entries in category, preserving manifest order.

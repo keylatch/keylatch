@@ -67,7 +67,7 @@ func TestDetectProjectLanguage(t *testing.T) {
 
 // TestIsValidIntegrationAgent verifies the agent allowlist.
 func TestIsValidIntegrationAgent(t *testing.T) {
-	valid := []string{"claude-code", "gemini", "windsurf", "cursor", "generic"}
+	valid := []string{"claude-code", "gemini", "cursor", "generic"}
 	for _, a := range valid {
 		assert.True(t, isValidIntegrationAgent(a), "expected %q to be valid", a)
 	}
@@ -82,7 +82,6 @@ func TestIsValidIntegrationAgent(t *testing.T) {
 func TestAgentDocSlug(t *testing.T) {
 	assert.Equal(t, "claude-code", agentDocSlug("claude-code"))
 	assert.Equal(t, "gemini", agentDocSlug("gemini"))
-	assert.Equal(t, "windsurf", agentDocSlug("windsurf"))
 	assert.Equal(t, "cursor", agentDocSlug("cursor"))
 	assert.Equal(t, "generic", agentDocSlug("generic"))
 	assert.Equal(t, "generic", agentDocSlug("unknown"))

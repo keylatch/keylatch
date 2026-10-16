@@ -1,0 +1,61 @@
+[Unit]
+Description=Keylatch broker daemon
+Documentation=https://github.com/keylatch/keylatch/blob/main/docs/guides/broker-linux.md
+Requires=keylatchd.socket
+After=keylatchd.socket
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/keylatchd broker
+User=keylatch
+Group=keylatch
+Restart=on-failure
+RestartSec=2s
+
+# State, runtime directory and the device root credential. The root is sealed
+# with systemd-creds and only this unit can read it.
+StateDirectory=keylatch
+StateDirectoryMode=0700
+RuntimeDirectory=keylatch
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+LoadCredentialEncrypted=keylatch-root:/etc/keylatch/root.cred
+UMask=0077
+
+# Filesystem
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# The daemon reads /proc/<pid> of other users' processes to identify its peers,
+# so /proc must stay fully visible (no ProtectProc=invisible).
+ProcSubset=pid
+
+# Privileges
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+
+# Memory and system calls
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitCORE=0
+LimitMEMLOCK=64M
+
+# Network: the control socket, plus loopback and outbound TCP for the gateway.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

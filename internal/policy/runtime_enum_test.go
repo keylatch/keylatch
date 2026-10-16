@@ -15,15 +15,18 @@ func TestValidateRuntimeMode(t *testing.T) {
 		// Valid modes.
 		{input: "gateway_typed", wantErr: false},
 		{input: "gateway_sdk", wantErr: false},
-		{input: "direct_brokered", wantErr: false},
+		{input: "minted", wantErr: false},
+		{input: "direct_brokered", wantErr: true}, // renamed to minted
 		{input: "direct_classic", wantErr: false},
 		{input: "gateway_proxy", wantErr: false},
+		{input: "placeholder", wantErr: false},
+		{input: "contained", wantErr: false},
 		// Removed modes — must mention migration table.
 		{input: "direct_run", wantErr: true, wantMsg: "migration table"},
 		{input: "local_gateway", wantErr: true, wantMsg: "migration table"},
 		{input: "hosted_gateway", wantErr: true, wantMsg: "migration table"},
-		// Planned but not yet available — must mention 0.2.0 and direct_classic.
-		{input: "direct_classic_sandboxed", wantErr: true, wantMsg: "0.2.0"},
+		// Removed runtime — unknown.
+		{input: "direct_classic_sandboxed", wantErr: true, wantMsg: "not a valid runtime mode"},
 		// Unknown string.
 		{input: "some_future_mode", wantErr: true, wantMsg: "not a valid runtime mode"},
 		{input: "", wantErr: true, wantMsg: "not a valid runtime mode"},

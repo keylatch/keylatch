@@ -3,7 +3,6 @@
 //
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
-//   - runner.OK is checked before returning plaintext.
 package opconnect
 
 import (
@@ -17,7 +16,6 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -106,10 +104,6 @@ func (b *OPConnectBackend) ID() string {
 // Get retrieves a secret value from 1Password Connect.
 // It searches for an item by title matching path and returns the PASSWORD field.
 func (b *OPConnectBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	items, err := b.listItems(ctx, path)
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("op-connect Get %q: %w", path, err)

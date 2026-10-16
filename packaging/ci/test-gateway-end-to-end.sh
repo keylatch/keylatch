@@ -62,9 +62,38 @@ log "Temp workspace: $TMPDIR_ROOT"
 if [[ -z "$KEYLATCH_BIN" ]]; then
   log "Building keylatch binary..."
   KEYLATCH_BIN="$TMPDIR_ROOT/keylatch"
-  go build -o "$KEYLATCH_BIN" ./cmd/keylatch
+  # The end-to-end build can skip the OS keyring (see below); release
+  # binaries cannot.
+  go build -tags keylatch_e2e -o "$KEYLATCH_BIN" ./cmd/keylatch
   log "Built: $KEYLATCH_BIN"
 fi
+# A runner's macOS login keychain can block on an unlock prompt; the operator
+# config written below lets bootstrap use a file key instead.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  export KEYLATCH_E2E_NO_OS_KEYRING=1
+fi
+
+# field prints the value after "<name>:" in the output. The terminal prompt
+# that with_presence answers has no trailing newline, so the field can follow
+# it on the same line.
+field() {
+  awk -v k="$1:" '{ for (i = 1; i < NF; i++) if ($i == k) { print $(i + 1); exit } }' <<<"$2"
+}
+
+# with_presence runs a privileged keylatch command on a pseudo-terminal and
+# answers its presence prompt, the way a human at a terminal would. Presence
+# reads no environment, so a terminal is the only way through.
+with_presence() {
+  # Answer only once the prompt is up and keep the input open until the
+  # command exits: input typed early, or an end of input, reaches the
+  # prompt's read as EOF on macOS.
+  local answer='sleep 2; printf "yes\n"; sleep 8'
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    { bash -c "$answer" || true; } | script -q /dev/null "$@" | tr -d '\r'
+  else
+    { bash -c "$answer" || true; } | script -qec "$(printf '%q ' "$@")" /dev/null | tr -d '\r'
+  fi
+}
 
 [[ -x "$KEYLATCH_BIN" ]] || fail "keylatch binary not executable: $KEYLATCH_BIN"
 
@@ -108,17 +137,21 @@ mkdir -p "$KEYLATCH_DATA_DIR"
 # ─── bootstrap vault ──────────────────────────────────────────────────────────
 # `gateway up` refuses to start without a usable vault backend.
 
-# Throwaway vault on a runner without an OS keyring: keep the KEK in a file.
+# Throwaway vault on a runner without an OS keyring: the operator's config
+# allows a plaintext vault key.
+bash "$(dirname "${BASH_SOURCE[0]}")/../../scripts/ci-operator-config.sh"
 log "Running: keylatch bootstrap --backend file"
-KEYLATCH_INSECURE_FILE_KEK=1 "$KEYLATCH_BIN" bootstrap --backend file >/dev/null || fail "bootstrap failed"
+"$KEYLATCH_BIN" bootstrap --backend file >/dev/null || fail "bootstrap failed"
 pass "bootstrap"
 
 # ─── gateway init ─────────────────────────────────────────────────────────────
 
 log "Running: keylatch gateway init"
 "$KEYLATCH_BIN" gateway init
-[[ -f "$KEYLATCH_CONFIG_DIR/gateway/signing.key" ]] || \
-  fail "gateway init: signing key not created at \$KEYLATCH_CONFIG_DIR/gateway/signing.key"
+[[ -f "$KEYLATCH_CONFIG_DIR/gateway/signing.key.enc" ]] || \
+  fail "gateway init: wrapped signing key not created at \$KEYLATCH_CONFIG_DIR/gateway/signing.key.enc"
+[[ ! -e "$KEYLATCH_CONFIG_DIR/gateway/signing.key" ]] || \
+  fail "gateway init: a plaintext signing key was written"
 [[ -f "$KEYLATCH_CONFIG_DIR/gateway/config.json" ]] || \
   fail "gateway init: config.json not created"
 pass "gateway init"
@@ -168,15 +201,25 @@ pass "/health returns {status:ok}"
 
 # ─── token create ─────────────────────────────────────────────────────────────
 
-log "Creating gateway token..."
-TOKEN_OUTPUT=$("$KEYLATCH_BIN" gateway token create test-e2e-actor \
-  --allow "openrouter.chat.completion" \
-  --ttl 1h)
-GATEWAY_TOKEN=$(echo "$TOKEN_OUTPUT" | grep '^token:' | awk '{print $2}')
-TOKEN_ID=$(echo "$TOKEN_OUTPUT" | grep '^id:' | awk '{print $2}')
-TOKEN_ACCESSOR=$(echo "$TOKEN_OUTPUT" | grep '^accessor:' | awk '{print $2}')
+# On macOS, presence ends in the LocalAuthentication prompt, which no one can
+# answer on a CI runner, so it denies after its timeout by design. The token
+# checks below run on Linux, where the terminal confirmation is the whole
+# presence step.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  pass "token checks skipped on macOS: they need the system authentication prompt"
+  log "All gateway E2E checks that can run unattended on macOS passed."
+  exit 0
+fi
 
-[[ -n "$GATEWAY_TOKEN" ]] || fail "token create: no JWT in output"
+log "Creating gateway token..."
+TOKEN_OUTPUT=$(with_presence "$KEYLATCH_BIN" gateway token create test-e2e-actor \
+  --allow "openrouter.chat.completion" \
+  --ttl 1h) || { printf '%s\n' "$TOKEN_OUTPUT" >&2; fail "token create failed"; }
+GATEWAY_TOKEN=$(field token "$TOKEN_OUTPUT")
+TOKEN_ID=$(field id "$TOKEN_OUTPUT")
+TOKEN_ACCESSOR=$(field accessor "$TOKEN_OUTPUT")
+
+[[ -n "$GATEWAY_TOKEN" ]] || { printf '%s\n' "$TOKEN_OUTPUT" >&2; fail "token create: no JWT in output"; }
 [[ -n "$TOKEN_ID" ]] || fail "token create: no id in output"
 [[ -n "$TOKEN_ACCESSOR" ]] || fail "token create: no accessor in output"
 pass "gateway token create"
@@ -194,9 +237,10 @@ pass "missing token → 401"
 # ─── capability enforcement: wrong capability → 403 ──────────────────────────
 
 log "Creating a sentry-scoped token to verify audience isolation..."
-SENTRY_TOKEN_OUTPUT=$("$KEYLATCH_BIN" gateway token create sentry-actor \
-  --allow "sentry.error_reporting" --ttl 1h)
-SENTRY_TOKEN=$(echo "$SENTRY_TOKEN_OUTPUT" | grep '^token:' | awk '{print $2}')
+SENTRY_TOKEN_OUTPUT=$(with_presence "$KEYLATCH_BIN" gateway token create sentry-actor \
+  --allow "sentry.error_reporting" --ttl 1h) || { printf '%s\n' "$SENTRY_TOKEN_OUTPUT" >&2; fail "sentry token create failed"; }
+SENTRY_TOKEN=$(field token "$SENTRY_TOKEN_OUTPUT")
+[[ -n "$SENTRY_TOKEN" ]] || { printf '%s\n' "$SENTRY_TOKEN_OUTPUT" >&2; fail "sentry token create: no JWT in output"; }
 
 log "Verifying sentry token on openrouter route → 403..."
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" \

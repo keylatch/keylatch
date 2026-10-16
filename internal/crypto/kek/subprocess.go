@@ -50,6 +50,9 @@ func runBounded(ctx context.Context, stdin []byte, name string, args ...string) 
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
+	// A helper that outlives the kill (a keychain agent it spawned) would
+	// otherwise keep the output pipes open and block Run past the deadline.
+	cmd.WaitDelay = 5 * time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &limitedWriter{buf: &stdout, max: maxSubprocessOutput}
 	cmd.Stderr = &limitedWriter{buf: &stderr, max: maxSubprocessOutput}

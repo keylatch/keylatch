@@ -16,8 +16,7 @@ interface SettingsResponse {
   approval_ttl_seconds: number
   approval_ttl_max_seconds: number
   advanced_mode: boolean
-  operating_mode: 'standard' | 'telemetry' | 'canary' | 'custom'
-  telemetry_disable: boolean
+  operating_mode: 'standard' | 'canary' | 'custom'
   experimental: boolean
   approval_policy: 'trust' | 'first-run' | 'prompt'
   active_backend?: string
@@ -71,11 +70,6 @@ export function Settings() {
   // Operating mode.
   const [operatingMode, setOperatingMode] = useState<OperatingMode>('standard')
   const [operatingModeError, setOperatingModeError] = useState<string | null>(null)
-
-  // Telemetry kill-switch.
-  const [telemetryDisable, setTelemetryDisable] = useState(false)
-  const [telemetryLoading, setTelemetryLoading] = useState(false)
-  const [telemetryError, setTelemetryError] = useState<string | null>(null)
 
   // Experimental opt-in.
   const [experimental, setExperimental] = useState(false)
@@ -136,7 +130,6 @@ export function Settings() {
           setApprovalTtlMax(data.approval_ttl_max_seconds)
           setAdvancedMode(data.advanced_mode ?? false)
           setOperatingMode(data.operating_mode ?? 'standard')
-          setTelemetryDisable(data.telemetry_disable ?? false)
           setExperimental(data.experimental ?? false)
           setApprovalPolicy(data.approval_policy ?? 'prompt')
           if (data.active_backend) setActiveBackend(data.active_backend)
@@ -248,26 +241,6 @@ export function Settings() {
     }
   }
 
-  const handleToggleTelemetry = async (disabled: boolean) => {
-    setTelemetryError(null)
-    setTelemetryDisable(disabled)
-    setTelemetryLoading(true)
-    setSaving()
-    try {
-      const data = await api.put<SettingsResponse>('/api/settings', { telemetry_disable: disabled })
-      setTelemetryDisable(data.telemetry_disable)
-      setSaved()
-      setTimeout(() => reset(), 2500)
-    } catch (err) {
-      setTelemetryDisable(!disabled)
-      const msg = err instanceof ApiError ? err.message : 'Failed to save telemetry setting'
-      setTelemetryError(msg)
-      setError()
-    } finally {
-      setTelemetryLoading(false)
-    }
-  }
-
   const handleToggleExperimental = async (enabled: boolean) => {
     setExperimentalError(null)
     setExperimental(enabled)
@@ -340,7 +313,7 @@ export function Settings() {
 
       {/* ── Non-advanced settings ──────────────────────────────────────────── */}
 
-      {/* Operating mode — standard/telemetry always visible; developer options gated by advancedMode */}
+      {/* Operating mode — standard always visible; developer options gated by advancedMode */}
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="text-base">Operating mode</CardTitle>
@@ -357,7 +330,6 @@ export function Settings() {
             {(
               [
                 { value: 'standard', label: 'Standard', description: 'Stable production mode.' },
-                { value: 'telemetry', label: 'Telemetry', description: 'Standard plus anonymous usage telemetry.' },
               ] as { value: OperatingMode; label: string; description: string }[]
             ).map(({ value, label, description }) => (
               <div key={value} className="flex items-center gap-3 py-1">
@@ -635,30 +607,6 @@ export function Settings() {
               ))}
             </div>
           </CardContent>
-        </Card>
-      )}
-
-      {/* Telemetry — advanced mode only */}
-      {advancedMode && (
-        <Card>
-          <div className="flex items-center justify-between gap-6 px-6 py-5">
-            <div className="flex flex-col gap-1">
-              <p className="text-base font-semibold text-card-foreground">Disable telemetry</p>
-              <p className="text-sm text-muted-foreground">
-                Disable all telemetry collection. Equivalent to setting{' '}
-                <code className="text-xs bg-popover px-1 py-0.5 rounded">KEYLATCH_TELEMETRY_DISABLE=1</code>.
-              </p>
-            </div>
-            <Switch
-              id="telemetry-disable-toggle"
-              checked={telemetryDisable}
-              disabled={telemetryLoading}
-              onCheckedChange={(checked) => void handleToggleTelemetry(checked)}
-              aria-label="Toggle disable telemetry"
-              className="shrink-0"
-            />
-          </div>
-          {telemetryError && <p className="px-6 pb-4 text-sm text-destructive" role="alert">{telemetryError}</p>}
         </Card>
       )}
 

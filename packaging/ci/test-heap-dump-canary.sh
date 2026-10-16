@@ -73,6 +73,7 @@ export KEYLATCH_DATA_DIR="$VAULT_DIR"
 export KEYLATCH_UI_ADDR="$KEYLATCHD_ADDR"
 
 # Bootstrap a minimal keylatch environment.
+bash "$(dirname "${BASH_SOURCE[0]}")/../../scripts/ci-operator-config.sh"
 "$KEYLATCH_BIN" bootstrap --non-interactive 2>/dev/null || true
 
 # Write the canary credential directly into the vault.

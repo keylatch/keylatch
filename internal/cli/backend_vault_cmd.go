@@ -1,3 +1,5 @@
+//go:build experimental
+
 package cli
 
 import (
@@ -12,18 +14,12 @@ import (
 	"github.com/keylatch/keylatch/internal/trust/vault"
 )
 
-// newBackendCmd returns `keylatch backend` subcommand group.
-func newBackendCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "backend",
-		Short: "Manage root-of-trust backend adapters",
-	}
+// registerBackendVault adds the Vault Transit root-of-trust commands.
+func registerBackendVault(cmd *cobra.Command) {
 	cmd.AddCommand(newBackendVaultCmd())
-	cmd.AddCommand(newBackendUpgradeTrustCmd())
-	return cmd
 }
 
-// newBackendVaultCmd returns `keylatch backend vault` subcommand group (E13 T4).
+// newBackendVaultCmd returns `keylatch backend vault` subcommand group.
 // Vault Transit backend init/test/status commands.
 func newBackendVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{

@@ -96,5 +96,8 @@ func TestGenerate_Zsh_RuntimeSubcommands(t *testing.T) {
 
 	assert.Contains(t, out, "runtime", "zsh completion should mention 'runtime' subcommand")
 	assert.Contains(t, out, "proxy", "zsh completion should mention 'proxy' subcommand")
-	assert.Contains(t, out, "sandbox", "zsh completion should mention 'sandbox' subcommand")
+	for _, c := range root.Commands() {
+		assert.NotEqual(t, "sandbox", c.Name(), "the removed sandbox command must not exist")
+	}
+	assert.NotRegexp(t, `1: :\([^)]*\bsandbox\b`, out, "the removed sandbox command must not be completed")
 }

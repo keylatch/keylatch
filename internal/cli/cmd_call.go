@@ -10,16 +10,20 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
-	"time"
 
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/daemon"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/spf13/cobra"
 )
+
+// callAction is the capability policy sees for `keylatch call`.
+const callAction = "call"
 
 // newCallCmd returns the `call` subcommand.
 //
@@ -40,6 +44,8 @@ func newCallCmd() *cobra.Command {
 		namespace       string
 		account         string
 		noDaemonStart   bool
+		remote          string
+		machineKey      string
 	)
 
 	cmd := &cobra.Command{
@@ -72,6 +78,9 @@ Examples:
 			return nil
 		},
 		RunE: func(c *cobra.Command, args []string) error {
+			if remote != "" && !listActions {
+				return runRemoteCall(c, remote, machineKey, namespace, args, rawParams, useJSON)
+			}
 			ctx := c.Context()
 			cfg := loadCLIConfig(c)
 			store := newDispatchedStore(cfg, llmcontext.DefaultLookup)
@@ -119,6 +128,13 @@ Examples:
 				)
 				os.Exit(exitcode.UserError)
 			}
+			if act, ok := tmpl.Actions[actionName]; ok && tmpl.DeniesRoute(act.Method, act.Path) {
+				printStructuredError(c, useJSON, "route_denied",
+					fmt.Sprintf("action %q targets a provider route its template denies", actionName),
+					"routes that create, read or list credentials are never called through keylatch",
+				)
+				os.Exit(exitcode.SecurityBlock)
+			}
 			if _, ok := tmpl.Actions[actionName]; !ok {
 				var available []string
 				for name := range tmpl.Actions {
@@ -152,6 +168,27 @@ Examples:
 				os.Exit(exitcode.UserError)
 			}
 
+			// A call never uses a credential without an audit trail.
+			auditLog, auditCleanup, auditErr := requireAuditLogger("call")
+			if auditErr != nil {
+				return auditErr
+			}
+			defer auditCleanup()
+
+			// Policy decides before the credential is read.
+			callerInfo := callerkind.Local(llmcontext.DefaultLookup, interactiveStdin())
+			if verdict := enforce.Decide(ctx, enforce.Request{
+				Connection: connectionName,
+				Action:     callAction,
+				Caller:     callerInfo.Kind,
+				Unit:       callerInfo.Unit,
+				Namespace:  namespace,
+			}); !verdict.Allow || verdict.ApprovalRequired {
+				recordCallDenied(ctx, auditLog, connectionName, actionName, callerInfo.Kind, verdict.Reason)
+				printStructuredError(c, useJSON, "policy_denied", verdict.Reason, verdict.SafeFix)
+				os.Exit(exitcode.PolicyDeny)
+			}
+
 			// Read the credential from the vault. This is the value-bearing path.
 			// The credential is used only as a Bearer token and is zeroed after use.
 			category := tmpl.Category
@@ -181,6 +218,8 @@ Examples:
 			// Zero the credential bytes immediately after use — never keep them alive.
 			zeroBytes(cred)
 
+			recordCall(ctx, auditLog, connectionName, actionName, callerInfo.Kind, result, execErr)
+
 			if execErr != nil {
 				printStructuredError(c, useJSON, "dispatch_failed",
 					fmt.Sprintf("action dispatch failed: %v", execErr),
@@ -204,17 +243,6 @@ Examples:
 				os.Exit(exitcode.UserError)
 			}
 
-			// Push receipt to keylatchd dashboard (best-effort).
-			receipt := runner.RuntimeReceipt{
-				Provider:        connectionName,
-				Capability:      actionName,
-				Runtime:         string(tmpl.RuntimeSupport.Preferred),
-				PolicyDecision:  "approved",
-				CredentialShape: "provider_root",
-				TTL:             time.Hour,
-			}
-			pushReceiptToUI(ctx, receipt)
-
 			_ = account // reserved for multi-account future use
 			return nil
 		},
@@ -227,6 +255,8 @@ Examples:
 	cmd.Flags().BoolVar(&includeHeaders, "include-headers", false, "append a trailing headers JSON line (Authorization stripped)")
 	cmd.Flags().StringVar(&namespace, "namespace", "default", "vault namespace")
 	cmd.Flags().StringVar(&account, "account", "", "account name (multi-account providers)")
+	cmd.Flags().StringVar(&remote, "remote", "", "host:port of a system broker's machine listener; the call runs there")
+	cmd.Flags().StringVar(&machineKey, "machine-key", "", "credential file written by 'keylatch machine issue' (with --remote)")
 	cmd.Flags().BoolVar(&noDaemonStart, "no-daemon-start", false, "do not auto-start keylatchd if not running")
 	return cmd
 }

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "other-server": {
+      "command": "npx",
+      "args": [
+        "other-server"
+      ]
+    },
+    "keylatch": {
+      "command": "/opt/keylatch/bin/keylatch",
+      "args": [
+        "mcp",
+        "--stdio"
+      ]
+    }
+  }
+}

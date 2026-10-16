@@ -47,6 +47,23 @@ injection_rules:
   - env_var: VERCEL_TOKEN
     source: api_token
 
+hosts:
+  - "api.vercel.com"
+
+slots:
+  - field: api_token
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "api.vercel.com"
+
+placeholder_shape:
+  min_length: 24
+
+env_class:
+  default: prod
+
 test_strategy:
   kind: http_get
   endpoint: https://api.vercel.com/v2/user
