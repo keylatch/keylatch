@@ -5,36 +5,12 @@ package guard
 
 import _ "embed"
 
-// ClaudeCodeScript is the pre-tool-use hook script that blocks credential
-// exfiltration attempts originating from a Claude Code LLM session.
+// GuardScript is the pre-tool-use hook script shared by every shell-hook
+// harness; the hook command selects the payload and deny contract with
+// --harness.
 //
 //go:embed scripts/block-keylatch-exfiltration.sh
-var ClaudeCodeScript []byte
-
-// CursorScript is the pre-tool-use hook script for Cursor.
-//
-//go:embed scripts/cursor-guard.sh
-var CursorScript []byte
-
-// AiderScript is the pre-tool-use hook script for Aider.
-//
-//go:embed scripts/aider-guard.sh
-var AiderScript []byte
-
-// CodexScript is the PreToolUse hook script for Codex CLI.
-//
-//go:embed scripts/codex-guard.sh
-var CodexScript []byte
-
-// CopilotScript is the guard script for GitHub Copilot CLI.
-//
-//go:embed scripts/copilot-guard.sh
-var CopilotScript []byte
-
-// GeminiScript is the BeforeTool hook script for Gemini CLI.
-//
-//go:embed scripts/gemini-guard.sh
-var GeminiScript []byte
+var GuardScript []byte
 
 // OpenCodeScript is the TypeScript plugin for OpenCode.
 //
