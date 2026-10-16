@@ -376,7 +376,7 @@ func TestManifestValidation(t *testing.T) {
 
 func TestEnvDefaultsAndExpand(t *testing.T) {
 	e := Env{Home: "/h"}.withDefaults()
-	if e.ReadFile == nil || e.Glob == nil || e.expand("~/x") != "/h/x" || e.expand("/a") != "/a" || e.expand("~") != "/h" {
+	if e.ReadFile == nil || e.Glob == nil || e.expand("~/x") != filepath.Join("/h", "x") || e.expand("/a") != "/a" || e.expand("~") != "/h" {
 		t.Fatal("env defaults")
 	}
 }

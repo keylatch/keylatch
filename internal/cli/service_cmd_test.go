@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -205,7 +206,7 @@ func TestCredentialPaths(t *testing.T) {
 	if p, err := credentialPath("system", "x"); err != nil || p != "/etc/credstore.encrypted/keylatch-x.cred" {
 		t.Fatalf("system = %q %v", p, err)
 	}
-	if p, err := credentialPath("user", "x"); err != nil || !strings.HasSuffix(p, ".config/credstore.encrypted/keylatch-x.cred") {
+	if p, err := credentialPath("user", "x"); err != nil || !strings.HasSuffix(filepath.ToSlash(p), ".config/credstore.encrypted/keylatch-x.cred") {
 		t.Fatalf("user = %q %v", p, err)
 	}
 }

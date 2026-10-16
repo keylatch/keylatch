@@ -8,6 +8,7 @@ package migrate
 import (
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -195,7 +196,10 @@ func refInSource(s SourceSpec, kind, rest string, e Env) bool {
 		if kind != "env" || !ok || key == "" || !filepath.IsAbs(file) || filepath.Clean(file) != file {
 			return false
 		}
-		match, err := filepath.Match(e.expand(s.Glob), file)
+		// Compare in slash form on both sides: a glob is written with "/" and a
+		// Windows path comes back with "\\". On other systems ToSlash changes
+		// nothing, so a backslash stays an ordinary character there.
+		match, err := path.Match(filepath.ToSlash(e.expand(s.Glob)), filepath.ToSlash(file))
 		return err == nil && match
 	case SourceSecretService:
 		svc, _, ok := strings.Cut(rest, ":")

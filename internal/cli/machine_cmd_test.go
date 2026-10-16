@@ -90,7 +90,7 @@ func TestMachineIssueWritesBundleAndNeverSendsThePrivateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(out)
-	if err != nil || st.Mode().Perm() != 0o600 {
+	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o600) {
 		t.Fatalf("bundle: %v %v", st, err)
 	}
 	data, _ := os.ReadFile(out)

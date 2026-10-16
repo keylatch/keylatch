@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -34,7 +35,8 @@ const (
 func credentialPath(scope, connection string) (string, error) {
 	file := runner.ServiceCredentialName(connection) + ".cred"
 	if scope != "user" {
-		return filepath.Join(systemCredstore, file), nil
+		// A systemd path, whatever system keylatch runs on.
+		return path.Join(systemCredstore, file), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
