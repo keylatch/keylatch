@@ -50,6 +50,40 @@ func TestPeerClassification(t *testing.T) {
 	}
 }
 
+func TestBrokerClassification(t *testing.T) {
+	inScope := func(cg string) bool { return cg == "/user.slice/keylatch-agent-1.scope" }
+	c := &Classifier{Chain: chainOf("zsh"), NoHuman: true, AgentScope: inScope}
+	same := Evidence{SharesNamespaces: true}
+
+	// With a broker, no peer is human: a human is whoever holds a presence proof.
+	if got := c.Peer(same); got.Kind != Host || !slices.Contains(got.Reasons, "no-presence-proof") {
+		t.Fatalf("a plain peer = %+v, want host", got)
+	}
+	// A peer inside a registered scope is an agent whatever else is known.
+	ev := same
+	ev.Cgroup = "/user.slice/keylatch-agent-1.scope"
+	if got := c.Peer(ev); got.Kind != Agent || !slices.Contains(got.Reasons, "agent-scope") {
+		t.Fatalf("a peer in a registered scope = %+v, want agent", got)
+	}
+	// A peer outside it, or one with no cgroup, is only host.
+	for _, cg := range []string{"/user.slice/other.scope", ""} {
+		ev.Cgroup = cg
+		if got := c.Peer(ev); got.Kind != Host {
+			t.Fatalf("cgroup %q = %+v, want host", cg, got)
+		}
+	}
+	// The scope check is skipped when no registry is configured.
+	ev.Cgroup = "/user.slice/keylatch-agent-1.scope"
+	if got := (&Classifier{Chain: chainOf("zsh")}).Peer(ev); got.Kind != Human {
+		t.Fatalf("without a scope registry the cgroup means nothing: %+v", got)
+	}
+	// A nil classifier keeps the user-level behavior.
+	var none *Classifier
+	if got := none.Peer(same); got.Kind != Human {
+		t.Fatalf("nil classifier = %+v", got)
+	}
+}
+
 func TestSignalsOnlyTighten(t *testing.T) {
 	c := &Classifier{Chain: chainOf("zsh")}
 	if got := c.Peer(Evidence{SharesNamespaces: true}); got.Kind != Human {
