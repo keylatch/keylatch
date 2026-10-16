@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
@@ -97,10 +98,48 @@ func (s storeSecrets) credentialPaths(ctx context.Context, connection string) ([
 
 // denyService records why a release was refused and answers without saying.
 // The reason goes to the audit log; the caller may be an agent probing.
+// denyEvery is how often one refusal (same connection and reason) is written
+// to the audit log; a process that retries a refused release in a loop would
+// otherwise fill the log. The count of the refusals in between is recorded.
+const denyEvery = 30 * time.Second
+
+// denyLimiter remembers when each refusal was last recorded.
+type denyLimiter struct {
+	mu      sync.Mutex
+	last    map[string]time.Time
+	dropped map[string]int
+}
+
+// allow reports whether the refusal key should be recorded now, and how many
+// were skipped since it last was.
+func (l *denyLimiter) allow(key string, now time.Time) (bool, int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.last == nil {
+		l.last, l.dropped = map[string]time.Time{}, map[string]int{}
+	}
+	if t, ok := l.last[key]; ok && now.Sub(t) < denyEvery {
+		l.dropped[key]++
+		return false, 0
+	}
+	if len(l.last) > 1024 {
+		l.last, l.dropped = map[string]time.Time{}, map[string]int{}
+	}
+	n := l.dropped[key]
+	l.last[key], l.dropped[key] = now, 0
+	return true, n
+}
+
 func (s *Server) denyService(ctx context.Context, res callerkind.Result, connection, reason string) brokerapi.Response {
-	_ = s.cfg.Audit.Emit(ctx, audit.Event{Action: audit.ActionSecurityBlock, Outcome: audit.OutcomeDenied, Extra: map[string]any{
-		"command": "service.release " + connection, "signals": []string{reason}, "caller_kind": string(res.Kind),
-	}})
+	if ok, skipped := s.denials.allow(connection+"\x00"+reason, s.cfg.Now()); ok {
+		signals := []string{reason}
+		if skipped > 0 {
+			signals = append(signals, fmt.Sprintf("%d similar refusals not recorded", skipped))
+		}
+		_ = s.cfg.Audit.Emit(ctx, audit.Event{Action: audit.ActionSecurityBlock, Outcome: audit.OutcomeDenied, Extra: map[string]any{
+			"command": "service.release " + connection, "signals": signals, "caller_kind": string(res.Kind),
+		}})
+	}
 	return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, errors.New("the credential cannot be released to this process"))
 }
 

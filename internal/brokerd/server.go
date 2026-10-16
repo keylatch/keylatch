@@ -85,6 +85,8 @@ type Server struct {
 	mu    sync.Mutex
 	parts map[uint32]*partition
 
+	denials denyLimiter
+
 	svcOnce sync.Once
 	svc     *serviceStore
 

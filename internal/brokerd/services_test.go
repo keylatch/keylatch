@@ -8,12 +8,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/brokerapi"
@@ -214,8 +216,9 @@ func TestServiceDeniedFromShell(t *testing.T) {
 	if resp := r.release(t, 1000, "/system.slice/app.service", cap, callerkind.Result{Kind: callerkind.Agent}); resp.OK {
 		t.Fatal("an agent was released the secret")
 	}
-	if n := r.h.rec.count(audit.ActionSecurityBlock); n < 6 {
-		t.Fatalf("%d security.block events for 6 refusals", n)
+	// Six refusals, four distinct reasons: repeats of a reason are recorded once.
+	if n := r.h.rec.count(audit.ActionSecurityBlock); n != 4 {
+		t.Fatalf("%d security.block events for 4 distinct refusals", n)
 	}
 	for _, e := range r.h.rec.events {
 		if e.Action == audit.ActionRelease {
@@ -499,5 +502,44 @@ func TestServiceStoreRekeysOldRecords(t *testing.T) {
 	}
 	if _, ok := s.get(1001, "app-db"); ok {
 		t.Fatal("another user sees it")
+	}
+}
+
+func TestRefusedReleasesAreRecordedOncePerInterval(t *testing.T) {
+	r := newSvcRig(t)
+	cap := r.enroll(t, nil).Service.Capability
+	for i := 0; i < 50; i++ {
+		if resp := r.release(t, 1000, "/user.slice/session-1.scope", cap, host); resp.OK {
+			t.Fatal("a shell was released the value")
+		}
+	}
+	if n := r.h.rec.count(audit.ActionSecurityBlock); n != 1 {
+		t.Fatalf("%d security.block events for 50 identical refusals", n)
+	}
+	// Another reason is its own refusal and is recorded at once.
+	if resp := r.release(t, 1000, "/system.slice/app.service", make([]byte, 32), host); resp.OK {
+		t.Fatal("a wrong capability released a value")
+	}
+	if n := r.h.rec.count(audit.ActionSecurityBlock); n != 2 {
+		t.Fatalf("%d events after a different refusal", n)
+	}
+	// After the interval the next one is written and counts the skipped ones.
+	*r.h.now = r.h.now.Add(denyEvery + time.Second)
+	r.release(t, 1000, "/user.slice/session-1.scope", cap, host)
+	ev, _ := r.h.rec.last(audit.ActionSecurityBlock)
+	signals, _ := ev.Extra["signals"].([]string)
+	if len(signals) != 2 || !strings.Contains(signals[1], "49 similar") {
+		t.Fatalf("signals = %v", signals)
+	}
+}
+
+func TestDenyLimiterBoundsItsMemory(t *testing.T) {
+	var l denyLimiter
+	now := time.Unix(1_800_000_000, 0)
+	for i := 0; i < 3000; i++ {
+		l.allow(fmt.Sprintf("c%d", i), now)
+	}
+	if len(l.last) > 1025 {
+		t.Fatalf("the limiter holds %d keys", len(l.last))
 	}
 }
