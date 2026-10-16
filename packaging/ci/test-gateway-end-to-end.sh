@@ -84,10 +84,14 @@ field() {
 # answers its presence prompt, the way a human at a terminal would. Presence
 # reads no environment, so a terminal is the only way through.
 with_presence() {
+  # Answer only once the prompt is up and keep the input open until the
+  # command exits: input typed early, or an end of input, reaches the
+  # prompt's read as EOF on macOS.
+  local answer='sleep 2; printf "yes\n"; sleep 8'
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    printf 'yes\n' | script -q /dev/null "$@" | tr -d '\r'
+    { bash -c "$answer" || true; } | script -q /dev/null "$@" | tr -d '\r'
   else
-    printf 'yes\n' | script -qec "$(printf '%q ' "$@")" /dev/null | tr -d '\r'
+    { bash -c "$answer" || true; } | script -qec "$(printf '%q ' "$@")" /dev/null | tr -d '\r'
   fi
 }
 
