@@ -130,12 +130,12 @@ func TestFindPath(t *testing.T) {
 
 func TestSummarize(t *testing.T) {
 	s := Summarize([]byte(goodManifest), "", "")
-	for _, want := range []string{"web (vercel): 2 name(s) DATABASE_URL, FLAG", "ci (github-actions): 1 name(s) DATABASE_URL", "local (env-file)"} {
+	for _, want := range []string{"web (vercel, project prj_1, team team_1, credential vercel-deploy): 2 name(s) DATABASE_URL<-app-db.url, FLAG<-flags", "ci (github-actions, repo owner/app, credential github-app-ci): 1 name(s) DATABASE_URL<-app-db.url", "local (env-file, path .env.local)"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary %q lacks %q", s, want)
 		}
 	}
-	if s := Summarize([]byte(goodManifest), "FLAG", ""); strings.Contains(s, "ci") || !strings.Contains(s, "web (vercel): 1 name(s) FLAG") {
+	if s := Summarize([]byte(goodManifest), "FLAG", ""); strings.Contains(s, "ci") || !strings.Contains(s, "web (vercel, project prj_1, team team_1, credential vercel-deploy): 1 name(s) FLAG<-flags") {
 		t.Errorf("only FLAG: %q", s)
 	}
 	if s := Summarize([]byte(goodManifest), "", "ci"); strings.Contains(s, "web") {

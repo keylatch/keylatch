@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path"
 	"strings"
@@ -172,6 +173,10 @@ func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Re
 	if err != nil {
 		return fail(brokerapi.CodeBadRequest, exitcode.UserError, err)
 	}
+	allowed, err := verifyAllowlist(m)
+	if err != nil {
+		return fail(brokerapi.CodeRefused, exitcode.PolicyDeny, err)
+	}
 	var src secretStore = a.p.store
 	if a.p.syncStore != nil {
 		src = a.p.syncStore
@@ -192,7 +197,7 @@ func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Re
 	}
 	eng := &keysync.Engine{
 		Manifest: m, Targets: clients, Secrets: store, State: a.syncState(),
-		Audit: syncAudit{a, res, presence}, Probe: a.probe(),
+		Audit: syncAudit{a, res, presence}, Probe: guardProbe(allowed, a.probe()),
 	}
 	out := &brokerapi.SyncResult{Credentials: store.credentialKinds(ctx, m)}
 	switch req.Op {
@@ -224,6 +229,61 @@ func (a *admin) syncTargets(m keysync.Manifest, sr *brokerapi.SyncRequest, store
 		Links: sr.Links, LinkTeams: sr.LinkTeams, Root: sr.Root, EnvKeys: sr.EnvKeys, EnvFiles: io,
 		Override: a.s.cfg.Sync.Target,
 	})
+}
+
+// verifyAllowlist maps each verification URL of the manifest to the hosts it
+// may reach: the hosts of the template of the connection the variable's value
+// comes from. A value is only ever sent as a bearer token to a host that
+// connection's provider already uses.
+func verifyAllowlist(m keysync.Manifest) (map[string][]string, error) {
+	out := map[string][]string{}
+	for _, v := range m.Vars {
+		if v.Verify == nil {
+			continue
+		}
+		tmpl, err := registry.Get(v.From.Connection)
+		if err != nil {
+			return nil, fmt.Errorf("%s: verify.url cannot be checked: %q is not a provider connection with known hosts", v.Name, v.From.Connection)
+		}
+		if err := checkVerifyHost(v.Verify.URL, tmpl.Hosts); err != nil {
+			return nil, fmt.Errorf("%s: %w", v.Name, err)
+		}
+		out[v.Verify.URL] = append(out[v.Verify.URL], tmpl.Hosts...)
+	}
+	return out, nil
+}
+
+func checkVerifyHost(raw string, hosts []string) error {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
+		return errors.New("the verification URL must be a plain https URL")
+	}
+	if p := u.Port(); p != "" && p != "443" {
+		return fmt.Errorf("the verification URL may not use port %s", p)
+	}
+	host := strings.ToLower(u.Hostname())
+	for _, h := range hosts {
+		h = strings.ToLower(h)
+		if h == host || (strings.HasPrefix(h, "*.") && strings.HasSuffix(host, h[1:])) {
+			return nil
+		}
+	}
+	return fmt.Errorf("the verification host %s is not one of the source connection's hosts", host)
+}
+
+// guardProbe refuses to send a value to a URL the manifest check did not
+// allow, whatever calls the probe.
+func guardProbe(allowed map[string][]string, probe func(context.Context, string, []byte) error) func(context.Context, string, []byte) error {
+	return func(ctx context.Context, url string, value []byte) error {
+		hosts, ok := allowed[url]
+		if !ok {
+			return errors.New("the verification URL is not allowlisted")
+		}
+		if err := checkVerifyHost(url, hosts); err != nil {
+			return err
+		}
+		return probe(ctx, url, value)
+	}
 }
 
 func (a *admin) probe() func(ctx context.Context, url string, value []byte) error {
