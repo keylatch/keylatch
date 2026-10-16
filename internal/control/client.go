@@ -55,10 +55,21 @@ type Client struct {
 // when nothing answers there. The system broker's socket is preferred when it
 // exists and KEYLATCH_SOCKET does not name another.
 func NewClient(lookup llmcontext.Lookup) (*Client, error) {
+	return newClient(lookup, llmcontext.Classify(lookup).Signals, lookup(llmcontext.TicketEnv))
+}
+
+// NewRawClient is NewClient for a caller that sends no agent signals and no
+// ticket of its own. A session ticket verifier uses it: classifying the
+// environment to fill in the signals would call the verifier again.
+func NewRawClient(lookup llmcontext.Lookup) (*Client, error) {
+	return newClient(lookup, nil, "")
+}
+
+func newClient(lookup llmcontext.Lookup, signals []string, ticket string) (*Client, error) {
 	c := &Client{
 		socket:  paths.ControlSocket(lookup),
-		signals: llmcontext.Classify(lookup).Signals,
-		ticket:  lookup(llmcontext.TicketEnv),
+		signals: signals,
+		ticket:  ticket,
 	}
 	if lookup("KEYLATCH_SOCKET") == "" {
 		if sock := paths.BrokerSocket(lookup); isSocket(sock) {
@@ -123,7 +134,12 @@ func (c *Client) dial() (*net.UnixConn, error) {
 // Call sends one broker request and returns the daemon's reply. The client's
 // agent signals and ticket ride along; they can only make the daemon stricter.
 func (c *Client) Call(req brokerapi.Request) (brokerapi.Response, error) {
-	req.Signals, req.Ticket = c.signals, c.ticket
+	if req.Signals == nil {
+		req.Signals = c.signals
+	}
+	if req.Ticket == "" {
+		req.Ticket = c.ticket
+	}
 	conn, err := c.dial()
 	if err != nil {
 		return brokerapi.Response{}, err

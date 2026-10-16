@@ -41,6 +41,15 @@ var (
 		}
 		return c, nil
 	}
+	// dialRawBroker is dialBroker for the session ticket verifier, which must
+	// not classify the environment: that would call the verifier again.
+	dialRawBroker = func(env llmcontext.Lookup) (brokerCaller, error) {
+		c, err := control.NewRawClient(env)
+		if err != nil {
+			return nil, err
+		}
+		return c, nil
+	}
 )
 
 // brokerClient connects to the system broker. It fails when the broker is not

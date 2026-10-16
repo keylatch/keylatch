@@ -97,7 +97,7 @@ func confirmScope(pid int, want string) error {
 // verifyBrokerTicket asks the daemon whether raw is a ticket it issued to this
 // user, and reports the launcher process the ticket is bound to.
 func verifyBrokerTicket(env llmcontext.Lookup, raw string) (llmcontext.Ticket, error) {
-	bc, err := brokerClient(env)
+	bc, err := dialRawBroker(env)
 	if err != nil {
 		return llmcontext.Ticket{}, err
 	}

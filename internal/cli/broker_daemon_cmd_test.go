@@ -57,10 +57,11 @@ func (f *fakeBroker) ops() []brokerapi.Op {
 
 func useFakeBroker(t *testing.T, f *fakeBroker) {
 	t.Helper()
-	prevInstalled, prevDial := brokerInstalled, dialBroker
+	prevInstalled, prevDial, prevRaw := brokerInstalled, dialBroker, dialRawBroker
 	brokerInstalled = func(llmcontext.Lookup) bool { return true }
 	dialBroker = func(llmcontext.Lookup) (brokerCaller, error) { return f, nil }
-	t.Cleanup(func() { brokerInstalled, dialBroker = prevInstalled, prevDial })
+	dialRawBroker = dialBroker
+	t.Cleanup(func() { brokerInstalled, dialBroker, dialRawBroker = prevInstalled, prevDial, prevRaw })
 }
 
 func run(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
@@ -232,6 +233,28 @@ func TestPolicyImportExportAndAuditHeadThroughBroker(t *testing.T) {
 	}
 	if _, err := run(t, newPolicyExportCmd(), dst, "--force"); err != nil {
 		t.Fatalf("export --force: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "policy.bundle")); err != nil {
+		t.Fatalf("export must write the signed bundle: %v", err)
+	}
+
+	// Importing that directory sends the bundle, which the daemon signs again after presence.
+	exportHandler := f.handler
+	f.handler = nil
+	f.calls = nil
+	if out, err := run(t, newPolicyImportCmd(), dst); err != nil || !strings.Contains(out, "bundle of 2 file(s)") {
+		t.Fatalf("policy import of a bundle: %v (%s)", err, out)
+	}
+	imp := f.calls[len(f.calls)-1]
+	if imp.Op != brokerapi.OpPolicyImport || imp.Bundle == nil || imp.Proof == "" || len(imp.Bundle.Files) != 2 {
+		t.Fatalf("policy.import = %+v", imp)
+	}
+	f.handler = exportHandler
+	if err := os.WriteFile(filepath.Join(dst, "policy.bundle"), []byte("not a bundle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, newPolicyImportCmd(), dst); err == nil || !strings.Contains(err.Error(), "not a policy bundle") {
+		t.Fatalf("a corrupt bundle = %v", err)
 	}
 
 	out, err = run(t, newAuditHeadCmd(), "--json")
