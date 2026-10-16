@@ -20,6 +20,9 @@ import (
 // current policy.json, to the daemon. The daemon signs what it accepts after
 // the human approves; the files in the user's own directories are not policy.
 func brokerPolicyImport(c *cobra.Command, env llmcontext.Lookup, dir string) error {
+	if raw, err := os.ReadFile(filepath.Join(dir, policyBundleFile)); err == nil {
+		return brokerBundleImport(c, env, raw)
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return NewUsageError("policy import: %v", err)
@@ -68,6 +71,27 @@ func brokerPolicyImport(c *cobra.Command, env llmcontext.Lookup, dir string) err
 	return nil
 }
 
+// policyBundleFile holds the signed bundle `policy export` writes next to the
+// documents. `policy import` of a directory that has one sends the bundle, and
+// the daemon signs it again under its own key after a presence proof.
+const policyBundleFile = "policy.bundle"
+
+func brokerBundleImport(c *cobra.Command, env llmcontext.Lookup, raw []byte) error {
+	var bundle brokerapi.Bundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return NewUsageError("policy import: %s is not a policy bundle: %v", policyBundleFile, err)
+	}
+	bc, err := brokerClient(env)
+	if err != nil {
+		return err
+	}
+	if _, err := brokerPrivileged(bc, "policy import", brokerapi.Request{Op: brokerapi.OpPolicyImport, Bundle: &bundle}); err != nil {
+		return err
+	}
+	fmt.Fprintf(c.OutOrStdout(), "policy import: bundle of %d file(s) from key %s accepted and signed again by this broker\n", len(bundle.Files), bundle.KeyID)
+	return nil
+}
+
 // brokerPolicyExport writes the broker's signed policy documents to dir.
 func brokerPolicyExport(c *cobra.Command, env llmcontext.Lookup, dir string, force bool) error {
 	bc, err := brokerClient(env)
@@ -98,7 +122,18 @@ func brokerPolicyExport(c *cobra.Command, env llmcontext.Lookup, dir string, for
 		}
 		n++
 	}
-	fmt.Fprintf(c.OutOrStdout(), "policy export: %d file(s) written to %s\n", n, dir)
+	raw, err := json.Marshal(resp.Bundle)
+	if err != nil {
+		return withExitCodeOperation("policy export", err)
+	}
+	bundlePath := filepath.Join(dir, policyBundleFile)
+	if _, err := os.Stat(bundlePath); err == nil && !force {
+		return NewUsageError("policy export: %s exists; use --force to overwrite", bundlePath)
+	}
+	if err := os.WriteFile(bundlePath, raw, 0o600); err != nil {
+		return fmt.Errorf("policy export: %w", err)
+	}
+	fmt.Fprintf(c.OutOrStdout(), "policy export: %d file(s) and the signed bundle written to %s\n", n, dir)
 	return nil
 }
 

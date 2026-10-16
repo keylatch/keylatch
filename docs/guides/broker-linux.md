@@ -100,6 +100,7 @@ The broker speaks the control socket's JSON frames, extended with the broker ope
 
 - The `file` backend's metadata flags on `set` (`--expires-at`, `--owner`, and so on) are not stored by the broker; `set` refuses them instead of dropping them.
 - Secrets reach a command through `run`: the daemon hosts a gateway for each partition, reads the partition's store itself and issues the session token. The other served verbs (`call`, `status`, `list`, `describe`, `explain`, `doctor`) run as the `keylatch` user against the partition's configuration, and the broker store is not yet a backend for that child, so `call` does not reach stored secrets through the broker in this release; use `run`.
+- The broker serves ordinary accounts, UIDs 1000 to 60000. Root and system accounts are refused.
 - Presence uses polkit. A FIDO2 security-key path is not part of this release.
 - Root on the host, and a compromised daemon, are outside the model: the daemon is the trusted computing base.
 - macOS and Windows keep in-user mode; their brokers are separate work.
