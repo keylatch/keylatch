@@ -224,6 +224,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Allow unprivileged user namespaces
+        # The contained scenarios run real sandboxes; Ubuntu runners restrict
+        # unprivileged user namespaces with AppArmor by default.
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: install bubblewrap
         if: runner.os == 'Linux'
         run: sudo apt-get install -y bubblewrap
