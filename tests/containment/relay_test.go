@@ -107,7 +107,7 @@ func TestRelayWithHostileArgvStartsNothing(t *testing.T) {
 	for _, argv := range argvs {
 		d5, errOut, code := e.relay(t, runD5, nil, argv...)
 		requests++
-		if code != 0 || d5.OK || d5.Code != "unavailable" || !strings.Contains(d5.Error, "D5") {
+		if code != 0 || d5.OK || d5.Code != "bad_request" || !strings.Contains(d5.Error, "D5") {
 			t.Fatalf("argv %q: D5 run: exit %d reply %+v stderr %q", argv, code, d5, errOut)
 		}
 		bare, _, code := e.relay(t, runBare, nil, argv...)
