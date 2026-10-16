@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"slices"
@@ -70,7 +71,14 @@ func runContained(ctx context.Context, c *Client, lookup llmcontext.Lookup, ra r
 		return exitcode.OperationFailed
 	}
 	defer func() { _ = conn.Close() }()
-	if err := writeFrame(conn, c.stamp(Request{Op: OpContained, Run: &rr})); err != nil {
+	return relayContained(ctx, conn, c.stamp(Request{Op: OpContained, Run: &rr}), stdin, streams)
+}
+
+// relayContained sends the contained-run request over conn and relays the run
+// until the daemon reports its end.
+func relayContained(ctx context.Context, conn io.ReadWriter, req Request, stdin *os.File, streams IO) int {
+	rr := req.Run
+	if err := writeFrame(conn, req); err != nil {
 		fmt.Fprintf(streams.ErrOut, "keylatch run: daemon: %v\n", err)
 		return exitcode.OperationFailed
 	}
