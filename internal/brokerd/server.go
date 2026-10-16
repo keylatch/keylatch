@@ -52,6 +52,8 @@ type Config struct {
 	// loopback address. Nil leaves the gateway tier unavailable.
 	Gateway func(ctx context.Context, p GatewayPartition) (addr string, err error)
 	Now     func() time.Time
+	// Sync tunes the deploy-secret sync operations.
+	Sync SyncConfig
 }
 
 // GatewayPartition is what the gateway needs to serve one partition.
@@ -83,7 +85,15 @@ type partition struct {
 	store  *brokerstore.Store
 	policy *PolicyStore
 	ctl    *control.Server
+
+	syncOnce sync.Once
+	sync     *syncState
+	// syncStore stands in for store in the sync operations; tests use it to
+	// count reads.
+	syncStore secretStore
 }
+
+func (p *partition) configDir() string { return filepath.Join(p.dir, "config") }
 
 // New returns a Server. It refuses a configuration that could serve without an
 // audit log, keys or a state directory.

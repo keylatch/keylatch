@@ -33,7 +33,7 @@ func (a *admin) Handle(ctx context.Context, conn *net.UnixConn, peer control.Pee
 	if req, err := brokerapi.Decode(raw); err != nil {
 		resp = fail(brokerapi.CodeBadRequest, exitcode.UserError, err)
 	} else {
-		resp = a.dispatch(ctx, peer, res, req)
+		resp = a.dispatch(context.WithValue(ctx, connCtxKey{}, conn), peer, res, req)
 	}
 	b, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(b, '\n'))
@@ -113,6 +113,8 @@ func (a *admin) dispatch(ctx context.Context, peer control.Peer, res callerkind.
 	case brokerapi.OpSessionEnd:
 		a.s.sessions.End(peer.UID, req.Session.ID)
 		return brokerapi.Response{OK: true}
+	case brokerapi.OpSyncDiff, brokerapi.OpSyncDrift, brokerapi.OpSyncApply, brokerapi.OpSyncRotate:
+		return a.syncOp(ctx, peer, res, req)
 	case brokerapi.OpSessionVerify:
 		l, ok := a.s.sessions.Lookup(req.Ticket, peer.UID)
 		if !ok {
