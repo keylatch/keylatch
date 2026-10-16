@@ -6,7 +6,8 @@
       "CLAUDE_CODE_ENTRYPOINT": "cli"
     },
     "hook_config": ".claude/settings.json",
-    "hook_format": "claude-code"
+    "hook_format": "claude-code",
+    "hook_event": "PreToolUse"
   },
   "codex": {
     "observed_in": "version not recorded; values taken from the harness documentation",
@@ -15,6 +16,35 @@
       "CODEX_SANDBOX_NETWORK_DISABLED": "1"
     },
     "hook_config": ".codex/hooks.json",
-    "hook_format": "event-array"
+    "hook_format": "claude-code",
+    "hook_event": "PreToolUse"
+  },
+  "cursor": {
+    "observed_in": "version not recorded; values taken from the harness documentation",
+    "env": {
+      "CURSOR_AGENT": "1"
+    },
+    "hook_config": ".cursor/hooks.json",
+    "hook_format": "cursor",
+    "payload": "cursor"
+  },
+  "gemini-cli": {
+    "observed_in": "version not recorded; values taken from the harness documentation",
+    "env": {
+      "GEMINI_CLI": "1"
+    },
+    "hook_config": ".gemini/settings.json",
+    "hook_format": "gemini",
+    "hook_event": "BeforeTool",
+    "payload": "gemini"
+  },
+  "opencode": {
+    "observed_in": "version not recorded; values taken from the harness documentation",
+    "env": {
+      "OPENCODE": "1"
+    },
+    "hook_config": ".config/opencode/plugins/keylatch-guard.ts",
+    "hook_format": "opencode-plugin",
+    "payload": "opencode"
   }
 }
