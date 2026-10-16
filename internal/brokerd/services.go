@@ -69,7 +69,7 @@ func (s systemctlInspector) Inspect(ctx context.Context, scope string, owner uin
 	if read == nil {
 		read = os.ReadFile
 	}
-	args := []string{"show", "--no-pager", "-p", "Transient,FragmentPath,DropInPaths,ExecStart", unit}
+	args := []string{"show", "--no-pager", "-p", "Transient,FragmentPath,DropInPaths,ExecStart", "--", unit}
 	if scope == "user" {
 		args = append([]string{"--user", fmt.Sprintf("--machine=%d@.host", owner)}, args...)
 	}

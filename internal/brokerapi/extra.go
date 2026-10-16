@@ -133,7 +133,7 @@ const (
 )
 
 var (
-	unitName    = regexp.MustCompile(`^[A-Za-z0-9:_.@\\-]{1,250}\.service$`)
+	unitName    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:_.@\\-]{0,249}\.service$`)
 	machineName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 	domainName  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	capName     = regexp.MustCompile(`^[a-z][a-z0-9_.:-]{0,63}$`)

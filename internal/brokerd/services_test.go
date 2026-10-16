@@ -369,6 +369,10 @@ func TestSystemctlInspector(t *testing.T) {
 	if strings.Contains(strings.Join(seen, " "), "--user") {
 		t.Fatalf("system scope args = %v", seen)
 	}
+	// The unit follows "--", so a name can never be read as an option.
+	if n := len(seen); n < 2 || seen[n-2] != "--" || seen[n-1] != "app.service" {
+		t.Fatalf("the unit is not after --: %v", seen)
+	}
 	first := info.SHA256
 	files["/etc/app.service.d/o.conf"] = "[Service]\nEnvironment=A=2\n"
 	if again, _ := in.Inspect(context.Background(), "system", 1000, "app.service"); again.SHA256 == first {
