@@ -246,18 +246,24 @@ func createAppContainer(name string) (*windows.SID, error) {
 	if err != nil {
 		return nil, err
 	}
-	var sid *windows.SID
-	hr, _, _ := createProfile.Call(uintptr(unsafe.Pointer(n)), uintptr(unsafe.Pointer(n)), uintptr(unsafe.Pointer(n)), 0, 0, uintptr(unsafe.Pointer(&sid)))
+	// The API writes through these addresses; pinned heap objects cannot move
+	// under it the way a growing goroutine stack could.
+	out := new(*windows.SID)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	pin.Pin(n)
+	pin.Pin(out)
+	hr, _, _ := createProfile.Call(uintptr(unsafe.Pointer(n)), uintptr(unsafe.Pointer(n)), uintptr(unsafe.Pointer(n)), 0, 0, uintptr(unsafe.Pointer(out)))
 	if hr == 0 {
-		return sid, nil
+		return *out, nil
 	}
 	if hr != errorAlreadyExists {
 		return nil, fmt.Errorf("CreateAppContainerProfile: HRESULT %#x", hr)
 	}
-	if hr, _, _ = deriveSID.Call(uintptr(unsafe.Pointer(n)), uintptr(unsafe.Pointer(&sid))); hr != 0 {
+	if hr, _, _ = deriveSID.Call(uintptr(unsafe.Pointer(n)), uintptr(unsafe.Pointer(out))); hr != 0 {
 		return nil, fmt.Errorf("DeriveAppContainerSidFromAppContainerName: HRESULT %#x", hr)
 	}
-	return sid, nil
+	return *out, nil
 }
 
 func dropAppContainer(name string) {
@@ -294,17 +300,32 @@ func exemptLoopback(sid *windows.SID, undo *[]func()) error {
 }
 
 func loopbackExempt() ([]windows.SIDAndAttributes, error) {
-	var n uint32
-	var p *windows.SIDAndAttributes
-	if r, _, _ := netIsoGetConfig.Call(uintptr(unsafe.Pointer(&n)), uintptr(unsafe.Pointer(&p))); r != 0 {
+	np, pp := new(uint32), new(*windows.SIDAndAttributes)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	pin.Pin(np)
+	pin.Pin(pp)
+	if r, _, _ := netIsoGetConfig.Call(uintptr(unsafe.Pointer(np)), uintptr(unsafe.Pointer(pp))); r != 0 {
 		return nil, fmt.Errorf("NetworkIsolationGetAppContainerConfig: error %d", r)
 	}
+	n, p := *np, *pp
 	if p == nil || n == 0 {
 		return nil, nil
 	}
 	defer netIsoFree.Call(uintptr(unsafe.Pointer(p))) //nolint:errcheck
-	// The list is copied: the system's buffer is freed on return.
-	return append([]windows.SIDAndAttributes(nil), unsafe.Slice(p, n)...), nil
+	// The system frees the whole buffer on return, and each entry's SID points
+	// into it: a shallow copy would hand a later Set call freed memory, so every
+	// SID is copied into Go memory.
+	src := unsafe.Slice(p, n)
+	out := make([]windows.SIDAndAttributes, 0, len(src)+1)
+	for _, e := range src {
+		sid, err := e.Sid.Copy()
+		if err != nil {
+			return nil, fmt.Errorf("copy an exempt AppContainer SID: %w", err)
+		}
+		out = append(out, windows.SIDAndAttributes{Sid: sid, Attributes: e.Attributes})
+	}
+	return out, nil
 }
 
 func setLoopbackExempt(list []windows.SIDAndAttributes) error {
@@ -312,7 +333,10 @@ func setLoopbackExempt(list []windows.SIDAndAttributes) error {
 	if len(list) > 0 {
 		p = &list[0]
 	}
-	if r, _, _ := netIsoSetConfig.Call(uintptr(len(list)), uintptr(unsafe.Pointer(p))); r != 0 {
+	r, _, _ := netIsoSetConfig.Call(uintptr(len(list)), uintptr(unsafe.Pointer(p)))
+	// The call reads the array and every SID it points to.
+	runtime.KeepAlive(list)
+	if r != 0 {
 		return fmt.Errorf("NetworkIsolationSetAppContainerConfig: error %d", r)
 	}
 	return nil
@@ -381,6 +405,13 @@ func newJob(plan jobPlan) (windows.Handle, error) {
 			info  unsafe.Pointer
 			size  uintptr
 		}{windows.JobObjectCpuRateControlInformation, unsafe.Pointer(&cpu), unsafe.Sizeof(cpu)})
+	}
+	// The buffers are handed over as bare addresses, so they are pinned for the
+	// calls: a goroutine stack that grows would otherwise move them.
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	for _, s := range steps {
+		pin.Pin(s.info)
 	}
 	for _, s := range steps {
 		if _, err := windows.SetInformationJobObject(h, s.class, uintptr(s.info), uint32(s.size)); err != nil {
