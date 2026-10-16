@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -39,13 +40,31 @@ func TestListenFDs(t *testing.T) {
 }
 
 func TestListenAdoptsTheActivatedSocket(t *testing.T) {
-	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	// A bound socket, as launchd and systemd pass it: an unbound socket pair has
+	// no address, and closing a listener adopted from one panics on macOS.
+	dir, err := os.MkdirTemp("", "kl")
 	if err != nil {
-		t.Skipf("socket pairs are not permitted here: %v", err)
+		t.Fatal(err)
 	}
-	defer func() { _ = syscall.Close(fds[1]) }()
+	defer func() { _ = os.RemoveAll(dir) }()
+	bound, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(dir, "a.sock"), Net: "unix"})
+	if err != nil {
+		t.Skipf("Unix sockets are not permitted here: %v", err)
+	}
+	defer func() { _ = bound.Close() }()
+	// Listen takes ownership of the descriptor and closes it, so hand it a
+	// duplicate that no *os.File will close again.
+	bf, err := bound.File()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd, err := syscall.Dup(int(bf.Fd()))
+	_ = bf.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	prev := firstListenFD
-	firstListenFD = uintptr(fds[0])
+	firstListenFD = uintptr(fd)
 	defer func() { firstListenFD = prev }()
 
 	env := envOf(map[string]string{"LISTEN_PID": strconv.Itoa(os.Getpid()), "LISTEN_FDS": "1"})
