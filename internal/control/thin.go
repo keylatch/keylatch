@@ -32,13 +32,14 @@ var globalValueFlags = []string{"--log-level"}
 // and the verb is one it serves. It reports false when the caller should act
 // on local state instead.
 func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, streams IO) (exitCode int, handled bool) {
-	if lookup(LocalEnv) == "1" || slices.ContainsFunc(args, func(a string) bool {
-		return a == "-h" || a == "--help" || a == "--remote" || strings.HasPrefix(a, "--remote=")
-	}) {
+	if lookup(LocalEnv) == "1" || slices.ContainsFunc(args, func(a string) bool { return a == "-h" || a == "--help" }) {
 		return 0, false
 	}
 	global, verb, rest, ok := splitVerb(args)
 	if !ok {
+		return 0, false
+	}
+	if verb == "call" && remoteFlag(rest) {
 		return 0, false
 	}
 	if verb == gitCredentialVerb {
@@ -78,6 +79,21 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 		return 0, false
 	}
 	return report(resp, streams), true
+}
+
+// remoteFlag reports that a call names a remote broker, which the CLI runs
+// itself over the network. Only a flag before "--" counts, and only for call:
+// a command line that carries --remote elsewhere is still served as usual.
+func remoteFlag(args []string) bool {
+	for _, a := range args {
+		switch {
+		case a == "--":
+			return false
+		case a == "--remote" || strings.HasPrefix(a, "--remote="):
+			return true
+		}
+	}
+	return false
 }
 
 // isPolicyCheck reports whether the invocation asks what policy would decide,
