@@ -26,6 +26,10 @@ type BWConfig struct {
 
 	// Bin is the explicit path to the `bw` binary. Optional.
 	Bin string `mapstructure:"bin"`
+
+	// OrganizationID is the organization whose collections hold the items
+	// when namespaces are mapped. Optional.
+	OrganizationID string `mapstructure:"organization_id"`
 }
 
 func init() {
@@ -60,12 +64,17 @@ func bwFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, e
 		}
 	}
 
+	// The namespace map is not a string setting, so it is read apart.
+	namespaces, _ := cfg.Settings["namespaces"].(map[string]string)
+
 	return Open(Options{
-		Server:     typed.Server,
-		Folder:     typed.Folder,
-		Collection: typed.Collection,
-		Bin:        typed.Bin,
-		Runner:     kexec.DefaultRunner,
-		Env:        envFn,
+		Server:         typed.Server,
+		Folder:         typed.Folder,
+		Collection:     typed.Collection,
+		OrganizationID: typed.OrganizationID,
+		Namespaces:     namespaces,
+		Bin:            typed.Bin,
+		Runner:         kexec.DefaultRunner,
+		Env:            envFn,
 	})
 }

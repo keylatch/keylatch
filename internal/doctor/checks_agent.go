@@ -14,6 +14,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
@@ -239,18 +240,18 @@ func checkBackendCredentialsInEnvironment(env llmcontext.Lookup) Check {
 	}
 }
 
-// checkLeftoverBWSession warns about a cached Bitwarden session file, which
-// any process running as the user can read.
+// checkLeftoverBWSession fails on a plaintext Bitwarden session file left by an
+// earlier version: any process running as the user can unlock the vault with
+// it. Sessions are now stored only wrapped by the vault key.
 func checkLeftoverBWSession(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		st := Status{Name: "backend.bw_session_file", Section: "environment", OK: true, Tags: []string{"backend", "bw"}}
-		p := filepath.Join(paths.ConfigDir(env), "sessions", "bw.session")
-		if _, err := os.Stat(p); err != nil {
-			st.Detail = "no cached Bitwarden session file"
+		if _, err := os.Stat(bw.LegacySessionPath(env)); err != nil {
+			st.Detail = "no plaintext Bitwarden session file"
 			return st
 		}
-		st.Warn = true
-		st.Detail = "a cached Bitwarden session file is on disk; any process running as you can unlock the vault with it"
+		st.OK = false
+		st.Detail = "a plaintext Bitwarden session file is on disk; any process running as you can unlock the vault with it"
 		st.Fix = "Run `keylatch bw lock` to remove it."
 		return st
 	}

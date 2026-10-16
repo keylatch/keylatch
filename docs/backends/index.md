@@ -124,6 +124,27 @@ keylatch connect openrouter api_key YOUR_KEY
 | `KEYLATCH_BW_FOLDER` | Filter items by folder name |
 | `KEYLATCH_BW_COLLECTION` | Filter items by collection ID |
 
+**Folder.** With a folder configured, only items in that folder are listed or read; a new item is created in it.
+
+**Server check.** When a server is configured (`KEYLATCH_BW_SERVER` or `bw.server`), `bw config server` must name the same server or the backend refuses with `ErrServerMismatch` before it sends anything. Run `bw config server <url>` to fix it.
+
+**Organization collections.** To keep items in an organization's shared collections, give each namespace a collection:
+
+```bash
+keylatch setup --backend bw --organization-id <org-id> --server https://vault.example.com \
+  --namespace work=Work/infra --namespace ops=Ops
+```
+
+which stores, in `config.json`:
+
+```json
+{ "bw": { "organization_id": "<org-id>", "namespaces": { "work": "Work/infra", "ops": "Ops" } } }
+```
+
+A path `work/deploy/api_key` is then created with the organization ID and the ID of the collection named `Work/infra` (resolved once per process with `bw list collections --organizationid <org-id>`), and is looked up only in that collection. A namespace with no entry — including `default` — is refused with `ErrNamespaceUnmapped` before any `bw` call. `bw.namespaces` needs `bw.organization_id` and replaces `bw.folder` and `bw.collection`.
+
+**Session.** `keylatch bw unlock` seals the session token under the vault key (the same key that wraps the keyring) in `sessions/bw.session.enc`, keeps only its expiry beside it, and never writes it in plaintext. The session lasts 1 hour by default; `--ttl` or `bw.session_ttl` (a duration such as `30m`) sets it, up to 8 hours. The gateway holds the token in memory while it runs. `keylatch bw lock` deletes the sealed session and any `sessions/bw.session` plaintext file an earlier version left; `keylatch doctor` fails (`backend.bw_session_file`) while one is present.
+
 ---
 
 ## Setup — remaining 10 backends

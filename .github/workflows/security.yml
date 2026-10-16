@@ -156,6 +156,13 @@ jobs:
         env:
           KEYLATCH_E2E_BW: '1'
         run: go test ./internal/backend/bw/... -run Integration
+      - name: Vaultwarden collections
+        env:
+          KEYLATCH_E2E_BW_SERVER: ${{ vars.KEYLATCH_E2E_BW_SERVER }}
+          KEYLATCH_E2E_BW_ORG: ${{ vars.KEYLATCH_E2E_BW_ORG }}
+          KEYLATCH_E2E_BW_COLLECTION: ${{ vars.KEYLATCH_E2E_BW_COLLECTION }}
+          BW_SESSION: ${{ secrets.KEYLATCH_E2E_BW_SESSION }}
+        run: go test -count=1 -tags e2e ./tests/e2e/... -run '^TestVaultwardenCollections$'
 
   fuzz:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

@@ -156,6 +156,8 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 			s["server"] = cfg.BW.Server
 			s["folder"] = cfg.BW.Folder
 			s["collection"] = cfg.BW.Collection
+			s["organization_id"] = cfg.BW.OrganizationID
+			s["namespaces"] = cfg.BW.Namespaces
 			s["bin"] = cfg.BW.Bin
 		}
 		if env != nil {

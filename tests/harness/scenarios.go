@@ -186,7 +186,7 @@ var scenarios = []scenario{
 		steps:       []step{bash(`BW_SESSION=$(<"{{config}}/sessions/bw.session") bw export`)},
 		kind:        kindSecret,
 		want:        wantBlocked,
-		test:        "TestDenyCorpus",
+		test:        "TestNoPlaintextSessionFile",
 	},
 	{
 		id:             "proc-self-environ",

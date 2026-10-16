@@ -252,11 +252,19 @@ func pickNamed(list []bwNamed, key, kind string) (string, error) {
 // runJSON runs a bw command and decodes its JSON output into out. An empty
 // success output means a locked or stale session.
 func (b *BitwardenBackend) runJSON(ctx context.Context, args []string, out any) error {
+	if err := b.checkServer(ctx); err != nil {
+		return err
+	}
 	if b.opts.AutoSync {
 		if err := b.sync(ctx); err != nil {
 			return err
 		}
 	}
+	return b.runJSONNoSync(ctx, args, out)
+}
+
+// runJSONNoSync is runJSON for callers that have already synced.
+func (b *BitwardenBackend) runJSONNoSync(ctx context.Context, args []string, out any) error {
 	stdout, stderr, exitCode, err := b.runWithSession(ctx, args, nil)
 	if err != nil {
 		return fmt.Errorf("bw %s: runner error: %w", args[0], err)

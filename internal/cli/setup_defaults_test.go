@@ -97,6 +97,20 @@ func TestSetupHeadlessBitwarden(t *testing.T) {
 	assert.Equal(t, "org-123", cfg.BW.OrganizationID)
 }
 
+func TestSetupHeadlessBitwardenNamespaceMapping(t *testing.T) {
+	configDir, res := headlessSetup(t, "--backend", "bw",
+		"--server", "https://vault.example.com", "--organization-id", "org-123",
+		"--namespace", "work=Work/infra", "--namespace", "ops=Ops", "--namespace", "work2")
+	require.True(t, res.OK, res.Error)
+
+	cfg, err := config.Load(filepath.Join(configDir, "config.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "work2", cfg.DefaultNamespace, "a plain --namespace is still the default namespace")
+	require.NotNil(t, cfg.BW)
+	assert.Equal(t, map[string]string{"work": "Work/infra", "ops": "Ops"}, cfg.BW.Namespaces)
+	assert.Equal(t, "org-123", cfg.BW.OrganizationID)
+}
+
 func TestSetupEndsWithDoctor(t *testing.T) {
 	_, res := headlessSetup(t, "--backend", "file")
 	require.True(t, res.OK, res.Error)
