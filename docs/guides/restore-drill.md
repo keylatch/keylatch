@@ -34,9 +34,11 @@ keylatch migrate inventory --map map.yaml --out plan.json
 ## 2. Import
 
 ```bash
-keylatch migrate import --plan plan.json --to bw --dry-run
-keylatch migrate import --plan plan.json --to bw --manifest-out manifest.json
+keylatch migrate import --plan plan.json --map map.yaml --to bw --dry-run
+keylatch migrate import --plan plan.json --map map.yaml --to bw --manifest-out manifest.json
 ```
+
+`--map` is the map the plan was made from. The import refuses a plan with an item the map would not produce: a file outside the map's globs, a lookup the map does not name, or a path other than the one derived from the item's namespace and name. The approval prompt lists each source reference and its target path. In an agent session, a dry run reads file sources only; lookups through `secret-tool`, `security`, `gh`, `bw` and `op` need a human.
 
 The import asks for your presence, then reads each value from its source and writes it to the backend (`bw`, `op` or the system `broker`). It is idempotent: an item whose stored value already equals its source is left alone. `--dry-run` reads and compares but writes nothing and needs no presence.
 

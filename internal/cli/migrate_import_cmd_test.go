@@ -47,9 +47,10 @@ func (s *fakeMigrateStore) Put(_ context.Context, p string, v []byte) error {
 }
 
 type migrateFixture struct {
-	dir   string
-	store *fakeMigrateStore
-	plan  string
+	dir     string
+	store   *fakeMigrateStore
+	plan    string
+	mapFile string
 }
 
 func newMigrateFixture(t *testing.T) *migrateFixture {
@@ -62,6 +63,7 @@ func newMigrateFixture(t *testing.T) *migrateFixture {
 		t.Fatal(err)
 	}
 	mapFile := filepath.Join(dir, "map.yaml")
+	f.mapFile = mapFile
 	if err := os.WriteFile(mapFile, []byte("version: 1\nsources:\n  - {type: env-file, namespace: apps, glob: \""+filepath.ToSlash(filepath.Join(dir, "*.env"))+"\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -123,20 +125,20 @@ func TestInventoryHasNoValues(t *testing.T) {
 func TestImportNeedsPresence(t *testing.T) {
 	f := newMigrateFixture(t)
 	presencetest.Decline(t)
-	_, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "bw")
+	_, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw")
 	assertSecurityBlock(t, err)
 	if f.store.puts != 0 {
 		t.Fatal("a declined import wrote")
 	}
 	presencetest.NoTerminal(t)
-	_, err = runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "op")
+	_, err = runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "op")
 	assertSecurityBlock(t, err)
 }
 
 func TestImportIdempotent(t *testing.T) {
 	f := newMigrateFixture(t)
 	presencetest.Approve(t)
-	out, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "bw")
+	out, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw")
 	if err != nil || strings.Contains(out, importCanary) {
 		t.Fatalf("import: %v\n%s", err, out)
 	}
@@ -144,16 +146,92 @@ func TestImportIdempotent(t *testing.T) {
 	if puts != 2 {
 		t.Fatalf("puts = %d, want 2", puts)
 	}
-	out, err = runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "bw")
+	out, err = runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw")
 	if err != nil || f.store.puts != puts || !strings.Contains(out, `"unchanged": 2`) {
 		t.Fatalf("second import: %v puts %d\n%s", err, f.store.puts, out)
+	}
+}
+
+func TestImportRefusesAPlanThatLeavesItsMap(t *testing.T) {
+	f := newMigrateFixture(t)
+	presencetest.Approve(t)
+	data, err := os.ReadFile(f.plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := strings.Replace(string(data), filepath.ToSlash(filepath.Join(f.dir, "app.env")), "/etc/hostname", 1)
+	if forged == string(data) {
+		t.Fatalf("the plan names no env file: %s", data)
+	}
+	bad := filepath.Join(f.dir, "forged.json")
+	if err := os.WriteFile(bad, []byte(forged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runMigrateCLI(t, "", "import", "--plan", bad, "--map", f.mapFile, "--to", "bw"); err == nil || f.store.puts != 0 {
+		t.Fatalf("a forged plan imported: %v (%d puts)", err, f.store.puts)
+	}
+	if _, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "bw"); err == nil {
+		t.Fatal("import without a map")
+	}
+}
+
+func TestImportPresenceNamesSourcesAndPaths(t *testing.T) {
+	f := newMigrateFixture(t)
+	seen := presencetest.Record(t)
+	if _, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*seen) != 1 {
+		t.Fatalf("presence asked %d times", len(*seen))
+	}
+	for _, want := range []string{"app.env#TOKEN_A", "apps/token_a", "apps/token_b", "env-file"} {
+		if !strings.Contains((*seen)[0], want) {
+			t.Errorf("the approval %q lacks %q", (*seen)[0], want)
+		}
+	}
+}
+
+func TestDescribePlanCapsTheList(t *testing.T) {
+	var items []migrate.PlanItem
+	for i := 0; i < 30; i++ {
+		items = append(items, migrate.PlanItem{Ref: "env:/a#K", Source: "env-file", Path: "apps/k"})
+	}
+	if got := describePlan(migrate.Plan{Items: items}); !strings.Contains(got, "and 5 more") {
+		t.Fatalf("describePlan = %q", got)
+	}
+}
+
+func TestDryRunRunsNoLookupToolsForAnAgent(t *testing.T) {
+	f := newMigrateFixture(t)
+	t.Setenv("CLAUDECODE", "1")
+	// File sources are still compared.
+	if _, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw", "--dry-run"); err != nil {
+		t.Fatalf("file-only dry run for an agent: %v", err)
+	}
+	m := filepath.Join(f.dir, "tools.yaml")
+	if err := os.WriteFile(m, []byte("version: 1\nsources:\n  - {type: gh, namespace: github}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := filepath.Join(f.dir, "tools.json")
+	body := `{"version":1,"items":[{"name":"gh-github.com","source":"gh","ref":"gh:github.com","namespace":"github","collection":"github","path":"github/gh-github.com"}]}`
+	if err := os.WriteFile(plan, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	prev := migrateEnv
+	migrateEnv = func() migrate.Env {
+		return migrate.Env{Home: f.dir, Run: func(context.Context, string, ...string) ([]byte, error) { ran = true; return []byte("x"), nil }}
+	}
+	defer func() { migrateEnv = prev }()
+	if _, err := runMigrateCLI(t, "", "import", "--plan", plan, "--map", m, "--to", "bw", "--dry-run"); err == nil || ran {
+		t.Fatalf("an agent's dry run ran a lookup tool: err=%v ran=%v", err, ran)
 	}
 }
 
 func TestDryRunWritesNothing(t *testing.T) {
 	f := newMigrateFixture(t)
 	presencetest.Decline(t)
-	out, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "bw", "--dry-run")
+	out, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw", "--dry-run")
 	if err != nil || f.store.puts != 0 || !strings.Contains(out, "would-write") {
 		t.Fatalf("dry run: %v puts %d\n%s", err, f.store.puts, out)
 	}
@@ -163,8 +241,8 @@ func TestImportRejectsBadInput(t *testing.T) {
 	f := newMigrateFixture(t)
 	presencetest.Approve(t)
 	for _, args := range [][]string{
-		{"import", "--plan", f.plan, "--to", "keychain"},
-		{"import", "--plan", filepath.Join(f.dir, "nope.json"), "--to", "bw"},
+		{"import", "--plan", f.plan, "--map", f.mapFile, "--to", "keychain"},
+		{"import", "--plan", filepath.Join(f.dir, "nope.json"), "--map", f.mapFile, "--to", "bw"},
 		{"verify", "--manifest", filepath.Join(f.dir, "nope.json")},
 	} {
 		if _, err := runMigrateCLI(t, "", args...); err == nil {
@@ -173,13 +251,13 @@ func TestImportRejectsBadInput(t *testing.T) {
 	}
 	bad := filepath.Join(f.dir, "bad.json")
 	_ = os.WriteFile(bad, []byte(`{"version":9}`), 0o600)
-	if _, err := runMigrateCLI(t, "", "import", "--plan", bad, "--to", "bw"); err == nil {
+	if _, err := runMigrateCLI(t, "", "import", "--plan", bad, "--map", f.mapFile, "--to", "bw"); err == nil {
 		t.Error("bad plan accepted")
 	}
 	if _, err := runMigrateCLI(t, "", "verify", "--manifest", bad); err == nil {
 		t.Error("bad manifest accepted")
 	}
-	if _, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--to", "bw", "--manifest-out", filepath.Join(f.dir, "m.json"), "--passphrase-stdin"); err == nil {
+	if _, err := runMigrateCLI(t, "", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw", "--manifest-out", filepath.Join(f.dir, "m.json"), "--passphrase-stdin"); err == nil {
 		t.Error("empty passphrase accepted")
 	}
 }
@@ -188,7 +266,7 @@ func TestVerifyDetectsChange(t *testing.T) {
 	f := newMigrateFixture(t)
 	presencetest.Approve(t)
 	manifest := filepath.Join(f.dir, "manifest.json")
-	if out, err := runMigrateCLI(t, "recovery phrase\n", "import", "--plan", f.plan, "--to", "bw", "--manifest-out", manifest, "--passphrase-stdin"); err != nil {
+	if out, err := runMigrateCLI(t, "recovery phrase\n", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw", "--manifest-out", manifest, "--passphrase-stdin"); err != nil {
 		t.Fatalf("import: %v\n%s", err, out)
 	}
 	raw, _ := os.ReadFile(manifest)
@@ -216,7 +294,7 @@ func TestDrillRestoreReport(t *testing.T) {
 	f := newMigrateFixture(t)
 	presencetest.Approve(t)
 	manifest := filepath.Join(f.dir, "manifest.json")
-	if _, err := runMigrateCLI(t, "p\n", "import", "--plan", f.plan, "--to", "bw", "--manifest-out", manifest, "--passphrase-stdin"); err != nil {
+	if _, err := runMigrateCLI(t, "p\n", "import", "--plan", f.plan, "--map", f.mapFile, "--to", "bw", "--manifest-out", manifest, "--passphrase-stdin"); err != nil {
 		t.Fatal(err)
 	}
 	report := filepath.Join(f.dir, "report.json")

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -204,11 +205,14 @@ then pass it to 'keylatch migrate import'.`,
 
 func newMigrateImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "import --plan <json> --to bw|op|broker",
+		Use:   "import --plan <json> --map <yaml> --to bw|op|broker",
 		Short: "Write the planned secrets into a backend",
 		Long: `Read each value of a plan from its source and write it into the backend under
 the plan's namespace and collection. Importing again writes nothing that is
 already there. --dry-run reads and compares but writes nothing.
+
+The plan must match the map it was made from (--map): an item whose source,
+reference or path the map would not produce is refused before anything is read.
 
 --manifest-out records a keyed hash per item under a key derived from a
 recovery passphrase; 'keylatch migrate verify' and 'keylatch drill restore'
@@ -216,6 +220,7 @@ check a backend against it on any host. The import needs your presence.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			planFile, _ := c.Flags().GetString("plan")
+			mapFile, _ := c.Flags().GetString("map")
 			to, _ := c.Flags().GetString("to")
 			dry, _ := c.Flags().GetBool("dry-run")
 			manifestOut, _ := c.Flags().GetString("manifest-out")
@@ -232,6 +237,26 @@ check a backend against it on any host. The import needs your presence.`,
 			plan, err := migrate.ParsePlan(data)
 			if err != nil {
 				return NewUsageError("%v", err)
+			}
+			mapData, err := os.ReadFile(filepath.Clean(mapFile))
+			if err != nil {
+				return NewUsageError("migrate import: %v", err)
+			}
+			srcMap, err := migrate.ParseMap(mapData)
+			if err != nil {
+				return NewUsageError("%v", err)
+			}
+			if err := migrate.ValidatePlan(srcMap, plan, migrateEnv()); err != nil {
+				return NewSecurityBlock("%v", err)
+			}
+			// A dry run needs no presence, so an agent could use it to run the
+			// lookup tools; only file sources are read for an agent session.
+			if dry && llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
+				for _, it := range plan.Items {
+					if it.CommandBacked() {
+						return NewSecurityBlock("migrate import --dry-run runs %s lookups, which needs a human. Ask the person at the machine to run it in a terminal.", it.Source)
+					}
+				}
 			}
 			ctx := c.Context()
 			env := llmcontext.DefaultLookup
@@ -250,7 +275,7 @@ check a backend against it on any host. The import needs your presence.`,
 				}
 			}
 			if !dry && to != "broker" {
-				if _, err := requirePresence(ctx, actionMigrateImport, "Import %d secret(s) into %s", len(plan.Items), to); err != nil {
+				if _, err := requirePresence(ctx, actionMigrateImport, "Import %d secret(s) into %s: %s", len(plan.Items), to, describePlan(plan)); err != nil {
 					return err
 				}
 			}
@@ -274,13 +299,30 @@ check a backend against it on any host. The import needs your presence.`,
 		},
 	}
 	cmd.Flags().String("plan", "", "plan file from 'migrate inventory' (required)")
+	cmd.Flags().String("map", "", "the map the plan was made from; the plan may only use its sources (required)")
 	cmd.Flags().String("to", "", "target backend: bw, op or broker (required)")
 	cmd.Flags().Bool("dry-run", false, "report what would be written; write nothing")
 	cmd.Flags().String("manifest-out", "", "write a keyed-hash manifest of the imported items here")
 	cmd.Flags().Bool("passphrase-stdin", false, "read the recovery passphrase from standard input")
 	_ = cmd.MarkFlagRequired("plan")
+	_ = cmd.MarkFlagRequired("map")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
+}
+
+// describePlan lists where each secret is read from and written to, for the
+// approval the human gives. It shows at most 25 items; the rest are counted.
+func describePlan(p migrate.Plan) string {
+	const shown = 25
+	parts := make([]string, 0, shown+1)
+	for i, it := range p.Items {
+		if i == shown {
+			parts = append(parts, fmt.Sprintf("and %d more", len(p.Items)-shown))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s) -> %s", it.Ref, it.Source, it.Path))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // checkManifest fetches every item of a manifest from the backend and returns

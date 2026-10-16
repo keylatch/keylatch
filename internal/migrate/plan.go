@@ -8,6 +8,7 @@ package migrate
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -155,6 +156,66 @@ func itemPath(m Map, ns, name string) (collection, path string) {
 		collection = ns
 	}
 	return collection, collection + "/" + SafeName(name)
+}
+
+// ValidatePlan checks a plan against the map it came from, so an edited or
+// forged plan cannot make an import read a file or run a lookup the map did
+// not name, or write to a path the map would not produce. Every item must come
+// from a source of the map, in that source's namespace, with the reference the
+// scan would have written and the path itemPath derives; file references must
+// lie in the map's globs.
+func ValidatePlan(m Map, p Plan, e Env) error {
+	e = e.withDefaults()
+	for i, it := range p.Items {
+		if err := validateItem(m, it, e); err != nil {
+			return fmt.Errorf("migrate plan: items[%d] (%s): %w", i, it.Name, err)
+		}
+	}
+	return nil
+}
+
+func validateItem(m Map, it PlanItem, e Env) error {
+	col, want := itemPath(m, it.Namespace, it.Name)
+	if it.Path != want || it.Collection != col {
+		return fmt.Errorf("the path %q is not the one the map gives this item (%q)", it.Path, want)
+	}
+	kind, rest, _ := strings.Cut(it.Ref, ":")
+	for _, s := range m.Sources {
+		if s.Type == it.Source && s.Namespace == it.Namespace && refInSource(s, kind, rest, e) {
+			return nil
+		}
+	}
+	return fmt.Errorf("the reference %q is not within any %s source of namespace %q in the map", it.Ref, it.Source, it.Namespace)
+}
+
+func refInSource(s SourceSpec, kind, rest string, e Env) bool {
+	switch s.Type {
+	case SourceEnvFile:
+		file, key, ok := strings.Cut(rest, "#")
+		if kind != "env" || !ok || key == "" || !filepath.IsAbs(file) || filepath.Clean(file) != file {
+			return false
+		}
+		match, err := filepath.Match(e.expand(s.Glob), file)
+		return err == nil && match
+	case SourceSecretService:
+		svc, _, ok := strings.Cut(rest, ":")
+		return kind == "ss" && ok && svc == s.Service
+	case SourceKeychain:
+		svc, acct, ok := strings.Cut(rest, ":")
+		return kind == "kc" && ok && svc == s.Service && contains(s.Accounts, acct)
+	case SourceGitHubCLI:
+		return kind == "gh" && rest != "" && !strings.HasPrefix(rest, "-") && (len(s.Hosts) == 0 || contains(s.Hosts, rest))
+	case SourcePasswordManager:
+		mgr, item, ok := strings.Cut(rest, ":")
+		return kind == "pm" && ok && mgr == s.Manager && contains(s.Items, item)
+	}
+	return false
+}
+
+// CommandBacked reports whether reading the item runs an external program.
+func (it PlanItem) CommandBacked() bool {
+	kind, _, _ := strings.Cut(it.Ref, ":")
+	return kind != "env"
 }
 
 // SafeName lower-cases name and replaces what a path cannot hold.
