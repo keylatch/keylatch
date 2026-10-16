@@ -2,6 +2,7 @@ package brokerd
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,35 @@ func TestCgroupResolved(t *testing.T) {
 			}
 		})
 	}
+}
+
+// FuzzPeerIdentity feeds arbitrary /proc text to the parsers the daemon trusts
+// to identify a peer, and arbitrary control group paths to the agent-scope
+// check. Nothing may panic, and a start time or cgroup must come from the text.
+func FuzzPeerIdentity(f *testing.F) {
+	f.Add("4242 (agent) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 555 1000 100 1", "0::/user.slice/user-1000.slice/app.slice/term.scope\n")
+	f.Add("1 ((((", "::\n::")
+	f.Add("", "")
+	f.Add("1 (x) "+string(make([]byte, 64)), "1:name=systemd:/\n0::/a/b/c")
+
+	sessions := NewSessions([]byte("0123456789abcdef0123456789abcdef"), nil)
+	if _, err := sessions.Register(1000, "agent-fuzz1234", "/user.slice/user-1000.slice/keylatch-agent-agent-fuzz1234.scope"); err != nil {
+		f.Fatal(err)
+	}
+	f.Fuzz(func(t *testing.T, stat, cgroup string) {
+		if start, err := ParseStartTime(stat); err == nil && start == "" && len(stat) > 0 && !strings.ContainsAny(stat, ")") {
+			t.Fatalf("a start time was invented from %q", stat)
+		}
+		cg := ParseCgroup(cgroup)
+		if cg != "" && !strings.Contains(cgroup, cg) {
+			t.Fatalf("ParseCgroup returned %q, which is not in its input", cg)
+		}
+		// Only paths inside the registered scope are agents; anything else never is.
+		inside := sessions.InAgentScope(cg)
+		if inside && !strings.HasPrefix(cg, "/user.slice/user-1000.slice/keylatch-agent-agent-fuzz1234.scope") {
+			t.Fatalf("%q classified as inside a scope it does not belong to", cg)
+		}
+	})
 }
 
 func TestIdentityWithoutPinIsUnsupported(t *testing.T) {
