@@ -72,7 +72,7 @@ type echoExtension struct {
 	seen    []string
 }
 
-func (e *echoExtension) Handle(_ context.Context, conn *net.UnixConn, p Peer, res callerkind.Result, raw []byte) bool {
+func (e *echoExtension) Handle(_ context.Context, conn Conn, p Peer, res callerkind.Result, raw []byte) bool {
 	e.seen = append(e.seen, string(raw))
 	if !e.handled {
 		return false

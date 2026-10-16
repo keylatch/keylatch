@@ -80,9 +80,9 @@ func TestDoctorInUserWarnWhenBrokerAvailable(t *testing.T) {
 	if !mode.OK || !strings.Contains(mode.Detail, "in-user mode") {
 		t.Fatalf("in-user row = %+v", mode)
 	}
-	if runtime.GOOS == "linux" {
+	if brokerAvailable() {
 		if !mode.Warn || !strings.Contains(mode.Fix, "broker install") {
-			t.Fatalf("in-user mode on Linux must warn and name the install command: %+v", mode)
+			t.Fatalf("in-user mode must warn and name the install command: %+v", mode)
 		}
 	} else if mode.Warn {
 		t.Fatalf("a platform without the broker must not warn: %+v", mode)
@@ -93,8 +93,11 @@ func TestDoctorInUserWarnWhenBrokerAvailable(t *testing.T) {
 			t.Errorf("%s must be skipped without a broker: %+v", name, rows[name])
 		}
 	}
-	if !brokerAvailable() && runtime.GOOS == "linux" {
-		t.Fatal("the broker is available on Linux")
+	if !brokerAvailable() && (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") {
+		t.Fatal("the broker is available on Linux, macOS and Windows")
+	}
+	if hint := brokerStartHint(); !strings.HasPrefix(hint, "Run") {
+		t.Fatalf("start hint = %q", hint)
 	}
 }
 
@@ -145,6 +148,9 @@ func TestProbeBrokerWithoutASocket(t *testing.T) {
 }
 
 func TestProbeBrokerTalksToTheDaemon(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the Windows broker listens on a named pipe, which the winpipe tests cover")
+	}
 	dir, err := os.MkdirTemp("", "kl")
 	if err != nil {
 		t.Fatal(err)

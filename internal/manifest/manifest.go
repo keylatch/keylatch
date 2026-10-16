@@ -72,6 +72,8 @@ func Current() Manifest {
 			{ID: "doppler", Category: CategoryManager, Status: Community, Note: "Doppler; no live suite"},
 			{ID: "infisical", Category: CategoryManager, Status: Community, Note: "Infisical; no live suite"},
 			{ID: "opconnect", Category: CategoryManager, Status: Community, Note: "1Password Connect server; no live suite"},
+			{ID: "bws", Category: CategoryManager, Status: Community, Note: "Bitwarden Secrets Manager, read-only, machine-account token held by Keylatch; no live suite"},
+			{ID: "sops", Category: CategoryManager, Status: Community, Note: "SOPS files encrypted to age, read-only, decrypted in memory by the daemon"},
 			{ID: "keychain", Category: CategoryManager, Status: Deprecated, Note: "macOS Keychain secrets; the Keychain stays as a key store, not as a backend"},
 			{ID: "keeper", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
 			{ID: "lastpass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},

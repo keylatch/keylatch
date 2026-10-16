@@ -215,4 +215,7 @@ var requiredCapability = map[string]bool{
 	"net_namespace":   true,
 	"seccomp":         true,
 	"landlock":        true,
+	"seatbelt":        true,
+	"appcontainer":    true,
+	"job_object":      true,
 }

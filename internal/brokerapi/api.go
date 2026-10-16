@@ -41,6 +41,9 @@ const (
 	OpSessionRegister Op = "session.register"
 	OpSessionEnd      Op = "session.end"
 	OpSessionVerify   Op = "session.verify"
+	// OpPresenceHelper turns the connection into the link to the user's
+	// presence helper: the daemon sends it challenges and reads signatures.
+	OpPresenceHelper Op = "presence.helper"
 
 	OpSyncDiff   Op = "sync.diff"
 	OpSyncDrift  Op = "sync.drift"
@@ -61,7 +64,7 @@ const (
 var allOps = []Op{
 	OpStatus, OpPresenceBegin, OpPolicyAccept, OpPolicyImport, OpPolicyExport, OpPolicyCheck,
 	OpSecretSet, OpSecretDelete, OpSecretList, OpAuditHead, OpMigrateImport, OpMigrateExport,
-	OpRotateKeys, OpSessionRegister, OpSessionEnd, OpSessionVerify,
+	OpRotateKeys, OpSessionRegister, OpSessionEnd, OpSessionVerify, OpPresenceHelper,
 	OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
 	OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
 	OpMachineIssue, OpMachineRevoke, OpMachineList, OpMachineListen,

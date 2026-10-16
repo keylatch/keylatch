@@ -35,6 +35,8 @@ keylatch config set backend <name>
 | Azure Key Vault | `azure-kv` | All | Yes (cloud) | No | Yes | No | — (Azure SDK) |
 | Doppler | `doppler` | All | Yes (cloud) | No | Yes | No | — (HTTP) |
 | Infisical | `infisical` | All | Yes (cloud) | No | Yes | No | — (HTTP) |
+| Bitwarden Secrets Manager | `bws` | All | Yes (cloud) | No | Yes | No | `bws` |
+| SOPS (age) | `sops` | All | Yes (file) | No | Yes | Yes | — (built in) |
 
 ---
 
@@ -163,6 +165,41 @@ For the remaining backends, set `KEYLATCH_BACKEND=<key>` and consult the provide
 | Azure Key Vault | `azure-kv` | [Azure docs](https://learn.microsoft.com/en-us/azure/key-vault/) |
 | Doppler | `doppler` | [doppler.com/docs](https://docs.doppler.com) |
 | Infisical | `infisical` | [infisical.com/docs](https://infisical.com/docs) |
+| Bitwarden Secrets Manager | `bws` | [bitwarden.com/help/secrets-manager-cli](https://bitwarden.com/help/secrets-manager-cli/) |
+| SOPS | `sops` | [getsops.io](https://getsops.io/docs/) |
+
+---
+
+## Read-only backends for machine secrets
+
+Two backends read secrets that a team already keeps elsewhere. Both are read-only: Keylatch never writes to them, and a `keylatch set` against them is refused.
+
+### `bws` — Bitwarden Secrets Manager
+
+A machine account's access token is held by Keylatch and given to the `bws` CLI in the CLI's environment, never on its command line. The CLI runs with a private home directory that is removed when the backend closes, so its state file does not land in your account.
+
+```bash
+keylatch backend login bws                       # stores the access token wrapped by the KEK
+keylatch config set backends.bws.credential_ref bws
+export KEYLATCH_BWS_PROJECT_ID=<project uuid>    # the project this backend reads
+```
+
+A path is the secret's key name (`stripe/api_key`), or the secret's UUID. A key shared by several secrets in the project is refused; use the UUID. `server_url` points the CLI at a self-hosted server and must use `https`.
+
+Writes are refused because `bws secret create` takes the value as an argument, which would show it in the process list. Create and rotate secrets in Bitwarden.
+
+### `sops` — SOPS files encrypted to age
+
+The daemon decrypts a SOPS file in memory with an age identity it holds, returns the one value asked for and wipes the rest. The plaintext is never written to disk and no `sops` or `age` binary is run. JSON, YAML and dotenv files are read.
+
+```bash
+keylatch backend login sops                      # stores the age identity (AGE-SECRET-KEY-1...)
+export KEYLATCH_SOPS_FILE=/srv/app/secrets.enc.yaml
+```
+
+A path is the key path in the file: `db/password` for nested files, `API_KEY` for dotenv, `hosts/0` for a list element. `list` shows the key paths without decrypting anything.
+
+Limits: only age recipients are read (not KMS, PGP, passphrase or plugin recipients). The whole-file MAC is verified, so a value that was removed, added or reordered after SOPS wrote the file is refused; files written with `sops --mac-only-encrypted` cannot be verified here and are refused unless `verify_mac` is set to `false`. Encrypted comments are accepted.
 
 ---
 
@@ -206,7 +243,7 @@ The passphrase env var is not read during bootstrap or credential access.
 
 ## Backend credentials
 
-Remote backends (`op`, `opconnect`, `vault`, `awssm`, `gcpsm`, `azurekv`, `doppler`, `infisical`) authenticate with a credential: a service account or Connect token, a Vault token or AppRole, an AWS key pair, a Google credentials file, an Azure client secret, a Doppler token, an Infisical client ID and secret. Keep it out of the environment:
+Remote backends (`op`, `opconnect`, `vault`, `awssm`, `gcpsm`, `azurekv`, `doppler`, `infisical`, `bws`, `sops`) authenticate with a credential: a service account or Connect token, a Vault token or AppRole, an AWS key pair, a Google credentials file, an Azure client secret, a Doppler token, an Infisical client ID and secret, a Secrets Manager machine-account token, an age identity. Keep it out of the environment:
 
 ```bash
 keylatch backend login vault     # prompts on the terminal, stores it wrapped by the KEK

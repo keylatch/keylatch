@@ -368,8 +368,8 @@ func TestRotateKeysAndInstallCommands(t *testing.T) {
 	brokerEuid = func() int { return 1000 }
 	defer func() { brokerEuid = prev }()
 	wantErr := "sudo keylatch broker install"
-	if runtime.GOOS != "linux" {
-		wantErr = "runs on Linux only"
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		wantErr = "runs on Linux, macOS and Windows only"
 	}
 	if _, err := run(t, newBrokerInstallCmd()); err == nil || !strings.Contains(err.Error(), wantErr) {
 		t.Fatalf("install without root = %v", err)

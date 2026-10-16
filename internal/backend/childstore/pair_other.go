@@ -8,7 +8,8 @@ import (
 	"os"
 )
 
-// Pair is unavailable: the broker's children run on Unix.
+// Pair is unavailable: the daemon hands its store to a served verb through an
+// inherited descriptor, which a Windows child cannot receive.
 func Pair() (net.Conn, *os.File, error) {
-	return nil, nil, errors.New("childstore: not supported on this platform")
+	return nil, nil, errors.New("the broker cannot give a served command its store on this platform; use 'keylatch run' instead")
 }

@@ -188,7 +188,7 @@ type chanListener struct {
 	once sync.Once
 }
 
-func (l *chanListener) AcceptUnix() (*net.UnixConn, error) {
+func (l *chanListener) Accept() (control.Conn, error) {
 	c, ok := <-l.ch
 	if !ok {
 		return nil, net.ErrClosed

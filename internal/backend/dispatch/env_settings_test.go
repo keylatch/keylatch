@@ -25,6 +25,15 @@ func TestBuildSettings_ExternalBackendEnv(t *testing.T) {
 			"KEYLATCH_OP_CONNECT_URL":          "http://127.0.0.1:8080",
 			"KEYLATCH_OP_CONNECT_TOKEN":        "connect-token",
 			"KEYLATCH_OP_CONNECT_VAULT_ID":     "vault-id",
+			"KEYLATCH_BWS_ACCESS_TOKEN":        "bws-token",
+			"KEYLATCH_BWS_PROJECT_ID":          "proj-uuid",
+			"KEYLATCH_BWS_SERVER_URL":          "https://bw.example",
+			"KEYLATCH_BWS_BIN":                 "/opt/bws",
+			"KEYLATCH_SOPS_AGE_KEY":            "age-key",
+			"KEYLATCH_SOPS_FILE":               "/etc/secrets.yaml",
+			"KEYLATCH_SOPS_FORMAT":             "yaml",
+			"KEYLATCH_SOPS_AGE_KEY_FILE":       "/etc/age.txt",
+			"KEYLATCH_SOPS_VERIFY_MAC":         "true",
 		}
 		return values[k]
 	}
@@ -58,9 +67,18 @@ func TestBuildSettings_ExternalBackendEnv(t *testing.T) {
 	assertSetting(t, resolve("op-connect"), "connect_url", "http://127.0.0.1:8080")
 	assertSetting(t, resolve("op-connect"), "token", "connect-token")
 	assertSetting(t, resolve("op-connect"), "vault_id", "vault-id")
+	assertSetting(t, resolve("bws"), "access_token", "bws-token")
+	assertSetting(t, resolve("bws"), "project_id", "proj-uuid")
+	assertSetting(t, resolve("bws"), "server_url", "https://bw.example")
+	assertSetting(t, resolve("bws"), "bin", "/opt/bws")
+	assertSetting(t, resolve("sops"), "age_key", "age-key")
+	assertSetting(t, resolve("sops"), "file", "/etc/secrets.yaml")
+	assertSetting(t, resolve("sops"), "format", "yaml")
+	assertSetting(t, resolve("sops"), "age_key_file", "/etc/age.txt")
+	assertSetting(t, resolve("sops"), "verify_mac", "true")
 
 	// The settings builder alone never carries a credential.
-	for _, name := range []string{"vault", "aws-sm", "doppler", "infisical", "op-connect"} {
+	for _, name := range []string{"vault", "aws-sm", "doppler", "infisical", "op-connect", "bws", "sops"} {
 		for _, c := range envCredentials[name] {
 			if _, ok := buildSettings(name, cfg, env)[c.field]; ok {
 				t.Errorf("buildSettings(%s) carries credential %s", name, c.field)

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"strings"
 	"time"
 
@@ -115,7 +114,7 @@ func (s *Server) releaseService(ctx context.Context, uid uint32, cgroup string, 
 	}
 	unit, user, ok := unitOfCgroup(cgroup)
 	if !ok {
-		return s.denyService(ctx, res, sr.Connection, "the caller is not in a service unit")
+		return s.denyService(ctx, res, sr.Connection, "the caller is not in a systemd service unit (service credentials need systemd, so macOS and Windows brokers always refuse)")
 	}
 	e, ok := s.services().get(sr.Connection)
 	if !ok {
@@ -174,7 +173,7 @@ func (s *Server) releaseService(ctx context.Context, uid uint32, cgroup string, 
 // serveServiceOnly answers a peer whose account may not use the broker in
 // general, as system services' accounts may not. It serves one thing: the
 // release of a credential to an enrolled unit.
-func (s *Server) serveServiceOnly(ctx context.Context, conn *net.UnixConn, id *Identity) {
+func (s *Server) serveServiceOnly(ctx context.Context, conn control.Conn, id *Identity) {
 	deny := func() {
 		refuse(conn, control.CodeRefused, exitcode.SecurityBlock, fmt.Sprintf("user %d may not use the broker", id.UID))
 	}

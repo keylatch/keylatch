@@ -239,6 +239,22 @@ func buildSettings(name string, cfg config.Config, env llmcontext.Lookup) map[st
 			setIfEnv(s, "secret_path", env, "KEYLATCH_INFISICAL_SECRET_PATH", "INFISICAL_SECRET_PATH")
 		}
 
+	case "bws":
+		s["env"] = env
+		if env != nil {
+			setIfEnv(s, "project_id", env, "KEYLATCH_BWS_PROJECT_ID", "BWS_PROJECT_ID")
+			setIfEnv(s, "server_url", env, "KEYLATCH_BWS_SERVER_URL")
+			setIfEnv(s, "bin", env, "KEYLATCH_BWS_BIN")
+		}
+
+	case "sops":
+		if env != nil {
+			setIfEnv(s, "file", env, "KEYLATCH_SOPS_FILE")
+			setIfEnv(s, "format", env, "KEYLATCH_SOPS_FORMAT")
+			setIfEnv(s, "age_key_file", env, "KEYLATCH_SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_FILE")
+			setIfEnv(s, "verify_mac", env, "KEYLATCH_SOPS_VERIFY_MAC")
+		}
+
 	case "op-connect":
 		if env != nil {
 			setIfEnv(s, "connect_url", env, "KEYLATCH_OP_CONNECT_URL", "OP_CONNECT_HOST")

@@ -103,23 +103,46 @@ func brokerPrivileged(c brokerCaller, op string, req brokerapi.Request) (brokera
 func newBrokerInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
-		Short: "Install the system broker (needs root; Linux with systemd)",
-		Long: `Install the system broker: the keylatch system user, the keylatchd service and
-socket units, the polkit policy and a device root sealed with systemd-creds
-(TPM2 and the host key when a TPM exists, the host key otherwise). Then start
-the socket. Run it with sudo, once. It never replaces an existing device root.
+		Short: "Install the system broker (needs root or an administrator)",
+		Long: `Install the system broker.
 
-Presence is asked of you through polkit: your own password, every time. After
-installing, run 'keylatch broker adopt' to move your secrets into the broker.`,
+Linux (systemd): the keylatch system user, the keylatchd service and socket
+units, the polkit policy and a device root sealed with systemd-creds (TPM2 and
+the host key when a TPM exists, the host key otherwise). Presence is asked of
+you through polkit: your own password, every time.
+
+macOS: the _keylatch account, the LaunchDaemon, the device root in the System
+keychain (readable only by keylatchd) and the presence LaunchAgent. Then run
+'sudo keylatch broker enroll-presence --user <you>' so Touch ID approves
+privileged requests.
+
+Windows: the keylatch service (NT SERVICE\keylatch), the state directory with a
+service-only ACL, a device root sealed by a CNG key, and the named pipe. Run it
+from an elevated prompt, then 'keylatch broker enroll-presence' for Windows
+Hello.
+
+Run it once. It never replaces an existing device root. After installing, run
+'keylatch broker adopt' to move your secrets into the broker.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			if runtime.GOOS != "linux" {
-				return NewUsageError("broker install: the system broker runs on Linux only")
+			var (
+				res      brokerd.InstallResult
+				err      error
+				endpoint = paths.BrokerSocket(llmcontext.DefaultLookup)
+			)
+			switch runtime.GOOS {
+			case "linux":
+				in := &brokerd.Installer{Root: "/", Files: linuxpkg.Files, Run: brokerd.ExecRunner{}, Euid: brokerEuid, Out: c.OutOrStdout()}
+				res, err = in.Install(c.Context())
+			case "darwin":
+				res, err = installMac(c.Context(), c.OutOrStdout())
+			case "windows":
+				res, err = installWindows(c.Context(), c.OutOrStdout())
+			default:
+				return NewUsageError("broker install: the system broker runs on Linux, macOS and Windows only")
 			}
-			in := &brokerd.Installer{Root: "/", Files: linuxpkg.Files, Run: brokerd.ExecRunner{}, Euid: brokerEuid, Out: c.OutOrStdout()}
-			res, err := in.Install(c.Context())
 			if err != nil {
-				if errors.Is(err, brokerd.ErrNotRoot) {
+				if errors.Is(err, brokerd.ErrNotRoot) || errors.Is(err, brokerd.ErrNotAdmin) {
 					return NewSecurityBlock("%v", err)
 				}
 				return withExitCode(exitcode.OperationFailed, fmt.Errorf("broker install: %w", err))
@@ -130,7 +153,7 @@ installing, run 'keylatch broker adopt' to move your secrets into the broker.`,
 			for _, f := range res.Kept {
 				fmt.Fprintf(c.OutOrStdout(), "kept      %s\n", f)
 			}
-			fmt.Fprintln(c.OutOrStdout(), "broker socket started: /run/keylatch/broker.sock")
+			fmt.Fprintf(c.OutOrStdout(), "broker endpoint started: %s\n", endpoint)
 			fmt.Fprintln(c.OutOrStdout(), "next: keylatch broker adopt")
 			return nil
 		},

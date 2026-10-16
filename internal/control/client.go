@@ -94,6 +94,9 @@ func BrokerInstalled(lookup llmcontext.Lookup) bool {
 }
 
 func isSocket(path string) bool {
+	if isPipePath(path) {
+		return pipeExists(path)
+	}
 	info, err := os.Stat(path)
 	return err == nil && info.Mode()&os.ModeSocket != 0
 }
@@ -116,8 +119,19 @@ func (c *Client) trusted(uid uint32) bool {
 }
 
 // dial connects and checks who runs the listener, so a socket planted by
-// another account is never trusted.
-func (c *Client) dial() (*net.UnixConn, error) {
+// another account is never trusted. The Windows broker listens on a named pipe.
+func (c *Client) dial() (Conn, error) {
+	if isPipePath(c.socket) {
+		return c.dialPipe()
+	}
+	conn, err := c.dialUnix()
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+func (c *Client) dialUnix() (*net.UnixConn, error) {
 	conn, err := net.DialTimeout("unix", c.socket, 2*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNoDaemon, err)

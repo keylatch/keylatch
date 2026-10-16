@@ -44,8 +44,15 @@ type Config struct {
 	AuditHead func() audit.Head
 	// Presence verifies human presence; nil means privileged requests are refused.
 	Presence PresenceMethod
-	// Identify pins the peer; nil uses the kernel (pidfd, SO_PEERCRED).
-	Identify func(*net.UnixConn) (*Identity, error)
+	// Helpers holds the presence helpers connected through presence.helper; nil
+	// refuses that operation.
+	Helpers *HelperHub
+	// HelperAdmit decides whether a peer may register as a presence helper (the
+	// macOS broker checks its code identity).
+	HelperAdmit func(ctx context.Context, peer control.Peer) error
+	// Identify pins the peer; nil uses the platform's kernel facility (pidfd and
+	// SO_PEERCRED, LOCAL_PEERTOKEN, or the named pipe client token).
+	Identify func(control.Conn) (*Identity, error)
 	// Allow decides which users may use the broker; nil admits UIDs from
 	// DefaultMinUID up to DefaultMaxUID.
 	Allow func(uid uint32) bool
@@ -153,11 +160,19 @@ func New(cfg Config) (*Server, error) {
 // Sessions exposes the agent scope table.
 func (s *Server) Sessions() *Sessions { return s.sessions }
 
-// Listener accepts Unix connections; *net.UnixListener is one.
+// Listener accepts client connections: a Unix socket listener (see
+// UnixListener) or the Windows named pipe listener.
 type Listener interface {
-	AcceptUnix() (*net.UnixConn, error)
+	Accept() (control.Conn, error)
 	Close() error
 }
+
+type unixListener struct{ *net.UnixListener }
+
+func (l unixListener) Accept() (control.Conn, error) { return l.AcceptUnix() }
+
+// UnixListener serves a *net.UnixListener as a Listener.
+func UnixListener(l *net.UnixListener) Listener { return unixListener{l} }
 
 // Serve accepts connections until ctx is done.
 func (s *Server) Serve(ctx context.Context, ln Listener) error {
@@ -169,7 +184,7 @@ func (s *Server) Serve(ctx context.Context, ln Listener) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	for {
-		conn, err := ln.AcceptUnix()
+		conn, err := ln.Accept()
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -190,7 +205,7 @@ func refuse(conn net.Conn, code string, exit int, msg string) {
 	_, _ = conn.Write(append(b, '\n'))
 }
 
-func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
+func (s *Server) handle(ctx context.Context, conn control.Conn) {
 	id, err := s.cfg.Identify(conn)
 	if err != nil {
 		refuse(conn, control.CodeRefused, exitcode.SecurityBlock, "the daemon could not identify the calling process: "+err.Error())
@@ -207,7 +222,7 @@ func (s *Server) handle(ctx context.Context, conn *net.UnixConn) {
 		refuse(conn, control.CodeUnavailable, exitcode.OperationFailed, "the user's partition is unavailable")
 		return
 	}
-	p.ctl.ServeConn(ctx, conn, control.Peer{UID: id.UID, PID: id.PID, Cgroup: id.Cgroup, Start: id.Start, Verify: id.Verify})
+	p.ctl.ServeConn(ctx, conn, id.Peer())
 }
 
 // PartitionDir returns the directory holding uid's state.
