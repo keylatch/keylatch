@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/keylatch/keylatch/internal/harness"
 )
 
 //go:embed profiles.json
@@ -108,11 +110,15 @@ func emit(r Result) {
 // agentEnv is the host environment minus anything that already marks an
 // agent, plus the profile's variables and HOME.
 func agentEnv(home string, p profile, extra string) []string {
+	marks := map[string]bool{}
+	for _, s := range harness.Signals() {
+		marks[s.Name] = true
+	}
 	var env []string
 	for _, e := range os.Environ() {
 		name, _, _ := strings.Cut(e, "=")
-		if strings.HasPrefix(name, "KEYLATCH_") || name == "HOME" || strings.HasPrefix(name, "CLAUDE") || strings.HasPrefix(name, "CODEX") ||
-			strings.HasPrefix(name, "CURSOR") || strings.HasPrefix(name, "GEMINI") || strings.HasPrefix(name, "OPENCODE") || name == "XDG_CONFIG_HOME" {
+		if marks[name] || strings.HasPrefix(name, "KEYLATCH_") || name == "HOME" || strings.HasPrefix(name, "CLAUDE") || strings.HasPrefix(name, "CODEX") ||
+			strings.HasPrefix(name, "CURSOR") || strings.HasPrefix(name, "GEMINI") || name == "XDG_CONFIG_HOME" {
 			continue
 		}
 		env = append(env, e)

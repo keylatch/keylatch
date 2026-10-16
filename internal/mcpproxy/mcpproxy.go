@@ -89,7 +89,7 @@ func newProxy(cfg Config) (*proxy, error) {
 	if err != nil || target.Host == "" {
 		return nil, fmt.Errorf("mcpproxy: %q is not a URL", cfg.URL)
 	}
-	if target.Scheme != "https" && !(target.Scheme == "http" && isLoopback(target.Hostname())) {
+	if target.Scheme != "https" && (target.Scheme != "http" || !isLoopback(target.Hostname())) {
 		return nil, fmt.Errorf("mcpproxy: %s must use https; the credential is not sent in the clear", cfg.URL)
 	}
 	if target.User != nil {

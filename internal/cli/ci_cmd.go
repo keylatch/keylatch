@@ -25,7 +25,7 @@ var (
 	ciNow      = time.Now
 )
 
-const gitlabTokenEnv = "KEYLATCH_CI_ID_TOKEN"
+const gitlabTokenEnv = "KEYLATCH_CI_ID_TOKEN" //nolint:gosec // G101 false positive: the name of an environment variable, not a credential
 
 type ciExchangeOptions struct {
 	provider, audience, tokenEnv, envFile string

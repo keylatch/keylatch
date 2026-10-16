@@ -142,27 +142,6 @@ func encodeSettings(settings map[string]any) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// hasCurrentGuard reports whether settings run the Go guard.
-func hasCurrentGuard(v any) bool {
-	switch t := v.(type) {
-	case string:
-		return isCurrentGuard(t)
-	case []any:
-		for _, e := range t {
-			if hasCurrentGuard(e) {
-				return true
-			}
-		}
-	case map[string]any:
-		for _, e := range t {
-			if hasCurrentGuard(e) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // uninstallClaudeCode removes the guard entries, the current Go guard and the
 // script guards of earlier versions, from every settings file.
 func uninstallClaudeCode(opts InstallOpts) (string, bool, error) {

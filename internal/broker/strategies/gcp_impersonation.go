@@ -14,7 +14,7 @@ import (
 )
 
 // DefaultGCPIAMCredentialsEndpoint is the IAM Service Account Credentials API root.
-const DefaultGCPIAMCredentialsEndpoint = "https://iamcredentials.googleapis.com"
+const DefaultGCPIAMCredentialsEndpoint = "https://iamcredentials.googleapis.com" //nolint:gosec // G101 false positive: an API root URL, not a credential
 
 // MaxGCPTokenLifetime is the longest lifetime MintScoped asks for.
 const MaxGCPTokenLifetime = time.Hour

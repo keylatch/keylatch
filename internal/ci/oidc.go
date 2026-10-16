@@ -118,7 +118,7 @@ func validate(t config.CITrust, allowHTTP bool) error {
 		return fmt.Errorf("%w: max_ttl must be 1-3600 seconds", ErrTrustInvalid)
 	}
 	for _, raw := range []string{issuerOf(t, spec), jwksURL(t, spec)} {
-		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && !(allowHTTP && u.Scheme == "http")) {
+		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && (!allowHTTP || u.Scheme != "http")) {
 			return fmt.Errorf("%w: %q must be an https URL", ErrTrustInvalid, raw)
 		}
 	}
@@ -304,7 +304,7 @@ func (v *Verifier) key(ctx context.Context, keyURL, kid string) (crypto.PublicKe
 }
 
 func (v *Verifier) fetch(ctx context.Context, keyURL string) (map[string]crypto.PublicKey, error) {
-	if u, err := url.Parse(keyURL); err != nil || (u.Scheme != "https" && !(v.AllowHTTP && u.Scheme == "http")) {
+	if u, err := url.Parse(keyURL); err != nil || (u.Scheme != "https" && (!v.AllowHTTP || u.Scheme != "http")) {
 		return nil, fmt.Errorf("key set URL %q is not https", keyURL)
 	}
 	client := v.HTTP
