@@ -46,12 +46,14 @@ keylatch connect openrouter api_key YOUR_KEY
 | Platform | Store |
 |----------|-------|
 | macOS | login keychain, generic password with service `keylatch-vault-kek` |
-| Linux / BSD | Secret Service (GNOME Keyring, KWallet) through `secret-tool`, attributes `application=keylatch`, `purpose=kek` |
+| Linux / BSD | Secret Service (GNOME Keyring, KWallet) over an encrypted D-Bus session, attributes `application=keylatch`, `purpose=kek` |
 | Windows | DPAPI (current user) with a random entropy blob, stored under `%LOCALAPPDATA%\keylatch\kek` |
 | Containers, headless hosts, Linux without a Secret Service session | a passphrase, when bootstrap runs in a terminal; otherwise none: bootstrap fails closed |
 
-The secret reaches `security` and `secret-tool` on stdin, never on the command
-line. Keylatch never falls back to a plaintext file on its own: without a
+On Linux and BSD, Keylatch talks directly to Secret Service over D-Bus using
+its encrypted session protocol; no helper process receives the identity.
+On macOS, the secret reaches `security` on stdin, never on the command line.
+Keylatch never falls back to a plaintext file on its own: without a
 reachable store, bootstrap run from a terminal asks for a passphrase and wraps
 the key under it (Argon2id; asked on the terminal on every use, never read from
 a file, a pipe or the environment), and with no terminal bootstrap and

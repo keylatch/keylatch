@@ -1,14 +1,11 @@
 package kek
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -48,27 +45,14 @@ func DefaultIdentityStore() IdentityStore {
 			return &keychainIdentityStore{bin: bin, run: execIdentityRunner}
 		}
 	case "linux", "freebsd", "openbsd", "netbsd":
-		bin, err := exec.LookPath("secret-tool")
-		if err != nil || !sessionBusConfigured(os.Getenv) {
+		if !sessionBusConfigured(os.Getenv) {
 			return nil
 		}
-		return &secretServiceIdentityStore{bin: bin, run: execIdentityRunner}
+		return newSecretServiceIdentityStore()
 	case "windows":
 		return platformIdentityStore()
 	}
 	return nil
-}
-
-func sessionBusConfigured(getenv func(string) string) bool {
-	if getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
-		return true
-	}
-	runtimeDir := getenv("XDG_RUNTIME_DIR")
-	if runtimeDir == "" {
-		return false
-	}
-	_, err := os.Stat(filepath.Join(runtimeDir, "bus"))
-	return err == nil
 }
 
 // keychainIdentityStore keeps the identity as a macOS login-keychain generic
@@ -126,59 +110,6 @@ func (s *keychainIdentityStore) Delete(account string) error {
 			return ErrIdentityNotFound
 		}
 		return commandError("security delete-generic-password", err, stderr)
-	}
-	return nil
-}
-
-// secretServiceIdentityStore keeps the identity in the freedesktop Secret
-// Service (GNOME Keyring, KWallet) through libsecret's secret-tool, which
-// reads the secret from stdin.
-type secretServiceIdentityStore struct {
-	bin string
-	run identityRunner
-}
-
-func (s *secretServiceIdentityStore) Name() string { return "secret-service" }
-
-func (s *secretServiceIdentityStore) Load(account string) ([]byte, error) {
-	if err := validAccount(account); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), identityStoreTimeout)
-	defer cancel()
-	out, stderr, err := s.run(ctx, nil, s.bin, "lookup", "application", "keylatch", "purpose", "kek", "account", account)
-	if err != nil {
-		// secret-tool exits 1 silently when no item matches.
-		if exitCode(err) == 1 && len(bytes.TrimSpace(stderr)) == 0 && len(bytes.TrimSpace(out)) == 0 {
-			return nil, ErrIdentityNotFound
-		}
-		return nil, commandError("secret-tool lookup", err, stderr)
-	}
-	return decodeIdentity(out)
-}
-
-func (s *secretServiceIdentityStore) Store(account string, identity []byte) error {
-	if err := validAccount(account); err != nil {
-		return err
-	}
-	secret := []byte(hex.EncodeToString(identity))
-	defer zero(secret)
-	ctx, cancel := context.WithTimeout(context.Background(), identityStoreTimeout)
-	defer cancel()
-	if _, stderr, err := s.run(ctx, secret, s.bin, "store", "--label="+itemLabel, "application", "keylatch", "purpose", "kek", "account", account); err != nil {
-		return commandError("secret-tool store", err, stderr)
-	}
-	return nil
-}
-
-func (s *secretServiceIdentityStore) Delete(account string) error {
-	if err := validAccount(account); err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), identityStoreTimeout)
-	defer cancel()
-	if _, stderr, err := s.run(ctx, nil, s.bin, "clear", "application", "keylatch", "purpose", "kek", "account", account); err != nil {
-		return commandError("secret-tool clear", err, stderr)
 	}
 	return nil
 }
