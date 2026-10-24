@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Redis and Valkey database sessions accept a session token through AUTH or HELLO, authenticate upstream with the stored ACL credential over TLS, and close connections when the session expires. Real Redis CLI conformance covers RESP2 and RESP3.
+
 - `ci exchange` accepts a `cloud` identity on each trust entry for AWS web identity, GCP workload identity federation or Azure federated credentials. It exports SDK configuration pointing to separate private token files for each exchange, without printing tokens or storing long-lived cloud credentials.
 - Provider minting refuses credential redirects. GCP verifies issued scopes and expiry through token introspection; scoped OAuth minting requires exactly the requested scopes and an explicit bounded expiry.
 - AWS supports `keylatch mint aws --scope role_arn=<role> --scope duration=<seconds>` using the operator's fixed role and session policy; duration may narrow its limit. Azure supports `mint.azure.authentication: federated` with an external issuer's `client_assertion`, without falling back to client-secret authentication.

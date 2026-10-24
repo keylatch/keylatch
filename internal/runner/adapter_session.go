@@ -64,3 +64,21 @@ func PostgresAdapterEnv(tmpl registry.ConnectionTemplate, user, database, token 
 	}
 	return env
 }
+
+// DatabaseAdapterEnv clears ambient credentials and routes the child through its session.
+func DatabaseAdapterEnv(tmpl registry.ConnectionTemplate, user, database, token string) SessionEnv {
+	if tmpl.Adapter.Kind != registry.AdapterRedis {
+		return PostgresAdapterEnv(tmpl, user, database, token)
+	}
+	env := SessionEnv{Strip: []string{"REDIS_URL", "REDISCLI_AUTH", "REDIS_PASSWORD", "REDIS_HOST", "REDIS_PORT", "REDIS_USERNAME", "VALKEYCLI_AUTH"}}
+	for _, rule := range tmpl.InjectionRules {
+		env.Strip = append(env.Strip, rule.EnvVar)
+	}
+	dsn := "redis://" + url.UserPassword(user, token).String() + "@127.0.0.1:" + AdapterPortPlaceholder
+	env.Set = []EnvAssign{
+		{"REDIS_URL", dsn}, {"REDISCLI_AUTH", token}, {"VALKEYCLI_AUTH", token},
+		{"REDIS_HOST", "127.0.0.1"}, {"REDIS_PORT", AdapterPortPlaceholder},
+		{"REDIS_USERNAME", user}, {"KEYLATCH_RUNTIME", "adapter"},
+	}
+	return env
+}

@@ -2,6 +2,13 @@
   "engine": "podman",
   "ttlMinutes": 60,
   "services": {
+    "redis": {
+      "image": "docker.io/library/redis:8-alpine",
+      "port": 6379,
+      "hostPort": 56379,
+      "command": ["redis-server", "--requirepass", "test", "--save", "", "--appendonly", "no"],
+      "readySeconds": 60
+    },
     "postgres": {
       "image": "docker.io/library/postgres:18-alpine",
       "port": 5432,

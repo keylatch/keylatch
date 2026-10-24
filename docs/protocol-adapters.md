@@ -43,13 +43,29 @@ Limits, by design:
 - The child can run every statement the role allows until the session ends. The role's grants and
   the audit log bound that; the adapter does not parse SQL.
 - SCRAM channel binding (`SCRAM-SHA-256-PLUS`) and non-ASCII passwords (SASLprep) are not
-  supported upstream. MySQL, Redis and the SSH agent adapters are not implemented.
+  supported upstream. MySQL and the SSH agent adapters are not implemented.
 
 Policy treats D4 like D2 and D3: `enforce.Decide` is asked for runtime `adapter`, a caller that
 needs an approval collects one before the session opens, and `run.decided` records the target.
 Each adapter connection writes `adapter.connection` with the provider, adapter, host and a reason
 (`opened`, `connected`, `bad_token`, `refused`, `upstream_failed`, `cancel`, the close reason);
 neither the token nor the password is ever logged.
+
+## Redis and Valkey
+
+Templates can declare `adapter.kind: redis`, a stored password field and exact upstream
+`adapter.hosts` entries. Run with `--tier D4 --target cache.example:6379 --db-user app`;
+the default ACL user is `default`. The adapter requires verified TLS upstream and accepts a
+session token through RESP2 `AUTH` or RESP3 `HELLO ... AUTH`. The client's user name cannot
+change the upstream ACL user. After login, the user's ACL permissions bound its commands.
+
+The child receives `REDIS_URL=redis://<user>:<token>@127.0.0.1:<port>`, `REDIS_HOST`,
+`REDIS_PORT`, `REDIS_USERNAME`, and the token in `REDISCLI_AUTH` and `VALKEYCLI_AUTH`.
+Use `redis-cli -u "$REDIS_URL"` or a client that reads `REDIS_URL`. Ambient Redis credentials
+and every injection variable declared by the template are cleared. Inline command login,
+unauthenticated connections and a stored password presented to the adapter are refused.
+Five incorrect tokens disable authentication for that session; expiry closes active connections.
+Upstream AUTH failures are sanitized and never return a server's credential-bearing message.
 
 ## Credential helpers
 
@@ -86,3 +102,9 @@ Install and generate the Prisma fixture with `npm ci --prefix tests/adapters/pri
 `KEYLATCH_TEST_PG_DATABASE=appdb` and `KEYLATCH_TEST_NODE_PG` to the absolute
 `tests/adapters/prisma/node_modules` path. Run `go test -tags adapters -count=1 ./tests/adapters/...`.
 Stop the service with `infractl dev services down <checkout>`; its data is temporary.
+
+The same managed service declaration provides Redis on `127.0.0.1:56379`. Set
+`KEYLATCH_TEST_REDIS_ADDR` to that address and `KEYLATCH_TEST_REDIS_PASSWORD=test` to run
+the Redis CLI conformance test. It checks RESP2, RESP3, the upstream ACL identity, and refusal
+of the stored password at the adapter. Unit tests additionally verify TLS, credential wiping,
+bounded frame parsing, failure sanitization and cancellation.

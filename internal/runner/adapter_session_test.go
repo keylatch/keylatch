@@ -54,3 +54,17 @@ func TestDockerCredentialEnvOnlyForTheDockerAdapter(t *testing.T) {
 	assert.Equal(t, EnvAssign{"DOCKER_CONFIG", DockerConfigPlaceholder}, got[0])
 	assert.Equal(t, EnvAssign{ProxySessionVar, "sess"}, got[1])
 }
+
+func TestDatabaseAdapterEnvRoutesRedisWithoutAmbientSecrets(t *testing.T) {
+	tmpl := registry.ConnectionTemplate{Adapter: registry.Adapter{Kind: registry.AdapterRedis}, InjectionRules: []registry.InjectionRule{{EnvVar: "CACHE_PASSWORD"}}}
+	env := DatabaseAdapterEnv(tmpl, "app", "", "klph_token")
+	got := strings.Join(env.Apply([]string{"REDIS_URL=redis://real:stored@upstream", "REDISCLI_AUTH=stored", "CACHE_PASSWORD=stored", "PATH=/bin"}, false, nil), "\n")
+	assert.NotContains(t, got, "stored")
+	assert.NotContains(t, got, "upstream")
+	assert.Contains(t, got, "REDIS_URL=redis://app:klph_token@127.0.0.1:"+AdapterPortPlaceholder)
+	assert.Contains(t, got, "REDISCLI_AUTH=klph_token")
+	assert.Contains(t, got, "VALKEYCLI_AUTH=klph_token")
+	assert.Contains(t, got, "REDIS_PORT="+AdapterPortPlaceholder)
+	tmpl.Adapter.Kind = registry.AdapterPostgres
+	assert.Equal(t, PostgresAdapterEnv(tmpl, "u", "db", "token"), DatabaseAdapterEnv(tmpl, "u", "db", "token"))
+}

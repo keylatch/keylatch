@@ -162,6 +162,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
       postgres:
         image: postgres:17
         env:
@@ -186,7 +190,8 @@ jobs:
           node-version: '26'
       - name: Install the Postgres clients
         run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
+          sudo apt-get update && sudo apt-get install -y postgresql-client redis-tools
+          redis-cli -h 127.0.0.1 CONFIG SET requirepass test
           npm ci --prefix tests/adapters/prisma
           npm run generate --prefix tests/adapters/prisma
       - name: Adapter against a real server
@@ -195,6 +200,8 @@ jobs:
           KEYLATCH_TEST_PG_USER: app_owner
           KEYLATCH_TEST_PG_PASSWORD: stored-database-password
           KEYLATCH_TEST_PG_DATABASE: appdb
+          KEYLATCH_TEST_REDIS_ADDR: 127.0.0.1:6379
+          KEYLATCH_TEST_REDIS_PASSWORD: test
         run: |
           export KEYLATCH_TEST_NODE_PG="$GITHUB_WORKSPACE/tests/adapters/prisma/node_modules"
           go test -tags adapters -count=1 -timeout 300s -v ./tests/adapters/...

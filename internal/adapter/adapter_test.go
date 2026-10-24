@@ -128,6 +128,23 @@ func TestOpenValidatesTemplateAndTarget(t *testing.T) {
 	assert.Same(t, s, got)
 }
 
+func TestRedisSessionBindsTargetAndDefaultRole(t *testing.T) {
+	m, ev := newManager(t, nil)
+	tmpl := registry.ConnectionTemplate{Provider: "cache", Adapter: registry.Adapter{Kind: registry.AdapterRedis, Field: "password", Hosts: []string{"cache.example:6379"}}}
+	s, err := m.Open(OpenRequest{Template: tmpl, Target: "cache.example"})
+	require.NoError(t, err)
+	assert.Equal(t, "cache.example:6379", s.Target())
+	assert.Equal(t, "default", s.User())
+	assert.Equal(t, registry.AdapterRedis, s.Kind())
+	assert.NotNil(t, s.server)
+	_, err = m.Open(OpenRequest{Template: tmpl, Target: "other.example"})
+	assert.ErrorIs(t, err, ErrTarget)
+	s.Close("expired")
+	_, ok := m.Get(s.ID())
+	assert.False(t, ok)
+	assert.Equal(t, []string{"opened", "expired"}, ev.reasons())
+}
+
 func TestSessionServesWithTheTokenAndAuthenticatesAsTheRole(t *testing.T) {
 	users := make(chan string, 4)
 	m, ev := newManager(t, trustDatabase(t, users))

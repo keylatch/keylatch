@@ -49,7 +49,7 @@ func (s *Server) adapterSession(ctx context.Context, kind Kind, rr *RunRequest) 
 	return Response{OK: true, Kind: kind, Session: &Session{
 		Tier:    TierAdapter,
 		Runtime: adapterRuntime,
-		Env:     runner.PostgresAdapterEnv(tmpl, sess.User(), rr.Database, sess.Token()),
+		Env:     runner.DatabaseAdapterEnv(tmpl, sess.User(), rr.Database, sess.Token()),
 		ProxyID: sess.ID(),
 	}}
 }
