@@ -57,6 +57,7 @@ echo "== keylatch doctor --agents"
 "$keylatch" doctor --agents
 
 echo "== $list_cmd"
-output="$(timeout 60s $list_cmd 2>&1)" || { echo "$output"; echo "::error::$list_cmd failed after the install"; exit 1; }
+read -r -a list_argv <<< "$list_cmd"
+output="$(timeout 60s "${list_argv[@]}" 2>&1)" || { echo "$output"; echo "::error::$list_cmd failed after the install"; exit 1; }
 echo "$output"
 echo "$output" | grep -qi keylatch || { echo "::error::$exe does not list the Keylatch MCP server"; exit 1; }
