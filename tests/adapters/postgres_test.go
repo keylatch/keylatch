@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ func startAdapter(t *testing.T, s server) (host, port string) {
 // and nothing else that could hold the database password.
 func childEnv(host, port, token string) []string {
 	return []string{
-		"PATH=" + os.Getenv("PATH"), "HOME=" + os.TempDir(),
+		"HOME=" + os.TempDir(),
 		"PGHOST=" + host, "PGPORT=" + port, "PGUSER=klph", "PGPASSWORD=" + token, "PGSSLMODE=disable",
 	}
 }
@@ -84,7 +85,7 @@ func TestPsqlLogsInWithOnlyTheSessionToken(t *testing.T) {
 	host, port := startAdapter(t, s)
 
 	cmd := exec.Command("psql", "-d", s.database, "-tAc", "select current_user")
-	cmd.Env = childEnv(host, port, sessionToken)
+	cmd.Env = append(childEnv(host, port, sessionToken), "PATH="+filepath.Dir(cmd.Path))
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(out))
 	assert.Equal(t, s.user, strings.TrimSpace(string(out)), "the server saw the stored role, not the client's user name")
@@ -101,7 +102,7 @@ func TestPsqlWithTheDatabasePasswordIsRefused(t *testing.T) {
 	host, port := startAdapter(t, s)
 
 	cmd := exec.Command("psql", "-d", s.database, "-tAc", "select 1")
-	cmd.Env = childEnv(host, port, s.password)
+	cmd.Env = append(childEnv(host, port, s.password), "PATH="+filepath.Dir(cmd.Path))
 	out, err := cmd.CombinedOutput()
 	require.Error(t, err, "only the session token opens the adapter")
 	assert.Contains(t, string(out), "password authentication failed")
@@ -130,6 +131,25 @@ const { Client } = require('pg');
 	defer cancel()
 	cmd := exec.CommandContext(ctx, node, "-e", script)
 	cmd.Env = append(childEnv(host, port, sessionToken), "NODE_PATH="+modules, "PGDATABASE="+s.database)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Equal(t, s.user, strings.TrimSpace(string(out)))
+}
+
+func TestPrismaClientLogsInWithOnlyTheSessionToken(t *testing.T) {
+	s := realServer(t)
+	node, err := exec.LookPath("node")
+	require.NoError(t, err, "Prisma conformance requires Node 26 or later")
+	_, err = os.Stat(filepath.Join("prisma", "generated", "client.ts"))
+	require.NoError(t, err, "run npm ci and npm run generate in tests/adapters/prisma")
+	host, port := startAdapter(t, s)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, filepath.Join("prisma", "query.ts"))
+	cmd.Env = append(childEnv(host, port, sessionToken), "PGDATABASE="+s.database)
+	for _, entry := range cmd.Env {
+		assert.NotContains(t, entry, s.password, "the Prisma child must never receive the stored password")
+	}
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(out))
 	assert.Equal(t, s.user, strings.TrimSpace(string(out)))

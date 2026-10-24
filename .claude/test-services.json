@@ -1,0 +1,19 @@
+{
+  "engine": "podman",
+  "ttlMinutes": 60,
+  "services": {
+    "postgres": {
+      "image": "docker.io/library/postgres:18-alpine",
+      "port": 5432,
+      "hostPort": 55432,
+      "env": {
+        "POSTGRES_USER": "app_owner",
+        "POSTGRES_PASSWORD": "test",
+        "POSTGRES_DB": "appdb"
+      },
+      "tmpfs": ["/var/lib/postgresql"],
+      "capAdd": ["CHOWN", "SETUID", "SETGID", "FOWNER", "DAC_OVERRIDE"],
+      "readySeconds": 60
+    }
+  }
+}

@@ -74,6 +74,15 @@ the user's `~/.docker/config.json` for the child, and the wrapper is Unix only.
 
 `internal/adapter/postgres` runs the adapter against an in-process fake server that speaks
 cleartext and SCRAM-SHA-256 with and without TLS, an MD5 request (refused), and against `psql` when it is installed.
-`tests/adapters` (build tag `adapters`) runs `psql` and the Node `pg` client against a real server;
-the CI job `adapters` provides one as a service container. Without the server the tests skip and
-name what is missing.
+`tests/adapters` (build tag `adapters`) runs `psql`, the Node `pg` client and a generated Prisma
+client against a real server. Each child receives only the session token, and its query must
+return the stored upstream role. The CI job `adapters` provides the server and Node 26. Without
+the server the tests skip and name what is missing; skipped tests provide no conformance evidence.
+
+For a local run, start the declared PostgreSQL service with `infractl dev services up <checkout>`.
+Install and generate the Prisma fixture with `npm ci --prefix tests/adapters/prisma` and
+`npm run generate --prefix tests/adapters/prisma`. Set `KEYLATCH_TEST_PG_ADDR=127.0.0.1:55432`,
+`KEYLATCH_TEST_PG_USER=app_owner`, `KEYLATCH_TEST_PG_PASSWORD=test`,
+`KEYLATCH_TEST_PG_DATABASE=appdb` and `KEYLATCH_TEST_NODE_PG` to the absolute
+`tests/adapters/prisma/node_modules` path. Run `go test -tags adapters -count=1 ./tests/adapters/...`.
+Stop the service with `infractl dev services down <checkout>`; its data is temporary.
