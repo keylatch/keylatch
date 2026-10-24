@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,10 +63,18 @@ GitHub Actions: the job needs "permissions: id-token: write". GitLab: define
 an id_token with the audience and expose it as KEYLATCH_CI_ID_TOKEN (or name
 another variable with --token-env).
 
-Backend credentials come from the CI system's own identity federation (AWS
-AssumeRoleWithWebIdentity, GCP workload identity federation, Azure federated
-credentials) or from a machine account in the CI secret store, as configured
-for the backend; exchange does not hold them.
+Backend credentials come from the CI system's own identity federation or from
+a machine account in the CI secret store. When the trust entry has a "cloud"
+identity (aws: role_arn; gcp: workload_identity_provider and optionally
+service_account; azure: tenant_id and client_id), exchange writes the verified
+token to a private file next to the session record and exports the variables
+the cloud SDKs read to federate with it: AWS_WEB_IDENTITY_TOKEN_FILE and
+AWS_ROLE_ARN, GOOGLE_APPLICATION_CREDENTIALS (an external-account file), or
+AZURE_FEDERATED_TOKEN_FILE, AZURE_TENANT_ID and AZURE_CLIENT_ID. The aws-sm,
+gcp-sm and azure-kv backends use those default credential chains, so they
+authenticate as the job with no stored secret. The cloud provider, not
+Keylatch, accepts or refuses the token. An invalid cloud identity denies the
+exchange.
 
 Exit codes: 0 accepted; 1 usage error; 3 no trust entry accepts the token;
 4 the issuer's keys could not be fetched (fails closed).
@@ -135,6 +145,13 @@ func runCIExchange(c *cobra.Command, opts ciExchangeOptions) error {
 		return deny(ciReason(err), err)
 	}
 
+	var cloudEnv map[string]string
+	if entry.Cloud != nil {
+		cloudEnv, err = ci.WriteCloudEnv(ci.SessionDir(ciGetenv), *entry.Cloud, raw)
+		if err != nil {
+			return deny("cloud_identity_invalid", err)
+		}
+	}
 	session := ci.NewSession(id, entry, ciNow())
 	path, err := ci.WriteSession(ci.SessionDir(ciGetenv), session)
 	if err != nil {
@@ -143,6 +160,11 @@ func runCIExchange(c *cobra.Command, opts ciExchangeOptions) error {
 	if file := firstNonEmpty(opts.envFile, ciGetenv("GITHUB_ENV")); file != "" {
 		if err := ci.ExportEnv(file, ci.SessionEnv, path); err != nil {
 			return NewInternalError("ci exchange: export %s: %v", ci.SessionEnv, err)
+		}
+		for _, k := range slices.Sorted(maps.Keys(cloudEnv)) {
+			if err := ci.ExportEnv(file, k, cloudEnv[k]); err != nil {
+				return NewInternalError("ci exchange: export %s: %v", k, err)
+			}
 		}
 	}
 	line.Outcome, line.Repository, line.Ref, line.Environment = "ok", id.Repository, id.Ref, id.Environment

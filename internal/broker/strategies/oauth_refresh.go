@@ -52,7 +52,7 @@ func WithScopes(scopes ...string) OAuthOption {
 
 // WithOAuthHTTPClient replaces the HTTP client.
 func WithOAuthHTTPClient(c *http.Client) OAuthOption {
-	return func(s *OAuthRefreshStrategy) { s.httpClient = c }
+	return func(s *OAuthRefreshStrategy) { s.httpClient = credentialHTTPClient(c) }
 }
 
 // NewOAuthRefreshStrategy creates a strategy that POSTs to tokenEndpoint.
@@ -67,7 +67,7 @@ func NewOAuthRefreshStrategy(
 		clientID:        clientID,
 		clientSecret:    clientSecret,
 		getRefreshToken: getRefreshToken,
-		httpClient:      &http.Client{Timeout: 15 * time.Second},
+		httpClient:      credentialHTTPClient(nil),
 	}
 	for _, o := range opts {
 		o(s)
@@ -83,9 +83,55 @@ func (s *OAuthRefreshStrategy) Provider() string { return s.provider }
 // Returns an error if access_token is absent from the response.
 // Token bytes are stored in ExchangeResult.tokenBytes (unexported).
 func (s *OAuthRefreshStrategy) Exchange(ctx context.Context, actor, sessionID, namespace string) (broker.ExchangeResult, error) {
+	tok, err := s.refresh(ctx, actor, namespace)
+	if err != nil {
+		return broker.ExchangeResult{}, err
+	}
+	defer tok.Zero()
+	ttl := time.Until(tok.ExpiresAt)
+	return broker.NewExchangeResult(s.provider, "", ttl, FreshExchangeType(), tok.AccessToken), nil
+}
+
+// OAuthToken is one access token obtained with a refresh token.
+type OAuthToken struct {
+	AccessToken []byte
+	ExpiresAt   time.Time
+	// Scopes are the scopes the provider reported; empty when none were
+	// requested and the provider reported none.
+	Scopes        []string
+	lifetimeKnown bool
+}
+
+// Zero wipes the token.
+func (t *OAuthToken) Zero() { clear(t.AccessToken) }
+
+// MintScoped refreshes an access token for a run. Unlike Exchange it refuses a
+// token that lives longer than maxLifetime (at most MaxTokenLifetime unless
+// the caller opted in to longer), because the provider, not Keylatch, picks
+// the lifetime and the token cannot be shortened or revoked here.
+func (s *OAuthRefreshStrategy) MintScoped(ctx context.Context, actor, namespace string, maxLifetime time.Duration) (OAuthToken, error) {
+	if maxLifetime <= 0 {
+		maxLifetime = MaxTokenLifetime
+	}
+	tok, err := s.refresh(ctx, actor, namespace)
+	if err != nil {
+		return OAuthToken{}, err
+	}
+	if !tok.lifetimeKnown || len(s.scopes) == 0 || !subset(s.scopes, tok.Scopes) {
+		tok.Zero()
+		return OAuthToken{}, fmt.Errorf("%w: a scoped mint requires the requested scopes and an explicit expiry", ErrOAuthScopeMismatch)
+	}
+	if time.Until(tok.ExpiresAt) > maxLifetime+stsClockSkew {
+		tok.Zero()
+		return OAuthToken{}, fmt.Errorf("%w: token lives until %s, longer than the %s allowed", ErrOAuthScopeMismatch, tok.ExpiresAt.UTC().Format(time.RFC3339), maxLifetime)
+	}
+	return tok, nil
+}
+
+func (s *OAuthRefreshStrategy) refresh(ctx context.Context, actor, namespace string) (OAuthToken, error) {
 	refreshToken, err := s.getRefreshToken(actor, namespace)
 	if err != nil {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: get refresh token: %w", err)
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: get refresh token: %w", err)
 	}
 	defer zeroBytes(refreshToken)
 
@@ -100,62 +146,53 @@ func (s *OAuthRefreshStrategy) Exchange(ctx context.Context, actor, sessionID, n
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.tokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: build request: %w", err)
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: http request: %w", err)
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: http request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: read response: %w", err)
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: read response: %w", err)
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: parse response: %w", err)
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: parse response: %w", err)
 	}
 
 	// Check for expired/revoked refresh token.
 	if errCode, _ := payload["error"].(string); errCode == "invalid_grant" || errCode == "invalid_token" {
-		return broker.ExchangeResult{}, broker.ErrExpiredRefreshToken
+		return OAuthToken{}, broker.ErrExpiredRefreshToken
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: server returned %d", resp.StatusCode)
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: server returned %d", resp.StatusCode)
 	}
 
 	accessToken, _ := payload["access_token"].(string)
 	if accessToken == "" {
-		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: missing access_token in response")
+		return OAuthToken{}, fmt.Errorf("oauth_refresh: missing access_token in response")
 	}
 
-	if len(s.scopes) > 0 {
-		granted, _ := payload["scope"].(string)
-		fields := strings.Fields(granted)
-		if len(fields) == 0 || !subset(fields, s.scopes) {
-			return broker.ExchangeResult{}, fmt.Errorf("%w: requested %q, issued %q", ErrOAuthScopeMismatch, strings.Join(s.scopes, " "), granted)
-		}
+	granted, _ := payload["scope"].(string)
+	fields := strings.Fields(granted)
+	if len(s.scopes) > 0 && (len(fields) == 0 || !subset(fields, s.scopes)) {
+		return OAuthToken{}, fmt.Errorf("%w: requested %q, issued %q", ErrOAuthScopeMismatch, strings.Join(s.scopes, " "), granted)
 	}
 
-	// Parse TTL.
 	ttl := time.Hour // default
-	if expiresIn, ok := payload["expires_in"].(float64); ok && expiresIn > 0 {
+	expiresIn, lifetimeKnown := payload["expires_in"].(float64)
+	lifetimeKnown = lifetimeKnown && expiresIn >= 1 && expiresIn <= float64((1<<63-1)/int64(time.Second)) && expiresIn == float64(int64(expiresIn))
+	if lifetimeKnown {
 		ttl = time.Duration(expiresIn) * time.Second
 	}
-
-	tokenBytes := []byte(accessToken)
-	// Zero the string contents via the byte slice; we clear the string reference below.
-	result := broker.NewExchangeResult(s.provider, "", ttl, FreshExchangeType(), tokenBytes)
-
-	// Zero local copy.
-	zeroBytes(tokenBytes)
-
-	return result, nil
+	return OAuthToken{AccessToken: []byte(accessToken), ExpiresAt: time.Now().Add(ttl), Scopes: fields, lifetimeKnown: lifetimeKnown}, nil
 }
 
 // FreshExchangeType returns the FreshExchange constant from the parent package.

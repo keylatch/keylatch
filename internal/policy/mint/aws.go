@@ -31,7 +31,7 @@ func ValidateAWS(p *config.AWSMintPolicy) error {
 	if len(p.SessionPolicy) == 0 || len(p.SessionPolicy) > maxSessionPolicyBytes || !json.Valid(p.SessionPolicy) {
 		return fmt.Errorf("%w: session_policy must be an IAM policy document of at most %d bytes; a role session without one is never issued", ErrInvalidAWSPolicy, maxSessionPolicyBytes)
 	}
-	if p.MaxTTL != 0 && (time.Duration(p.MaxTTL)*time.Second < 15*time.Minute || time.Duration(p.MaxTTL)*time.Second > MaxAWSTTL) {
+	if p.MaxTTL != 0 && (p.MaxTTL < 900 || p.MaxTTL > int(MaxAWSTTL/time.Second)) {
 		return fmt.Errorf("%w: max_ttl %d must be between 900 and %d seconds", ErrInvalidAWSPolicy, p.MaxTTL, int(MaxAWSTTL.Seconds()))
 	}
 	for _, c := range p.Callers {

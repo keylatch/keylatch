@@ -86,7 +86,7 @@ func Current() Manifest {
 			{ID: "contained", Category: CategoryRuntime, Status: Supported, Note: "tier D5 raw value in the Keylatch sandbox: user, mount, PID and network namespaces, Landlock, seccomp, cgroup v2 and proxy-only egress; Linux only, proven by the containment tests"},
 			{ID: "adapter", Category: CategoryRuntime, Status: Supported, Note: "tier D4 protocol adapters: the Postgres adapter terminates the child's login with a session token and authenticates upstream with the stored password"},
 			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect, authority and credential-boundary fixes"},
-			{ID: "minted", Category: CategoryRuntime, Status: Supported, Note: "a scoped credential minted for one command and revoked on exit; GitHub App installation tokens today, AWS STS and Vault dynamic secrets through the same path"},
+			{ID: "minted", Category: CategoryRuntime, Status: Supported, Note: "scoped credentials for one command: GitHub App tokens and Vault leases are revoked on exit; AWS STS, GCP impersonation, Azure client-secret or federated credentials and OAuth refresh tokens expire at their bounded lifetime; each follows the connection's mint policy; verified against stub servers, not yet against live accounts"},
 
 			// Platforms.
 			{ID: "linux", Category: CategoryPlatform, Status: Supported, Note: "Linux broker plus isolated agent environment"},

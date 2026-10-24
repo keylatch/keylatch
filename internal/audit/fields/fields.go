@@ -136,9 +136,11 @@ var safeLogFields = map[string][]string{
 		"provider_revocation_attempted", "provider_revocation_succeeded",
 	},
 	// permissions: sorted "name=level" pairs joined by commas.
-	// role_arn and session_policy_sha256 describe an AWS STS session.
+	// role_arn and session_policy_sha256 describe an AWS STS session; provider
+	// and scope describe a Vault, GCP, Azure or OAuth mint (scope is the
+	// granted path, scopes or resource, never a value).
 	"mint": {
-		"connection", "namespace", "repository", "permissions",
+		"connection", "namespace", "repository", "permissions", "provider", "scope",
 		"expires_at", "caller_kind", "reason", "role_arn", "session_policy_sha256",
 	},
 	// brokered-action events: names, decisions, counters and the digest of an

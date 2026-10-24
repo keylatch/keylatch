@@ -42,6 +42,48 @@ Agent sessions are refused: the command holds a usable credential.
   endpoint, which assumes the role with the session policy, checks that STS returned that role
   session and refreshes shortly before expiry. The endpoint and its token end with the command.
   The connection needs `access_key_id` and `secret_access_key` of a key that may assume the role.
+- **HashiCorp Vault** (`hashicorp-vault`): `mint.vault` names one dynamic-secret `path` (for
+  example `database/creds/readonly`) and `max_ttl` (1 to 3600 seconds, default 3600). The command
+  gets the fields the lease carries: `VAULT_SECRET_USERNAME` and `VAULT_SECRET_PASSWORD` for a
+  database engine, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` for the AWS
+  engine. A reply with no lease, a lease longer than `max_ttl`, or none of those fields is revoked
+  and refused. The lease is revoked when the command exits. The connection needs `vault_addr`
+  (https, or loopback) and `vault_token`, a token that may read the path and revoke its leases.
+- **Google Cloud** (`gcp`): `mint.gcp` names the `service_account` to impersonate, the OAuth
+  `scopes` a token may carry and `max_ttl` (1 to 3600 seconds, default 3600). The command gets
+  `CLOUDSDK_AUTH_ACCESS_TOKEN` and `GOOGLE_OAUTH_ACCESS_TOKEN`, an access token for that account
+  limited to those scopes. The connection holds `service_account_key`, the key file of an identity
+  that has only the Service Account Token Creator role on the target. Keylatch introspects the
+  issued token with Google's tokeninfo API and refuses mismatched scopes or expiry; an unavailable
+  introspection endpoint also refuses the mint.
+- **Azure** (`azure`): `mint.azure` names the `resource` and `max_ttl` (1 to 5400 seconds, default
+  3600). The command gets `AZURE_ACCESS_TOKEN`, a client-credentials token whose audience is that
+  resource. Entra ID picks the token lifetime (60 to 90 minutes by default); a token that lives
+  longer than `max_ttl` is refused, so an operator who accepts Entra's lifetime sets 5400. The
+  connection holds `tenant_id`, `client_id` and `client_secret`. For workload identity federation,
+  set `mint.azure.authentication` to `federated` and supply `client_assertion`, a short-lived JWT
+  issued by the external identity provider registered in Entra ID. Keylatch sends that assertion
+  to Entra's token endpoint with the JWT-bearer assertion type, never a client secret. A missing
+  or refused assertion fails; it does not fall back to another authentication method.
+- **OAuth refresh token** (`oauth-refresh`): `mint.oauth` names the provider's `token_endpoint`
+  (https), the `scopes` a token may carry and `max_ttl` (1 to 5400 seconds, default 3600). The
+  command gets `OAUTH_ACCESS_TOKEN`. The provider's reply must report exactly the requested scopes
+  and an explicit positive expiry no longer than `max_ttl`. The connection holds `client_id`, `client_secret`
+  and `refresh_token`.
+
+GCP, Azure and OAuth tokens cannot be revoked by Keylatch; they end at their expiry, so keep
+`max_ttl` short. Vault leases and GitHub tokens are revoked on exit. For every provider the policy
+lists `callers` (service and host by default; agent sessions never).
+
+`keylatch mint <connection> --scope <key>=<value>` mints the same credentials without running a
+command and prints them as JSON: `--scope repo=` and `--scope <permission>=<level>` for
+`github-app`, `--scope scope=` (repeatable) for `gcp` and `oauth-refresh`, `--scope resource=` for
+`azure`, `--scope path=` for `hashicorp-vault`, and `--scope role_arn=` plus `--scope duration=`
+(seconds) for `aws`. AWS always uses the operator's session policy and role; only its duration
+can be reduced, down to 900 seconds. Its JSON `data` contains `access_key_id`, `secret_access_key`
+and `session_token`, and `scope` records the role, duration and session policy. A scope can narrow what the policy allows and never
+widen it. A Vault lease printed this way is not revoked, because the credential is handed to the
+caller; it ends within the hour. AWS has no `mint` form.
 
 ```json
 {
@@ -64,9 +106,11 @@ writable audit log nothing is minted.
 
 The provider strategies behind `minted` check what they receive. AWS STS requires a session
 policy and verifies the assumed-role session and expiry; Vault dynamic secrets are limited to a
-one hour lease revoked on exit; Google and Microsoft token refreshes request their scopes and
-verify the reply; GCP service account impersonation and Azure client credentials for one resource
-check the lifetime and audience. A reply that does not match fails closed.
+one hour lease revoked on exit; OAuth refreshes request their scopes and verify the reply; GCP
+service account impersonation verifies the token's scopes and lifetime through introspection;
+Azure client credentials check the lifetime and audience. Credential requests never follow
+redirects. A reply that does not match fails closed. Real runs against Vault, Google Cloud,
+Azure and an OAuth provider need an account; the strategies are tested against stub servers.
 
 ## Remote MCP servers
 

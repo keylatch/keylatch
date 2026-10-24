@@ -210,8 +210,13 @@ func TestGCPImpersonationScoped(t *testing.T) {
 	mint := func(h http.HandlerFunc, scope strategies.GCPScope) (strategies.GCPToken, error) {
 		srv := httptest.NewServer(h)
 		defer srv.Close()
+		info := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "minted-access-token", r.URL.Query().Get("access_token"))
+			_ = json.NewEncoder(w).Encode(map[string]string{"scope": strings.Join(scope.Scopes, " "), "exp": fmt.Sprint(time.Now().Add(scope.Lifetime).Unix())})
+		}))
+		defer info.Close()
 		s := strategies.NewGCPImpersonationStrategy("deployer@proj.iam.gserviceaccount.com",
-			func(string) ([]byte, error) { return []byte("source-token"), nil }, strategies.WithGCPEndpoint(srv.URL))
+			func(string) ([]byte, error) { return []byte("source-token"), nil }, strategies.WithGCPEndpoint(srv.URL), strategies.WithGCPTokenInfoURL(info.URL))
 		return s.MintScoped(context.Background(), "ns", scope)
 	}
 
@@ -248,8 +253,8 @@ func TestAzureFederatedScoped(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": jwtWithAudience(aud), "expires_in": 3599, "token_type": "Bearer"})
 		}))
 		defer srv.Close()
-		s := strategies.NewAzureClientCredentialsStrategy("tenant-1", "client-1",
-			func(string) ([]byte, error) { return []byte("client-secret"), nil }, strategies.WithAzureAuthority(srv.URL))
+		s := strategies.NewAzureFederatedStrategy("tenant-1", "client-1",
+			func(string) ([]byte, error) { return []byte("external-issuer-assertion"), nil }, strategies.WithAzureAuthority(srv.URL))
 		return s.MintScoped(context.Background(), "ns", "api://vault-reader")
 	}
 
@@ -258,6 +263,9 @@ func TestAzureFederatedScoped(t *testing.T) {
 	assert.NotEmpty(t, tok.AccessToken)
 	assert.Equal(t, "/tenant-1/oauth2/v2.0/token", path)
 	assert.Equal(t, "client_credentials", form.Get("grant_type"))
+	assert.Equal(t, "external-issuer-assertion", form.Get("client_assertion"))
+	assert.Equal(t, "urn:ietf:params:oauth:client-assertion-type:jwt-bearer", form.Get("client_assertion_type"))
+	assert.NotContains(t, form, "client_secret")
 	assert.Equal(t, "api://vault-reader/.default", form.Get("scope"))
 
 	_, err = mint("https://graph.microsoft.com")
@@ -273,6 +281,7 @@ func TestNoUnscopedStrategies(t *testing.T) {
 		"github_app.go": true, "vault_dynamic.go": true,
 		"oauth_refresh.go": true, "google_oauth.go": true, "microsoft_oauth.go": true,
 		"static_gateway.go": true,
+		"http.go":           true, // shared credential transport, not a strategy
 		// build-tag helpers, not strategies
 		"endpoint_default.go": true, "endpoint_testbuild.go": true,
 	}

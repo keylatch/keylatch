@@ -89,4 +89,16 @@ While `KEYLATCH_CI_SESSION` is set, `keylatch run` and the MCP `keylatch_run` to
 
 ## Backend credentials
 
-Keylatch does not hold the CI job's cloud credentials. Use the CI system's own federation for the backend the connection reads from: AWS `AssumeRoleWithWebIdentity`, GCP workload identity federation, Azure federated credentials, or a machine account stored in the CI secret store.
+Add a `cloud` object to a trust entry to prepare the cloud SDK's workload identity credentials after Keylatch verifies the job token:
+
+| Provider | `cloud` configuration | Exported variables |
+| --- | --- | --- |
+| AWS | `{"provider":"aws","role_arn":"arn:aws:iam::123456789012:role/ci","region":"eu-west-1"}` | `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_ROLE_ARN`, `AWS_ROLE_SESSION_NAME`, optional `AWS_REGION` |
+| GCP | `{"provider":"gcp","workload_identity_provider":"//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/ci/providers/github","service_account":"ci@project.iam.gserviceaccount.com"}` | `GOOGLE_APPLICATION_CREDENTIALS` pointing to an external-account credential file; service-account impersonation is optional |
+| Azure | `{"provider":"azure","tenant_id":"11111111-2222-3333-4444-555555555555","client_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}` | `AZURE_FEDERATED_TOKEN_FILE`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` |
+
+The trust entry's audience must also be accepted by the cloud provider's federation configuration. Configure that provider to trust only the intended issuer, repository and job identity. Keylatch verifies its own trust rules first; the cloud SDK exchanges the token with the provider when it needs credentials. The provider still decides whether to grant access.
+
+Each exchange writes its OIDC token into a separate private directory under the session directory, with a private token file. The GCP credential file contains a path to that token, not the token itself. Keep these files out of artifacts and caches and remove the runner's temporary directory after the job. Tokens and cloud credentials are never printed to the job log. The `aws-sm`, `gcp-sm` and `azure-kv` backends use these default credential chains; existing static environment credentials can take precedence in an SDK, so remove those when using federation.
+
+Without `cloud`, configure the SDK's workload identity separately or use a machine account from the CI secret store.

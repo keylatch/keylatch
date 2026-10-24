@@ -56,7 +56,7 @@ func NewVaultDynamicSecretStrategy(
 		vaultAddr:     strings.TrimRight(vaultAddr, "/"),
 		secretPath:    strings.TrimPrefix(secretPath, "/"),
 		getVaultToken: getVaultToken,
-		httpClient:    &http.Client{Timeout: 15 * time.Second},
+		httpClient:    credentialHTTPClient(nil),
 		now:           time.Now,
 	}
 }
@@ -71,7 +71,7 @@ func (s *VaultDynamicSecretStrategy) MintScoped(ctx context.Context, namespace s
 	if scope.MaxLease == 0 {
 		scope.MaxLease = MaxVaultLease
 	}
-	if scope.MaxLease < 0 || scope.MaxLease > MaxVaultLease {
+	if scope.MaxLease < time.Second || scope.MaxLease > MaxVaultLease {
 		return VaultLease{}, fmt.Errorf("vault_dynamic: the lease limit must be between 1 second and %s", MaxVaultLease)
 	}
 	vaultToken, err := s.getVaultToken(namespace)
@@ -106,16 +106,18 @@ func (s *VaultDynamicSecretStrategy) MintScoped(ctx context.Context, namespace s
 		return VaultLease{}, fmt.Errorf("vault_dynamic: parse response: %w", err)
 	}
 
-	lease := time.Duration(payload.LeaseDuration) * time.Second
 	switch {
 	case payload.LeaseID == "":
 		return VaultLease{}, fmt.Errorf("%w: the secret has no lease, so it cannot be revoked", ErrVaultLeaseMismatch)
-	case lease <= 0 || lease > scope.MaxLease:
-		if rerr := s.revoke(ctx, payload.LeaseID, vaultToken); rerr != nil {
-			return VaultLease{}, fmt.Errorf("%w: lease of %s exceeds %s, and revoking it failed: %v", ErrVaultLeaseMismatch, lease, scope.MaxLease, rerr)
+	case payload.LeaseDuration <= 0 || payload.LeaseDuration > int(scope.MaxLease/time.Second):
+		revokeCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if rerr := s.revoke(revokeCtx, payload.LeaseID, vaultToken); rerr != nil {
+			return VaultLease{}, fmt.Errorf("%w: lease of %d seconds exceeds %s, and revoking it failed: %v", ErrVaultLeaseMismatch, payload.LeaseDuration, scope.MaxLease, rerr)
 		}
-		return VaultLease{}, fmt.Errorf("%w: lease of %s exceeds %s; it was revoked", ErrVaultLeaseMismatch, lease, scope.MaxLease)
+		return VaultLease{}, fmt.Errorf("%w: lease of %d seconds exceeds %s; it was revoked", ErrVaultLeaseMismatch, payload.LeaseDuration, scope.MaxLease)
 	}
+	lease := time.Duration(payload.LeaseDuration) * time.Second
 	return VaultLease{LeaseID: payload.LeaseID, Data: payload.Data, Expires: s.now().Add(lease)}, nil
 }
 
