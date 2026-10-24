@@ -17,6 +17,7 @@ import (
 	"github.com/keylatch/keylatch/internal/explain"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/manifest"
+	keylatchmcp "github.com/keylatch/keylatch/internal/mcp"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy"
 	"github.com/keylatch/keylatch/internal/policy/actor"
@@ -54,34 +55,23 @@ func newExplainRunCmd() *cobra.Command {
 				return NewUsageError("%v", err)
 			}
 			lookup := llmcontext.DefaultLookup
-			pol, err := loadExplainPolicy(lookup)
-			if err != nil {
-				return err
-			}
 			actorName, _ := c.Flags().GetString("actor")
 			if actorName == "" {
 				actorName = actor.Infer(lookup).Name
 			}
 			cwd, _ := c.Flags().GetString("cwd")
-			if cwd == "" {
-				cwd, _ = os.Getwd()
-			}
 			tier, _ := c.Flags().GetString("tier")
-
-			rep := explain.Run(explain.Input{
-				Policy:     pol,
-				Manifest:   manifest.Current(),
-				Connection: resolveConnection(c.Context(), connection),
-				Document:   explainDocument(c.Context()),
-				Request: explain.Request{
-					Actor:      actorName,
-					LLMSession: llmcontext.IsLLMSession(lookup),
-					Connection: connection,
-					Argv:       argv,
-					CWD:        cwd,
-					Tier:       strings.ToUpper(tier),
-				},
+			rep, err := explainRun(c.Context(), explain.Request{
+				Actor:      actorName,
+				LLMSession: llmcontext.IsLLMSession(lookup),
+				Connection: connection,
+				Argv:       argv,
+				CWD:        cwd,
+				Tier:       tier,
 			})
+			if err != nil {
+				return err
+			}
 			if wantJSON(c) {
 				return writeJSON(c.OutOrStdout(), rep)
 			}
@@ -92,6 +82,40 @@ func newExplainRunCmd() *cobra.Command {
 	cmd.Flags().String("cwd", "", "evaluate for this working directory (default: current directory)")
 	cmd.Flags().String("tier", "", "ask about a specific delivery tier (D1..D6); never relaxes policy")
 	return cmd
+}
+
+// explainRun evaluates a request against the policy files on disk. An empty
+// working directory means the current one.
+func explainRun(ctx context.Context, req explain.Request) (explain.Report, error) {
+	pol, err := loadExplainPolicy(llmcontext.DefaultLookup)
+	if err != nil {
+		return explain.Report{}, err
+	}
+	if req.CWD == "" {
+		req.CWD, _ = os.Getwd()
+	}
+	req.Tier = strings.ToUpper(req.Tier)
+	return explain.Run(explain.Input{
+		Policy:     pol,
+		Manifest:   manifest.Current(),
+		Connection: resolveConnection(ctx, req.Connection),
+		Document:   explainDocument(ctx),
+		Request:    req,
+	}), nil
+}
+
+// mcpExplain answers the MCP keylatch_explain tool. The caller is an agent by
+// construction, so it is evaluated as one regardless of the server's own
+// environment.
+func mcpExplain(ctx context.Context, req keylatchmcp.ExplainRequest) (any, error) {
+	return explainRun(ctx, explain.Request{
+		Actor:      "mcp",
+		LLMSession: true,
+		Connection: req.Connection,
+		Argv:       req.Command,
+		CWD:        req.CWD,
+		Tier:       req.Tier,
+	})
 }
 
 func newExplainPolicyCmd() *cobra.Command {

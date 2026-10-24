@@ -32,12 +32,11 @@ func (s *Server) ServeStdio(ctx context.Context, store connections.Store, dispat
 		nil,
 	)
 
-	RegisterTools(srv, store, dispatch)
+	RegisterTools(srv, store, dispatch, s.opts.Explain)
 
-	// Assert exactly five tools are registered.
 	s.registeredTools = len(registeredTools)
-	if s.registeredTools != 5 {
-		return fmt.Errorf("mcp: tool registration invariant violated: expected 5 tools, got %d", s.registeredTools)
+	if s.registeredTools != toolCount {
+		return fmt.Errorf("mcp: tool registration invariant violated: expected %d tools, got %d", toolCount, s.registeredTools)
 	}
 
 	// No token printed to stderr.

@@ -92,9 +92,10 @@ func TestNewServerTCPBindDefault(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", s.opts.Bind)
 }
 
-// TestExactlyFiveToolsRegistered verifies that exactly five tools are registered.
-func TestExactlyFiveToolsRegistered(t *testing.T) {
-	assert.Equal(t, 5, len(registeredTools), "exactly five tools must be registered")
+// TestExactToolSetRegistered verifies the fixed set of registered tools.
+func TestExactToolSetRegistered(t *testing.T) {
+	assert.Equal(t, 6, len(registeredTools), "exactly six tools must be registered")
+	assert.Contains(t, registeredTools, "keylatch_explain")
 	assert.Contains(t, registeredTools, "keylatch_status")
 	assert.Contains(t, registeredTools, "keylatch_list_connections")
 	assert.Contains(t, registeredTools, "keylatch_describe")

@@ -41,6 +41,7 @@ func newMCPCmd() *cobra.Command {
 				Transport: transport,
 				Bind:      bind,
 				StderrLog: true,
+				Explain:   mcpExplain,
 			})
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)

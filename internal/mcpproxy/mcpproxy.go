@@ -50,6 +50,9 @@ type Config struct {
 	// HTTP is the client used for the remote server; the default never
 	// follows a redirect, so the token cannot leave the bound host.
 	HTTP *http.Client
+	// OAuth, when set, treats the stored field as the credential of an OAuth
+	// grant and sends the access token it yields instead of the field itself.
+	OAuth *OAuth
 }
 
 // Run reads newline-delimited JSON-RPC messages from in until it ends and
@@ -58,6 +61,9 @@ func Run(ctx context.Context, cfg Config, in io.Reader, out io.Writer) error {
 	p, err := newProxy(cfg)
 	if err != nil {
 		return err
+	}
+	if p.oauth != nil {
+		defer p.oauth.reject()
 	}
 	if cfg.Authorize != nil {
 		if err := cfg.Authorize(ctx); err != nil {
@@ -82,6 +88,7 @@ type proxy struct {
 	slot    registry.Slot
 	client  *http.Client
 	session string
+	oauth   *oauthState
 }
 
 func newProxy(cfg Config) (*proxy, error) {
@@ -105,7 +112,14 @@ func newProxy(cfg Config) (*proxy, error) {
 	}
 	c := *client
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &proxy{cfg: cfg, target: target, slot: slot, client: &c}, nil
+	p := &proxy{cfg: cfg, target: target, slot: slot, client: &c}
+	if cfg.OAuth != nil {
+		p.oauth = &oauthState{cfg: *cfg.OAuth, p: p}
+		if err := p.oauth.validate(); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
 }
 
 // headerSlot picks the header slot that is bound to the target's host.
@@ -162,11 +176,32 @@ func (p *proxy) forward(ctx context.Context, msg []byte, out io.Writer) {
 	}
 }
 
-// post sends one message and returns the messages of the answer.
+// post sends one message and returns the messages of the answer. An OAuth
+// access token the remote refuses is replaced once and the message resent.
 func (p *proxy) post(ctx context.Context, msg []byte) (int, [][]byte, error) {
+	status, replies, err := p.send(ctx, msg)
+	if status == http.StatusUnauthorized && p.oauth != nil && p.oauth.reject() {
+		return p.send(ctx, msg)
+	}
+	return status, replies, err
+}
+
+// bearer returns the value to send in the credential header.
+func (p *proxy) bearer(ctx context.Context) ([]byte, error) {
+	if p.oauth != nil {
+		return p.oauth.token(ctx)
+	}
 	token, err := p.cfg.Secret(ctx, p.slot.Field)
 	if err != nil || len(token) == 0 {
-		return 0, nil, fmt.Errorf("the connection %s has no %s", p.cfg.Connection, p.slot.Field)
+		return nil, fmt.Errorf("the connection %s has no %s", p.cfg.Connection, p.slot.Field)
+	}
+	return token, nil
+}
+
+func (p *proxy) send(ctx context.Context, msg []byte) (int, [][]byte, error) {
+	token, err := p.bearer(ctx)
+	if err != nil {
+		return 0, nil, err
 	}
 	defer clear(token)
 	matcher := redactor.NewMatcher(token)

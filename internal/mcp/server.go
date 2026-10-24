@@ -1,8 +1,8 @@
-// Package mcp implements the keylatch MCP server exposing exactly five
+// Package mcp implements the keylatch MCP server exposing a fixed set of
 // value-free tools over stdio and localhost-TCP transports.
 //
 // Security invariants enforced here:
-//   - exactly five tools, enforced at startup
+//   - a fixed tool set, enforced at startup
 //   - no secret-bearing field in any tool output
 //   - TCP bind to 127.0.0.1 only; no 0.0.0.0
 //   - stdio mode uses no bearer token
@@ -56,6 +56,8 @@ type ServerOptions struct {
 	// StdoutLog and StderrLog control logging destinations.
 	StdoutLog bool
 	StderrLog bool
+	// Explain answers keylatch_explain; the tool refuses without it.
+	Explain ExplainFunc
 }
 
 // ToolResult is the result of an MCP tool invocation.
