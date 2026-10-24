@@ -40,6 +40,7 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/sidecar/ipc"
 	"github.com/keylatch/keylatch/internal/ui"
@@ -289,6 +290,7 @@ any agent sandbox.`,
 			} else {
 				defer closeAudit()
 				cfg.Keys, cfg.KeyAdmin = keys, admin
+				cfg.KeyPresence = presence.New().Platform
 				if sshAgentSocket != "off" {
 					if sshAgentSocket == "" {
 						sshAgentSocket = paths.SSHAgentSocket(env)

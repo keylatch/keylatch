@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/keylatch/keylatch/internal/presence"
 )
@@ -25,7 +26,7 @@ type allowedEntry struct {
 // or widened: the entry before and the additions this request makes.
 func keyAllowSummary(kp KeyPolicyRequest, before *allowedEntry) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "allow key operations on %s field %s\n", kp.Connection, kp.Field)
+	fmt.Fprintf(&b, "allow key operations on %s field %s\n", keyDisplaySafe(kp.Connection), keyDisplaySafe(kp.Field))
 	state := "new entry"
 	if before != nil {
 		hosts := 0
@@ -38,7 +39,7 @@ func keyAllowSummary(kp KeyPolicyRequest, before *allowedEntry) string {
 	fmt.Fprintf(&b, "  before:   %s\n", state)
 	fmt.Fprintf(&b, "  adds:     operations %s; algorithms %s\n", listOrNone(kp.Operations), listOrNone(kp.Algorithms))
 	fmt.Fprintf(&b, "  agent decrypt: %t; ssh-agent: %t; host keys %s\n", kp.AgentDecrypt, kp.SSHAgent, listOrNone(kp.HostKeys))
-	fmt.Fprintf(&b, "  secret:   %s", orDefault(kp.Secret, "unchanged"))
+	fmt.Fprintf(&b, "  secret:   %s", keyDisplaySafe(orDefault(kp.Secret, "unchanged")))
 	return b.String()
 }
 
@@ -46,7 +47,16 @@ func listOrNone(in []string) string {
 	if len(in) == 0 {
 		return "none"
 	}
-	return strings.Join(slices.Sorted(slices.Values(in)), ",")
+	return keyDisplaySafe(strings.Join(slices.Sorted(slices.Values(in)), ","))
+}
+
+func keyDisplaySafe(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, value)
 }
 
 func orDefault(s, d string) string {

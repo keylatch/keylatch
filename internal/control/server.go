@@ -29,6 +29,7 @@ import (
 	"github.com/keylatch/keylatch/internal/placeholder"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/policy/mint"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -82,6 +83,8 @@ type Config struct {
 	Keys *keyops.Service
 	// KeyAdmin edits the key operation allowlist. Nil disables it.
 	KeyAdmin *keyops.Admin
+	// KeyPresence authenticates the daemon user's policy edits; nil fails closed.
+	KeyPresence presence.Method
 	// Audit receives one value-free event per decision. Nil records nothing.
 	Audit audit.Emitter
 	// Callers classifies socket peers. Nil walks the real process tree.

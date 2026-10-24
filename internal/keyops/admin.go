@@ -101,8 +101,30 @@ func lookupField(doc Document, conn, field string) *FieldPolicy {
 	return nil
 }
 
-// Allow adds or widens an entry. Agent and host callers are refused.
+// Allow edits policy for trusted in-process callers; remote callers must use AllowVerified.
 func (a *Admin) Allow(ctx context.Context, c Caller, ch Change) error {
+	return a.allow(ctx, c, ch, nil)
+}
+
+// AllowVerified authenticates the effective edit while the policy lock is held.
+func (a *Admin) AllowVerified(ctx context.Context, c Caller, ch Change, confirm func(context.Context, string) (string, error)) error {
+	if confirm == nil {
+		return deny("human presence verification is unavailable")
+	}
+	ch.PresenceDigest = ""
+	return a.allow(ctx, c, ch, confirm)
+}
+
+func allowSummary(ch Change, before, after *FieldPolicy) string {
+	encode := func(fp *FieldPolicy) string {
+		b, _ := json.Marshal(fp) //nolint:gosec // Secret is a backend path, not key material; the human must approve it.
+		return fmt.Sprintf("%+q", string(b))
+	}
+	return fmt.Sprintf("Allow key operations on connection %+q field %+q\nbefore: %s\nafter: %s",
+		ch.Connection, ch.Field, encode(before), encode(after))
+}
+
+func (a *Admin) allow(ctx context.Context, c Caller, ch Change, confirm func(context.Context, string) (string, error)) error {
 	if ch.Connection == "" || ch.Field == "" {
 		return fmt.Errorf("%w: a connection and --field are required", ErrInvalid)
 	}
@@ -115,7 +137,7 @@ func (a *Admin) Allow(ctx context.Context, c Caller, ch Change) error {
 		return err
 	}
 	var before, after *FieldPolicy
-	prev, err := a.store.update(func(doc Document) error {
+	err = a.store.update(func(doc Document) error {
 		before = lookupField(doc, ch.Connection, ch.Field)
 		fp := FieldPolicy{}
 		if before != nil {
@@ -139,21 +161,29 @@ func (a *Admin) Allow(ctx context.Context, c Caller, ch Change) error {
 		if err != nil {
 			return fmt.Errorf("%w: %v", ErrInvalid, err)
 		}
+		if confirm != nil {
+			ch.PresenceDigest, err = confirm(ctx, allowSummary(ch, before, &fp))
+			if err != nil {
+				return fmt.Errorf("%w: human presence: %v", ErrDenied, err)
+			}
+			if ch.PresenceDigest == "" {
+				return deny("human presence verification returned no proof")
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if doc[ch.Connection] == nil {
 			doc[ch.Connection] = map[string]FieldPolicy{}
 		}
 		doc[ch.Connection][ch.Field] = fp
 		after = &fp
+		if err := a.record(ctx, c, "allow", ch.Connection, ch.Field, before, after, audit.OutcomeOK, "", ch.PresenceDigest); err != nil {
+			return fmt.Errorf("%w: audit log is not writable", ErrUnavailable)
+		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	if aerr := a.record(ctx, c, "allow", ch.Connection, ch.Field, before, after, audit.OutcomeOK, "", ch.PresenceDigest); aerr != nil {
-		a.store.restore(prev)
-		return fmt.Errorf("%w: audit log is not writable", ErrUnavailable)
-	}
-	return nil
+	return err
 }
 
 // Revoke narrows or removes an entry. With no operations, algorithms or
@@ -179,7 +209,7 @@ func (a *Admin) Revoke(ctx context.Context, c Caller, ch Change) error {
 		before, after *FieldPolicy
 	}
 	var edits []edit
-	prev, err := a.store.update(func(doc Document) error {
+	err = a.store.update(func(doc Document) error {
 		fields, ok := doc[ch.Connection]
 		if !ok || (ch.Field != "" && lookupField(doc, ch.Connection, ch.Field) == nil) {
 			return fmt.Errorf("%w: nothing is configured for %q", ErrNotFound, ch.Connection)
@@ -205,19 +235,15 @@ func (a *Admin) Revoke(ctx context.Context, c Caller, ch Change) error {
 			fields[name] = fp
 			edits = append(edits, edit{name, &before, &fp})
 		}
+		sort.Slice(edits, func(i, j int) bool { return edits[i].field < edits[j].field })
+		for _, e := range edits {
+			if err := a.record(ctx, c, "revoke", ch.Connection, e.field, e.before, e.after, audit.OutcomeOK, "", ""); err != nil {
+				return fmt.Errorf("%w: audit log is not writable", ErrUnavailable)
+			}
+		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	sort.Slice(edits, func(i, j int) bool { return edits[i].field < edits[j].field })
-	for _, e := range edits {
-		if aerr := a.record(ctx, c, "revoke", ch.Connection, e.field, e.before, e.after, audit.OutcomeOK, "", ""); aerr != nil {
-			a.store.restore(prev)
-			return fmt.Errorf("%w: audit log is not writable", ErrUnavailable)
-		}
-	}
-	return nil
+	return err
 }
 
 type listEntry struct {

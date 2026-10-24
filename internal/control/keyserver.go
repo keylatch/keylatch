@@ -5,9 +5,11 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/keyops"
+	"github.com/keylatch/keylatch/internal/presence"
 	"golang.org/x/crypto/ssh/agent"
 )
 
@@ -29,7 +31,7 @@ func keyErrorResponse(resp Response, err error) Response {
 }
 
 // keyPolicy lists or edits the allowlist. Only a human may add or widen.
-func (s *Server) keyPolicy(_ context.Context, kind Kind, kp *KeyPolicyRequest) Response {
+func (s *Server) keyPolicy(ctx context.Context, kind Kind, kp *KeyPolicyRequest) Response {
 	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
 	if kp == nil {
 		resp.Error = "a key policy request is required"
@@ -46,17 +48,23 @@ func (s *Server) keyPolicy(_ context.Context, kind Kind, kp *KeyPolicyRequest) R
 		AgentDecrypt: kp.AgentDecrypt, SSHAgent: kp.SSHAgent, PresenceDigest: kp.PresenceDigest,
 	}
 	var err error
-	ctx := context.Background()
 	caller := callerOf(kind)
 	switch kp.Action {
 	case "allow":
-		// Constrained callers get the admin's own refusal, which audits it.
-		if !caller.Constrained && kp.PresenceDigest == "" {
-			resp.Code, resp.ExitCode = CodeRefused, exitcode.SecurityBlock
-			resp.Error = "adding or widening the allowlist needs a human at a terminal; run keylatch key allow yourself"
-			return resp
-		}
-		err = s.cfg.KeyAdmin.Allow(ctx, caller, ch)
+		err = s.cfg.KeyAdmin.AllowVerified(ctx, caller, ch, func(ctx context.Context, summary string) (string, error) {
+			if s.cfg.KeyPresence == nil {
+				return "", presence.ErrUnavailable
+			}
+			ctx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			if err := s.cfg.KeyPresence.Confirm(ctx, presence.ActionKeyAllow, summary); err != nil {
+				return "", err
+			}
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			return presence.Digest(presence.ActionKeyAllow, summary), nil
+		})
 	case "revoke":
 		err = s.cfg.KeyAdmin.Revoke(ctx, caller, ch)
 	case "list":

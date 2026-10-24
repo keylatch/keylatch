@@ -101,7 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- `keylatch key allow` asks for human presence before it adds or widens a key operation allowlist entry, showing the entry before and the additions; the daemon refuses an `allow` without the proof and audits its digest.
+- `keylatch key allow` requires daemon-controlled OS authentication of the exact effective before/after policy under the policy lock; caller-supplied digests cannot authorize edits. Failed audit writes never publish policy or restore permissions removed by another request. Hosts without a trusted platform prompt fail closed. Standalone Linux polkit requires a privileged mechanism to display request details; broker routing for these edits is still required.
+- Approval prompts sanitize terminal controls and bidi formatting in request plans and hashes. Secret Service prompts validate the pinned service owner's unique D-Bus sender, including destination-addressed signals.
 - `keylatch approve` and `keylatch deny` (including `deny --all`) ask for human presence before the approver passphrase, whatever the request is; only contained runs did before. The presence proof is stored in the approval record and covered by the approver's signature, so a record whose proof was edited is rejected.
 - The Bitwarden session is no longer written to disk in plaintext. `keylatch bw unlock` seals it under the vault key (`sessions/bw.session.enc`, expiry in a separate file), for 1 hour unless told otherwise; `keylatch bw lock` and the next unlock remove a `sessions/bw.session` file an earlier version left, and `keylatch doctor` fails (`backend.bw_session_file`) while one exists. `keylatch bw status` warns about it. The default lifetime was 8 hours and is now the maximum.
 - With a Bitwarden folder configured, only that folder is listed or read; before, any item that sat in some folder was listed.

@@ -230,53 +230,26 @@ func (s *Store) write(doc Document) error {
 	return os.Rename(tmp.Name(), s.path)
 }
 
-// update applies fn to the verified allowlist and stores the result. It
-// returns the document as it was before fn ran.
-func (s *Store) update(fn func(Document) error) (Document, error) {
+// update publishes an edit only after its authorization and audit succeed under the lock.
+func (s *Store) update(fn func(Document) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	doc, err := s.load()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	before := cloneDocument(doc)
 	if doc == nil {
 		doc = Document{}
 	}
 	if err := fn(doc); err != nil {
-		return nil, err
+		return err
 	}
 	for conn, fields := range doc {
 		if len(fields) == 0 {
 			delete(doc, conn)
 		}
 	}
-	return before, s.write(doc)
-}
-
-func (s *Store) restore(doc Document) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if doc == nil {
-		doc = Document{}
-	}
-	_ = s.write(doc)
-}
-
-func cloneDocument(d Document) Document {
-	out := make(Document, len(d))
-	for c, fields := range d {
-		out[c] = make(map[string]FieldPolicy, len(fields))
-		for f, fp := range fields {
-			fp.Operations = slices.Clone(fp.Operations)
-			fp.Algorithms = slices.Clone(fp.Algorithms)
-			if fp.SSHAgent != nil {
-				fp.SSHAgent = &SSHPolicy{HostKeys: slices.Clone(fp.SSHAgent.HostKeys)}
-			}
-			out[c][f] = fp
-		}
-	}
-	return out
+	return s.write(doc)
 }
 
 // ParsePolicy decodes and validates an allowlist document.

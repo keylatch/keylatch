@@ -27,6 +27,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/keyops"
+	"github.com/keylatch/keylatch/internal/presence"
+	"github.com/keylatch/keylatch/internal/presence/presencetest"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -128,6 +130,7 @@ func startKeyDaemonWith(t *testing.T, seed []keyops.Change, keys memoryKeys, tun
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := Config{Env: lookupOf(d.env), Binary: "/bin/false", Keys: svc, KeyAdmin: admin}
+	cfg.KeyPresence = keyPresenceFunc(func(context.Context, presence.Action, string) error { return nil })
 	if tune != nil {
 		tune(&cfg)
 	}
@@ -342,6 +345,7 @@ func TestKeyReplyOnTheWireCarriesNoKey(t *testing.T) {
 
 func TestKeyPolicyThroughDaemon(t *testing.T) {
 	d := startKeyDaemon(t, nil, memoryKeys{})
+	presencetest.Approve(t)
 	agentEnv := map[string]string{"KEYLATCH_AGENT_SESSION": "1"}
 	for k, v := range d.env {
 		agentEnv[k] = v

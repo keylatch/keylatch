@@ -45,7 +45,7 @@ func newFakeService() *fakeService {
 }
 
 func (f *fakeService) store() *secretServiceIdentityStore {
-	return &secretServiceIdentityStore{connect: func() (secretBus, error) { return f, nil }}
+	return &secretServiceIdentityStore{connect: func(context.Context) (secretBus, error) { return f, nil }}
 }
 
 func (f *fakeService) close() {}
@@ -253,7 +253,7 @@ func TestSecretService_EveryStepReportsItsFailure(t *testing.T) {
 		t.Run(tc.method, func(t *testing.T) {
 			base := newFakeService()
 			require.NoError(t, base.store().Store("vault-01", identity(1)))
-			s := &secretServiceIdentityStore{connect: func() (secretBus, error) { return failingService{base, tc.method}, nil }}
+			s := &secretServiceIdentityStore{connect: func(context.Context) (secretBus, error) { return failingService{base, tc.method}, nil }}
 			var err error
 			switch tc.op {
 			case "store":
@@ -269,7 +269,7 @@ func TestSecretService_EveryStepReportsItsFailure(t *testing.T) {
 }
 
 func TestSecretService_ConnectionFailureIsReported(t *testing.T) {
-	s := &secretServiceIdentityStore{connect: func() (secretBus, error) { return nil, errors.New("no bus") }}
+	s := &secretServiceIdentityStore{connect: func(context.Context) (secretBus, error) { return nil, errors.New("no bus") }}
 	_, err := s.Load("vault-01")
 	require.ErrorContains(t, err, "no bus")
 }
@@ -347,7 +347,7 @@ func TestSecretService_RejectsMalformedReplies(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			base := newFakeService()
 			require.NoError(t, base.store().Store("vault-01", identity(1)))
-			s := &secretServiceIdentityStore{connect: func() (secretBus, error) {
+			s := &secretServiceIdentityStore{connect: func(context.Context) (secretBus, error) {
 				return malformedService{base, method, []any{42}}, nil
 			}}
 			var err error
@@ -364,7 +364,7 @@ func TestSecretService_RejectsMalformedReplies(t *testing.T) {
 		})
 	}
 	base := newFakeService()
-	s := &secretServiceIdentityStore{connect: func() (secretBus, error) {
+	s := &secretServiceIdentityStore{connect: func(context.Context) (secretBus, error) {
 		return malformedService{base, serviceIface + ".OpenSession", []any{dbus.MakeVariant("not a public key"), dbus.ObjectPath("/session/1")}}, nil
 	}}
 	_, err := s.Load("vault-01")

@@ -92,7 +92,11 @@ func printApprovalSummary(w io.Writer, ar *approval.ApprovalRequest) {
 // fields, always with the request hash.
 func approvalSummary(ar *approval.ApprovalRequest) string {
 	if ar.Plan != "" {
-		return ar.Plan + "request hash: " + ar.RequestHash
+		lines := strings.Split(ar.Plan, "\n")
+		for i := range lines {
+			lines[i] = displaySafe(lines[i])
+		}
+		return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\nrequest hash: " + displaySafe(ar.RequestHash)
 	}
 	return fmt.Sprintf("%s on %s for %s; request hash: %s",
 		displaySafe(ar.Capability), displaySafe(ar.Connection), displaySafe(ar.Actor), displaySafe(ar.RequestHash))

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"unicode"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,24 @@ import (
 	"github.com/keylatch/keylatch/internal/presence/presencetest"
 	"github.com/keylatch/keylatch/internal/testutil"
 )
+
+func TestApprovalPresenceSummaryCannotRewriteTerminal(t *testing.T) {
+	ar := &approval.ApprovalRequest{
+		Plan:        "command: tool --arg=\x1b[2J\r\u202econcealed\nconnection: production",
+		RequestHash: "hash\x1b[H\u2066",
+	}
+	summary := approvalSummary(ar)
+	for _, r := range summary {
+		if r != '\n' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
+			t.Fatalf("unsafe prompt character %U", r)
+		}
+	}
+	assert.Contains(t, summary, "\nconnection: production\nrequest hash: hash[H")
+	var printed bytes.Buffer
+	printApprovalSummary(&printed, ar)
+	assert.Contains(t, printed.String(), "command: tool --arg=[2Jconcealed")
+	assert.Contains(t, summary, "command: tool --arg=[2Jconcealed")
+}
 
 func decide(t *testing.T, verb string, args ...string) error {
 	t.Helper()

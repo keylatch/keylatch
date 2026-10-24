@@ -4,12 +4,14 @@ package control
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/keyops"
+	"github.com/keylatch/keylatch/internal/presence"
 )
 
 func TestKeyAllowSummaryShowsBeforeAndAdditions(t *testing.T) {
@@ -28,9 +30,14 @@ func TestKeyAllowSummaryShowsBeforeAndAdditions(t *testing.T) {
 	}
 }
 
-// The daemon refuses an allow that carries no presence proof, whoever asks,
-// and applies one that does.
-func TestKeyPolicyAllowNeedsAProofFromAHuman(t *testing.T) {
+type keyPresenceFunc func(context.Context, presence.Action, string) error
+
+func (keyPresenceFunc) Name() string { return "test" }
+func (f keyPresenceFunc) Confirm(ctx context.Context, action presence.Action, summary string) error {
+	return f(ctx, action, summary)
+}
+
+func TestKeyPolicyAllowAuthenticatesEffectiveEdit(t *testing.T) {
 	dir := t.TempDir()
 	store := keyops.NewStore(filepath.Join(dir, "key-operations.json"), keyops.MACKey(bytes.Repeat([]byte{3}, 32)))
 	rec := &recordedAudit{}
@@ -50,15 +57,44 @@ func TestKeyPolicyAllowNeedsAProofFromAHuman(t *testing.T) {
 	}
 
 	ask.PresenceDigest = "digest-of-what-the-human-read"
-	if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); !resp.OK {
-		t.Fatalf("an allow with a proof was refused: %+v", resp)
+	if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); resp.OK {
+		t.Fatal("a caller-supplied digest bypassed authentication")
 	}
-	if !strings.Contains(rec.dump(), "digest-of-what-the-human-read") {
-		t.Fatalf("the audit event lacks the presence proof: %s", rec.dump())
+	var summary string
+	calls := 0
+	srv.cfg.KeyPresence = keyPresenceFunc(func(_ context.Context, action presence.Action, text string) error {
+		calls++
+		if action != presence.ActionKeyAllow {
+			t.Fatalf("wrong presence action: %s", action)
+		}
+		summary = text
+		return nil
+	})
+	if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); !resp.OK {
+		t.Fatalf("an authenticated allow was refused: %+v", resp)
+	}
+	if !strings.Contains(summary, "before:") || !strings.Contains(summary, "after:") || !strings.Contains(summary, "sign") {
+		t.Fatalf("presence did not show the effective edit: %s", summary)
+	}
+	if !strings.Contains(rec.dump(), presence.Digest(presence.ActionKeyAllow, summary)) || strings.Contains(rec.dump(), ask.PresenceDigest) {
+		t.Fatalf("the audit event must use only the server-derived proof: %s", rec.dump())
 	}
 
 	ask.Field = "G"
 	if resp = srv.keyPolicy(t.Context(), KindAgent, &ask); resp.OK {
 		t.Fatalf("an agent widened the allowlist with a borrowed proof: %+v", resp)
+	}
+	if calls != 1 {
+		t.Fatal("an agent triggered a presence prompt")
+	}
+	for _, failure := range []error{presence.ErrDenied, presence.ErrUnavailable, context.Canceled} {
+		srv.cfg.KeyPresence = keyPresenceFunc(func(context.Context, presence.Action, string) error { return failure })
+		if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); resp.OK {
+			t.Fatalf("authentication failure accepted: %v", failure)
+		}
+	}
+	doc, err := store.Load()
+	if err != nil || len(doc["c"]) != 1 {
+		t.Fatalf("failed authentication changed policy: %v, %v", doc, err)
 	}
 }

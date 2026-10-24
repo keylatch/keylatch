@@ -64,7 +64,7 @@ type secretValue struct {
 // inside the service's encrypted session, never in the clear, and no helper
 // process or argument list ever carries them.
 type secretServiceIdentityStore struct {
-	connect func() (secretBus, error)
+	connect func(context.Context) (secretBus, error)
 }
 
 func newSecretServiceIdentityStore() IdentityStore {
@@ -84,7 +84,7 @@ type secretSession struct {
 }
 
 func (s *secretServiceIdentityStore) open(ctx context.Context) (*secretSession, error) {
-	bus, err := s.connect()
+	bus, err := s.connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("secret service: %w", err)
 	}
@@ -375,32 +375,51 @@ func sessionBusConfigured(getenv func(string) string) bool {
 	return err == nil
 }
 
-type dbusConn struct{ conn *dbus.Conn }
+type dbusConn struct {
+	conn  *dbus.Conn
+	owner string
+}
 
-func connectSessionBus() (secretBus, error) {
-	conn, err := dbus.ConnectSessionBus()
+func connectSessionBus(ctx context.Context) (secretBus, error) {
+	conn, err := dbus.ConnectSessionBus(dbus.WithContext(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return &dbusConn{conn: conn}, nil
+	var owner string
+	if err = conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.GetNameOwner", 0, secretsName).Store(&owner); err != nil {
+		if call := conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.StartServiceByName", 0, secretsName, uint32(0)); call.Err != nil {
+			_ = conn.Close()
+			return nil, call.Err
+		}
+		err = conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.GetNameOwner", 0, secretsName).Store(&owner)
+	}
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return &dbusConn{conn: conn, owner: owner}, nil
 }
 
 func (c *dbusConn) close() { _ = c.conn.Close() }
 
 func (c *dbusConn) call(ctx context.Context, path dbus.ObjectPath, method string, args ...any) ([]any, error) {
-	call := c.conn.Object(secretsName, path).CallWithContext(ctx, method, 0, args...)
+	call := c.conn.Object(c.owner, path).CallWithContext(ctx, method, 0, args...)
 	return call.Body, call.Err
 }
 
 func (c *dbusConn) prompt(ctx context.Context, path dbus.ObjectPath) (bool, error) {
 	match := []dbus.MatchOption{
-		dbus.WithMatchSender(secretsName), dbus.WithMatchObjectPath(path),
+		dbus.WithMatchSender(c.owner), dbus.WithMatchObjectPath(path),
 		dbus.WithMatchInterface(promptIface), dbus.WithMatchMember("Completed"),
 	}
 	if err := c.conn.AddMatchSignalContext(ctx, match...); err != nil {
 		return false, err
 	}
-	defer func() { _ = c.conn.RemoveMatchSignal(match...) }()
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), identityStoreTimeout)
+		defer cancel()
+		_ = c.conn.RemoveMatchSignalContext(cleanup, match...)
+	}()
 	signals := make(chan *dbus.Signal, 8)
 	c.conn.Signal(signals)
 	defer c.conn.RemoveSignal(signals)
@@ -414,7 +433,7 @@ func (c *dbusConn) prompt(ctx context.Context, path dbus.ObjectPath) (bool, erro
 			if sig == nil {
 				return false, errors.New("secret service: bus closed while waiting for prompt")
 			}
-			if sig.Path != path || sig.Name != promptIface+".Completed" {
+			if sig.Sender != c.owner || sig.Path != path || sig.Name != promptIface+".Completed" {
 				continue
 			}
 			if len(sig.Body) != 2 {

@@ -84,14 +84,25 @@ func TestSecretServiceKEKRoundTrip(t *testing.T) {
 }
 
 type privatePrompt struct {
-	conn    *dbus.Conn
-	foreign *dbus.Conn
-	body    []any
+	conn        *dbus.Conn
+	foreign     *dbus.Conn
+	destination string
+	body        []any
 }
 
 func (p *privatePrompt) Prompt(string) *dbus.Error {
 	if p.foreign != nil {
-		_ = p.foreign.Emit("/prompt/1", promptIface+".Completed", false, dbus.MakeVariant("forged"))
+		p.foreign.Send(&dbus.Message{
+			Type: dbus.TypeSignal,
+			Headers: map[dbus.HeaderField]dbus.Variant{
+				dbus.FieldDestination: dbus.MakeVariant(p.destination),
+				dbus.FieldPath:        dbus.MakeVariant(dbus.ObjectPath("/prompt/1")),
+				dbus.FieldInterface:   dbus.MakeVariant(promptIface),
+				dbus.FieldMember:      dbus.MakeVariant("Completed"),
+				dbus.FieldSignature:   dbus.MakeVariant(dbus.ParseSignatureMust("bv")),
+			},
+			Body: []any{false, dbus.MakeVariant("forged")},
+		}, nil)
 	}
 	if p.body != nil {
 		_ = p.conn.Emit("/prompt/1", promptIface+".Completed", p.body...)
@@ -131,8 +142,9 @@ func TestSecretServicePromptValidatesReplies(t *testing.T) {
 			if tc.foreign {
 				prompt.foreign = connect()
 			}
+			client := &dbusConn{conn: connect(), owner: server.Names()[0]}
+			prompt.destination = client.conn.Names()[0]
 			require.NoError(t, server.Export(prompt, "/prompt/1", promptIface))
-			client := &dbusConn{conn: connect()}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			dismissed, err := client.prompt(ctx, "/prompt/1")

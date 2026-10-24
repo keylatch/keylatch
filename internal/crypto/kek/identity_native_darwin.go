@@ -15,6 +15,7 @@ static int klIdentity(int operation, int noPrompt, const char *account, const vo
 	@autoreleasepool {
 		LAContext *authentication = [[LAContext alloc] init];
 		authentication.localizedReason = @"Access the Keylatch vault identity";
+		authentication.interactionNotAllowed = noPrompt != 0;
 		dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0));
 		dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, 0);
 		dispatch_source_set_event_handler(timer, ^{ [authentication invalidate]; });
@@ -26,7 +27,6 @@ static int klIdentity(int operation, int noPrompt, const char *account, const vo
 			(__bridge id)kSecUseDataProtectionKeychain: @YES,
 			(__bridge id)kSecUseAuthenticationContext: authentication
 		} mutableCopy];
-		if (noPrompt) query[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUIFail;
 		OSStatus status = errSecParam;
 		if (operation == 0) {
 			query[(__bridge id)kSecReturnData] = @YES;

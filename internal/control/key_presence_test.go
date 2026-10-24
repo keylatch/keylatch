@@ -56,8 +56,10 @@ func TestKeyAllowNeedsPresence(t *testing.T) {
 	}
 }
 
-func TestKeyAllowWithoutProofIsRefusedForAHuman(t *testing.T) {
-	d := startKeyDaemon(t, allowSeed, memoryKeys{"aes": bytes.Repeat([]byte{1}, 32)})
+func TestKeyAllowWithoutServerPresenceIsRefusedForAHuman(t *testing.T) {
+	d := startKeyDaemonWith(t, allowSeed, memoryKeys{"aes": bytes.Repeat([]byte{1}, 32)}, func(cfg *Config) {
+		cfg.KeyPresence = nil
+	})
 	c, err := NewClient(lookupOf(d.env))
 	if err != nil {
 		t.Fatal(err)
