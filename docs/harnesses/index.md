@@ -6,6 +6,8 @@ title: Agent harnesses
 
 `keylatch agent install <harness>` writes the Keylatch guard hook, the MCP server and a rules block into a harness's own configuration by structured merge: every other key, hook and comment stays, and each file is saved as `<name>.keylatch.bak` first. `--dry-run` prints the diff, `--upgrade` refreshes installed entries, `--all` installs every harness found on this machine, `--project` writes the current project's files, and `--guard`, `--mcp` and `--rules` pick parts. `keylatch doctor --agents` reports what is in place. `keylatch install-guard` is the older spelling and prints a deprecation notice.
 
+The nightly drift workflow preserves `harness-drift-<id>` artifacts from real published CLI configuration-reader runs, including the harness version, timestamp, result, commit and run URL. Download and extract the artifacts into one directory, then pass that directory with `keylatch doctor --agents --drift-results /path/to/results`. Each file is named `<harness-id>.json`. These are historical results for the recorded version and commit, not certification of the local installation or IDE sandbox. Missing evidence is `unknown`; invalid evidence is rejected. Local socket probes do not create drift results.
+
 | Harness | Support level | Hook | Page |
 |---------|---------------|------|------|
 | Claude Code | guard plus detection | `PreToolUse` in `settings.json` | [claude-code](claude-code.md) |

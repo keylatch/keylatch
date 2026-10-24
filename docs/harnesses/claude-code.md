@@ -27,7 +27,9 @@ Use `keylatch agent install claude-code --sandbox --dry-run` to preview the sand
 
 Register a remote bearer-authenticated server with `keylatch agent install claude-code --mcp --mcp-proxy remote-docs=https://mcp.example.com/mcp`. The configuration stores no credential. For OAuth, configure the server command with the `mcp proxy --oauth` options in the [CLI reference](../cli-reference.md#keylatch-mcp-proxy).
 
-The `SANDBOX` column in `doctor --agents` checks exclusions: `ok` means no matching exclusions were found, `excluded` names them, and `unknown` means some settings could not be read. It does not certify sandbox activation or socket reachability from a running Claude Code session.
+The `EXCLUSIONS` column in `doctor --agents` checks exclusions: `ok` means no matching exclusions were found, `excluded` names them, and `unknown` means some settings could not be read. `CONFIGURED SANDBOX` reports explicit saved `enabled` values; missing, unreadable or conflicting settings produce `unknown`. JSON includes each settings path and SHA-256 digest. Saved settings do not certify activation in a running session.
+
+Run `keylatch doctor --agent-socket-probe --json` through Claude Code's normal shell tool to check peer-validated daemon socket reachability from that process. The report identifies its source, observed harness signals and saved settings; sandbox enforcement and runtime version remain `unknown` because environment signals cannot prove them. Running this command in an ordinary terminal tests only that terminal's access. It launches no harness and retrieves no credentials.
 
 Detection: `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, and the `claude` process in a command's ancestry.
 

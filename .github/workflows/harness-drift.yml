@@ -69,7 +69,16 @@ jobs:
           EXE: ${{ matrix.exe }}
           LIST_COMMAND: ${{ matrix.list }}
           KEYLATCH_DRIFT_BREAK: ${{ inputs.break_fixture && '1' || '' }}
+          KEYLATCH_DRIFT_RESULT: ${{ runner.temp }}/${{ matrix.harness }}.json
+          KEYLATCH_DRIFT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/ci/harness-drift.sh "$RUNNER_TEMP/bin/keylatch" "$HARNESS" "$EXE" "$LIST_COMMAND"
+      - name: preserve the published harness result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: harness-drift-${{ matrix.harness }}
+          path: ${{ runner.temp }}/${{ matrix.harness }}.json
+          if-no-files-found: warn
       - name: the fake-agent profiles still match the registry
         env:
           GOMEMLIMIT: 3GiB

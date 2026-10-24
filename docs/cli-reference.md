@@ -52,6 +52,8 @@ keylatch agent install cursor --mcp --mcp-proxy remote-docs=https://mcp.example.
 keylatch agent install claude-code --sandbox
 keylatch agent uninstall claude-code --sandbox
 keylatch doctor --agents --json
+keylatch doctor --agents --drift-results /path/to/results --json
+keylatch doctor --agent-socket-probe --json
 ```
 
 With no component flags, install writes the guard, MCP server and rules. `--guard`, `--mcp` and `--rules` select individual components. `--mcp-proxy` is repeatable and writes only a connection name and URL; tokens remain in Keylatch. URLs require HTTPS except for loopback development servers. Duplicate connection names and credential-bearing URLs are rejected before configuration is written. Existing entries remain unchanged unless `--upgrade` is supplied. `--project` selects project configuration; `--all` selects detected harnesses.

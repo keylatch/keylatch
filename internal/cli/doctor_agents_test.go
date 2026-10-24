@@ -124,6 +124,21 @@ func TestRunDoctorAgentsReadsThisMachine(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, []int{doctorExitOK, doctorExitWarnings}, code)
 	assert.Contains(t, out.String(), `"claude-code"`)
+	driftDir := t.TempDir()
+	artifact := filepath.Join(driftDir, "claude-code.json")
+	require.NoError(t, os.WriteFile(artifact, []byte(`{"harness":"claude-code","version":"2.0","result":"pass","checked_at":"2026-01-01T00:00:00Z","scope":"published-cli-config-reader"}`), 0600))
+	out.Reset()
+	_, err = runDoctorAgents(&out, true, driftDir)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), `"last_drift"`)
+	assert.Contains(t, out.String(), `"published-cli-config-reader"`)
+	out.Reset()
+	_, err = runDoctorAgents(&out, false, driftDir)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "pass 2026-01-01T00:00:00Z 2.0")
+	require.NoError(t, os.WriteFile(artifact, []byte(`{}`), 0600))
+	_, err = runDoctorAgents(&out, true, driftDir)
+	require.ErrorContains(t, err, "claude-code drift evidence")
 }
 
 func TestDoctorAgentsSandboxUsesSelectedHomeAndProject(t *testing.T) {

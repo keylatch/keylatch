@@ -117,9 +117,13 @@ Exit codes:
 			categoryStr, _ := c.Flags().GetString("category")
 			repair, _ := c.Flags().GetBool("repair")
 			yes, _ := c.Flags().GetBool("yes")
+			if socketProbe, _ := c.Flags().GetBool("agent-socket-probe"); socketProbe {
+				return runAgentSocketProbe(c.OutOrStdout(), jsonOut)
+			}
 
 			if agentsOnly, _ := c.Flags().GetBool("agents"); agentsOnly {
-				code, err := runDoctorAgents(c.OutOrStdout(), jsonOut)
+				driftDir, _ := c.Flags().GetString("drift-results")
+				code, err := runDoctorAgents(c.OutOrStdout(), jsonOut, driftDir)
 				if err != nil {
 					return err
 				}
@@ -216,7 +220,10 @@ Exit codes:
 	cmd.Flags().Bool("quiet", false, "suppress table output; only exits with the appropriate code")
 	cmd.Flags().String("category", "", "comma-separated list of categories to run (e.g. environment,backends)")
 	cmd.Flags().Bool("agents", false, "report, for every supported agent harness, whether it is installed here and whether its Keylatch hook, MCP server and rules are in place")
+	cmd.Flags().String("drift-results", "", "directory of historical harness-drift JSON artifacts to display with --agents")
+	cmd.Flags().Bool("agent-socket-probe", false, "probe daemon socket reachability from this process; invoke through the harness shell tool")
 	cmd.Flags().Bool("sandbox", false, "report what this host lets the contained tier (D5) do: namespaces, Landlock, seccomp and cgroups")
+	cmd.MarkFlagsMutuallyExclusive("agents", "agent-socket-probe", "sandbox")
 	// NOTE: --connection flag for gateway scoping is deferred.
 
 	return cmd
