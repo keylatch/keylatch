@@ -152,13 +152,15 @@ func (s *Server) ServeSSHAgent(ctx context.Context, ln *net.UnixListener) error 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.serveAgentConn(conn)
+			s.serveAgentConn(ctx, conn)
 		}()
 	}
 }
 
-func (s *Server) serveAgentConn(conn *net.UnixConn) {
+func (s *Server) serveAgentConn(ctx context.Context, conn *net.UnixConn) {
 	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	peer, err := peerOf(conn)
 	if err != nil || peer.UID != s.uid || s.cfg.Keys == nil {
 		return

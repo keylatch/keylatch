@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/keylatch/keylatch/internal/audit"
@@ -461,6 +462,45 @@ func TestSSHAgentEndpointSigns(t *testing.T) {
 	requireAbsent(t, "audit", d.audit.dump(), keyPEM)
 	if !strings.Contains(d.audit.dump(), `"operation":"ssh_sign"`) {
 		t.Fatal("ssh signing is not audited")
+	}
+}
+
+func TestSSHAgentShutdownClosesIdleClients(t *testing.T) {
+	dir, err := os.MkdirTemp("", "klidle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	store := keyops.NewStore(filepath.Join(dir, "keys.json"), bytes.Repeat([]byte{3}, 32))
+	svc, err := keyops.New(store, memoryKeys{}, &recordedAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(Config{Keys: svc})
+	ln, err := Listen(filepath.Join(dir, "agent.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- srv.ServeSSHAgent(ctx, ln) }()
+	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: ln.Addr().String(), Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := agent.NewClient(conn).List(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("idle agent client blocked daemon shutdown")
 	}
 }
 

@@ -783,7 +783,7 @@ The allowlist is stored as `key-operations.json` in the Keylatch state directory
 
 Keys are read from the backend for one request and parsed per request; nothing is cached. Go cannot zero the parsed key structures of RSA and ECDSA keys or the AES key schedule, so those can remain in daemon memory until the garbage collector reuses them (the byte buffers Keylatch holds are cleared). Go's `runtime/secret` would erase such temporaries, but it requires `GOEXPERIMENT=runtimesecret` and is not part of a default build, so Keylatch does not use it.
 
-`keylatchd serve` also answers the ssh-agent protocol on `ssh-agent.sock` beside the control socket (`--ssh-agent-socket`, `KEYLATCH_SSH_AGENT_SOCKET`; `off` disables it) for fields allowed with `--ssh-agent`. It lists and signs only. With `--host-key`, a key signs only in sessions the client bound to one of those server host key fingerprints with `session-bind@openssh.com`; OpenSSH 8.9 and later sends it. Git commit signing uses this endpoint, so no gpg-agent is needed. Allow an Ed25519, ECDSA or RSA key with `--ssh-agent`, then:
+`keylatchd serve` also answers the ssh-agent protocol on `ssh-agent.sock` beside the control socket (`--ssh-agent-socket`, `KEYLATCH_SSH_AGENT_SOCKET`; `off` disables it) for fields allowed with `--ssh-agent`. It lists and signs only. With `--host-key`, a key signs only SSH authentication for the exact session ID, public key and allowed server verified by `session-bind@openssh.com`; OpenSSH 8.9 and later sends it. Forwarding, rebinding and arbitrary signing are refused for these restricted keys. Git commit signing uses an unrestricted SSH signing key. Allow an Ed25519, ECDSA or RSA key with `--ssh-agent`, then:
 
 ```
 export SSH_AUTH_SOCK=<ssh-agent.sock>
