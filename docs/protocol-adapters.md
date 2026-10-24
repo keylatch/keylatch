@@ -104,6 +104,26 @@ missing daemon answers `credentials not found in native keychain` and exits 1. T
 shipped as its own executable for use outside a Keylatch run. The temporary Docker config replaces
 the user's `~/.docker/config.json` for the child, and the wrapper is Unix only.
 
+## Package registries
+
+The `npm`, `pypi`, and `cargo` connections declare D3 registry slots. The child receives
+only a session placeholder; the TLS proxy substitutes the stored token in the declared
+Authorization position for the registry host. A placeholder in a query, body, another header,
+or another host is refused. Cargo download and index hosts have no credential slot.
+
+| Connection | Placeholder environment | Client setup |
+|------------|-------------------------|--------------|
+| `npm` | `NPM_TOKEN`, `NODE_AUTH_TOKEN` | A user npm config containing `//registry.npmjs.org/:_authToken=${NPM_TOKEN}` |
+| `pypi` | `TWINE_PASSWORD` | `twine upload --username __token__ dist/*` |
+| `cargo` | `CARGO_REGISTRY_TOKEN` | `cargo publish` with the `cargo:token` credential provider |
+
+Use `keylatch run --tier D3 <connection> -- <command>` after connecting the registry token.
+For npm or pnpm, point `NPM_CONFIG_USERCONFIG` at the config file so authentication does not
+depend on an ambient home-directory configuration. The file contains the environment-variable
+reference, never a token. PyPI and Cargo templates do not claim a non-mutating credential
+validation endpoint. Publishing permissions and package scopes are determined by the token
+configured at the registry.
+
 ## Testing
 
 `internal/adapter/postgres` runs the adapter against an in-process fake server that speaks
