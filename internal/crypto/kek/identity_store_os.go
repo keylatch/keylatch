@@ -40,10 +40,7 @@ func DefaultIdentityStore() IdentityStore {
 	}
 	switch runtime.GOOS {
 	case "darwin":
-		const bin = "/usr/bin/security"
-		if _, err := os.Stat(bin); err == nil {
-			return &keychainIdentityStore{bin: bin, run: execIdentityRunner}
-		}
+		return newMacOSIdentityStore()
 	case "linux", "freebsd", "openbsd", "netbsd":
 		if !sessionBusConfigured(os.Getenv) {
 			return nil
@@ -72,6 +69,7 @@ func (s *keychainIdentityStore) Load(account string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), identityStoreTimeout)
 	defer cancel()
 	out, stderr, err := s.run(ctx, nil, s.bin, "find-generic-password", "-s", keychainService, "-a", account, "-w")
+	defer zero(out)
 	if err != nil {
 		if exitCode(err) == keychainItemNotFoundExit {
 			return nil, ErrIdentityNotFound

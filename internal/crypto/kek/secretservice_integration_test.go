@@ -18,9 +18,6 @@ import (
 
 func privateSecretBus(t *testing.T) (context.Context, string, []string) {
 	t.Helper()
-	if testing.Short() {
-		t.Skip("requires a private D-Bus and Secret Service")
-	}
 	busBin, err := exec.LookPath("dbus-daemon")
 	if err != nil {
 		t.Skip("dbus-daemon is unavailable")
