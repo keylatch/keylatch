@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/harness/sandbox"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 )
 
@@ -23,39 +25,66 @@ type sandboxExclusion struct {
 	managed bool
 }
 
+// SandboxExclusion is a keylatch entry in a Claude Code settings file's
+// sandbox.excludedCommands list.
+type SandboxExclusion struct {
+	File    string
+	Pattern string
+	// RunsChildren is true when the entry can cover a subcommand that starts a
+	// process of the caller's choosing (`run`, `launch`).
+	RunsChildren bool
+	// Managed is true for administrator-managed settings.
+	Managed bool
+}
+
+// ClaudeCodeExclusions lists the keylatch entries of every Claude Code settings
+// file, and the files that could not be read.
+func ClaudeCodeExclusions(lookup llmcontext.Lookup) (found []SandboxExclusion, unreadable []string) {
+	exclusions, _, unreadable, _ := scanExclusions(lookup)
+	for _, e := range exclusions {
+		found = append(found, SandboxExclusion{File: e.file, Pattern: e.pattern, RunsChildren: e.runs, Managed: e.managed})
+	}
+	return found, unreadable
+}
+
+// scanExclusions reads every Claude Code settings file for keylatch entries in
+// sandbox.excludedCommands.
+func scanExclusions(lookup llmcontext.Lookup) (found []sandboxExclusion, checked, unreadable []string, projectDir string) {
+	files, projectDir := claudeSettingsFiles(lookup)
+	for _, f := range files {
+		data, err := os.ReadFile(f.path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				unreadable = append(unreadable, f.label)
+			}
+			continue
+		}
+		var settings struct {
+			Sandbox struct {
+				ExcludedCommands []string `json:"excludedCommands"`
+			} `json:"sandbox"`
+		}
+		if json.Unmarshal(data, &settings) != nil {
+			unreadable = append(unreadable, f.label)
+			continue
+		}
+		checked = append(checked, f.label)
+		for _, pattern := range settings.Sandbox.ExcludedCommands {
+			if matches, runs := matchKeylatchExclusion(pattern); matches {
+				found = append(found, sandboxExclusion{file: f.label, pattern: pattern, runs: runs, managed: f.managed})
+			}
+		}
+	}
+	return found, checked, unreadable, projectDir
+}
+
 // checkHostSandboxKeylatchExcluded fails when a Claude Code settings file
 // excludes keylatch from the agent sandbox. An excluded `keylatch run` or
 // `keylatch launch` starts its child process outside the sandbox with
 // credentials injected, so anything the child executes escapes containment.
 func checkHostSandboxKeylatchExcluded(lookup llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
-		var found []sandboxExclusion
-		var checked, unreadable []string
-		files, projectDir := claudeSettingsFiles(lookup)
-		for _, f := range files {
-			data, err := os.ReadFile(f.path)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					unreadable = append(unreadable, f.label)
-				}
-				continue
-			}
-			var settings struct {
-				Sandbox struct {
-					ExcludedCommands []string `json:"excludedCommands"`
-				} `json:"sandbox"`
-			}
-			if json.Unmarshal(data, &settings) != nil {
-				unreadable = append(unreadable, f.label)
-				continue
-			}
-			checked = append(checked, f.label)
-			for _, pattern := range settings.Sandbox.ExcludedCommands {
-				if matches, runs := matchKeylatchExclusion(pattern); matches {
-					found = append(found, sandboxExclusion{file: f.label, pattern: pattern, runs: runs, managed: f.managed})
-				}
-			}
-		}
+		found, checked, unreadable, projectDir := scanExclusions(lookup)
 
 		st := Status{
 			Name:    "host.sandbox.keylatch_excluded",
@@ -184,20 +213,19 @@ func claudeSettingsFiles(lookup llmcontext.Lookup) ([]settingsFile, string) {
 		}
 	}
 
-	userDir := lookup("CLAUDE_CONFIG_DIR")
-	userLabel := filepath.Join(userDir, "settings.json")
-	if userDir == "" {
-		home := lookup("HOME")
-		if home == "" {
-			home, _ = os.UserHomeDir()
-		}
-		if home != "" {
-			userDir = filepath.Join(home, ".claude")
-			userLabel = "~/.claude/settings.json"
-		}
+	claude, _ := harness.Lookup("claude-code")
+	home := lookup("HOME")
+	if home == "" {
+		home, _ = os.UserHomeDir()
 	}
-	if userDir != "" {
-		files = append(files, settingsFile{userLabel, filepath.Join(userDir, "settings.json"), false})
+	configDir := lookup(claude.Config.Env)
+	if configDir != "" || home != "" {
+		userPath := claude.Layout(harness.Env{Home: home, Getenv: lookup}).Hook
+		userLabel := userPath
+		if configDir == "" {
+			userLabel = claude.HookDisplay()
+		}
+		files = append(files, settingsFile{userLabel, userPath, false})
 	}
 
 	cwd, _ := os.Getwd()
@@ -206,86 +234,22 @@ func claudeSettingsFiles(lookup llmcontext.Lookup) ([]settingsFile, string) {
 		project = cwd
 	}
 	if project != "" {
-		settingsLabel := filepath.Join(project, ".claude", "settings.json")
-		localLabel := filepath.Join(project, ".claude", "settings.local.json")
+		const localName = "settings.local.json"
+		settings := claude.Layout(harness.Env{Project: project}).Hook
+		settingsLabel, localLabel := settings, filepath.Join(filepath.Dir(settings), localName)
 		if project == cwd {
-			settingsLabel, localLabel = ".claude/settings.json", ".claude/settings.local.json"
+			settingsLabel = claude.Hook.ProjectFile
+			localLabel = path.Join(path.Dir(claude.Hook.ProjectFile), localName)
 		}
 		files = append(files,
-			settingsFile{settingsLabel, filepath.Join(project, ".claude", "settings.json"), false},
-			settingsFile{localLabel, filepath.Join(project, ".claude", "settings.local.json"), false},
+			settingsFile{settingsLabel, settings, false},
+			settingsFile{localLabel, filepath.Join(filepath.Dir(settings), localName), false},
 		)
 	}
 	return files, project
 }
 
-// keylatchSafeVerbs are top-level subcommands that start no child process
-// chosen by their arguments. `doctor` runs fixed probes such as
-// `<bin> --version`, which the caller cannot redirect. Every other verb is
-// treated as able to run arbitrary commands, since `run` and `launch` execute
-// their argv outside the sandbox when excluded.
-var keylatchSafeVerbs = map[string]bool{
-	"actors": true, "approve": true, "audit": true, "call": true, "check-expiry": true,
-	"completion": true, "config": true, "connections": true, "deny": true,
-	"describe": true, "doctor": true, "env": true, "grant": true, "health": true,
-	"help-topic": true, "list": true, "mint": true, "modes": true, "paths": true,
-	"policy": true, "projects": true, "receipts": true, "recipes": true,
-	"registry": true, "rules": true, "scope": true, "security": true, "share": true,
-	"status": true, "validate": true, "version": true, "versions": true,
-}
-
-// matchKeylatchExclusion reports whether an excludedCommands pattern targets
-// the keylatch binary, and whether it can cover a child-spawning subcommand.
-// Anything that is not a literal known non-spawning verb counts as covering
-// one: an empty verb, leading flags, and glob characters.
-func matchKeylatchExclusion(pattern string) (matches, coversRun bool) {
-	return matchKeylatchExclusionOn(runtime.GOOS, pattern)
-}
-
-// matchKeylatchExclusionOn matches the program name case-insensitively on
-// the platforms whose filesystems are.
-func matchKeylatchExclusionOn(goos, pattern string) (matches, coversRun bool) {
-	p := strings.TrimSpace(pattern)
-	prog, rest := splitProgram(p)
-	prog = strings.TrimSuffix(prog, "*")
-	prog = strings.ReplaceAll(prog, `\`, "/")
-	base := path.Base(prog)
-	if len(base) > 4 && strings.EqualFold(base[len(base)-4:], ".exe") {
-		base = base[:len(base)-4]
-	}
-	if goos == "darwin" || goos == "windows" {
-		base = strings.ToLower(base)
-	}
-	if base != "keylatch" {
-		return false, false
-	}
-	rest = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest), ":"))
-	verb, _, _ := strings.Cut(strings.Join(strings.Fields(rest), " "), " ")
-	verb, _, _ = strings.Cut(verb, ":")
-	if verb == "" || strings.HasPrefix(verb, "-") || strings.ContainsAny(verb, "*?[") {
-		return true, true
-	}
-	return true, !keylatchSafeVerbs[verb]
-}
-
-// splitProgram separates the program from the arguments. A leading quoted
-// token is the program; otherwise it ends at the first whitespace, and a rule
-// separator `:` only counts after the last path separator so drive letters
-// are not mistaken for it.
-func splitProgram(p string) (prog, rest string) {
-	if p != "" && (p[0] == '"' || p[0] == '\'') {
-		if end := strings.IndexByte(p[1:], p[0]); end >= 0 {
-			return p[1 : 1+end], p[2+end:]
-		}
-	}
-	token, tail := p, ""
-	if i := strings.IndexAny(p, " \t"); i >= 0 {
-		token, tail = p[:i], p[i:]
-	}
-	sep := strings.LastIndexAny(token, `/\`)
-	if i := strings.IndexByte(token[sep+1:], ':'); i >= 0 {
-		i += sep + 1
-		return token[:i], token[i+1:] + tail
-	}
-	return token, tail
-}
+var (
+	matchKeylatchExclusion   = sandbox.MatchKeylatch
+	matchKeylatchExclusionOn = sandbox.MatchKeylatchOn
+)

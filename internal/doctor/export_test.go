@@ -2,7 +2,10 @@
 // in the doctor_test package. Only used during testing.
 package doctor
 
-import "github.com/keylatch/keylatch/internal/llmcontext"
+import (
+	"github.com/keylatch/keylatch/internal/harness/sandbox"
+	"github.com/keylatch/keylatch/internal/llmcontext"
+)
 
 // ExportCheckIntegrationMarkers exposes checkIntegrationMarkers for unit tests.
 func ExportCheckIntegrationMarkers() Check {
@@ -41,11 +44,7 @@ func ExportSetManagedSettingsDir(dir string) func() {
 
 // ExportKeylatchSafeVerbs returns the subcommands the matcher treats as not spawning children.
 func ExportKeylatchSafeVerbs() []string {
-	var verbs []string
-	for v := range keylatchSafeVerbs {
-		verbs = append(verbs, v)
-	}
-	return verbs
+	return sandbox.SafeVerbs()
 }
 
 // ExportMatchKeylatchExclusionOn exposes matchKeylatchExclusionOn for unit tests.
