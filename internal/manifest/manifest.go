@@ -84,7 +84,7 @@ func Current() Manifest {
 			{ID: "gateway_sdk", Category: CategoryRuntime, Status: Supported, Note: "certified provider SDK routes only"},
 			{ID: "placeholder", Category: CategoryRuntime, Status: Supported, Note: "tier D3 placeholder substitution; Linux only, proven by the containment tests"},
 			{ID: "contained", Category: CategoryRuntime, Status: Supported, Note: "tier D5 raw value in the Keylatch sandbox: user, mount, PID and network namespaces, Landlock, seccomp, cgroup v2 and proxy-only egress; Linux only, proven by the containment tests"},
-			{ID: "adapter", Category: CategoryRuntime, Status: Supported, Note: "tier D4 Postgres and Redis/Valkey adapters terminate the child's login with a session token and authenticate upstream with the stored password over TLS"},
+			{ID: "adapter", Category: CategoryRuntime, Status: Supported, Note: "tier D4 Postgres, MySQL (caching_sha2_password), and Redis/Valkey adapters terminate the child's login with a session token and authenticate upstream with the stored password over TLS"},
 			{ID: "gateway_proxy", Category: CategoryRuntime, Status: Unavailable, Note: "excluded pending redirect, authority and credential-boundary fixes"},
 			{ID: "minted", Category: CategoryRuntime, Status: Supported, Note: "scoped credentials for one command: GitHub App tokens and Vault leases are revoked on exit; AWS STS, GCP impersonation, Azure client-secret or federated credentials and OAuth refresh tokens expire at their bounded lifetime; each follows the connection's mint policy; verified against stub servers, not yet against live accounts"},
 

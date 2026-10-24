@@ -2,6 +2,16 @@
   "engine": "podman",
   "ttlMinutes": 60,
   "services": {
+    "mysql": {
+      "image": "docker.io/library/mysql:innovation",
+      "port": 3306,
+      "hostPort": 53306,
+      "env": {"MYSQL_ROOT_PASSWORD": "test", "MYSQL_DATABASE": "appdb", "MYSQL_USER": "app_owner", "MYSQL_PASSWORD": "test"},
+      "tmpfs": ["/var/lib/mysql"],
+      "capAdd": ["CHOWN", "SETUID", "SETGID", "FOWNER", "DAC_OVERRIDE"],
+      "command": ["--innodb-buffer-pool-size=64M", "--max-connections=20"],
+      "readySeconds": 90
+    },
     "redis": {
       "image": "docker.io/library/redis:8-alpine",
       "port": 6379,

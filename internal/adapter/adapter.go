@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/adapter/mysql"
 	"github.com/keylatch/keylatch/internal/adapter/postgres"
 	"github.com/keylatch/keylatch/internal/adapter/redis"
 	"github.com/keylatch/keylatch/internal/audit"
@@ -116,7 +117,7 @@ type Session struct {
 // Open creates a session for the template's database adapter.
 func (m *Manager) Open(req OpenRequest) (*Session, error) {
 	ad := req.Template.Adapter
-	if ad.Kind != registry.AdapterPostgres && ad.Kind != registry.AdapterRedis {
+	if ad.Kind != registry.AdapterPostgres && ad.Kind != registry.AdapterRedis && ad.Kind != registry.AdapterMySQL {
 		return nil, ErrNotAdapter
 	}
 	target := strings.ToLower(strings.TrimSpace(req.Target))
@@ -126,6 +127,9 @@ func (m *Manager) Open(req OpenRequest) (*Session, error) {
 	port, defaultUser := "5432", "postgres"
 	if ad.Kind == registry.AdapterRedis {
 		port, defaultUser = "6379", "default"
+	}
+	if ad.Kind == registry.AdapterMySQL {
+		port, defaultUser = "3306", "root"
 	}
 	if h, p, err := net.SplitHostPort(target); err != nil || h == "" || p == "" {
 		target = net.JoinHostPort(strings.Trim(target, "[]"), port)
@@ -155,13 +159,20 @@ func (m *Manager) Open(req OpenRequest) (*Session, error) {
 	password := func(ctx context.Context) ([]byte, error) {
 		return m.cfg.Resolver.Resolve(ctx, s.connection, field)
 	}
-	if ad.Kind == registry.AdapterRedis {
+	switch ad.Kind {
+	case registry.AdapterMySQL:
+		s.server, err = mysql.New(mysql.Config{
+			Token: s.token, Target: target, User: user, Database: req.Database, Password: password,
+			TLS: m.cfg.TLS, PlainUpstream: m.cfg.PlainUpstream,
+			Dial: m.cfg.Upstream.DialContext, Report: s.report,
+		})
+	case registry.AdapterRedis:
 		s.server, err = redis.New(redis.Config{
 			Token: s.token, Target: target, User: user, Password: password,
 			TLS: m.cfg.TLS, PlainUpstream: m.cfg.PlainUpstream,
 			Dial: m.cfg.Upstream.DialContext, Report: s.report,
 		})
-	} else {
+	default:
 		s.server, err = postgres.New(postgres.Config{
 			Token: s.token, Target: target, User: user, Database: req.Database,
 			Password: password,

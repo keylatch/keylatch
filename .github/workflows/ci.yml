@@ -162,6 +162,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      mysql:
+        image: mysql:innovation
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: appdb
+          MYSQL_USER: app_owner
+          MYSQL_PASSWORD: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ptest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
       redis:
         image: redis:8-alpine
         ports:
@@ -202,9 +216,11 @@ jobs:
           KEYLATCH_TEST_PG_DATABASE: appdb
           KEYLATCH_TEST_REDIS_ADDR: 127.0.0.1:6379
           KEYLATCH_TEST_REDIS_PASSWORD: test
+          KEYLATCH_TEST_MYSQL_ADDR: 127.0.0.1:3306
+          KEYLATCH_TEST_MYSQL_PASSWORD: test
         run: |
           export KEYLATCH_TEST_NODE_PG="$GITHUB_WORKSPACE/tests/adapters/prisma/node_modules"
-          go test -tags adapters -count=1 -timeout 300s -v ./tests/adapters/...
+          go test -tags adapters -count=1 -timeout 300s -v ./internal/adapter/mysql ./tests/adapters/...
 
   bootstrap-smoke:
     # Clean-machine smoke test for the bootstrap onboarding flow.

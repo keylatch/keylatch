@@ -68,3 +68,14 @@ func TestDatabaseAdapterEnvRoutesRedisWithoutAmbientSecrets(t *testing.T) {
 	tmpl.Adapter.Kind = registry.AdapterPostgres
 	assert.Equal(t, PostgresAdapterEnv(tmpl, "u", "db", "token"), DatabaseAdapterEnv(tmpl, "u", "db", "token"))
 }
+
+func TestDatabaseAdapterEnvRoutesMySQLWithoutAmbientSecrets(t *testing.T) {
+	tmpl := registry.ConnectionTemplate{Adapter: registry.Adapter{Kind: registry.AdapterMySQL}, InjectionRules: []registry.InjectionRule{{EnvVar: "DB_PASSWORD"}}}
+	env := DatabaseAdapterEnv(tmpl, "app", "my db", "klph_token")
+	got := strings.Join(env.Apply([]string{"MYSQL_HOST=remote", "MYSQL_PWD=stored", "DB_PASSWORD=stored", "MYSQL_UNIX_PORT=/remote.sock"}, false, nil), "\n")
+	assert.NotContains(t, got, "stored")
+	assert.NotContains(t, got, "remote")
+	assert.Contains(t, got, "DATABASE_URL=mysql://app:klph_token@127.0.0.1:"+AdapterPortPlaceholder+"/my%20db")
+	assert.Contains(t, got, "MYSQL_PWD=klph_token")
+	assert.Contains(t, got, "MYSQL_HOST=127.0.0.1")
+}

@@ -43,13 +43,31 @@ Limits, by design:
 - The child can run every statement the role allows until the session ends. The role's grants and
   the audit log bound that; the adapter does not parse SQL.
 - SCRAM channel binding (`SCRAM-SHA-256-PLUS`) and non-ASCII passwords (SASLprep) are not
-  supported upstream. MySQL and the SSH agent adapters are not implemented.
+  supported upstream. The SSH agent adapter is not implemented.
 
 Policy treats D4 like D2 and D3: `enforce.Decide` is asked for runtime `adapter`, a caller that
 needs an approval collects one before the session opens, and `run.decided` records the target.
 Each adapter connection writes `adapter.connection` with the provider, adapter, host and a reason
 (`opened`, `connected`, `bad_token`, `refused`, `upstream_failed`, `cancel`, the close reason);
 neither the token nor the password is ever logged.
+
+## MySQL
+
+Templates can declare `adapter.kind: mysql`, a stored password field and allowed upstream
+`adapter.hosts`. Use `--target db.example:3306 --db-user app --database appdb` with tier D4.
+The child receives `MYSQL_HOST=127.0.0.1`, `MYSQL_TCP_PORT`, `MYSQL_PWD=<session-token>`, and
+the same `mysql://<user>:<token>@127.0.0.1:<port>/<database>` in `MYSQL_URL` and `DATABASE_URL`.
+The template's credential injection variables and ambient MySQL environment settings are removed.
+For the MySQL command-line client, use `--no-defaults --no-login-paths --protocol=TCP` to avoid
+its per-user option files; applications can use `DATABASE_URL` directly.
+
+The adapter supports `caching_sha2_password`, including fast, full and switched authentication,
+and requires verified TLS upstream. Legacy password plugins, compression, local-file loading,
+multi-statement negotiation and replication-specific protocol extensions are not enabled.
+The client authenticates with a fresh challenge and the session token; it cannot select another
+upstream user or change the database named during login. Subsequent statements and database
+selection remain subject to the upstream role's grants. Prepared queries are relayed unchanged.
+The default role is `root`; explicitly choose a restricted application role with `--db-user`.
 
 ## Redis and Valkey
 
@@ -108,3 +126,10 @@ The same managed service declaration provides Redis on `127.0.0.1:56379`. Set
 the Redis CLI conformance test. It checks RESP2, RESP3, the upstream ACL identity, and refusal
 of the stored password at the adapter. Unit tests additionally verify TLS, credential wiping,
 bounded frame parsing, failure sanitization and cancellation.
+
+MySQL conformance uses the managed service on `127.0.0.1:53306`, with
+`KEYLATCH_TEST_MYSQL_ADDR` set to that address and `KEYLATCH_TEST_MYSQL_PASSWORD=test`.
+The mysql2 fixture runs a prepared query with only the session token and verifies the upstream
+role; the upstream authentication test also exercises the real server handshake. The disposable
+server's self-signed certificate is accepted only in these tests. Unit tests verify TLS against
+a trusted test certificate and refuse servers that do not offer TLS.

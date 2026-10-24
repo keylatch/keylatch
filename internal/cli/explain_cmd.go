@@ -195,7 +195,7 @@ func resolveConnection(ctx context.Context, name string) explain.Connection {
 	if b, ok := tmpl.Binding(); ok {
 		c.Binding = explain.BindingOf(explain.BindingTemplate, b)
 		c.Hosts = c.Binding.Hosts
-		if tmpl.Adapter.Kind == registry.AdapterPostgres || tmpl.Adapter.Kind == registry.AdapterRedis {
+		if tmpl.Adapter.Kind == registry.AdapterPostgres || tmpl.Adapter.Kind == registry.AdapterRedis || tmpl.Adapter.Kind == registry.AdapterMySQL {
 			c.Adapter = string(tmpl.Adapter.Kind)
 		}
 		return c

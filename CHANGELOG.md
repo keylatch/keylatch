@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- MySQL database sessions authenticate the child with a session token and use the stored role and password over upstream TLS. Caching-SHA-2 fast, full and switched authentication and prepared queries are covered by protocol and real-server tests.
+
 - Redis and Valkey database sessions accept a session token through AUTH or HELLO, authenticate upstream with the stored ACL credential over TLS, and close connections when the session expires. Real Redis CLI conformance covers RESP2 and RESP3.
 
 - `ci exchange` accepts a `cloud` identity on each trust entry for AWS web identity, GCP workload identity federation or Azure federated credentials. It exports SDK configuration pointing to separate private token files for each exchange, without printing tokens or storing long-lived cloud credentials.

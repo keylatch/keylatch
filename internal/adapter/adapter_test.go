@@ -145,6 +145,19 @@ func TestRedisSessionBindsTargetAndDefaultRole(t *testing.T) {
 	assert.Equal(t, []string{"opened", "expired"}, ev.reasons())
 }
 
+func TestMySQLSessionBindsTargetAndRole(t *testing.T) {
+	m, _ := newManager(t, nil)
+	tmpl := registry.ConnectionTemplate{Provider: "database", Adapter: registry.Adapter{Kind: registry.AdapterMySQL, Field: "password", Hosts: []string{"db.example:3306"}}}
+	s, err := m.Open(OpenRequest{Template: tmpl, Target: "db.example", User: "app", Database: "appdb"})
+	require.NoError(t, err)
+	assert.Equal(t, "db.example:3306", s.Target())
+	assert.Equal(t, "app", s.User())
+	assert.Equal(t, registry.AdapterMySQL, s.Kind())
+	assert.NotNil(t, s.server)
+	_, err = m.Open(OpenRequest{Template: tmpl, Target: "db.example", User: "bad\x00user"})
+	require.Error(t, err)
+}
+
 func TestSessionServesWithTheTokenAndAuthenticatesAsTheRole(t *testing.T) {
 	users := make(chan string, 4)
 	m, ev := newManager(t, trustDatabase(t, users))

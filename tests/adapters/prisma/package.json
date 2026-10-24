@@ -2,12 +2,19 @@
   "name": "keylatch-prisma-conformance",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=26" },
-  "scripts": { "generate": "prisma generate" },
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "generate": "prisma generate"
+  },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
+    "mysql2": "^3.24.6",
     "pg": "^8.16.3"
   },
-  "devDependencies": { "prisma": "7.10.1" }
+  "devDependencies": {
+    "prisma": "7.10.1"
+  }
 }
