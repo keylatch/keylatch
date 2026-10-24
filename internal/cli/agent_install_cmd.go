@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/keylatch/keylatch/internal/guard"
 	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/harness/installer"
+	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/presence"
 )
 
@@ -20,10 +23,36 @@ type installFlags struct {
 	project, dryRun, upgrade, all bool
 	configDirs                    []string
 	parts                         installer.Parts
+	mcpProxies                    []string
+}
+
+// sandboxSockets are the daemon sockets a harness sandbox has to allow. Windows
+// reaches the daemon through named pipes, which no sandbox setting names.
+func sandboxSockets() []string {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return []string{paths.ControlSocket(llmcontext.DefaultLookup), paths.BrokerSocket(llmcontext.DefaultLookup)}
+}
+
+// proxies parses the --mcp-proxy values, each <connection>=<url>.
+func (f installFlags) proxies() ([]installer.Proxy, error) {
+	var out []installer.Proxy
+	for _, v := range f.mcpProxies {
+		conn, url, ok := strings.Cut(v, "=")
+		if !ok {
+			return nil, NewUsageError("--mcp-proxy %q: use <connection>=<url>", v)
+		}
+		out = append(out, installer.Proxy{Connection: conn, URL: url})
+	}
+	if len(out) > 0 && !f.parts.Resolve().MCP {
+		return nil, NewUsageError("--mcp-proxy writes the MCP configuration: add --mcp or name no part")
+	}
+	return out, nil
 }
 
 func (f installFlags) opts() guard.InstallOpts {
-	o := guard.InstallOpts{Upgrade: f.upgrade, DryRun: f.dryRun, ConfigDirs: f.configDirs}
+	o := guard.InstallOpts{Upgrade: f.upgrade, DryRun: f.dryRun, ConfigDirs: f.configDirs, SocketPaths: sandboxSockets()}
 	if f.project {
 		o.ProjectDir = "."
 	}
@@ -44,16 +73,21 @@ func newAgentInstallCmd() *cobra.Command {
 		Use:   "install <harness> [--guard] [--mcp] [--rules]",
 		Short: "Install the Keylatch guard, MCP server and rules into an agent harness",
 		Long: `Install writes, by structured merge that keeps every other key, hook and
-comment, up to three things into a harness's own configuration:
+comment, selected components into a harness's own configuration:
 
   --guard   a pre-tool hook that runs 'keylatch guard hook --harness <id>', which
             denies credential reads, secret-manager calls and environment dumps
   --mcp     the Keylatch MCP server ('keylatch mcp --stdio')
   --rules   a block in the harness's rules file telling the agent to use
             'keylatch run' and never to ask for keys
+  --sandbox Claude Code sandbox settings, state read denies and socket access;
+            Linux permits all Unix socket creation, macOS permits named sockets
 
 With none of the three named, all of them are installed. Every file is saved as
 <name>.keylatch.bak before it changes; --dry-run prints the diff instead.
+Sandbox settings require --sandbox and are never part of the default install.
+--mcp-proxy <connection>=<url> registers a remote server beside Keylatch's MCP
+server without writing its token into the harness configuration.
 
 ` + harnessTable() + `
 Aider and Goose have no hook mechanism: 'keylatch agent install aider' prints
@@ -71,6 +105,8 @@ Example:
 	cmd.Flags().BoolVar(&f.parts.Guard, "guard", false, "install the pre-tool hook")
 	cmd.Flags().BoolVar(&f.parts.MCP, "mcp", false, "register the MCP server")
 	cmd.Flags().BoolVar(&f.parts.Rules, "rules", false, "write the rules block")
+	cmd.Flags().BoolVar(&f.parts.Sandbox, "sandbox", false, "merge Keylatch's sandbox settings into Claude Code's settings (never part of the default set)")
+	cmd.Flags().StringArrayVar(&f.mcpProxies, "mcp-proxy", nil, "also register a remote MCP server behind 'keylatch mcp proxy', as <connection>=<url>; repeatable")
 	return cmd
 }
 
@@ -90,6 +126,7 @@ func newAgentUninstallCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.parts.Guard, "guard", false, "remove the pre-tool hook")
 	cmd.Flags().BoolVar(&f.parts.MCP, "mcp", false, "remove the MCP server")
 	cmd.Flags().BoolVar(&f.parts.Rules, "rules", false, "remove the rules block")
+	cmd.Flags().BoolVar(&f.parts.Sandbox, "sandbox", false, "remove the socket allowance from Claude Code's sandbox settings (the other hardening stays)")
 	return cmd
 }
 
@@ -176,13 +213,17 @@ func runHarnessInstall(cmd *cobra.Command, args []string, f installFlags) error 
 	if len(f.configDirs) > 0 && (len(ds) != 1 || ds[0].ID != string(guard.AgentClaudeCode)) {
 		return NewUsageError("--config-dir applies to claude-code only")
 	}
+	proxies, err := f.proxies()
+	if err != nil {
+		return err
+	}
 	w := cmd.OutOrStdout()
 	for _, d := range ds {
 		if d.Support == harness.SupportLaunchOnly {
 			launchOnlyUsage(w, d)
 			continue
 		}
-		res, err := guard.InstallHarness(d, installer.Options{Parts: f.parts}, f.opts())
+		res, err := guard.InstallHarness(d, installer.Options{Parts: f.parts, Proxies: proxies}, f.opts())
 		if err != nil {
 			return fmt.Errorf("agent install: %s: %w", d.ID, err)
 		}
@@ -211,7 +252,7 @@ func printCursorIgnore(w io.Writer) {
 	}
 }
 
-var roleLabels = map[string]string{installer.RoleHook: "Hook", installer.RoleMCP: "MCP server", installer.RoleRules: "Rules"}
+var roleLabels = map[string]string{installer.RoleHook: "Hook", installer.RoleMCP: "MCP server", installer.RoleRules: "Rules", installer.RoleSandbox: "Sandbox settings"}
 
 func roleLabel(roles []string) string {
 	var labels []string

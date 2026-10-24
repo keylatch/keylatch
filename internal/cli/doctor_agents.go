@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"text/tabwriter"
 
+	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/harness/installer"
 )
@@ -22,6 +24,7 @@ type agentRow struct {
 	Hook      string `json:"hook"`
 	MCP       string `json:"mcp"`
 	Rules     string `json:"rules"`
+	Sandbox   string `json:"sandbox,omitempty"` // "excluded" when keylatch is in Claude Code's excludedCommands
 	HookPath  string `json:"hook_path,omitempty"`
 	GuardPath string `json:"guard_binary,omitempty"`
 	Verified  string `json:"verified,omitempty"`
@@ -73,9 +76,54 @@ func collectAgents(env harness.Env, lookPath func(string) (string, error), fileE
 		case row.Detected && !st.Hook.Present:
 			row.Problem = fmt.Sprintf("found on this machine without the guard; run keylatch agent install %s", d.ID)
 		}
+		if d.ID == "claude-code" {
+			checkClaudeSandbox(&row, env)
+		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// checkClaudeSandbox reports keylatch entries in Claude Code's
+// sandbox.excludedCommands. An excluded command that can start a child runs it
+// outside the sandbox, which leaves the agent unguarded.
+func checkClaudeSandbox(row *agentRow, env harness.Env) {
+	getenv := env.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	lookup := func(key string) string {
+		if key == "HOME" && env.Home != "" {
+			return env.Home
+		}
+		if key == "CLAUDE_PROJECT_DIR" && env.Project != "" {
+			return env.Project
+		}
+		return getenv(key)
+	}
+	found, unreadable := doctor.ClaudeCodeExclusions(lookup)
+	row.Sandbox = "ok"
+	if len(found) == 0 {
+		if len(unreadable) > 0 {
+			row.Sandbox = "unknown"
+			if row.Problem != "" {
+				row.Problem += "; "
+			}
+			row.Problem += "could not read Claude Code settings to check the sandbox: " + strings.Join(unreadable, ", ")
+		}
+		return
+	}
+	row.Sandbox = "excluded"
+	var entries []string
+	for _, e := range found {
+		entries = append(entries, fmt.Sprintf("%s: %q", e.File, e.Pattern))
+		row.fail = row.fail || e.RunsChildren
+	}
+	problem := "sandbox.excludedCommands lists keylatch (" + strings.Join(entries, "; ") + "); run keylatch doctor for the fix, or keylatch agent install claude-code --sandbox to remove it"
+	if row.Problem != "" {
+		problem = row.Problem + "; " + problem
+	}
+	row.Problem = problem
 }
 
 // agentsExit is 0 when every harness found is guarded, 1 when one lacks the
@@ -103,13 +151,17 @@ func writeAgents(w io.Writer, rows []agentRow, asJSON bool) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 2, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "AGENT\tSUPPORT\tFOUND\tHOOK\tMCP\tRULES")
+	fmt.Fprintln(tw, "AGENT\tSUPPORT\tFOUND\tHOOK\tMCP\tRULES\tSANDBOX")
 	for _, r := range rows {
 		found := "no"
 		if r.Detected {
 			found = "yes"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.ID, r.Support, found, r.Hook, r.MCP, r.Rules)
+		sandboxState := r.Sandbox
+		if sandboxState == "" {
+			sandboxState = stateNone
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.ID, r.Support, found, r.Hook, r.MCP, r.Rules, sandboxState)
 	}
 	if err := tw.Flush(); err != nil {
 		return err

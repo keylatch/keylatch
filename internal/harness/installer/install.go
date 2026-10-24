@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,14 +36,83 @@ func (s Server) args() []string {
 	return []string{"mcp", "--stdio"}
 }
 
+// Proxy registers a remote MCP server the agent reaches through
+// `keylatch mcp proxy`: the harness's configuration holds a connection name and
+// a URL and never the token.
+type Proxy struct {
+	Connection string
+	URL        string
+}
+
+// proxyPrefix starts the name of every proxy entry; the plain Keylatch server
+// is "keylatch".
+const proxyPrefix = "keylatch-"
+
+var connectionNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
+
+func (p Proxy) entryName() string { return proxyPrefix + p.Connection }
+
+func (p Proxy) server(command string) Server {
+	return Server{Command: command, Args: []string{"mcp", "proxy", p.Connection, "--url", p.URL}}
+}
+
+func (p Proxy) validate() error {
+	if !connectionNameRE.MatchString(p.Connection) {
+		return fmt.Errorf("MCP proxy: %q is not a connection name", p.Connection)
+	}
+	u, err := url.Parse(p.URL)
+	if err != nil || u.Host == "" || u.User != nil {
+		return fmt.Errorf("MCP proxy: %q is not a usable URL", p.URL)
+	}
+	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopbackHost(u.Hostname())) {
+		return fmt.Errorf("MCP proxy: %s must use https; the proxy never sends a credential in the clear", p.URL)
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
+}
+
+// serverEntry is one named MCP server to write.
+type serverEntry struct {
+	name   string
+	server Server
+}
+
+// servers is the Keylatch server followed by one entry per proxy.
+func (o Options) servers() ([]serverEntry, error) {
+	if o.Server.Command == "" {
+		return nil, errors.New("no MCP server command given")
+	}
+	out := []serverEntry{{"keylatch", o.Server}}
+	seen := map[string]bool{}
+	for _, p := range o.Proxies {
+		if err := p.validate(); err != nil {
+			return nil, err
+		}
+		if seen[p.Connection] {
+			return nil, fmt.Errorf("MCP proxy: %q is given twice", p.Connection)
+		}
+		seen[p.Connection] = true
+		out = append(out, serverEntry{p.entryName(), p.server(o.Server.Command)})
+	}
+	return out, nil
+}
+
 // Parts selects what an install touches. The zero value means all of them.
 type Parts struct {
 	Guard, MCP, Rules bool
+	// Sandbox merges Keylatch's sandbox settings (Claude Code only). It loosens
+	// and tightens the user's sandbox, so it is never part of the default set.
+	Sandbox bool
 }
 
-// Resolve returns the parts an install touches: all of them when none is named.
+// Resolve returns the parts an install touches: the guard, MCP server and
+// rules when none is named.
 func (p Parts) Resolve() Parts {
-	if !p.Guard && !p.MCP && !p.Rules {
+	if !p.Guard && !p.MCP && !p.Rules && !p.Sandbox {
 		return Parts{Guard: true, MCP: true, Rules: true}
 	}
 	return p
@@ -55,7 +127,10 @@ type Options struct {
 	// Binary is the absolute Keylatch path the OpenCode plugin runs.
 	Binary string
 	Server Server
-	Parts  Parts
+	// Proxies are remote MCP servers written next to the Keylatch server when
+	// the MCP part is installed.
+	Proxies []Proxy
+	Parts   Parts
 	// Upgrade rewrites an installed entry in place (new binary path).
 	Upgrade bool
 	// DryRun computes the changes and writes nothing.
@@ -141,7 +216,11 @@ func Install(d Descriptor, o Options) (Result, error) {
 		if layout.MCP == "" {
 			res.Notes = append(res.Notes, d.Name+": the MCP server is registered at user level only")
 		} else {
-			ed.add(layout.MCP, RoleMCP, func(old []byte) ([]byte, error) { return editMCP(d, old, o.Server, o.Upgrade) })
+			servers, err := o.servers()
+			if err != nil {
+				return res, err
+			}
+			ed.add(layout.MCP, RoleMCP, func(old []byte) ([]byte, error) { return editMCP(d, old, servers, o.Upgrade) })
 		}
 	}
 	if parts.Rules {
@@ -150,6 +229,9 @@ func Install(d Descriptor, o Options) (Result, error) {
 		} else {
 			ed.add(layout.Rules, RoleRules, func(old []byte) ([]byte, error) { return editRules(layout.Rules, old) })
 		}
+	}
+	if parts.Sandbox && d.ID != "claude-code" {
+		res.Notes = append(res.Notes, d.Name+": Keylatch merges sandbox settings for Claude Code only")
 	}
 	if d.ID == "codex" && parts.Guard {
 		res.Notes = append(res.Notes, "Codex runs a hook only after you review it: open /hooks in Codex and trust the Keylatch hook")
@@ -173,6 +255,8 @@ const (
 	RoleHook  = "hook"
 	RoleMCP   = "mcp"
 	RoleRules = "rules"
+	// RoleSandbox marks the sandbox settings of a harness's settings file.
+	RoleSandbox = "sandbox"
 )
 
 // Change is one file's outcome and what the file is for.
@@ -264,31 +348,30 @@ func mcpServerObject(d Descriptor, s Server) *merge.Object {
 	return obj("command", s.Command, "args", args)
 }
 
-func editMCP(d Descriptor, old []byte, s Server, upgrade bool) ([]byte, error) {
-	if s.Command == "" {
-		return nil, errors.New("no MCP server command given")
-	}
+func editMCP(d Descriptor, old []byte, entries []serverEntry, upgrade bool) ([]byte, error) {
 	if d.MCP.Format == FormatTOML {
-		return editTOMLServer(old, s)
+		return editTOMLServers(old, entries)
 	}
 	return merge.EditJSON(old, func(root *merge.Object) error {
 		servers, err := root.Child(d.MCP.Key)
 		if err != nil {
 			return err
 		}
-		if _, exists := servers.Get("keylatch"); exists && !upgrade {
-			return nil
+		for _, e := range entries {
+			if _, exists := servers.Get(e.name); exists && !upgrade {
+				continue
+			}
+			servers.Set(e.name, mcpServerObject(d, e.server))
 		}
-		servers.Set("keylatch", mcpServerObject(d, s))
 		return nil
 	})
 }
 
-// editTOMLServer writes the Codex server table. The block is Keylatch's own and
-// rewritten in place; a table the user defined by hand outside it is an error,
-// not something to overwrite.
-func editTOMLServer(old []byte, s Server) ([]byte, error) {
-	return merge.TOMLBlock(old, codexServer(s))
+// editTOMLServers writes the Codex server tables. The block is Keylatch's own
+// and rewritten in place; a table the user defined by hand outside it is an
+// error, not something to overwrite.
+func editTOMLServers(old []byte, entries []serverEntry) ([]byte, error) {
+	return merge.TOMLBlock(old, codexServers(entries))
 }
 
 func editRules(path string, old []byte) ([]byte, error) {
@@ -381,10 +464,63 @@ func removeMCP(d Descriptor, old []byte) ([]byte, error) {
 			return nil
 		}
 		if servers, ok := v.(*merge.Object); ok {
+			for _, name := range proxyEntries(servers) {
+				servers.Delete(name)
+			}
 			servers.Delete("keylatch")
 		}
 		return nil
 	})
+}
+
+// proxyEntries names the servers in a harness's server table that Keylatch
+// wrote for a proxy: a "keylatch-" name whose command line runs `mcp proxy`.
+// A server the user named alike for something else is left alone.
+func proxyEntries(servers *merge.Object) []string {
+	var names []string
+	base, _ := servers.Get("keylatch")
+	baseWords := serverWords(base)
+	if len(baseWords) == 0 {
+		return names
+	}
+	for _, name := range servers.Keys() {
+		if !strings.HasPrefix(name, proxyPrefix) {
+			continue
+		}
+		if v, _ := servers.Get(name); runsMCPProxy(v, baseWords[0]) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// runsMCPProxy reports whether a server entry's command line contains
+// `mcp proxy`, whether the harness splits command and args or joins them.
+func runsMCPProxy(entry any, command string) bool {
+	words := serverWords(entry)
+	return len(words) >= 6 && words[0] == command &&
+		words[1] == "mcp" && words[2] == "proxy" && words[4] == "--url"
+}
+
+func serverWords(entry any) []string {
+	o, ok := entry.(*merge.Object)
+	if !ok {
+		return nil
+	}
+	var words []string
+	for _, key := range []string{"command", "args"} {
+		switch v, _ := o.Get(key); t := v.(type) {
+		case string:
+			words = append(words, t)
+		case []any:
+			for _, w := range t {
+				if s, ok := w.(string); ok {
+					words = append(words, s)
+				}
+			}
+		}
+	}
+	return words
 }
 
 // Component is one installed piece of a harness integration.

@@ -95,6 +95,9 @@ func Current() Manifest {
 			{ID: "tauri_desktop", Category: CategoryPlatform, Status: Unavailable, Note: "packaged desktop excluded"},
 
 			// Cross-cutting features — explicit exclusions list.
+			{ID: "mcp_proxy", Category: CategoryFeature, Status: Preview, Note: "bound bearer and OAuth injection for remote MCP servers; local protocol tests, live harness verification pending"},
+			{ID: "mcp_explain", Category: CategoryFeature, Status: Supported, Note: "policy-only run explanation for MCP callers, always evaluated as an agent"},
+			{ID: "agent_sandbox_install", Category: CategoryFeature, Status: Preview, Note: "explicit Claude Code sandbox settings merge; runtime isolation and socket reachability need host verification"},
 			{ID: "admin", Category: CategoryFeature, Status: Unavailable, Note: "team/admin console excluded"},
 			{ID: "team", Category: CategoryFeature, Status: Unavailable, Note: "team policy and delegated identities are not shipped yet"},
 			{ID: "sso", Category: CategoryFeature, Status: Unavailable, Note: "OIDC/SSO excluded"},

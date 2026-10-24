@@ -73,6 +73,15 @@ type InstallOpts struct {
 	// KeylatchPath is the binary the hook runs; the running executable when
 	// empty.
 	KeylatchPath string
+	// Sandbox also merges Keylatch's sandbox settings into Claude Code's
+	// settings files (see sandbox.HardenClaudeSettings); on uninstall it removes
+	// the socket allowance again.
+	Sandbox bool
+	// SocketPaths are the daemon sockets the sandbox must allow.
+	SocketPaths []string
+	// HookOff leaves the guard hook of Claude Code's settings alone, for a run
+	// that touches only the sandbox settings.
+	HookOff bool
 }
 
 // Install wires the guard for agent into its hook configuration and returns the
@@ -168,18 +177,32 @@ func InstallHarness(d harness.Descriptor, o installer.Options, opts InstallOpts)
 		removeLegacyScripts(d)
 		removeUnusedScript(opts)
 	}
-	if err != nil || d.ID != string(AgentClaudeCode) || !o.Parts.Resolve().Guard {
+	parts := o.Parts.Resolve()
+	if err != nil || d.ID != string(AgentClaudeCode) || (!parts.Guard && !parts.Sandbox) {
 		return res, err
 	}
 	co := opts
 	co.KeylatchPath = bin
+	co.Sandbox, co.HookOff = parts.Sandbox, !parts.Guard
 	changes, err := InstallClaudeCode(co)
 	var hook []installer.Change
 	for _, c := range changes {
-		hook = append(hook, installer.Change{Change: merge.Change{Path: c.Path, Changed: c.Changed, Diff: c.Diff, Backup: c.Backup}, Roles: []string{installer.RoleHook}})
+		hook = append(hook, installer.Change{Change: merge.Change{Path: c.Path, Changed: c.Changed, Diff: c.Diff, Backup: c.Backup}, Roles: claudeRoles(parts)})
 	}
 	res.Changes = append(hook, res.Changes...)
 	return res, err
+}
+
+// claudeRoles names what a change to Claude Code's settings file is for.
+func claudeRoles(p installer.Parts) []string {
+	var roles []string
+	if p.Guard {
+		roles = append(roles, installer.RoleHook)
+	}
+	if p.Sandbox {
+		roles = append(roles, installer.RoleSandbox)
+	}
+	return roles
 }
 
 // UninstallHarness removes what InstallHarness wrote for d.
@@ -192,18 +215,16 @@ func UninstallHarness(d harness.Descriptor, o installer.Options, opts InstallOpt
 	}
 	o.DryRun = opts.DryRun
 	res, err := installer.Uninstall(d, o)
-	if err != nil || d.ID != string(AgentClaudeCode) || !o.Parts.Resolve().Guard {
+	parts := o.Parts.Resolve()
+	if err != nil || d.ID != string(AgentClaudeCode) || (!parts.Guard && !parts.Sandbox) {
 		return res, err
 	}
-	var path string
-	var removed bool
-	if opts.DryRun {
-		st := installer.Inspect(d, o.Env)
-		path, removed = st.Hook.Path, st.Hook.Present
-	} else if path, removed, err = uninstallClaudeCode(opts); err != nil {
+	opts.Sandbox, opts.HookOff = parts.Sandbox, !parts.Guard
+	path, removed, err := uninstallClaudeCode(opts)
+	if err != nil {
 		return res, err
 	}
-	res.Changes = append([]installer.Change{{Change: merge.Change{Path: path, Changed: removed}, Roles: []string{installer.RoleHook}}}, res.Changes...)
+	res.Changes = append([]installer.Change{{Change: merge.Change{Path: path, Changed: removed}, Roles: claudeRoles(parts)}}, res.Changes...)
 	removeUnusedScript(opts)
 	return res, nil
 }
