@@ -85,6 +85,8 @@ type Config struct {
 	KeyAdmin *keyops.Admin
 	// KeyPresence authenticates the daemon user's policy edits; nil fails closed.
 	KeyPresence presence.Method
+	// KeyPeerPresence authenticates policy edits for an identified broker peer.
+	KeyPeerPresence func(context.Context, Peer, presence.Action, string) error
 	// Audit receives one value-free event per decision. Nil records nothing.
 	Audit audit.Emitter
 	// Callers classifies socket peers. Nil walks the real process tree.
@@ -257,7 +259,7 @@ func (s *Server) ServeConn(ctx context.Context, conn Conn, peer Peer) {
 	case OpKey:
 		_ = writeFrame(conn, s.key(ctx, kind, req.Key))
 	case OpKeyPolicy:
-		_ = writeFrame(conn, s.keyPolicy(ctx, kind, req.KeyPolicy))
+		_ = writeFrame(conn, s.keyPolicyPeer(ctx, kind, req.KeyPolicy, peer))
 	default:
 		if s.cfg.Extension != nil && s.cfg.Extension.Handle(ctx, conn, peer, res, raw) {
 			return

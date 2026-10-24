@@ -86,7 +86,7 @@ func (p *Polkit) Verify(ctx context.Context, s Subject, action, summary string) 
 		"--allow-user-interaction",
 		"--detail", "keylatch.action", action,
 		"--detail", "keylatch.summary", summary,
-		"--detail", "polkit.message", action+"\n"+summary,
+		"--detail", "polkit.message", action + "\n" + summary,
 	}
 	run := p.Run
 	if run == nil {

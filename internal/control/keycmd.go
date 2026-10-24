@@ -211,7 +211,7 @@ func runKeyPolicy(c *Client, args []string, streams IO) int {
 		fmt.Fprintf(streams.ErrOut, "keylatch key: %v\n", err)
 		return exitcode.UserError
 	}
-	if kp.Action == "allow" {
+	if kp.Action == "allow" && !c.Broker() {
 		proof, err := requireAllowPresence(c, kp)
 		if err != nil {
 			fmt.Fprintf(streams.ErrOut, "keylatch key: %v\n", err)

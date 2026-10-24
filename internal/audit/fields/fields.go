@@ -90,7 +90,7 @@ var safeLogFields = map[string][]string{
 
 	// key operations: names and the digest of the input, never key or data.
 	"key.operation":     {"operation", "alg", "connection", "field", "caller_kind", "input_sha256", "reason"},
-	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason"},
+	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason", "presence_digest"},
 
 	// socket decisions: digests, names and counters only. argv_sha256 and
 	// cwd_sha256 are SHA-256 hex digests; hosts is a list of host names.

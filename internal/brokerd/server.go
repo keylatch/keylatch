@@ -282,18 +282,25 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 	}
 	pol := &PolicyStore{Dir: cfgDir, Keys: s.cfg.Keys, Audit: s.cfg.Audit, Now: s.cfg.Now}
 	p := &partition{uid: uid, dir: dir, env: env.lookup, store: store, policy: pol}
+	keyService, keyAdmin, err := s.keyService(p)
+	if err != nil {
+		return nil, err
+	}
 	p.ctl = control.NewServer(control.Config{
-		Env:        env.lookup,
-		Binary:     s.cfg.Binary,
-		Audit:      s.cfg.Audit,
-		Callers:    s.callers,
-		SigningKey: tokenKey,
-		ChildEnv:   childEnv,
-		ChildStore: store,
-		Decide:     enforce.New(env.lookup).Decide,
-		Gate:       pol.Gate,
-		Ticket:     s.sessions.VerifyTicket,
-		Extension:  &admin{s: s, p: p},
+		Env:             env.lookup,
+		Binary:          s.cfg.Binary,
+		Audit:           s.cfg.Audit,
+		Callers:         s.callers,
+		SigningKey:      tokenKey,
+		ChildEnv:        childEnv,
+		ChildStore:      store,
+		Decide:          enforce.New(env.lookup).Decide,
+		Gate:            pol.Gate,
+		Ticket:          s.sessions.VerifyTicket,
+		Extension:       &admin{s: s, p: p},
+		Keys:            keyService,
+		KeyAdmin:        keyAdmin,
+		KeyPeerPresence: s.keyPresence(uid),
 	})
 	s.parts[uid] = p
 	return p, nil

@@ -31,7 +31,7 @@ func keyErrorResponse(resp Response, err error) Response {
 }
 
 // keyPolicy lists or edits the allowlist. Only a human may add or widen.
-func (s *Server) keyPolicy(ctx context.Context, kind Kind, kp *KeyPolicyRequest) Response {
+func (s *Server) keyPolicyPeer(ctx context.Context, kind Kind, kp *KeyPolicyRequest, peer Peer) Response {
 	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
 	if kp == nil {
 		resp.Error = "a key policy request is required"
@@ -51,14 +51,29 @@ func (s *Server) keyPolicy(ctx context.Context, kind Kind, kp *KeyPolicyRequest)
 	caller := callerOf(kind)
 	switch kp.Action {
 	case "allow":
+		// Broker hosts become authorized only if the peer-specific OS check succeeds.
+		if kind == KindHost && s.cfg.KeyPeerPresence != nil {
+			caller.Constrained = false
+		}
 		err = s.cfg.KeyAdmin.AllowVerified(ctx, caller, ch, func(ctx context.Context, summary string) (string, error) {
-			if s.cfg.KeyPresence == nil {
-				return "", presence.ErrUnavailable
-			}
 			ctx, cancel := context.WithTimeout(ctx, time.Minute)
 			defer cancel()
-			if err := s.cfg.KeyPresence.Confirm(ctx, presence.ActionKeyAllow, summary); err != nil {
+			var err error
+			switch {
+			case s.cfg.KeyPeerPresence != nil:
+				err = s.cfg.KeyPeerPresence(ctx, peer, presence.ActionKeyAllow, summary)
+			case s.cfg.KeyPresence != nil:
+				err = s.cfg.KeyPresence.Confirm(ctx, presence.ActionKeyAllow, summary)
+			default:
+				err = presence.ErrUnavailable
+			}
+			if err != nil {
 				return "", err
+			}
+			if peer.Verify != nil {
+				if err := peer.Verify(); err != nil {
+					return "", err
+				}
 			}
 			if err := ctx.Err(); err != nil {
 				return "", err

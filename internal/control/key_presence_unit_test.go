@@ -48,7 +48,7 @@ func TestKeyPolicyAllowAuthenticatesEffectiveEdit(t *testing.T) {
 	srv := NewServer(Config{KeyAdmin: admin})
 	ask := KeyPolicyRequest{Action: "allow", Connection: "c", Field: "F", Secret: "s", Operations: []string{"sign"}}
 
-	resp := srv.keyPolicy(t.Context(), KindHuman, &ask)
+	resp := srv.keyPolicyPeer(t.Context(), KindHuman, &ask, Peer{})
 	if resp.OK || resp.ExitCode != exitcode.SecurityBlock {
 		t.Fatalf("an allow without a proof was accepted: %+v", resp)
 	}
@@ -57,7 +57,7 @@ func TestKeyPolicyAllowAuthenticatesEffectiveEdit(t *testing.T) {
 	}
 
 	ask.PresenceDigest = "digest-of-what-the-human-read"
-	if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); resp.OK {
+	if resp = srv.keyPolicyPeer(t.Context(), KindHuman, &ask, Peer{}); resp.OK {
 		t.Fatal("a caller-supplied digest bypassed authentication")
 	}
 	var summary string
@@ -70,7 +70,7 @@ func TestKeyPolicyAllowAuthenticatesEffectiveEdit(t *testing.T) {
 		summary = text
 		return nil
 	})
-	if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); !resp.OK {
+	if resp = srv.keyPolicyPeer(t.Context(), KindHuman, &ask, Peer{}); !resp.OK {
 		t.Fatalf("an authenticated allow was refused: %+v", resp)
 	}
 	if !strings.Contains(summary, "before:") || !strings.Contains(summary, "after:") || !strings.Contains(summary, "sign") {
@@ -81,7 +81,7 @@ func TestKeyPolicyAllowAuthenticatesEffectiveEdit(t *testing.T) {
 	}
 
 	ask.Field = "G"
-	if resp = srv.keyPolicy(t.Context(), KindAgent, &ask); resp.OK {
+	if resp = srv.keyPolicyPeer(t.Context(), KindAgent, &ask, Peer{}); resp.OK {
 		t.Fatalf("an agent widened the allowlist with a borrowed proof: %+v", resp)
 	}
 	if calls != 1 {
@@ -89,7 +89,7 @@ func TestKeyPolicyAllowAuthenticatesEffectiveEdit(t *testing.T) {
 	}
 	for _, failure := range []error{presence.ErrDenied, presence.ErrUnavailable, context.Canceled} {
 		srv.cfg.KeyPresence = keyPresenceFunc(func(context.Context, presence.Action, string) error { return failure })
-		if resp = srv.keyPolicy(t.Context(), KindHuman, &ask); resp.OK {
+		if resp = srv.keyPolicyPeer(t.Context(), KindHuman, &ask, Peer{}); resp.OK {
 			t.Fatalf("authentication failure accepted: %v", failure)
 		}
 	}

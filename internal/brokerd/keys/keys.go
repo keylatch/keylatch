@@ -294,6 +294,16 @@ func (h *Hierarchy) TokenKeyFor(partition string) ([]byte, error) {
 	return derive(k.Seed(), salt("token", partition), infoTokenHMAC), nil
 }
 
+// KeyPolicyKeyFor seals one partition's key-operation allowlist independently of session tokens.
+func (h *Hierarchy) KeyPolicyKeyFor(partition string) ([]byte, error) {
+	k, err := h.Signer(TokenSigning)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(k)
+	return derive(k.Seed(), salt("key-policy", partition), "keylatch/key-policy-hmac/v1"), nil
+}
+
 // SyncKeyFor returns the 32-byte key the keyed hashes of one partition's sync
 // writes are computed with. The daemon alone holds it, so a value is compared
 // with what was written without a plain hash ever existing.
