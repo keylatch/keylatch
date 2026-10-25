@@ -59,6 +59,7 @@ type KeyRef struct {
 type PolicySource interface {
 	Lookup(connection, field string) (KeyRef, error)
 	SSHKeys() ([]KeyRef, error)
+	GPGKeys() ([]KeyRef, error)
 }
 
 // Document maps connection to field to policy.
@@ -330,6 +331,15 @@ func (s *Store) Lookup(connection, field string) (KeyRef, error) {
 
 // SSHKeys lists the keys exposed through the ssh-agent endpoint.
 func (s *Store) SSHKeys() ([]KeyRef, error) {
+	return s.agentKeys(func(fp FieldPolicy) bool { return fp.SSHAgent != nil })
+}
+
+// GPGKeys lists only keys explicitly granted the prehashed GnuPG signing operation.
+func (s *Store) GPGKeys() ([]KeyRef, error) {
+	return s.agentKeys(func(fp FieldPolicy) bool { return slices.Contains(fp.Operations, string(OpGPGSign)) })
+}
+
+func (s *Store) agentKeys(include func(FieldPolicy) bool) ([]KeyRef, error) {
 	conns, err := s.Load()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
@@ -337,7 +347,7 @@ func (s *Store) SSHKeys() ([]KeyRef, error) {
 	var out []KeyRef
 	for conn, fields := range conns {
 		for name, fp := range fields {
-			if fp.SSHAgent != nil {
+			if include(fp) {
 				out = append(out, KeyRef{Connection: conn, Field: name, Policy: fp})
 			}
 		}

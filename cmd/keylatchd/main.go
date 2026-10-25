@@ -223,7 +223,7 @@ When run without --from-desktop-shell, behaviour is identical to
 }
 
 func newServeCmd() *cobra.Command {
-	var socket, binary, sshAgentSocket string
+	var socket, binary, sshAgentSocket, gpgAgentSocket string
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the control socket used by the keylatch thin client",
@@ -284,13 +284,23 @@ any agent sandbox.`,
 			cfg.Decide = enforce.Decide
 			cfg.Approve = newApprover(env, emitter)
 			cfg.Contained = newContained(socket, binary, vaultResolver{cfg: loadConfig(env), env: env, log: emitter})
-			var agentLn *net.UnixListener
+			var agentLn, gpgLn *net.UnixListener
 			if keys, admin, closeAudit, err := newKeyService(env); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: key operations are disabled: %v\n", err)
 			} else {
 				defer closeAudit()
 				cfg.Keys, cfg.KeyAdmin = keys, admin
 				cfg.KeyPresence = presence.New().Platform
+				if gpgAgentSocket != "off" {
+					if gpgAgentSocket == "" {
+						gpgAgentSocket = filepath.Join(filepath.Dir(socket), "gpg-agent.sock")
+					}
+					if gpgLn, err = control.Listen(gpgAgentSocket); err != nil {
+						return fmt.Errorf("keylatchd: gpg-agent: %w", err)
+					}
+					defer func() { _ = gpgLn.Close(); _ = os.Remove(gpgAgentSocket) }()
+					fmt.Fprintf(cmd.OutOrStdout(), "keylatchd: gpg-agent on %s\n", gpgAgentSocket)
+				}
 				if sshAgentSocket != "off" {
 					if sshAgentSocket == "" {
 						sshAgentSocket = paths.SSHAgentSocket(env)
@@ -303,6 +313,9 @@ any agent sandbox.`,
 				}
 			}
 			srv := control.NewServer(cfg)
+			if gpgLn != nil {
+				go func() { _ = srv.ServeGPGAgent(ctx, gpgLn) }()
+			}
 			if agentLn != nil {
 				go func() { _ = srv.ServeSSHAgent(ctx, agentLn) }()
 			}
@@ -312,6 +325,7 @@ any agent sandbox.`,
 	cmd.Flags().StringVar(&socket, "socket", "", "control socket path (default: $KEYLATCH_SOCKET or $XDG_RUNTIME_DIR/keylatch/keylatchd.sock)")
 	cmd.Flags().StringVar(&binary, "keylatch-bin", "", "keylatch executable the daemon runs for served verbs (default: next to keylatchd)")
 	cmd.Flags().StringVar(&sshAgentSocket, "ssh-agent-socket", "", "ssh-agent endpoint path (default: $KEYLATCH_SSH_AGENT_SOCKET or ssh-agent.sock next to the control socket; \"off\" disables it)")
+	cmd.Flags().StringVar(&gpgAgentSocket, "gpg-agent-socket", "", "GnuPG signing endpoint path (default: gpg-agent.sock next to the control socket; off disables it)")
 	return cmd
 }
 

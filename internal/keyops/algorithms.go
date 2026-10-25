@@ -40,9 +40,10 @@ const (
 	OpDecrypt Operation = "decrypt"
 	OpJWTSign Operation = "jwt_sign"
 	OpSSHSign Operation = "ssh_sign"
+	OpGPGSign Operation = "gpg_sign"
 )
 
-var userOperations = []Operation{OpSign, OpVerify, OpEncrypt, OpDecrypt, OpJWTSign}
+var userOperations = []Operation{OpSign, OpVerify, OpEncrypt, OpDecrypt, OpJWTSign, OpGPGSign}
 
 // Algorithm names use the JOSE registry.
 const (
@@ -108,6 +109,8 @@ func algorithmFits(op Operation, alg string) bool {
 		return slices.Contains(encryptionAlgorithms, alg)
 	case OpJWTSign:
 		return slices.Contains(jwtAlgorithms, alg)
+	case OpGPGSign:
+		return slices.Contains([]string{RS256, ES256, ES384, EdDSA}, alg)
 	}
 	return false
 }

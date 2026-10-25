@@ -775,7 +775,7 @@ keylatch key revoke <connection> [--field <name>] [--op <ops>] [--alg <algs>] [-
 keylatch key list [<connection>]
 ```
 
-`--secret` is the backend path of the key: a PEM private key (PKCS#8, PKCS#1, SEC1 or OpenSSH) for asymmetric algorithms, the raw bytes for HMAC, and 32 bytes (raw, hex or base64) for AES-256-GCM. `--op` takes `sign`, `verify`, `encrypt`, `decrypt` and `jwt-sign`, comma separated. Decrypt returns plaintext, so agent and host callers are refused unless the field was allowed with `--agent-decrypt`.
+`--secret` is the backend path of the key: a PEM private key (PKCS#8, PKCS#1, SEC1 or OpenSSH) for asymmetric algorithms, the raw bytes for HMAC, and 32 bytes (raw, hex or base64) for AES-256-GCM. `--op` takes `sign`, `verify`, `encrypt`, `decrypt`, `jwt-sign` and `gpg_sign`, comma separated. Decrypt returns plaintext, so agent and host callers are refused unless the field was allowed with `--agent-decrypt`.
 
 `allow` adds or widens an entry. The daemon authenticates the exact effective before/after policy through its trusted OS prompt while holding the policy lock. Caller-supplied digests never authorize edits. Agent and service callers are refused before prompting. The system broker can authenticate a host caller through that user's OS prompt, using the socket peer's UID, PID and process start time. Its keys and sealed allowlist are private to that user's partition. The standalone daemon also requires terminal confirmation and refuses host callers. On Linux, use the system broker: unprivileged standalone polkit cannot display request details and fails closed. Missing or refused platform authentication leaves policy unchanged (exit 2). The daemon derives the audit digest from the authenticated summary. `revoke` narrows or removes an entry and is open to any caller; with no `--op`, `--alg` or flags it removes the field, or every field of the connection when `--field` is omitted. `list` shows the entries; agent and host callers do not see the backend path. Every change is audited as `key.policy_change` with a before and after summary before it is published.
 
@@ -793,7 +793,11 @@ git config gpg.ssh.allowedSignersFile /path/to/allowed_signers
 git commit -S -m "message"
 ```
 
-Every request is audited as `key.operation` with the operation, algorithm, connection, field, caller kind and the SHA-256 of the input, never the key or the data; an operation that cannot be audited is not returned.
+The standalone daemon also provides an Assuan GnuPG signing endpoint at `gpg-agent.sock` beside its control socket. Set `--gpg-agent-socket <path>` to select another path, or `off` to disable it. A field must explicitly allow `gpg_sign`; ordinary `sign` permission does not expose it. Supported combinations are RSA PKCS#1 with SHA-256 (`RS256`), P-256 with SHA-256 (`ES256`), P-384 with SHA-384 (`ES384`), and Ed25519 (`EdDSA`) with SHA-256, SHA-384 or SHA-512. GnuPG hashes the OpenPGP message before requesting a signature. Private-key import, export, generation and decryption commands are refused.
+
+Use a dedicated GnuPG home containing the matching OpenPGP public key. Run `gpgconf --homedir <home> --create-socketdir`, obtain its agent socket with `gpgconf --homedir <home> --list-dirs agent-socket`, and pass that path to `keylatchd serve --gpg-agent-socket`. Run GnuPG with `--homedir <home> --no-autostart`; RSA signing also needs `--digest-algo SHA256`. Keylatch does not replace an existing GnuPG agent. Public keygrips must match the private key stored in Keylatch. This endpoint is currently available through the standalone daemon; the system broker does not yet expose it.
+
+Every signing request is audited as `key.operation` with the operation, algorithm, connection, field, caller kind and the SHA-256 of the input, never the key or the data; an operation that cannot be audited is not returned.
 
 ---
 

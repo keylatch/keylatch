@@ -466,6 +466,12 @@ func TestSSHAgentEndpointSigns(t *testing.T) {
 }
 
 func TestSSHAgentShutdownClosesIdleClients(t *testing.T) {
+	t.Run("ssh", func(t *testing.T) { testKeyAgentShutdown(t, false) })
+	t.Run("gpg", func(t *testing.T) { testKeyAgentShutdown(t, true) })
+}
+
+func testKeyAgentShutdown(t *testing.T, gpg bool) {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "klidle")
 	if err != nil {
 		t.Fatal(err)
@@ -484,14 +490,26 @@ func TestSSHAgentShutdownClosesIdleClients(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- srv.ServeSSHAgent(ctx, ln) }()
+	go func() {
+		if gpg {
+			done <- srv.ServeGPGAgent(ctx, ln)
+		} else {
+			done <- srv.ServeSSHAgent(ctx, ln)
+		}
+	}()
 	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: ln.Addr().String(), Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	if _, err := agent.NewClient(conn).List(); err != nil {
-		t.Fatal(err)
+	if gpg {
+		if line, err := bufio.NewReader(conn).ReadString('\n'); err != nil || !strings.HasPrefix(line, "OK ") {
+			t.Fatalf("GnuPG greeting: %q, %v", line, err)
+		}
+	} else {
+		if _, err := agent.NewClient(conn).List(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cancel()
 	select {

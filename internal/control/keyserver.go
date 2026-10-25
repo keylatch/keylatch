@@ -135,6 +135,15 @@ func (s *Server) key(ctx context.Context, kind Kind, kr *KeyRequest) Response {
 // endpoint lists public keys and signs; the daemon's user is the only peer
 // accepted.
 func (s *Server) ServeSSHAgent(ctx context.Context, ln *net.UnixListener) error {
+	return s.serveKeyAgent(ctx, ln, s.serveAgentConn)
+}
+
+// ServeGPGAgent answers the Assuan signing protocol for the daemon's own user.
+func (s *Server) ServeGPGAgent(ctx context.Context, ln *net.UnixListener) error {
+	return s.serveKeyAgent(ctx, ln, s.serveGPGConn)
+}
+
+func (s *Server) serveKeyAgent(ctx context.Context, ln *net.UnixListener, serve func(context.Context, *net.UnixConn)) error {
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -152,9 +161,20 @@ func (s *Server) ServeSSHAgent(ctx context.Context, ln *net.UnixListener) error 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.serveAgentConn(ctx, conn)
+			serve(ctx, conn)
 		}()
 	}
+}
+
+func (s *Server) serveGPGConn(ctx context.Context, conn *net.UnixConn) {
+	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	peer, err := peerOf(conn)
+	if err != nil || peer.UID != s.uid || s.cfg.Keys == nil {
+		return
+	}
+	_ = s.cfg.Keys.ServeGPGAgent(ctx, conn, callerOf(s.classify(peer, Request{}).Kind))
 }
 
 func (s *Server) serveAgentConn(ctx context.Context, conn *net.UnixConn) {
