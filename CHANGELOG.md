@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Minted GCP and Azure runs now deliver session-bound metadata endpoints to SDKs instead of access-token environment variables. Endpoint responses enforce scope/resource bindings and audit availability; expiry, cancellation and child exit close the endpoint and wipe cached values. CLI `mint` output is unchanged.
+
 - npm, PyPI and Cargo registry templates provide host-bound Authorization slots and placeholder environment variables. Conformance checks cover publish authentication, wrong-host and wrong-slot refusal, and a real npm client through the TLS proxy.
 
 - MySQL database sessions authenticate the child with a session token and use the stored role and password over upstream TLS. Caching-SHA-2 fast, full and switched authentication and prepared queries are covered by protocol and real-server tests.

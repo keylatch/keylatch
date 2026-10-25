@@ -104,6 +104,22 @@ missing daemon answers `credentials not found in native keychain` and exits 1. T
 shipped as its own executable for use outside a Keylatch run. The temporary Docker config replaces
 the user's `~/.docker/config.json` for the child, and the wrapper is Unix only.
 
+## Cloud metadata
+
+The minted GCP runtime exposes Google Compute metadata through `GCE_METADATA_HOST`, including
+a per-session path. It serves the configured account's email and scopes, project ID, and access
+token. The minted Azure runtime exposes `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; Azure SDK
+managed-identity clients use the App Service request format. The same session-bound token route
+accepts the IMDS `Metadata: true` request format. Both protocols restrict token requests to the
+operator's configured scope or resource, audit each token response, and close at token expiry or
+command exit. They never inject the minted access token into the child environment.
+
+Conformance uses Google's metadata and OAuth2 libraries and Azure's ManagedIdentityCredential.
+Additional tests run an actual child process, check its environment, fetch the scoped token,
+verify output redaction, and verify that exit closes the endpoint. Provider issuance is tested
+separately; these local SDK checks do not replace real-cloud deployment proof. See
+[runtime modes](runtime-modes.md) for policy configuration and credential-chain limitations.
+
 ## Package registries
 
 The `npm`, `pypi`, and `cargo` connections declare D3 registry slots. The child receives

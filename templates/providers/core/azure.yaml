@@ -1,7 +1,7 @@
 provider: azure
 display_name: Microsoft Azure
 category: cloud
-description: "Azure access through Entra ID client credentials. keylatch run --runtime minted gives the command an access token for the one resource in the connection's mint.azure policy; the client secret stays in Keylatch."
+description: "Azure access through a local managed-identity endpoint bound to the resource in the connection's mint.azure policy."
 docs_url: https://learn.microsoft.com/entra/identity-platform/v2-oauth2-client-creds-grant-flow
 docs:
   credentials_url: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade
@@ -42,10 +42,14 @@ runtime_support:
 
 minted_fields:
   - access_token
+  - identity_endpoint
+  - identity_header
 
 injection_rules:
-  - env_var: AZURE_ACCESS_TOKEN
-    source: access_token
+  - env_var: IDENTITY_ENDPOINT
+    source: identity_endpoint
+  - env_var: IDENTITY_HEADER
+    source: identity_header
 
 allowed_command_prefixes:
   - "az"

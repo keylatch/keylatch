@@ -100,6 +100,9 @@ func (d *mintedDriver) Run(ctx context.Context, req ExecRequest, tmpl registry.C
 	if len(secrets) == 0 {
 		return receipt, fmt.Errorf("%w: %s injects no minted field", ErrUnsupportedRuntime, tmpl.Provider)
 	}
+	if endpoint, ok := cred.(interface{ RedactionValues() [][]byte }); ok {
+		secrets = append(secrets, endpoint.RedactionValues()...)
+	}
 	env = append(env, "KEYLATCH_RUNTIME="+mintedMode)
 	env = mergeEnvPairs(env, req.LocalEnv)
 

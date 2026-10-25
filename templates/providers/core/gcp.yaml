@@ -1,7 +1,7 @@
 provider: gcp
 display_name: Google Cloud
 category: cloud
-description: "Google Cloud access through service-account impersonation. keylatch run --runtime minted gives the command an access token limited to the scopes in the connection's mint.gcp policy; the source key stays in Keylatch."
+description: "Google Cloud access through service-account impersonation and a local metadata endpoint bound to the connection's mint.gcp policy."
 docs_url: https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken
 docs:
   credentials_url: https://console.cloud.google.com/iam-admin/serviceaccounts
@@ -28,12 +28,11 @@ runtime_support:
 
 minted_fields:
   - access_token
+  - metadata_host
 
 injection_rules:
-  - env_var: CLOUDSDK_AUTH_ACCESS_TOKEN
-    source: access_token
-  - env_var: GOOGLE_OAUTH_ACCESS_TOKEN
-    source: access_token
+  - env_var: GCE_METADATA_HOST
+    source: metadata_host
 
 allowed_command_prefixes:
   - "gcloud"

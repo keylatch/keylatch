@@ -51,14 +51,16 @@ Agent sessions are refused: the command holds a usable credential.
   (https, or loopback) and `vault_token`, a token that may read the path and revoke its leases.
 - **Google Cloud** (`gcp`): `mint.gcp` names the `service_account` to impersonate, the OAuth
   `scopes` a token may carry and `max_ttl` (1 to 3600 seconds, default 3600). The command gets
-  `CLOUDSDK_AUTH_ACCESS_TOKEN` and `GOOGLE_OAUTH_ACCESS_TOKEN`, an access token for that account
-  limited to those scopes. The connection holds `service_account_key`, the key file of an identity
+  `GCE_METADATA_HOST`, pointing to a loopback metadata endpoint with an unguessable session path.
+  Metadata clients retrieve the account's scoped token from that endpoint; no access token is
+  injected into the environment. The connection holds `service_account_key`, the key file of an identity
   that has only the Service Account Token Creator role on the target. Keylatch introspects the
   issued token with Google's tokeninfo API and refuses mismatched scopes or expiry; an unavailable
   introspection endpoint also refuses the mint.
 - **Azure** (`azure`): `mint.azure` names the `resource` and `max_ttl` (1 to 5400 seconds, default
-  3600). The command gets `AZURE_ACCESS_TOKEN`, a client-credentials token whose audience is that
-  resource. Entra ID picks the token lifetime (60 to 90 minutes by default); a token that lives
+  3600). The command gets `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`, selecting the Azure SDK's
+  managed-identity endpoint protocol. It serves a token only for the configured resource.
+  Entra ID picks the token lifetime (60 to 90 minutes by default); a token that lives
   longer than `max_ttl` is refused, so an operator who accepts Entra's lifetime sets 5400. The
   connection holds `tenant_id`, `client_id` and `client_secret`. For workload identity federation,
   set `mint.azure.authentication` to `federated` and supply `client_assertion`, a short-lived JWT
@@ -70,6 +72,15 @@ Agent sessions are refused: the command holds a usable credential.
   command gets `OAUTH_ACCESS_TOKEN`. The provider's reply must report exactly the requested scopes
   and an explicit positive expiry no longer than `max_ttl`. The connection holds `client_id`, `client_secret`
   and `refresh_token`.
+
+The GCP and Azure endpoints end when the command exits, its context is canceled, or the minted
+token expires. Every token response requires a successful audit write. They refuse other hosts,
+session paths, identity selectors, scopes and resources; they do not refresh indefinitely.
+Fetched tokens remain valid until provider expiry, and the output guard masks them if the child
+prints them. `keylatch mint` still returns the scoped token directly. SDK default credential chains
+may prefer credentials already present in the user's home directory; select metadata or managed
+identity credentials explicitly when that distinction matters. These endpoints provide SDK
+compatibility, not filesystem isolation.
 
 GCP, Azure and OAuth tokens cannot be revoked by Keylatch; they end at their expiry, so keep
 `max_ttl` short. Vault leases and GitHub tokens are revoked on exit. For every provider the policy
@@ -83,7 +94,7 @@ command and prints them as JSON: `--scope repo=` and `--scope <permission>=<leve
 can be reduced, down to 900 seconds. Its JSON `data` contains `access_key_id`, `secret_access_key`
 and `session_token`, and `scope` records the role, duration and session policy. A scope can narrow what the policy allows and never
 widen it. A Vault lease printed this way is not revoked, because the credential is handed to the
-caller; it ends within the hour. AWS has no `mint` form.
+caller; it ends within the hour.
 
 ```json
 {

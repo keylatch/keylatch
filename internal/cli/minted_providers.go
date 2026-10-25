@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/cloudcreds"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/policy/mint"
 	"github.com/keylatch/keylatch/internal/providermint"
@@ -15,7 +16,7 @@ import (
 // mintEndpoints replaces the provider hosts in tests.
 var mintEndpoints providermint.Endpoints
 
-// providerCredential is a Vault, GCP, Azure or OAuth credential minted for one
+// providerCredential is a Vault or OAuth credential minted for one
 // run. Closing it wipes the values and revokes the Vault lease.
 type providerCredential struct{ secret *providermint.Secret }
 
@@ -43,5 +44,49 @@ func openProvider(ctx context.Context, cfg config.Config, em audit.Emitter, tmpl
 	if err != nil {
 		return nil, err
 	}
+	if tmpl.Provider == "gcp" || tmpl.Provider == "azure" {
+		endpoint := cloudcreds.Config{Provider: tmpl.Provider, Connection: req.Connection, Initial: secret, Audit: em}
+		policy := opCfg.Connections[req.Connection].Mint
+		if tmpl.Provider == "gcp" {
+			endpoint.Account = policy.GCP.ServiceAccount
+			endpoint.Scopes = secret.Scope["scope"]
+		} else {
+			endpoint.Resource = policy.Azure.Resource
+		}
+		return openMetadataCredential(ctx, endpoint)
+	}
 	return &providerCredential{secret: secret}, nil
 }
+
+type metadataCredential struct {
+	server   *cloudcreds.Server
+	provider string
+}
+
+func openMetadataCredential(ctx context.Context, cfg cloudcreds.Config) (runner.MintedCredential, error) {
+	server, err := cloudcreds.Start(ctx, cfg)
+	if err != nil {
+		if cfg.Initial != nil {
+			_ = cfg.Initial.Close()
+		}
+		return nil, err
+	}
+	return &metadataCredential{server: server, provider: cfg.Provider}, nil
+}
+
+func (c *metadataCredential) Value(_ context.Context, field string) ([]byte, error) {
+	switch {
+	case c.provider == "gcp" && field == "metadata_host":
+		return []byte(c.server.MetadataHost()), nil
+	case c.provider == "azure" && field == "identity_endpoint":
+		return []byte(c.server.IdentityEndpoint()), nil
+	case c.provider == "azure" && field == "identity_header":
+		return []byte(c.server.IdentityHeader()), nil
+	default:
+		return nil, runner.ErrMintedFieldAbsent
+	}
+}
+
+func (c *metadataCredential) Close() { c.server.Close() }
+
+func (c *metadataCredential) RedactionValues() [][]byte { return c.server.RedactionValues() }
