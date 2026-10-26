@@ -101,6 +101,13 @@ The UI shows the complete plan and expiry; expiration disables decisions without
 Leaving the inbox cancels an outstanding decision request and its broker presence prompt. An unavailable broker
 returns an error rather than an empty inbox or a successful decision.
 
+The desktop sidecar registers its five authenticated IPC methods before announcing its base URL. The ready
+message contains no bootstrap credential. `MintBootstrapToken` returns a single-use token valid for at most
+one minute; `POST /__bootstrap` exchanges `{token}` for the HttpOnly session cookie and CSRF cookie without
+putting that token in a URL. Tokens are bound to the existing UI session and cannot extend its lifetime.
+IPC event subscriptions use separate bounded connections, so they cannot monopolize bootstrap or health calls.
+Idle frame reads and blocked writes time out; shutdown closes clients before clearing the IPC key.
+
 ## `keylatch-relay`
 
 Some harness sandboxes cannot reach a Unix socket at all. For those, `keylatch-relay` is a separate, tiny binary

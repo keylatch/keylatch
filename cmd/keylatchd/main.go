@@ -42,6 +42,7 @@ import (
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
+	"github.com/keylatch/keylatch/internal/sidecar/events"
 	"github.com/keylatch/keylatch/internal/sidecar/ipc"
 	"github.com/keylatch/keylatch/internal/ui"
 	"github.com/spf13/cobra"
@@ -182,6 +183,9 @@ When run without --from-desktop-shell, behaviour is identical to
 				if startErr != nil {
 					return fmt.Errorf("keylatchd: IPC server: %w", startErr)
 				}
+				eventMux := events.NewMux()
+				defer eventMux.Stop()
+				ipc.RegisterHandlers(ipcServer.Registry(), eventMux, srv, ipc.ShutdownFunc(cancel))
 				// Zero the key material from the local slice — the server
 				// has copied what it needs.
 				for i := range hmacKey {
@@ -197,7 +201,7 @@ When run without --from-desktop-shell, behaviour is identical to
 				// The Tauri shell parses this line to learn the server URL.
 				ready := map[string]string{
 					"event": "ready",
-					"url":   srv.BootstrapURL(),
+					"url":   "http://" + opts.Bind,
 					"build": buildVersion,
 				}
 				if encErr := json.NewEncoder(os.Stdout).Encode(ready); encErr != nil {

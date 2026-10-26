@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -142,6 +143,11 @@ func New(opts ServerOptions) (*Server, error) {
 func (s *Server) BootstrapURL() string {
 	scheme := "http"
 	return s.session.URL(fmt.Sprintf("%s://%s", scheme, s.opts.Bind))
+}
+
+// MintBootstrapToken is exposed only through the authenticated desktop IPC registry.
+func (s *Server) MintBootstrapToken() (string, time.Time, error) {
+	return s.session.MintBootstrapToken()
 }
 
 // Serve starts the server and blocks until ctx is cancelled, then performs a
@@ -340,15 +346,33 @@ func (s *Server) registerRoutes() {
 // after the 303 redirect the token is consumed and never appears in
 // any subsequent URL.
 func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	var cookieVal string
+	var err error
+	switch r.Method {
+	case http.MethodGet:
+		cookieVal, err = s.session.ConsumeBootstrap(r.URL.Query().Get("b"), r.URL.Query().Get("mac"))
+	case http.MethodPost:
+		var body struct {
+			Token string `json:"token"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&body); err != nil {
+			http.Error(w, "invalid bootstrap request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(w, "invalid bootstrap request", http.StatusBadRequest)
+			return
+		}
+		cookieVal, err = s.session.ConsumeDesktopBootstrap(body.Token)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	token := r.URL.Query().Get("b")
-	mac := r.URL.Query().Get("mac")
-
-	cookieVal, err := s.session.ConsumeBootstrap(token, mac)
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), http.StatusUnauthorized)
 		return

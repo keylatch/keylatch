@@ -33,6 +33,79 @@ func TestNewServer_KeyValidation(t *testing.T) {
 	}
 }
 
+func TestEventSubscriptionDoesNotBlockBootstrapAndShutdown(t *testing.T) {
+	path := filepath.Join(shortTempDir(t), "ipc.sock")
+	key := testKey()
+	s, err := NewServer(path, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	exited := make(chan struct{})
+	s.Registry().Register(MethodSubscribeEvents, func(ctx context.Context, _ any, _ *FrameWriter) (any, error) {
+		defer close(exited)
+		close(entered)
+		<-ctx.Done()
+		return nil, nil
+	})
+	s.Registry().Register(MethodMintBootstrapToken, mintBootstrapTokenHandler(&fakeMinter{token: "fresh-token"}))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.Listen(ctx) }()
+	dial := func() net.Conn {
+		t.Helper()
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			conn, err := net.Dial("unix", path)
+			if err == nil {
+				t.Cleanup(func() { _ = conn.Close() })
+				_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+				return conn
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("IPC socket did not become available")
+		return nil
+	}
+	idle := dial()
+	stream := dial()
+	if err := NewFrameWriter(stream, key).Write(Request{Method: MethodSubscribeEvents}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("idle connection blocked event subscription")
+	}
+	bootstrap := dial()
+	if err := NewFrameWriter(bootstrap, key).Write(Request{Method: MethodMintBootstrapToken}); err != nil {
+		t.Fatal(err)
+	}
+	var response Response
+	if err := NewFrameReader(bootstrap, key).Read(&response); err != nil || response.Error != "" {
+		t.Fatalf("event subscription blocked bootstrap: %+v %v", response, err)
+	}
+	_ = stream.Close()
+	select {
+	case <-exited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("subscription remained active after client disconnect")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not close accepted connections")
+	}
+	var b [1]byte
+	if _, err := idle.Read(b[:]); err == nil {
+		t.Fatal("idle connection remained open after shutdown")
+	}
+}
+
 // TestServer_ListenRoundTrip starts the server on a real unix socket, sends
 // an authenticated Health request, reads the response, then sends a frame
 // with a corrupted HMAC and verifies the connection is dropped silently.
