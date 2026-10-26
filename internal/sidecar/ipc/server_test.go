@@ -55,16 +55,23 @@ func TestEventSubscriptionDoesNotBlockBootstrapAndShutdown(t *testing.T) {
 	go func() { done <- s.Listen(ctx) }()
 	dial := func() net.Conn {
 		t.Helper()
+		var lastErr error
 		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			select {
+			case err := <-done:
+				t.Fatalf("IPC listener stopped: %v", err)
+			default:
+			}
 			conn, err := net.Dial("unix", path)
 			if err == nil {
 				t.Cleanup(func() { _ = conn.Close() })
 				_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
 				return conn
 			}
+			lastErr = err
 			time.Sleep(10 * time.Millisecond)
 		}
-		t.Fatal("IPC socket did not become available")
+		t.Fatalf("IPC socket %s did not become available: %v", path, lastErr)
 		return nil
 	}
 	idle := dial()
