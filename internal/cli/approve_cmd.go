@@ -53,9 +53,10 @@ to record a reason for the approval.
 
 Approvals must be performed by a human operator: the command requires an
 interactive terminal on stdin, is refused inside a detected LLM session
-(see 'keylatch env' for the recognized signals) and asks for the approver
-passphrase set with 'keylatch approve init'. The decision is signed with a
-key derived from that passphrase; unsigned approvals are never accepted.`,
+(see 'keylatch env' for the recognized signals). With a system broker, the
+broker authenticates the displayed request through operating-system presence.
+Standalone approvals use the passphrase set with 'keylatch approve init'.
+Unsigned approvals are never accepted.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := requireHumanApprover("approve", "KL-4101", "KL-4105"); err != nil {
@@ -63,6 +64,9 @@ key derived from that passphrase; unsigned approvals are never accepted.`,
 			}
 
 			token := args[0]
+			if useApprovalBroker() {
+				return runBrokerApproval(c, token, "approve", reason, false, false, useJSON)
+			}
 			approvalsDir := paths.ApprovalsDir(llmcontext.DefaultLookup)
 			ar, err := approval.Get(c.Context(), approvalsDir, token)
 			if err == nil {
@@ -142,10 +146,7 @@ swept by the background process and can no longer be acted upon.
 
 Use --json to emit a JSON array for scripting.`,
 		RunE: func(c *cobra.Command, _ []string) error {
-			env := llmcontext.DefaultLookup
-			approvalsDir := paths.ApprovalsDir(env)
-
-			requests, err := approval.List(c.Context(), approvalsDir)
+			requests, err := listApprovalRequests(c.Context())
 			if err != nil {
 				return fmt.Errorf("approve list: %w", err)
 			}

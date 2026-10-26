@@ -54,12 +54,23 @@ prompted to confirm unless --yes is also set. --json emits
 
 Denials must be performed by a human operator: the command requires an
 interactive terminal on stdin, is refused inside a detected LLM session
-(see 'keylatch env' for the recognized signals) and asks for the approver
-passphrase set with 'keylatch approve init'.`,
+(see 'keylatch env' for the recognized signals). A system broker authenticates
+each displayed request through operating-system presence, including with --yes.
+Standalone approvals use the passphrase set with 'keylatch approve init'.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := requireHumanApprover("deny", "KL-4111", "KL-4115"); err != nil {
 				return err
+			}
+			if !denyAll && len(args) == 0 {
+				return fmt.Errorf("deny: requires a <token> argument or --all flag")
+			}
+			if useApprovalBroker() {
+				token := ""
+				if len(args) > 0 {
+					token = args[0]
+				}
+				return runBrokerApproval(c, token, "deny", reason, denyAll, skipPrompt, useJSON)
 			}
 
 			approvalsDir := paths.ApprovalsDir(llmcontext.DefaultLookup)

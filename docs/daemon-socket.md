@@ -85,6 +85,14 @@ approver pins that user's public key and consumes an approved decision once. A c
 different user or command. Standalone daemon approvals continue to use the locally configured approver passphrase.
 Shell arguments in review summaries retain newline and control bytes as visible escapes.
 
+`keylatch approve list`, `approve <token>`, `deny <token>` and `deny --all` use broker records when the system
+broker is installed. Decisions still require a human terminal; the broker performs OS confirmation and signing,
+so no local approver passphrase is requested. Bulk denial authenticates each exact request, even with `--yes`;
+a refusal stops the operation and reports how many requests were already denied. An explicit `KEYLATCH_SOCKET`
+selects that endpoint for approval operations and requires broker support. Existing socket-owner verification
+still applies: explicit sockets must be owned by the caller or root. An unreachable or refusing broker never
+falls back to local approval files.
+
 The UI exposes the same records at `GET /api/approvals` as a JSON array. `GET /api/approvals/stream` emits
 `approval` events when records change; the bounded stream reconnects automatically. Both require the UI session.
 `POST /api/approvals/{token}/approve` and `/deny` accept only `{digest, reason?}`, require an admin session and CSRF
