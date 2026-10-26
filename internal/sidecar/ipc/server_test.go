@@ -53,6 +53,13 @@ func TestEventSubscriptionDoesNotBlockBootstrapAndShutdown(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- s.Listen(ctx) }()
+	select {
+	case <-s.Ready():
+	case err := <-done:
+		t.Fatalf("IPC listener failed before readiness: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("IPC listener never announced readiness")
+	}
 	dial := func() net.Conn {
 		t.Helper()
 		var lastErr error

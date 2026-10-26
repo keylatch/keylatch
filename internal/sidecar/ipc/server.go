@@ -34,6 +34,7 @@ type Server struct {
 	windowMu          sync.Mutex
 
 	listener net.Listener
+	ready    chan struct{}
 	mu       sync.Mutex // guards listener
 }
 
@@ -50,12 +51,16 @@ func NewServer(socketPath string, hmacKey []byte) (*Server, error) {
 		key:         k,
 		registry:    NewMethodRegistry(),
 		windowStart: time.Now(),
+		ready:       make(chan struct{}),
 	}
 	return s, nil
 }
 
 // Registry returns the method registry so callers can register handlers.
 func (s *Server) Registry() *MethodRegistry { return s.registry }
+
+// Ready closes once the IPC listener has bound successfully.
+func (s *Server) Ready() <-chan struct{} { return s.ready }
 
 // Listen starts the Unix domain socket listener and serves connections.
 // It blocks until ctx is cancelled.
@@ -73,6 +78,7 @@ func (s *Server) Listen(ctx context.Context) error {
 	s.mu.Lock()
 	s.listener = ln
 	s.mu.Unlock()
+	close(s.ready)
 	ctx, cancel := context.WithCancel(ctx)
 	var clients sync.WaitGroup
 	slots := make(chan struct{}, 16)

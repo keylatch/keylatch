@@ -192,11 +192,22 @@ When run without --from-desktop-shell, behaviour is identical to
 				for i := range hmacKey {
 					hmacKey[i] = 0
 				}
+				ipcDone := make(chan error, 1)
 				go func() {
-					if listenErr := ipcServer.Listen(ctx); listenErr != nil {
+					listenErr := ipcServer.Listen(ctx)
+					ipcDone <- listenErr
+					if listenErr != nil {
 						slog.Error("IPC server error", "error", listenErr)
+						cancel()
 					}
 				}()
+				select {
+				case <-ipcServer.Ready():
+				case listenErr := <-ipcDone:
+					return fmt.Errorf("keylatchd: IPC listener stopped before readiness: %v", listenErr)
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 
 				// Emit ready signal to the parent Tauri shell on stdout.
 				// The Tauri shell parses this line to learn the server URL.
@@ -205,9 +216,13 @@ When run without --from-desktop-shell, behaviour is identical to
 					"url":   "http://" + opts.Bind,
 					"build": buildVersion,
 				}
-				if encErr := json.NewEncoder(os.Stdout).Encode(ready); encErr != nil {
-					return fmt.Errorf("keylatchd: emit ready: %w", encErr)
-				}
+				return srv.ServeWithReady(ctx, func(address string) error {
+					ready["url"] = "http://" + address
+					if encErr := json.NewEncoder(os.Stdout).Encode(ready); encErr != nil {
+						return fmt.Errorf("keylatchd: emit ready: %w", encErr)
+					}
+					return nil
+				})
 			}
 
 			return srv.Serve(ctx)

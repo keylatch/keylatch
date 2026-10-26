@@ -153,9 +153,20 @@ func (s *Server) MintBootstrapToken() (string, time.Time, error) {
 // Serve starts the server and blocks until ctx is cancelled, then performs a
 // graceful shutdown.
 func (s *Server) Serve(ctx context.Context) error {
+	return s.ServeWithReady(ctx, nil)
+}
+
+// ServeWithReady announces readiness only after the HTTP listener is bound.
+func (s *Server) ServeWithReady(ctx context.Context, ready func(address string) error) error {
 	ln, err := net.Listen("tcp", s.opts.Bind)
 	if err != nil {
 		return fmt.Errorf("ui: listen on %s: %w", s.opts.Bind, err)
+	}
+	if ready != nil {
+		if err := ready(ln.Addr().String()); err != nil {
+			_ = ln.Close()
+			return err
+		}
 	}
 
 	errCh := make(chan error, 1)
