@@ -773,6 +773,7 @@ The allowlist is managed through the daemon:
 keylatch key allow <connection> --field <name> [--secret <backend path>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent] [--host-key <SHA256:...>]
 keylatch key revoke <connection> [--field <name>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent]
 keylatch key list [<connection>]
+keylatch key agent --protocol ssh|gpg --socket <path>
 ```
 
 `--secret` is the backend path of the key: a PEM private key (PKCS#8, PKCS#1, SEC1 or OpenSSH) for asymmetric algorithms, the raw bytes for HMAC, and 32 bytes (raw, hex or base64) for AES-256-GCM. `--op` takes `sign`, `verify`, `encrypt`, `decrypt`, `jwt-sign` and `gpg_sign`, comma separated. Decrypt returns plaintext, so agent and host callers are refused unless the field was allowed with `--agent-decrypt`.
@@ -795,7 +796,9 @@ git commit -S -m "message"
 
 The standalone daemon also provides an Assuan GnuPG signing endpoint at `gpg-agent.sock` beside its control socket. Set `--gpg-agent-socket <path>` to select another path, or `off` to disable it. A field must explicitly allow `gpg_sign`; ordinary `sign` permission does not expose it. Supported combinations are RSA PKCS#1 with SHA-256 (`RS256`), P-256 with SHA-256 (`ES256`), P-384 with SHA-384 (`ES384`), and Ed25519 (`EdDSA`) with SHA-256, SHA-384 or SHA-512. GnuPG hashes the OpenPGP message before requesting a signature. Private-key import, export, generation and decryption commands are refused.
 
-Use a dedicated GnuPG home containing the matching OpenPGP public key. Obtain its agent socket with `gpgconf --homedir <home> --list-dirs agent-socket` and pass that path to `keylatchd serve --gpg-agent-socket`. If the socket resides outside that home, first run `gpgconf --homedir <home> --create-socketdir`; platforms that keep sockets inside the home need no separate socket directory. Run GnuPG with `--homedir <home> --no-autostart`; RSA signing also needs `--digest-algo SHA256`. Keylatch does not replace an existing GnuPG agent. Public keygrips must match the private key stored in Keylatch. This endpoint is currently available through the standalone daemon; the system broker does not yet expose it.
+Use a dedicated GnuPG home containing the matching OpenPGP public key. Obtain its agent socket with `gpgconf --homedir <home> --list-dirs agent-socket`. If the socket resides outside that home, first run `gpgconf --homedir <home> --create-socketdir`; platforms that keep sockets inside the home need no separate socket directory. With the system broker, run `keylatch key agent --protocol gpg --socket <agent-socket>` in a terminal. With a standalone daemon, either use that relay or pass the socket path to `keylatchd serve --gpg-agent-socket`. Run GnuPG with `--homedir <home> --no-autostart`; RSA signing also needs `--digest-algo SHA256`. Keylatch does not replace an existing GnuPG agent. Public keygrips must match the private key stored in Keylatch.
+
+On Unix, `keylatch key agent --protocol ssh --socket <path>` similarly exposes the broker's SSH signing endpoint; set `SSH_AUTH_SOCK` to that path. The relay accepts only its own OS user and forwards requests through the authenticated control connection. The broker chooses the user's private partition from the connected process identity and rechecks the peer and policy before key discovery or signing. The relay receives public keys and signatures only. Ctrl-C closes active connections and removes the local socket. Local protocol sockets are not yet available on Windows.
 
 Every signing request is audited as `key.operation` with the operation, algorithm, connection, field, caller kind and the SHA-256 of the input, never the key or the data; an operation that cannot be audited is not returned.
 

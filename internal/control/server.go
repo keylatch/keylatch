@@ -260,6 +260,8 @@ func (s *Server) ServeConn(ctx context.Context, conn Conn, peer Peer) {
 		_ = writeFrame(conn, s.key(ctx, kind, req.Key))
 	case OpKeyPolicy:
 		_ = writeFrame(conn, s.keyPolicyPeer(ctx, kind, req.KeyPolicy, peer))
+	case OpKeyAgent:
+		s.keyAgent(ctx, conn, r, res, peer, req.KeyAgent)
 	default:
 		if s.cfg.Extension != nil && s.cfg.Extension.Handle(ctx, conn, peer, res, raw) {
 			return
@@ -291,7 +293,7 @@ func gated(req Request) bool {
 	switch req.Op {
 	case OpExec:
 		return slices.Contains(valueVerbs, req.Verb) || req.Verb == "call" || req.Verb == "run"
-	case OpRunSession, OpContained, OpGateway, OpProxy, OpCredential, OpKey, OpKeyPolicy:
+	case OpRunSession, OpContained, OpGateway, OpProxy, OpCredential, OpKey, OpKeyPolicy, OpKeyAgent:
 		return true
 	}
 	return false

@@ -7,7 +7,7 @@ import (
 
 func newKeyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "key <sign|verify|encrypt|decrypt|jwt-sign|allow|revoke|list> [<connection>] [flags]",
+		Use:   "key <sign|verify|encrypt|decrypt|jwt-sign|allow|revoke|list|agent> [<connection>] [flags]",
 		Short: "Sign, verify, encrypt or decrypt with a key that never leaves the daemon",
 		Long: `Run a cryptographic operation with a connection's key. The daemon reads the
 key, performs the operation and returns only the result; the key is never
@@ -21,12 +21,15 @@ delivered to this process, its output or the audit log.
   keylatch key allow <connection> --field <name> [--secret <backend path>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent] [--host-key <fingerprint>]
   keylatch key revoke <connection> [--field <name>] [--op <ops>] [--alg <algs>] [--agent-decrypt] [--ssh-agent]
   keylatch key list [<connection>]
+  keylatch key agent --protocol ssh|gpg --socket <path>
 
 Algorithms: HS256, HS384, HS512, EdDSA (Ed25519), ES256, ES384, PS256, RS256,
 A256GCM. A connection allows only the operations and algorithms its allowlist
 names; 'allow' adds or widens an entry and is refused for agent and host
 callers, 'revoke' narrows or removes one and is open to any caller. Input comes from stdin or --in; the result goes to stdout or --out.
-Key operations need the daemon: start it with 'keylatchd serve'.`,
+Key operations need a running system broker or 'keylatchd serve'. On Unix,
+'agent' exposes an owner-only protocol socket and relays signing requests to
+the daemon. Keys stay in the daemon; stop the relay with Ctrl-C.`,
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
 		RunE: func(*cobra.Command, []string) error {
