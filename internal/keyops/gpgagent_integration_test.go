@@ -6,11 +6,8 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1" //nolint:gosec // OpenPGP v4 public-key fingerprints use SHA-1.
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -21,34 +18,6 @@ import (
 	"testing"
 	"time"
 )
-
-func pgpPacket(tag byte, body []byte) []byte {
-	return append(binary.BigEndian.AppendUint32([]byte{0xc0 | tag, 255}, uint32(len(body))), body...)
-}
-
-func selfSignedPublicRSA(t *testing.T, key *rsa.PrivateKey) ([]byte, string) {
-	t.Helper()
-	public := pgpPublicPacket(&key.PublicKey)
-	body := public[6:]
-	keyHashInput := append(binary.BigEndian.AppendUint16([]byte{0x99}, uint16(len(body))), body...)
-	fingerprint := sha1.Sum(keyHashInput) //nolint:gosec // OpenPGP v4 public identifier only.
-	uid := []byte("Keylatch test <keylatch@example.invalid>")
-	header := []byte{4, 0x13, 1, 8, 0, 6, 5, 2, 0x65, 0x53, 0xf1, 0}
-	toHash := append([]byte(nil), keyHashInput...)
-	toHash = binary.BigEndian.AppendUint32(append(toHash, 0xb4), uint32(len(uid)))
-	toHash = append(toHash, uid...)
-	toHash = append(toHash, header...)
-	toHash = binary.BigEndian.AppendUint32(append(toHash, 4, 0xff), uint32(len(header)))
-	digest := sha256.Sum256(toHash)
-	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	cert := append(append([]byte(nil), header...), 0, 10, 9, 16)
-	cert = append(cert, fingerprint[12:]...)
-	cert = append(append(cert, digest[:2]...), pgpMPI(sig)...)
-	return append(append(public, pgpPacket(13, uid)...), pgpPacket(2, cert)...), fmt.Sprintf("%X", fingerprint)
-}
 
 func TestGPGDetachedSignatureUsesDaemonKey(t *testing.T) {
 	bin, err := exec.LookPath("gpg")
@@ -61,7 +30,7 @@ func TestGPGDetachedSignatureUsesDaemonKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer zeroSigner(private)
-	pub, fingerprint := selfSignedPublicRSA(t, private.(*rsa.PrivateKey))
+	pub, fingerprint := selfSignedPublic(t, private)
 	dir, err := os.MkdirTemp("", "klpgp")
 	if err != nil {
 		t.Fatal(err)
@@ -72,9 +41,6 @@ func TestGPGDetachedSignatureUsesDaemonKey(t *testing.T) {
 	configBin, err := exec.LookPath("gpgconf")
 	if err != nil {
 		t.Skip("gpgconf is not installed")
-	}
-	if out, err := exec.CommandContext(ctx, configBin, "--homedir", dir, "--create-socketdir").CombinedOutput(); err != nil {
-		t.Fatalf("private socket directory: %v: %s", err, out)
 	}
 	defer func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
@@ -88,6 +54,11 @@ func TestGPGDetachedSignatureUsesDaemonKey(t *testing.T) {
 	socketPath := strings.TrimSpace(string(socketInfo))
 	if filepath.Dir(socketPath) != dir && !strings.HasPrefix(filepath.Base(filepath.Dir(socketPath)), "d.") {
 		t.Fatalf("unexpected non-private GnuPG socket: %s", socketPath)
+	}
+	if filepath.Dir(socketPath) != dir {
+		if out, err := exec.CommandContext(ctx, configBin, "--homedir", dir, "--create-socketdir").CombinedOutput(); err != nil {
+			t.Fatalf("private socket directory: %v: %s", err, out)
+		}
 	}
 	base := []string{"--no-options", "--homedir", dir, "--no-autostart", "--batch"}
 	imp := exec.CommandContext(ctx, bin, append(base, "--import")...)

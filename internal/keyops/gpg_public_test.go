@@ -9,15 +9,72 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1" //nolint:gosec // OpenPGP v4 public-key fingerprints use SHA-1.
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"math/bits"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 )
+
+func pgpPacket(tag byte, body []byte) []byte {
+	return append(binary.BigEndian.AppendUint32([]byte{0xc0 | tag, 255}, uint32(len(body))), body...)
+}
+
+func selfSignedPublic(t *testing.T, key crypto.Signer) ([]byte, string) {
+	t.Helper()
+	public := pgpPublicPacket(key.Public())
+	body := public[6:]
+	keyHashInput := append(binary.BigEndian.AppendUint16([]byte{0x99}, uint16(len(body))), body...)
+	fingerprint := sha1.Sum(keyHashInput) //nolint:gosec // OpenPGP v4 public identifier only.
+	uid := []byte("Keylatch test <keylatch@example.invalid>")
+	header := []byte{4, 0x13, body[5], 8, 0, 6, 5, 2, 0x65, 0x53, 0xf1, 0}
+	if public, ok := key.Public().(*ecdsa.PublicKey); ok && public.Curve == elliptic.P384() {
+		header[3] = 9
+	}
+	toHash := append([]byte(nil), keyHashInput...)
+	toHash = binary.BigEndian.AppendUint32(append(toHash, 0xb4), uint32(len(uid)))
+	toHash = append(toHash, uid...)
+	toHash = append(toHash, header...)
+	toHash = binary.BigEndian.AppendUint32(append(toHash, 4, 0xff), uint32(len(header)))
+	sum := sha256.Sum256(toHash)
+	digest := sum[:]
+	if header[3] == 9 {
+		sum := sha512.Sum384(toHash)
+		digest = sum[:]
+	}
+	var signature []byte
+	switch key := key.(type) {
+	case *rsa.PrivateKey:
+		sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		signature = pgpMPI(sig)
+	case *ecdsa.PrivateKey:
+		r, s, err := ecdsa.Sign(rand.Reader, key, digest[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		signature = append(pgpMPI(r.Bytes()), pgpMPI(s.Bytes())...)
+	case ed25519.PrivateKey:
+		sig := ed25519.Sign(key, digest[:])
+		signature = append(pgpMPI(sig[:32]), pgpMPI(sig[32:])...)
+	default:
+		t.Fatalf("unsupported fixture key %T", key)
+	}
+	cert := append(append([]byte(nil), header...), 0, 10, 9, 16)
+	cert = append(cert, fingerprint[12:]...)
+	cert = append(append(cert, digest[:2]...), signature...)
+	return append(append(public, pgpPacket(13, uid)...), pgpPacket(2, cert)...), fmt.Sprintf("%X", fingerprint)
+}
 
 func pgpMPI(value []byte) []byte {
 	value = bytes.TrimLeft(value, "\x00")
@@ -75,13 +132,13 @@ func TestGPGKeygripsMatchGnuPG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	_, edPrivate, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, public := range map[string]crypto.PublicKey{"RSA": &rsaKey.PublicKey, "P256": &p256.PublicKey, "P384": &p384.PublicKey, "Ed25519": edPublic} {
+	for name, private := range map[string]crypto.Signer{"RSA": rsaKey, "P256": p256, "P384": p384, "Ed25519": edPrivate} {
 		t.Run(name, func(t *testing.T) {
-			grip, encoded, err := gpgPublic(public)
+			grip, encoded, err := gpgPublic(private.Public())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,8 +147,15 @@ func TestGPGKeygripsMatchGnuPG(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, bin, "--no-options", "--homedir", t.TempDir(), "--no-autostart", "--batch", "--with-colons", "--with-keygrip", "--import-options", "show-only", "--import")
-			cmd.Stdin = bytes.NewReader(pgpPublicPacket(public))
+			home := t.TempDir()
+			if err := os.Chmod(home, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.CommandContext(ctx, bin, "--no-options", "--homedir", ".", "--no-autostart", "--batch", "--with-colons", "--with-keygrip", "--import-options", "show-only", "--import")
+			// A relative home works with native and MSYS GnuPG on Windows.
+			cmd.Dir = home
+			packet, _ := selfSignedPublic(t, private)
+			cmd.Stdin = bytes.NewReader(packet)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("public-key inspection: %v: %s", err, out)
