@@ -44,6 +44,8 @@ const (
 	// OpPresenceHelper turns the connection into the link to the user's
 	// presence helper: the daemon sends it challenges and reads signatures.
 	OpPresenceHelper Op = "presence.helper"
+	OpApprovalList   Op = "approval.list"
+	OpApprovalDecide Op = "approval.decide"
 
 	OpSyncDiff   Op = "sync.diff"
 	OpSyncDrift  Op = "sync.drift"
@@ -68,6 +70,7 @@ var allOps = []Op{
 	OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
 	OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
 	OpMachineIssue, OpMachineRevoke, OpMachineList, OpMachineListen,
+	OpApprovalList, OpApprovalDecide,
 }
 
 // Response codes.
@@ -128,9 +131,10 @@ type Request struct {
 	// Session registers or ends an agent session.
 	Session *SessionRequest `json:"session,omitempty"`
 
-	Sync    *SyncRequest    `json:"sync,omitempty"`
-	Service *ServiceRequest `json:"service,omitempty"`
-	Machine *MachineRequest `json:"machine,omitempty"`
+	Sync     *SyncRequest      `json:"sync,omitempty"`
+	Service  *ServiceRequest   `json:"service,omitempty"`
+	Machine  *MachineRequest   `json:"machine,omitempty"`
+	Approval *ApprovalDecision `json:"approval,omitempty"`
 }
 
 // Item is one secret in a migration.
@@ -170,9 +174,10 @@ type Response struct {
 	Head    *AuditHead        `json:"head,omitempty"`
 	Session *SessionInfo      `json:"session,omitempty"`
 
-	Sync    *SyncResult    `json:"sync,omitempty"`
-	Service *ServiceResult `json:"service,omitempty"`
-	Machine *MachineResult `json:"machine,omitempty"`
+	Sync      *SyncResult     `json:"sync,omitempty"`
+	Service   *ServiceResult  `json:"service,omitempty"`
+	Machine   *MachineResult  `json:"machine,omitempty"`
+	Approvals []ApprovalEntry `json:"approvals,omitempty"`
 }
 
 // Proof is what the daemon hands back once the human approved a request.
@@ -290,6 +295,8 @@ func (r Request) Validate() error {
 		}
 	}
 	switch r.Op {
+	case OpApprovalList, OpApprovalDecide:
+		return r.validateApproval()
 	case OpPresenceBegin:
 		if r.Target == nil {
 			return errors.New("presence.begin needs a target")

@@ -103,12 +103,13 @@ type Server struct {
 }
 
 type partition struct {
-	uid    uint32
-	dir    string
-	env    func(string) string
-	store  *brokerstore.Store
-	policy *PolicyStore
-	ctl    *control.Server
+	uid        uint32
+	dir        string
+	env        func(string) string
+	store      *brokerstore.Store
+	policy     *PolicyStore
+	ctl        *control.Server
+	approvalMu sync.Mutex
 
 	syncOnce sync.Once
 	sync     *syncState
@@ -301,6 +302,7 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 		Keys:            keyService,
 		KeyAdmin:        keyAdmin,
 		KeyPeerPresence: s.keyPresence(uid),
+		Approve:         s.approver(p),
 	})
 	s.parts[uid] = p
 	return p, nil

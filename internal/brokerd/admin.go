@@ -93,6 +93,10 @@ func (a *admin) dispatch(ctx context.Context, peer control.Peer, res callerkind.
 		}
 	}
 	switch req.Op {
+	case brokerapi.OpApprovalList:
+		return a.listApprovals(ctx, peer, res)
+	case brokerapi.OpApprovalDecide:
+		return a.decideApproval(ctx, peer, res, req)
 	case brokerapi.OpStatus:
 		return a.status(ctx)
 	case brokerapi.OpPresenceBegin:

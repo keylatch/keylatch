@@ -304,6 +304,18 @@ func (h *Hierarchy) KeyPolicyKeyFor(partition string) ([]byte, error) {
 	return derive(k.Seed(), salt("key-policy", partition), "keylatch/key-policy-hmac/v1"), nil
 }
 
+// ApprovalSignerFor signs presence-verified decisions for exactly one partition.
+func (h *Hierarchy) ApprovalSignerFor(partition string) (ed25519.PrivateKey, error) {
+	k, err := h.Signer(TokenSigning)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(k)
+	seed := derive(k.Seed(), salt("approval", partition), "keylatch/approval-signing/v1")
+	defer clear(seed)
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
 // SyncKeyFor returns the 32-byte key the keyed hashes of one partition's sync
 // writes are computed with. The daemon alone holds it, so a value is compared
 // with what was written without a plain hash ever existing.

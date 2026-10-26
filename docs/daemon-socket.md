@@ -74,6 +74,17 @@ nothing answers. The caller kinds differ from the user-level daemon: a peer with
 `human` means a presence proof bound to the request, and a peer inside a registered agent scope or carrying a
 daemon-signed ticket is `agent`.
 
+The broker also serves `approval.list` and `approval.decide`. Listing returns the connected user's pending requests,
+their complete plan summaries and review digests. A decision carries `approval: {token, digest, decision, reason}`,
+where `decision` is `approve` or `deny`. The broker reloads the request, compares the digest, and asks its trusted OS
+presence method to authenticate that exact plan for the socket peer. Agent callers cannot open a prompt. A changed
+request, expired approval, departed peer, invalid policy or failed audit leaves the request unsigned.
+
+Broker decisions use an Ed25519 key derived separately for each user from the protected key hierarchy. The run
+approver pins that user's public key and consumes an approved decision once. A copied decision cannot authorize a
+different user or command. Standalone daemon approvals continue to use the locally configured approver passphrase.
+Shell arguments in review summaries retain newline and control bytes as visible escapes.
+
 ## `keylatch-relay`
 
 Some harness sandboxes cannot reach a Unix socket at all. For those, `keylatch-relay` is a separate, tiny binary
