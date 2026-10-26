@@ -105,6 +105,14 @@ impl DesktopSession {
         Self { ipc }
     }
 
+    pub fn native_http(&self, base: &str) -> Result<crate::desktop_http::DesktopHttp, String> {
+        bootstrap_url(base)?;
+        let mut token = self.fresh_bootstrap_token()?;
+        let result = crate::desktop_http::DesktopHttp::connect(base, token.as_str());
+        token.zero();
+        result.map_err(str::to_string)
+    }
+
     /// Obtain a fresh single-use bootstrap token from the sidecar.
     /// The token is NOT cached — every call mints a new one.
     pub fn fresh_bootstrap_token(&self) -> Result<BootstrapToken, String> {

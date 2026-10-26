@@ -1,5 +1,6 @@
 mod approval_watcher;
 mod deeplink;
+mod desktop_http;
 mod ipc;
 mod launch;
 mod notify;
@@ -155,21 +156,14 @@ pub fn run() {
 
             let _ = webview_host.assert_csp(&window);
 
-            // Step 6a-ext2: Start approval watcher.
-            if let Some(tray_ctrl) = tray_ctrl_opt {
-                approval_watcher::start(
-                    app.handle().clone(),
-                    localhost_url.clone(),
-                    tray_ctrl,
-                    notifier.clone(),
-                );
-            } else {
-                approval_watcher::start_notify_only(
-                    app.handle().clone(),
-                    localhost_url.clone(),
-                    notifier.clone(),
-                );
-            }
+            let watcher = approval_watcher::start(
+                app.handle().clone(),
+                localhost_url.clone(),
+                session,
+                tray_ctrl_opt,
+                notifier,
+            )?;
+            app.manage(Mutex::new(watcher));
 
             app.manage(Arc::new(Mutex::new(supervisor)));
 
@@ -187,6 +181,11 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if let RunEvent::ExitRequested { .. } = event {
+            if let Some(watcher) =
+                app_handle.try_state::<Mutex<approval_watcher::ApprovalWatcher>>()
+            {
+                watcher.lock().unwrap().stop();
+            }
             log::info!("keylatch-app: exit requested — stopping sidecar");
             if let Some(sup) = app_handle.try_state::<Arc<Mutex<sidecar::SidecarSupervisorImpl>>>()
             {

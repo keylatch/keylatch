@@ -10,6 +10,8 @@ The shell first loads a credential-free `/__bootstrap` page from the sidecar's e
 
 Both platforms use an AF_UNIX socket for IPC. The shell sends the IPC authentication key through an inherited pipe: a dedicated file descriptor on Unix and child stdin on Windows. The Windows key is never passed through an environment variable. Native installed-host verification remains required before shipping an installer.
 
+The sidecar announces readiness after both IPC and HTTP listeners bind. Native approval notifications use a separate IPC-issued bootstrap token and an in-memory session cookie. Polling follows no redirects, bypasses environment proxies, and limits response size and request duration. Only pending, unexpired requests produce notifications; polling errors set the tray error state. Shutdown stops polling and joins its worker before stopping the sidecar.
+
 ## Connections page
 
 The **Connections** page (`/connections`) replaces the old single-provider `<select>` with a multi-provider card grid.

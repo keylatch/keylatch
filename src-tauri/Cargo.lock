@@ -2225,6 +2225,7 @@ name = "keylatch-app"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "ciborium",
  "dirs 5.0.1",
  "hex",
