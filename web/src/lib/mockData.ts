@@ -79,10 +79,14 @@ export const mockApprovals: Approval[] = [
   {
     token: 'appr_demo_01',
     connection: 'Stripe billing',
-    commandHmac: 'hmac_92f4c8b1',
-    actorHmac: 'actor_51b9a22d',
-    createdAt: addMinutes(-11),
-    expiresAt: addMinutes(19),
+    actor: 'demo agent',
+    capability: 'run:D5',
+    summary: 'Command: ["billing-report"]\nHosts: ["api.stripe.com"]\nTTL: 5m',
+    request_hash: 'demo-request-hash',
+    digest: 'b'.repeat(64),
+    status: 'pending',
+    created_at: addMinutes(-1),
+    expires_at: addMinutes(4),
   },
 ]
 
@@ -212,7 +216,7 @@ export function mockGet(path: string): unknown | undefined {
   }
 
   if (path === '/api/approvals') {
-    return { approvals: mockApprovals }
+    return mockApprovals
   }
 
   if (path.startsWith('/v1/receipts')) {

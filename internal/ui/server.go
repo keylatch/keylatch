@@ -60,6 +60,9 @@ type ServerOptions struct {
 	// SettingsStore holds server-validated settings (optional; nil → ephemeral default per-request).
 	// approval TTL is server-validated and clamped server-side.
 	SettingsStore *api.SettingsStore
+
+	// ApprovalBroker supplies authenticated per-user approvals; nil selects the local broker.
+	ApprovalBroker api.ApprovalBroker
 }
 
 // Server is the local UI HTTP server.
@@ -244,7 +247,11 @@ func (s *Server) registerRoutes() {
 		_ = runtimeTestHandler // registered via connectionDetailHandler path prefix above
 
 		// Approvals (read + write).
-		approvalsHandler := &api.ApprovalsHandler{}
+		approvalBroker := s.opts.ApprovalBroker
+		if approvalBroker == nil && !s.opts.Demo {
+			approvalBroker = &localApprovalBroker{env: s.opts.Env}
+		}
+		approvalsHandler := &api.ApprovalsHandler{Broker: approvalBroker, CanDecide: ScopeFilter(s.opts.Scope, ScopeAdmin)}
 		s.mux.HandleFunc("/api/approvals", s.requireSession(approvalsHandler.ServeHTTP))
 		s.mux.HandleFunc("/api/approvals/", s.requireSession(csrf.Middleware(approvalsHandler).ServeHTTP))
 

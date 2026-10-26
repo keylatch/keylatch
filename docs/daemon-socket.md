@@ -85,6 +85,14 @@ approver pins that user's public key and consumes an approved decision once. A c
 different user or command. Standalone daemon approvals continue to use the locally configured approver passphrase.
 Shell arguments in review summaries retain newline and control bytes as visible escapes.
 
+The UI exposes the same records at `GET /api/approvals` as a JSON array. `GET /api/approvals/stream` emits
+`approval` events when records change; the bounded stream reconnects automatically. Both require the UI session.
+`POST /api/approvals/{token}/approve` and `/deny` accept only `{digest, reason?}`, require an admin session and CSRF
+token, and forward the displayed digest to the broker. The `/v1/approvals` aliases have the same protections.
+The UI shows the complete plan and expiry; expiration disables decisions without manufacturing a denial.
+Leaving the inbox cancels an outstanding decision request and its broker presence prompt. An unavailable broker
+returns an error rather than an empty inbox or a successful decision.
+
 ## `keylatch-relay`
 
 Some harness sandboxes cannot reach a Unix socket at all. For those, `keylatch-relay` is a separate, tiny binary
