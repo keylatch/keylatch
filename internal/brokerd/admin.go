@@ -9,6 +9,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
@@ -35,6 +36,20 @@ func (a *admin) Handle(ctx context.Context, conn control.Conn, peer control.Peer
 	} else if req.Op == brokerapi.OpPresenceHelper {
 		a.serveHelper(ctx, conn, peer, res)
 		return true
+	} else if req.Op == brokerapi.OpApprovalDecide {
+		requestCtx, cancel := context.WithCancel(ctx)
+		done := make(chan struct{})
+		// Decisions have no further client frames; disconnects cancel the OS prompt.
+		go func() {
+			var extra [1]byte
+			_, _ = conn.Read(extra[:])
+			cancel()
+			close(done)
+		}()
+		resp = a.dispatch(requestCtx, peer, res, req)
+		cancel()
+		_ = conn.SetReadDeadline(time.Now())
+		<-done
 	} else {
 		resp = a.dispatch(context.WithValue(ctx, connCtxKey{}, conn), peer, res, req)
 	}

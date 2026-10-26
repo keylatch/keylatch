@@ -22,6 +22,93 @@ import (
 
 type approvalPrompt func(context.Context, Subject, string, string) error
 
+func TestApprovalHandlerCompletesWithClientConnected(t *testing.T) {
+	h := newHarness(t, nil)
+	p, err := h.srv.partition(t.Context(), 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := paths.ApprovalsDir(p.env)
+	ar, err := approval.RequestNewPlan(t.Context(), dir, "agent", "run:D5", "app", "hash", "argv: [\"safe\"]", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, client := connPair()
+	defer server.Close()
+	defer client.Close()
+	_ = client.SetDeadline(time.Now().Add(5 * time.Second))
+	req := brokerapi.Request{Op: brokerapi.OpApprovalDecide, Approval: &brokerapi.ApprovalDecision{Token: ar.Token, Digest: approval.Digest(ar), Decision: "approve"}}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		(&admin{s: h.srv, p: p}).Handle(t.Context(), server, peerAs(1000, ""), host, raw)
+	}()
+	var response brokerapi.Response
+	if err := json.NewDecoder(client).Decode(&response); err != nil || !response.OK {
+		t.Fatalf("approval response: %+v, %v", response, err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("approval handler did not stop its disconnect monitor")
+	}
+	current, err := approval.Get(t.Context(), dir, ar.Token)
+	if err != nil || current.Status != approval.StatusApproved || current.PresenceDigest == "" {
+		t.Fatalf("approval was not signed: %+v, %v", current, err)
+	}
+}
+
+func TestApprovalDisconnectCancelsPromptWithoutSigning(t *testing.T) {
+	h := newHarness(t, nil)
+	p, err := h.srv.partition(t.Context(), 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := paths.ApprovalsDir(p.env)
+	ar, err := approval.RequestNewPlan(t.Context(), dir, "agent", "run:D5", "app", "hash", "argv: [\"safe\"]", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	h.srv.presence.Method = approvalPrompt(func(ctx context.Context, _ Subject, _, _ string) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	server, client := connPair()
+	defer server.Close()
+	defer client.Close()
+	req := brokerapi.Request{Op: brokerapi.OpApprovalDecide, Approval: &brokerapi.ApprovalDecision{Token: ar.Token, Digest: approval.Digest(ar), Decision: "approve"}}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		(&admin{s: h.srv, p: p}).Handle(t.Context(), server, peerAs(1000, ""), host, raw)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("approval prompt did not start")
+	}
+	_ = client.Close()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("disconnected approval still waits for presence")
+	}
+	current, err := approval.Get(t.Context(), dir, ar.Token)
+	if err != nil || current.Status != approval.StatusPending || current.PresenceDigest != "" {
+		t.Fatalf("disconnected approval changed: %+v, %v", current, err)
+	}
+}
+
 func (approvalPrompt) Name() string { return "test-os" }
 func (p approvalPrompt) Verify(ctx context.Context, subject Subject, action, summary string) error {
 	return p(ctx, subject, action, summary)
