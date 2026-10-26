@@ -1,7 +1,7 @@
 // src/webview.rs — WebView host configuration.
 //
 // Implements the navigation policy hook that restricts the WebView to
-// ONLY navigate to https://127.0.0.1:<active-port>/*.
+// ONLY navigate to the active HTTP loopback sidecar or bundled assets.
 // All other navigations are blocked and audited.
 //
 // CSP is configured in tauri.conf.json and asserted at startup.
@@ -29,7 +29,7 @@ impl WebViewHost {
     }
 
     /// Evaluate the navigation policy for a target URL.
-    /// Allowed: https://127.0.0.1:<active_port>/* and tauri://localhost/error.html
+    /// Allowed: http://127.0.0.1:<active_port>/* and bundled assets.
     /// Blocked: everything else.
     pub fn evaluate_navigation(&self, url: &str) -> NavigationPolicy {
         // Allow the bundled static error page.
@@ -43,15 +43,33 @@ impl WebViewHost {
         }
 
         match Url::parse(url) {
-            Err(_) => NavigationPolicy::Block { reason: "malformed URL" },
+            Err(_) => NavigationPolicy::Block {
+                reason: "malformed URL",
+            },
             Ok(parsed) => {
-                let scheme_ok = parsed.scheme() == "https";
+                if parsed.scheme() == "http"
+                    && parsed.host_str() == Some("tauri.localhost")
+                    && parsed.path() == "/error.html"
+                    && parsed.port().is_none()
+                    && parsed.username().is_empty()
+                    && parsed.password().is_none()
+                {
+                    return NavigationPolicy::Allow;
+                }
+                let scheme_ok = parsed.scheme() == "http";
                 let host_ok = matches!(parsed.host_str(), Some("127.0.0.1"));
                 let port_ok = parsed.port() == Some(self.active_port);
-                if scheme_ok && host_ok && port_ok {
+                if scheme_ok
+                    && host_ok
+                    && port_ok
+                    && parsed.username().is_empty()
+                    && parsed.password().is_none()
+                {
                     NavigationPolicy::Allow
                 } else {
-                    NavigationPolicy::Block { reason: "navigation target is not localhost sidecar" }
+                    NavigationPolicy::Block {
+                        reason: "navigation target is not localhost sidecar",
+                    }
                 }
             }
         }
@@ -136,11 +154,11 @@ mod tests {
     fn test_allow_localhost() {
         let h = host(51842);
         assert_eq!(
-            h.evaluate_navigation("https://127.0.0.1:51842/"),
+            h.evaluate_navigation("http://127.0.0.1:51842/"),
             NavigationPolicy::Allow
         );
         assert_eq!(
-            h.evaluate_navigation("https://127.0.0.1:51842/approvals/123"),
+            h.evaluate_navigation("http://127.0.0.1:51842/approvals/123"),
             NavigationPolicy::Allow
         );
     }
@@ -177,13 +195,28 @@ mod tests {
     fn test_block_wrong_port() {
         let h = host(51842);
         assert!(matches!(
-            h.evaluate_navigation("https://127.0.0.1:9999/"),
+            h.evaluate_navigation("http://127.0.0.1:9999/"),
             NavigationPolicy::Block { .. }
         ));
+    }
+
+    #[test]
+    fn test_block_wrong_scheme_and_embedded_credentials() {
+        let h = host(51842);
+        for url in [
+            "https://127.0.0.1:51842/",
+            "http://user@127.0.0.1:51842/",
+            "http://127.0.0.1.evil.test:51842/",
+        ] {
+            assert!(matches!(
+                h.evaluate_navigation(url),
+                NavigationPolicy::Block { .. }
+            ));
+        }
     }
 }
 
 // Required for HMAC in NavigationGuard.
+use hex;
 use hmac;
 use sha2;
-use hex;

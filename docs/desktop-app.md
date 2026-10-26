@@ -4,6 +4,12 @@ The Keylatch desktop app (Tauri) bundles the Go backend and a React SPA into a s
 
 > **Availability:** No desktop installer is shipped in a release. The desktop shell can be built from the `src-tauri` directory. Everywhere else use the CLI; `keylatch ui` serves the same UI in your browser.
 
+## Desktop sign-in
+
+The shell first loads a credential-free `/__bootstrap` page from the sidecar's exact HTTP loopback origin. After that page finishes loading, it requests a single-use token over authenticated local IPC and posts the token in a JSON body. The server sets the HttpOnly session cookie and returns HTTP 204; the WebView then opens `/`. Tokens are absent from the navigation URL and sidecar ready message.
+
+Both platforms use an AF_UNIX socket for IPC. The shell sends the IPC authentication key through an inherited pipe: a dedicated file descriptor on Unix and child stdin on Windows. The Windows key is never passed through an environment variable. Native installed-host verification remains required before shipping an installer.
+
 ## Connections page
 
 The **Connections** page (`/connections`) replaces the old single-provider `<select>` with a multi-provider card grid.

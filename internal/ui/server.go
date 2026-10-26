@@ -352,6 +352,11 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch r.Method {
 	case http.MethodGet:
+		if r.URL.RawQuery == "" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, "<!doctype html><html><head><title>Keylatch</title></head><body><p>Connecting to Keylatch…</p></body></html>")
+			return
+		}
 		cookieVal, err = s.session.ConsumeBootstrap(r.URL.Query().Get("b"), r.URL.Query().Get("mac"))
 	case http.MethodPost:
 		var body struct {
@@ -388,6 +393,10 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	csrf.SetCookie(w, csrfToken)
+	if r.Method == http.MethodPost {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	// 303 redirect to / — token no longer in any URL.
 	http.Redirect(w, r, "/", http.StatusSeeOther)

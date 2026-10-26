@@ -2249,6 +2249,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "uds_windows",
  "ureq",
  "url",
  "winreg 0.52.0",

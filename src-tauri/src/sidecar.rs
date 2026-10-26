@@ -16,8 +16,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rand::RngCore;
 use rand::rngs::OsRng;
+use rand::RngCore;
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
@@ -68,7 +68,10 @@ pub struct SidecarSupervisorImpl {
 
 impl SidecarSupervisorImpl {
     /// Create a new supervisor. `sidecar_path` is the path to the keylatchd binary.
-    pub fn new(sidecar_path: String, ipc_socket_path: String) -> (Self, broadcast::Receiver<SidecarStatus>) {
+    pub fn new(
+        sidecar_path: String,
+        ipc_socket_path: String,
+    ) -> (Self, broadcast::Receiver<SidecarStatus>) {
         let (tx, rx) = broadcast::channel(16);
         let sup = Self {
             sidecar_path,
@@ -112,14 +115,18 @@ impl SidecarSupervisorImpl {
 
             match self.spawn_once() {
                 Ok(url) => {
-                    self.set_state(SidecarState::Running { localhost_url: url.clone() });
+                    self.set_state(SidecarState::Running {
+                        localhost_url: url.clone(),
+                    });
                     return Ok(url);
                 }
                 Err(e) => {
                     attempt += 1;
                     if attempt >= MAX_RESTART_ATTEMPTS {
                         let reason = format!("sidecar failed after {} attempts: {}", attempt, e);
-                        self.set_state(SidecarState::Crashed { reason: reason.clone() });
+                        self.set_state(SidecarState::Crashed {
+                            reason: reason.clone(),
+                        });
                         return Err(reason);
                     }
                     self.set_state(SidecarState::Restarting { attempt });
@@ -132,7 +139,7 @@ impl SidecarSupervisorImpl {
 
     /// Spawn the sidecar once. Returns the localhost URL on success.
     /// On Unix, the HMAC key is passed via an inherited pipe FD.
-    ///            on Windows, key is passed via KEYLATCH_IPC_KEY env var (hex).
+    /// On Windows, the key is written to the child's inherited stdin pipe.
     fn spawn_once(&mut self) -> Result<String, String> {
         let mut key = vec![0u8; 32];
         OsRng.fill_bytes(&mut key);
@@ -155,7 +162,8 @@ impl SidecarSupervisorImpl {
             {
                 // Safety: write_fd is a valid pipe FD we just created.
                 let mut wf = unsafe { std::fs::File::from_raw_fd(write_fd) };
-                wf.write_all(&key).map_err(|e| format!("write key to pipe: {e}"))?;
+                wf.write_all(&key)
+                    .map_err(|e| format!("write key to pipe: {e}"))?;
             }
             unsafe { libc::close(read_fd) };
             child
@@ -163,17 +171,25 @@ impl SidecarSupervisorImpl {
 
         #[cfg(not(unix))]
         let child = {
-            let key_hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
-            Command::new(&self.sidecar_path)
+            let mut child = Command::new(&self.sidecar_path)
                 .arg("--from-desktop-shell")
                 .arg("--ipc-socket")
                 .arg(&self.ipc_socket_path)
-                .env("KEYLATCH_IPC_KEY", key_hex)
-                .stdin(Stdio::null())
+                .env_remove("KEYLATCH_IPC_KEY")
+                .env_remove("KEYLATCH_IPC_KEY_FD")
+                .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
                 .spawn()
-                .map_err(|e| format!("spawn keylatchd: {e}"))?
+                .map_err(|e| format!("spawn keylatchd: {e}"))?;
+            let mut input = child.stdin.take().ok_or("missing IPC key pipe")?;
+            if let Err(e) = input.write_all(&key) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("write IPC key pipe: {e}"));
+            }
+            drop(input);
+            child
         };
 
         {
@@ -198,7 +214,10 @@ impl SidecarSupervisorImpl {
             if Instant::now() > deadline {
                 // Timed out — kill the child.
                 let _ = child.kill();
-                return Err(format!("sidecar did not emit 'ready' within {}s", READY_TIMEOUT.as_secs()));
+                return Err(format!(
+                    "sidecar did not emit 'ready' within {}s",
+                    READY_TIMEOUT.as_secs()
+                ));
             }
             let line = line.map_err(|e| format!("reading child stdout: {e}"))?;
             if let Ok(rl) = serde_json::from_str::<ReadyLine>(&line) {
@@ -273,29 +292,44 @@ fn create_pipe() -> std::io::Result<(i32, i32)> {
         let flags = unsafe { libc::fcntl(fds[1], libc::F_GETFD) };
         if flags == -1 {
             // Close the pipe FDs before returning the error.
-            unsafe { libc::close(fds[0]); libc::close(fds[1]); }
+            unsafe {
+                libc::close(fds[0]);
+                libc::close(fds[1]);
+            }
             return Err(std::io::Error::last_os_error());
         }
         let ret = unsafe { libc::fcntl(fds[1], libc::F_SETFD, flags | libc::FD_CLOEXEC) };
         if ret == -1 {
-            unsafe { libc::close(fds[0]); libc::close(fds[1]); }
+            unsafe {
+                libc::close(fds[0]);
+                libc::close(fds[1]);
+            }
             return Err(std::io::Error::last_os_error());
         }
         Ok((fds[0], fds[1]))
     }
     #[cfg(not(unix))]
     {
-        Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "pipe not implemented on this platform"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "pipe not implemented on this platform",
+        ))
     }
 }
 
 /// Extension trait to add wait_timeout to std::process::Child.
 trait ChildExt {
-    fn wait_timeout(&mut self, timeout: Duration) -> std::io::Result<Option<std::process::ExitStatus>>;
+    fn wait_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> std::io::Result<Option<std::process::ExitStatus>>;
 }
 
 impl ChildExt for Child {
-    fn wait_timeout(&mut self, timeout: Duration) -> std::io::Result<Option<std::process::ExitStatus>> {
+    fn wait_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> std::io::Result<Option<std::process::ExitStatus>> {
         let deadline = Instant::now() + timeout;
         loop {
             match self.try_wait()? {

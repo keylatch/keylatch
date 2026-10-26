@@ -369,6 +369,9 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      - name: Test desktop library
+        run: cargo test --release --locked --lib
+        working-directory: src-tauri
 
   tauri-build-windows:
     needs: desktop-lint
@@ -414,6 +417,9 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Test desktop library
+        run: cargo test --release --locked --lib
+        working-directory: src-tauri
 
   hook-test:
     needs: lint

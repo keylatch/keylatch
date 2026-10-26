@@ -13,15 +13,15 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
-// Platform-agnostic stream type: Unix socket on Unix, TCP on Windows.
+// Both peers use AF_UNIX, including supported Windows versions.
 #[cfg(unix)]
 type OsStream = UnixStream;
 #[cfg(not(unix))]
-type OsStream = std::net::TcpStream;
+type OsStream = uds_windows::UnixStream;
 
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -96,7 +96,10 @@ impl IpcClient {
     /// hmac_key must be exactly 32 bytes (the key shared with keylatchd).
     pub fn new(socket_path: String, hmac_key: Vec<u8>) -> Self {
         assert_eq!(hmac_key.len(), 32, "HMAC key must be 32 bytes");
-        Self { socket_path, hmac_key }
+        Self {
+            socket_path,
+            hmac_key,
+        }
     }
 
     /// Call an IPC method. Returns the decoded result value.
@@ -128,10 +131,12 @@ impl IpcClient {
     /// Call MintBootstrapToken and return the (token, expires_at_unix) tuple.
     pub fn mint_bootstrap_token(&self) -> Result<(String, i64), IpcError> {
         let v = self.call(IpcMethod::MintBootstrapToken, None)?;
-        let token = v["token"].as_str()
+        let token = v["token"]
+            .as_str()
             .ok_or_else(|| IpcError::Decode("missing token field".to_string()))?
             .to_string();
-        let expires_at = v["expires_at"].as_i64()
+        let expires_at = v["expires_at"]
+            .as_i64()
             .ok_or_else(|| IpcError::Decode("missing expires_at field".to_string()))?;
         Ok((token, expires_at))
     }
@@ -154,23 +159,19 @@ impl IpcClient {
 
     fn connect(&self) -> io::Result<OsStream> {
         #[cfg(unix)]
-        {
-            UnixStream::connect(&self.socket_path)
-        }
+        let stream = UnixStream::connect(&self.socket_path)?;
         #[cfg(not(unix))]
-        {
-            // Windows: keylatchd exposes a TCP loopback endpoint.
-            // The socket_path on Windows is "127.0.0.1:<port>".
-            std::net::TcpStream::connect(&self.socket_path as &str)
-        }
+        let stream = OsStream::connect(&self.socket_path)?;
+        stream.set_read_timeout(Some(CONNECT_TIMEOUT))?;
+        stream.set_write_timeout(Some(CONNECT_TIMEOUT))?;
+        Ok(stream)
     }
 
     /// Write a CBOR frame: 4-byte length || CBOR body || 32-byte HMAC tag.
     fn write_frame<T: Serialize>(&self, w: &mut impl Write, v: &T) -> Result<(), IpcError> {
         // Serialise to CBOR using ciborium.
         let mut body = Vec::new();
-        ciborium::into_writer(v, &mut body)
-            .map_err(|e| IpcError::Encode(e.to_string()))?;
+        ciborium::into_writer(v, &mut body).map_err(|e| IpcError::Encode(e.to_string()))?;
 
         let len = body.len() as u32;
         let len_bytes = len.to_be_bytes();
@@ -224,8 +225,7 @@ impl IpcClient {
         })?;
 
         // Decode CBOR.
-        ciborium::from_reader(body.as_slice())
-            .map_err(|e| IpcError::Decode(e.to_string()))
+        ciborium::from_reader(body.as_slice()).map_err(|e| IpcError::Decode(e.to_string()))
     }
 }
 
@@ -249,7 +249,11 @@ mod tests {
             IpcMethod::Shutdown,
             IpcMethod::OpenSystemBrowser,
         ];
-        assert_eq!(methods.len(), 5, "IpcMethod must have exactly 5 variants (S14-8)");
+        assert_eq!(
+            methods.len(),
+            5,
+            "IpcMethod must have exactly 5 variants (S14-8)"
+        );
     }
 
     #[test]
@@ -269,7 +273,9 @@ mod tests {
         let client = IpcClient::new("/tmp/nonexistent".to_string(), key);
 
         #[derive(Serialize, Deserialize, PartialEq, Debug)]
-        struct Payload { value: u32 }
+        struct Payload {
+            value: u32,
+        }
 
         let mut buf = Vec::new();
         let payload = Payload { value: 42 };
@@ -287,7 +293,9 @@ mod tests {
         let client = IpcClient::new("/tmp/nonexistent".to_string(), key);
 
         #[derive(Serialize, Deserialize, PartialEq, Debug)]
-        struct Payload { value: u32 }
+        struct Payload {
+            value: u32,
+        }
 
         let mut buf = Vec::new();
         client.write_frame(&mut buf, &Payload { value: 1 }).unwrap();
@@ -297,7 +305,11 @@ mod tests {
 
         let mut cursor = Cursor::new(buf);
         let err = client.read_frame::<Payload>(&mut cursor).unwrap_err();
-        assert!(matches!(err, IpcError::HmacMismatch), "expected HmacMismatch, got {:?}", err);
+        assert!(
+            matches!(err, IpcError::HmacMismatch),
+            "expected HmacMismatch, got {:?}",
+            err
+        );
     }
 }
 

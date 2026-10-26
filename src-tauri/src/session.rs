@@ -2,24 +2,63 @@
 //
 // Implements the bootstrap flow:
 //   1. fresh_bootstrap_token() → calls IPC MintBootstrapToken; returns one-time token
-//   2. navigate_with_bootstrap(window) → navigates to /__bootstrap?b=<token>;
-//      zeros the token immediately after navigation is initiated
+//   2. The WebView builder loads the credential-free bootstrap page.
+//   3. complete_bootstrap posts a fresh token after the trusted page has loaded.
 //
 // The shell never reads the resulting session cookie (HttpOnly; SameSite=Strict).
 // The token is single-use (60 s TTL), never cached between calls.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Runtime, WebviewWindow};
+use url::Url;
 
 use crate::ipc::IpcClient;
 
-// Used for safe JSON encoding of the bootstrap token value (N6).
-use serde_json;
+pub fn bootstrap_url(base: &str) -> Result<Url, String> {
+    let mut url = Url::parse(base).map_err(|_| "invalid sidecar URL".to_string())?;
+    if url.scheme() != "http"
+        || url.host_str() != Some("127.0.0.1")
+        || url.port().is_none()
+        || url.port() == Some(0)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+    {
+        return Err("sidecar URL must be its exact HTTP loopback origin".to_string());
+    }
+    url.set_path("/__bootstrap");
+    Ok(url)
+}
+
+fn bootstrap_script(url: &Url, token: &str) -> Result<String, String> {
+    let expected = serde_json::to_string(url.as_str()).map_err(|_| "encode bootstrap URL")?;
+    let token = serde_json::to_string(token).map_err(|_| "encode bootstrap token")?;
+    Ok(format!(
+        r#"(async () => {{
+        if (window.location.href !== {expected}) return;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        try {{
+            const response = await fetch('/__bootstrap', {{
+                method: 'POST', credentials: 'same-origin', redirect: 'error',
+                headers: {{'Content-Type': 'application/json'}},
+                body: JSON.stringify({{token: {token}}}), signal: controller.signal
+            }});
+            if (!response.ok) throw new Error('bootstrap refused');
+            window.location.replace('/');
+        }} catch (_) {{
+            document.body.textContent = 'Could not sign in to Keylatch. Restart the app to try again.';
+        }} finally {{ clearTimeout(timeout); }}
+    }})();"#
+    ))
+}
 
 /// BootstrapToken is a single-use token for bootstrapping a WebView session.
-/// It must be zeroed after use (navigate_with_bootstrap does this).
+/// Its native byte buffer is cleared after use.
 pub struct BootstrapToken {
-    /// The token value. Zeroed after `navigate_with_bootstrap` returns.
+    /// The token value, cleared after constructing the exchange script.
     value: Vec<u8>,
     expires_at_unix: i64,
 }
@@ -69,7 +108,9 @@ impl DesktopSession {
     /// Obtain a fresh single-use bootstrap token from the sidecar.
     /// The token is NOT cached — every call mints a new one.
     pub fn fresh_bootstrap_token(&self) -> Result<BootstrapToken, String> {
-        let (token, expires_at) = self.ipc.mint_bootstrap_token()
+        let (token, expires_at) = self
+            .ipc
+            .mint_bootstrap_token()
             .map_err(|e| format!("MintBootstrapToken IPC: {e}"))?;
         if token.is_empty() {
             return Err("sidecar returned empty bootstrap token".to_string());
@@ -81,46 +122,22 @@ impl DesktopSession {
         Ok(bt)
     }
 
-    /// Navigate the WebView window to the bootstrap URL, then zero the token.
-    /// N6: the token is delivered via an in-memory JS assignment (window.__kl_bootstrap_token)
-    /// rather than a navigable URL query parameter, to prevent the token from appearing in
-    /// browser history, referrer headers, or server logs.
-    ///
-    /// Flow:
-    ///   1. Navigate to https://127.0.0.1:<port>/__bootstrap (no query parameter).
-    ///   2. Inject the token via window.eval() as a JS variable assignment.
-    ///   3. The frontend reads window.__kl_bootstrap_token, POSTs it to /__bootstrap,
-    ///      which sets the HttpOnly session cookie and redirects to "/".
-    ///   4. Zero the token immediately after injection.
-    pub fn navigate_with_bootstrap<R: Runtime>(
+    /// Exchange a token only after the trusted bootstrap document finishes loading.
+    pub fn complete_bootstrap<R: Runtime>(
         &self,
         window: &WebviewWindow<R>,
-        localhost_url: &str,
+        base: &str,
     ) -> Result<(), String> {
+        let expected = bootstrap_url(base)?;
+        if window.url().map_err(|_| "read WebView URL")? != expected {
+            return Err("refusing bootstrap outside the sidecar page".to_string());
+        }
         let mut token = self.fresh_bootstrap_token()?;
-
-        // Step 1: navigate to the bootstrap page without the token in the URL.
-        let bootstrap_url = format!("{}/__bootstrap", localhost_url);
-        window.navigate(bootstrap_url.parse()
-            .map_err(|e| format!("parse bootstrap URL: {e}"))?)
-            .map_err(|e| format!("WebView navigate: {e}"))?;
-
-        // Step 2: inject the token as an in-memory JS variable.
-        // serde_json::to_string ensures the token is properly escaped.
-        let token_str = token.as_str().to_owned();
-        let js = format!(
-            "window.__kl_bootstrap_token = {};",
-            serde_json::to_string(&token_str)
-                .map_err(|e| format!("token JSON encode: {e}"))?
-        );
-
-        // Zero the token immediately — the JS variable holds the value from here.
+        let script = bootstrap_script(&expected, token.as_str())?;
         token.zero();
-
-        window.eval(&js)
-            .map_err(|e| format!("WebView eval bootstrap token: {e}"))?;
-
-        Ok(())
+        window
+            .eval(&script)
+            .map_err(|_| "WebView bootstrap exchange failed".to_string())
     }
 
     /// Reset the session: invalidate the current sidecar session and clear
@@ -137,6 +154,39 @@ impl DesktopSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bootstrap_rejects_other_origins_and_embedded_credentials() {
+        assert_eq!(
+            bootstrap_url("http://127.0.0.1:7890").unwrap().as_str(),
+            "http://127.0.0.1:7890/__bootstrap"
+        );
+        for base in [
+            "http://example.test:7890",
+            "http://127.0.0.1.evil.test:7890",
+            "https://127.0.0.1:7890",
+            "http://user@127.0.0.1:7890",
+            "http://127.0.0.1:7890/path",
+            "http://127.0.0.1:7890/?token=secret",
+            "http://127.0.0.1:7890/#fragment",
+            "http://127.0.0.1:0",
+        ] {
+            assert!(bootstrap_url(base).is_err(), "accepted {base}");
+        }
+    }
+
+    #[test]
+    fn bootstrap_script_encodes_token_and_checks_loaded_page() {
+        let url = bootstrap_url("http://127.0.0.1:7890").unwrap();
+        let token = "test\"token\\with\ncontrols";
+        let script = bootstrap_script(&url, token).unwrap();
+        assert!(script.contains(&serde_json::to_string(token).unwrap()));
+        assert!(!script.contains(token));
+        assert!(script.contains("window.location.href !== \"http://127.0.0.1:7890/__bootstrap\""));
+        assert!(script.contains("method: 'POST'"));
+        assert!(script.contains("redirect: 'error'"));
+        assert!(!script.contains("__kl_bootstrap_token"));
+    }
 
     #[test]
     fn test_bootstrap_token_zero_on_drop() {

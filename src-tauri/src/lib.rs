@@ -1,14 +1,14 @@
-mod redaction;
-mod sidecar;
-mod ipc;
-mod webview;
-mod session;
-mod tray;
-mod notify;
-mod deeplink;
-mod update;
-mod launch;
 mod approval_watcher;
+mod deeplink;
+mod ipc;
+mod launch;
+mod notify;
+mod redaction;
+mod session;
+mod sidecar;
+mod tray;
+mod update;
+mod webview;
 mod wizard;
 
 use std::sync::{Arc, Mutex};
@@ -57,11 +57,24 @@ pub fn run() {
                 std::process::exit(0);
             }
 
-            log::info!("keylatch-app: cold-start (version={})", env!("CARGO_PKG_VERSION"));
+            log::info!(
+                "keylatch-app: cold-start (version={})",
+                env!("CARGO_PKG_VERSION")
+            );
 
             // Step 5: SidecarSupervisor::start().
-            let app_dir = app.path().app_data_dir().unwrap_or_else(|_| "/tmp/keylatch".into());
-            let sidecar_path = app.path()
+            let app_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| "/tmp/keylatch".into());
+            std::fs::create_dir_all(&app_dir)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&app_dir, std::fs::Permissions::from_mode(0o700))?;
+            }
+            let sidecar_path = app
+                .path()
                 .resource_dir()
                 .unwrap_or_else(|_| ".".into())
                 .join("binaries/keylatchd");
@@ -83,10 +96,7 @@ pub fn run() {
             let hmac_key = supervisor.hmac_key();
 
             // Step 6a: Wire IPC client.
-            let ipc = ipc::IpcClient::new(
-                ipc_socket.to_string_lossy().to_string(),
-                hmac_key,
-            );
+            let ipc = ipc::IpcClient::new(ipc_socket.to_string_lossy().to_string(), hmac_key);
 
             // Step 6a-ext: Wire TrayController and NotifierImpl.
             let tray_ctrl_opt = tray::TrayController::new(app.handle().clone())
@@ -108,31 +118,42 @@ pub fn run() {
             let nav_guard = Arc::new(webview::NavigationGuard::new(webview_host.clone()));
 
             // Step 6c: Wire DesktopSession.
-            let session = session::DesktopSession::new(ipc);
+            let session = Arc::new(session::DesktopSession::new(ipc));
+            let bootstrap_target = session::bootstrap_url(&localhost_url).ok();
+            let initial_url = match &bootstrap_target {
+                Some(url) => tauri::WebviewUrl::External(url.clone()),
+                None => tauri::WebviewUrl::App("error.html".into()),
+            };
+            let session_for_load = session.clone();
+            let base_for_load = localhost_url.clone();
 
             // Build the main window with the navigation hook wired.
             let guard_for_nav = nav_guard.clone();
-            let window = tauri::WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::App("/".into()),
-            )
-            .title("Keylatch")
-            .inner_size(1200.0, 800.0)
-            .resizable(true)
-            .visible(false)
-            .on_navigation(move |url| {
-                guard_for_nav.on_navigate(url.as_str())
-            })
-            .build()
-            .map_err(|e| format!("build main window: {e}"))?;
+            let window = tauri::WebviewWindowBuilder::new(app, "main", initial_url)
+                .title("Keylatch")
+                .inner_size(1200.0, 800.0)
+                .resizable(true)
+                .visible(false)
+                .on_navigation(move |url| guard_for_nav.on_navigate(url.as_str()))
+                .on_page_load(move |window, payload| {
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                        if bootstrap_target.as_ref() == Some(payload.url()) {
+                            if let Err(e) =
+                                session_for_load.complete_bootstrap(&window, &base_for_load)
+                            {
+                                log::error!(
+                                    "keylatch-app: bootstrap exchange failed: {}",
+                                    redact(&e)
+                                );
+                            }
+                        }
+                        let _ = window.show();
+                    }
+                })
+                .build()
+                .map_err(|e| format!("build main window: {e}"))?;
 
             let _ = webview_host.assert_csp(&window);
-
-            // Step 7: Bootstrap token + WebView navigation.
-            if let Err(e) = session.navigate_with_bootstrap(&window, &localhost_url) {
-                log::error!("keylatch-app: bootstrap navigation failed: {e}");
-            }
 
             // Step 6a-ext2: Start approval watcher.
             if let Some(tray_ctrl) = tray_ctrl_opt {
@@ -167,7 +188,8 @@ pub fn run() {
     app.run(|app_handle, event| {
         if let RunEvent::ExitRequested { .. } = event {
             log::info!("keylatch-app: exit requested — stopping sidecar");
-            if let Some(sup) = app_handle.try_state::<Arc<Mutex<sidecar::SidecarSupervisorImpl>>>() {
+            if let Some(sup) = app_handle.try_state::<Arc<Mutex<sidecar::SidecarSupervisorImpl>>>()
+            {
                 sup.lock().unwrap().stop();
             }
         }

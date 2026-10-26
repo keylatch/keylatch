@@ -25,8 +25,8 @@ func TestDesktopBootstrapIPCResultAuthenticatesHTTP(t *testing.T) {
 		token := response.Result.(map[string]any)["token"].(string)
 		bootstrap := httptest.NewRecorder()
 		srv.TestServeHTTP(bootstrap, httptest.NewRequest(http.MethodPost, "/__bootstrap", strings.NewReader(`{"token":"`+token+`"}`)))
-		require.Equal(t, http.StatusSeeOther, bootstrap.Code)
-		require.Equal(t, "/", bootstrap.Header().Get("Location"))
+		require.Equal(t, http.StatusNoContent, bootstrap.Code)
+		require.Empty(t, bootstrap.Header().Get("Location"))
 		require.Equal(t, "no-store", bootstrap.Header().Get("Cache-Control"))
 		require.NotContains(t, bootstrap.Body.String(), token)
 		cookie := findCookie(bootstrap, "kl_session")
@@ -43,4 +43,17 @@ func TestDesktopBootstrapIPCResultAuthenticatesHTTP(t *testing.T) {
 		srv.TestServeHTTP(replay, httptest.NewRequest(http.MethodPost, "/__bootstrap", strings.NewReader(`{"token":"`+token+`"}`)))
 		require.Equal(t, http.StatusUnauthorized, replay.Code)
 	}
+}
+
+func TestDesktopBootstrapLoadingPageContainsNoCredential(t *testing.T) {
+	srv, err := ui.New(defaultOpts(t))
+	require.NoError(t, err)
+	token, _, err := srv.MintBootstrapToken()
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	srv.TestServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/__bootstrap", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Connecting to Keylatch")
+	require.NotContains(t, rec.Body.String(), token)
+	require.Empty(t, rec.Result().Cookies())
 }

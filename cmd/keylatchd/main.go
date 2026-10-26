@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -384,6 +385,9 @@ func siblingKeylatch() (string, error) {
 // The caller is responsible for zeroing the returned slice after use.
 func readHMACKeyFromFD() ([]byte, error) {
 	fdStr := os.Getenv("KEYLATCH_IPC_KEY_FD")
+	if fdStr == "" && runtime.GOOS == "windows" {
+		return readHMACKeyFromPipe(os.Stdin)
+	}
 	if fdStr == "" {
 		return nil, fmt.Errorf("KEYLATCH_IPC_KEY_FD is not set; " +
 			"HMAC key must be passed via an inherited file descriptor")
@@ -426,5 +430,19 @@ func readHMACKeyFromFD() ([]byte, error) {
 	// Clear the env var so it is not visible to any subprocesses we might fork.
 	_ = os.Unsetenv("KEYLATCH_IPC_KEY_FD")
 
+	return key, nil
+}
+
+func readHMACKeyFromPipe(f *os.File) ([]byte, error) {
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || info.Mode()&os.ModeNamedPipe == 0 {
+		return nil, fmt.Errorf("IPC key input must be an inherited pipe")
+	}
+	key := make([]byte, 32)
+	if _, err := io.ReadFull(f, key); err != nil {
+		clear(key)
+		return nil, fmt.Errorf("read IPC key pipe: %w", err)
+	}
 	return key, nil
 }

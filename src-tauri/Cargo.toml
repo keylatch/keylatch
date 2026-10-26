@@ -74,6 +74,7 @@ libc = "0.2"
 # Windows registry access (launch-at-login)
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+uds_windows = "1.2.1"
 
 [features]
 default = ["custom-protocol"]
