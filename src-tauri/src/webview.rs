@@ -6,7 +6,10 @@
 //
 // The server CSP is verified separately before the window is created.
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU16, Ordering},
+    Arc,
+};
 use url::Url;
 
 /// NavigationPolicy decides whether a navigation should proceed.
@@ -18,13 +21,19 @@ pub enum NavigationPolicy {
 
 /// WebViewHost configures navigation policy for the main WebView window.
 pub struct WebViewHost {
-    active_port: u16,
+    active_port: AtomicU16,
 }
 
 impl WebViewHost {
     /// Create a new WebViewHost for the given sidecar port.
     pub fn new(active_port: u16) -> Self {
-        Self { active_port }
+        Self {
+            active_port: AtomicU16::new(active_port),
+        }
+    }
+
+    pub fn set_port(&self, port: u16) {
+        self.active_port.store(port, Ordering::Release);
     }
 
     /// Evaluate the navigation policy for a target URL.
@@ -57,7 +66,8 @@ impl WebViewHost {
                 }
                 let scheme_ok = parsed.scheme() == "http";
                 let host_ok = matches!(parsed.host_str(), Some("127.0.0.1"));
-                let port_ok = parsed.port() == Some(self.active_port);
+                let port = self.active_port.load(Ordering::Acquire);
+                let port_ok = port != 0 && parsed.port() == Some(port);
                 if scheme_ok
                     && host_ok
                     && port_ok
@@ -176,6 +186,27 @@ mod tests {
             h.evaluate_navigation("http://127.0.0.1:9999/"),
             NavigationPolicy::Block { .. }
         ));
+    }
+
+    #[test]
+    fn restart_revokes_old_origin_before_accepting_replacement() {
+        let h = host(51842);
+        h.set_port(0);
+        for url in ["http://127.0.0.1:51842/", "http://127.0.0.1:0/"] {
+            assert!(matches!(
+                h.evaluate_navigation(url),
+                NavigationPolicy::Block { .. }
+            ));
+        }
+        h.set_port(51843);
+        assert!(matches!(
+            h.evaluate_navigation("http://127.0.0.1:51842/"),
+            NavigationPolicy::Block { .. }
+        ));
+        assert_eq!(
+            h.evaluate_navigation("http://127.0.0.1:51843/__bootstrap"),
+            NavigationPolicy::Allow
+        );
     }
 
     #[test]

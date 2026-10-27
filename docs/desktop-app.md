@@ -16,6 +16,8 @@ Before opening the WebView, the shell checks the bootstrap response's enforced C
 
 The shell launches the bundled `keylatchd` executable beside the application (`keylatchd.exe` on Windows), without searching the working directory or PATH. A missing, linked, or non-executable sidecar is an error. The sidecar binds an available loopback port and reports it after both listeners are ready. Native CI exercises the actual Go/Rust bootstrap exchange, one-use token rejection, IPC key rotation on restart, and shutdown.
 
+The desktop checks its owned sidecar every five seconds. After three failed checks, it stops approval polling, blocks the previous origin and shows the bundled error page while recovering. Recovery permits five attempts with increasing delays; sixty seconds of healthy operation resets that budget. Each replacement gets fresh IPC keys, a newly validated CSP and a new bootstrap exchange before the WebView reconnects. Requests and unsaved edits are not replayed. Quitting interrupts retry delays, joins the workers and stops the owned process.
+
 Each sidecar startup attempt allows 15 seconds and at most 64 KiB of output before a valid ready message. Silence and incomplete lines cannot extend that deadline. Failed startup kills and reaps the child. Shutdown requests the authenticated IPC shutdown method, waits for exit, and escalates only while the child remains unobserved as exited.
 
 ## Connections page

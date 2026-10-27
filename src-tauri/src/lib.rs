@@ -3,6 +3,7 @@ mod bundled;
 mod csp;
 mod deeplink;
 mod desktop_http;
+mod desktop_runtime;
 mod ipc;
 mod launch;
 mod notify;
@@ -101,11 +102,6 @@ pub fn run() {
                 }
             };
 
-            let hmac_key = supervisor.hmac_key();
-
-            // Step 6a: Wire IPC client.
-            let ipc = ipc::IpcClient::new(ipc_socket.to_string_lossy().to_string(), hmac_key);
-
             // Step 6a-ext: Wire TrayController and NotifierImpl.
             let tray_ctrl_opt = tray::TrayController::new(app.handle().clone())
                 .map(Arc::new)
@@ -121,19 +117,24 @@ pub fn run() {
                 .last()
                 .and_then(|p| p.split('/').next())
                 .and_then(|p| p.parse().ok())
-                .unwrap_or(7890);
+                .unwrap_or(0);
             let webview_host = Arc::new(webview::WebViewHost::new(port));
             let nav_guard = Arc::new(webview::NavigationGuard::new(webview_host.clone()));
 
             // Step 6c: Wire DesktopSession.
-            let session = Arc::new(session::DesktopSession::new(ipc));
             let bootstrap_target = session::bootstrap_url(&localhost_url).ok();
             let initial_url = match &bootstrap_target {
                 Some(url) => tauri::WebviewUrl::External(url.clone()),
                 None => tauri::WebviewUrl::App("error.html".into()),
             };
-            let session_for_load = session.clone();
-            let base_for_load = localhost_url.clone();
+            let active: desktop_runtime::ActiveConnection =
+                Arc::new(Mutex::new(bootstrap_target.as_ref().map(|_| {
+                    Arc::new(desktop_runtime::Connection {
+                        base: localhost_url.clone(),
+                        session: Arc::new(session::DesktopSession::new(supervisor.ipc_client())),
+                    })
+                })));
+            let active_for_load = active.clone();
 
             // Build the main window with the navigation hook wired.
             let guard_for_nav = nav_guard.clone();
@@ -145,14 +146,19 @@ pub fn run() {
                 .on_navigation(move |url| guard_for_nav.on_navigate(url.as_str()))
                 .on_page_load(move |window, payload| {
                     if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
-                        if bootstrap_target.as_ref() == Some(payload.url()) {
-                            if let Err(e) =
-                                session_for_load.complete_bootstrap(&window, &base_for_load)
+                        let current = active_for_load.lock().unwrap().clone();
+                        if let Some(current) = current {
+                            if session::bootstrap_url(&current.base).ok().as_ref()
+                                == Some(payload.url())
                             {
-                                log::error!(
-                                    "keylatch-app: bootstrap exchange failed: {}",
-                                    redact(&e)
-                                );
+                                if let Err(e) =
+                                    current.session.complete_bootstrap(&window, &current.base)
+                                {
+                                    log::error!(
+                                        "keylatch-app: bootstrap exchange failed: {}",
+                                        redact(&e)
+                                    );
+                                }
                             }
                         }
                         let _ = window.show();
@@ -161,16 +167,15 @@ pub fn run() {
                 .build()
                 .map_err(|e| format!("build main window: {e}"))?;
 
-            let watcher = approval_watcher::start(
+            let runtime = desktop_runtime::start(
                 app.handle().clone(),
-                localhost_url.clone(),
-                session,
+                supervisor,
+                active,
+                webview_host,
                 tray_ctrl_opt,
                 notifier,
             )?;
-            app.manage(Mutex::new(watcher));
-
-            app.manage(Arc::new(Mutex::new(supervisor)));
+            app.manage(Mutex::new(runtime));
 
             log::info!("keylatch-app: startup complete, URL={localhost_url}");
             Ok(())
@@ -186,15 +191,10 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if let RunEvent::ExitRequested { .. } = event {
-            if let Some(watcher) =
-                app_handle.try_state::<Mutex<approval_watcher::ApprovalWatcher>>()
-            {
-                watcher.lock().unwrap().stop();
-            }
             log::info!("keylatch-app: exit requested — stopping sidecar");
-            if let Some(sup) = app_handle.try_state::<Arc<Mutex<sidecar::SidecarSupervisorImpl>>>()
+            if let Some(runtime) = app_handle.try_state::<Mutex<desktop_runtime::DesktopRuntime>>()
             {
-                sup.lock().unwrap().stop();
+                runtime.lock().unwrap().stop();
             }
         }
     });

@@ -110,7 +110,16 @@ impl IpcClient {
         method: IpcMethod,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, IpcError> {
-        let mut stream: OsStream = self.connect()?;
+        self.call_with_timeout(method, params, CONNECT_TIMEOUT)
+    }
+
+    fn call_with_timeout(
+        &self,
+        method: IpcMethod,
+        params: Option<serde_json::Value>,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, IpcError> {
+        let mut stream: OsStream = self.connect(timeout)?;
         let req = Request {
             method: method.as_str(),
             params,
@@ -125,7 +134,8 @@ impl IpcClient {
 
     /// Call Health and return true if the sidecar is alive.
     pub fn health(&self) -> bool {
-        self.call(IpcMethod::Health, None).is_ok()
+        self.call_with_timeout(IpcMethod::Health, None, std::time::Duration::from_secs(2))
+            .is_ok()
     }
 
     /// Call MintBootstrapToken and return the (token, expires_at_unix) tuple.
@@ -157,13 +167,13 @@ impl IpcClient {
 
     // ── Internal helpers ──────────────────────────────────────────────────────
 
-    fn connect(&self) -> io::Result<OsStream> {
+    fn connect(&self, timeout: std::time::Duration) -> io::Result<OsStream> {
         #[cfg(unix)]
         let stream = UnixStream::connect(&self.socket_path)?;
         #[cfg(not(unix))]
         let stream = OsStream::connect(&self.socket_path)?;
-        stream.set_read_timeout(Some(CONNECT_TIMEOUT))?;
-        stream.set_write_timeout(Some(CONNECT_TIMEOUT))?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
         Ok(stream)
     }
 

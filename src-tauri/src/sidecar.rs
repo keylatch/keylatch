@@ -51,9 +51,6 @@ struct ReadyLine {
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RESTART_ATTEMPTS: u32 = 5;
-const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
-const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
-const HEALTHY_UPTIME_RESET: Duration = Duration::from_secs(60);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 /// SidecarSupervisorImpl manages the keylatchd child process.
@@ -97,6 +94,29 @@ impl SidecarSupervisorImpl {
     /// The caller must not retain this beyond the current IPC session.
     pub fn hmac_key(&self) -> Vec<u8> {
         self.hmac_key.lock().unwrap().clone()
+    }
+
+    pub fn ipc_client(&self) -> crate::ipc::IpcClient {
+        crate::ipc::IpcClient::new(self.ipc_socket_path.clone(), self.hmac_key())
+    }
+
+    pub fn healthy(&self) -> bool {
+        let alive = self
+            .child
+            .lock()
+            .unwrap()
+            .as_mut()
+            .is_some_and(|child| matches!(child.try_wait(), Ok(None)));
+        alive && self.ipc_client().health()
+    }
+
+    pub fn start_once(&mut self) -> Result<String, String> {
+        self.set_state(SidecarState::Starting);
+        let url = self.spawn_once()?;
+        self.set_state(SidecarState::Running {
+            localhost_url: url.clone(),
+        });
+        Ok(url)
     }
 
     /// Returns the localhost URL if the sidecar is running.
@@ -610,7 +630,15 @@ mod tests {
         let client = crate::desktop_http::DesktopHttp::connect(&base, &token).unwrap();
         assert!(crate::desktop_http::DesktopHttp::connect(&base, &token).is_err());
         drop(client);
-        let new_base = supervisor.restart().unwrap();
+        assert!(supervisor.healthy());
+        {
+            let mut child = supervisor.child.lock().unwrap();
+            kill_and_reap(child.as_mut().unwrap());
+        }
+        assert!(!supervisor.healthy());
+        supervisor.stop();
+        let new_base = supervisor.start_once().unwrap();
+        assert!(supervisor.healthy());
         assert_ne!(supervisor.hmac_key(), old_key);
         assert!(!ipc.health());
         crate::csp::verify_sidecar(&new_base).unwrap();
