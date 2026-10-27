@@ -4,10 +4,9 @@
 // ONLY navigate to the active HTTP loopback sidecar or bundled assets.
 // All other navigations are blocked and audited.
 //
-// CSP is configured in tauri.conf.json and asserted at startup.
+// The server CSP is verified separately before the window is created.
 
 use std::sync::Arc;
-use tauri::{AppHandle, Runtime, WebviewWindow};
 use url::Url;
 
 /// NavigationPolicy decides whether a navigation should proceed.
@@ -73,27 +72,6 @@ impl WebViewHost {
                 }
             }
         }
-    }
-
-    /// Assert that the window's CSP matches the policy string.
-    /// Returns an error string if the active CSP is weaker than expected.
-    ///
-    /// In Tauri v2 the CSP is set in tauri.conf.json and cannot be weakened
-    /// at runtime; this function serves as a startup sanity check.
-    pub fn assert_csp(&self, _window: &WebviewWindow<impl Runtime>) -> Result<(), String> {
-        // Tauri v2 enforces CSP from tauri.conf.json. We verify the config
-        // was loaded correctly by checking the compile-time constant.
-        // The actual enforcement is in the Tauri runtime.
-        //
-        // Required policy:
-        const REQUIRED_CSP: &str =
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'";
-
-        // We can't read the active CSP at runtime in Tauri v2 without JS eval.
-        // The E2E test (E13-T3) performs the actual runtime check via Playwright.
-        // This function is a placeholder that documents the expected value.
-        let _ = REQUIRED_CSP;
-        Ok(())
     }
 }
 

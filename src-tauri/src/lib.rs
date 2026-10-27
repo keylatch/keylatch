@@ -1,4 +1,5 @@
 mod approval_watcher;
+mod csp;
 mod deeplink;
 mod desktop_http;
 mod ipc;
@@ -87,7 +88,13 @@ pub fn run() {
             );
 
             let localhost_url = match supervisor.start() {
-                Ok(url) => url,
+                Ok(url) => {
+                    if let Err(error) = csp::verify_sidecar(&url) {
+                        supervisor.stop();
+                        return Err(error.into());
+                    }
+                    url
+                }
                 Err(e) => {
                     log::error!("keylatch-app: sidecar failed to start: {}", redact(&e));
                     "tauri://localhost/error.html".to_string()
@@ -130,7 +137,7 @@ pub fn run() {
 
             // Build the main window with the navigation hook wired.
             let guard_for_nav = nav_guard.clone();
-            let window = tauri::WebviewWindowBuilder::new(app, "main", initial_url)
+            let _window = tauri::WebviewWindowBuilder::new(app, "main", initial_url)
                 .title("Keylatch")
                 .inner_size(1200.0, 800.0)
                 .resizable(true)
@@ -153,8 +160,6 @@ pub fn run() {
                 })
                 .build()
                 .map_err(|e| format!("build main window: {e}"))?;
-
-            let _ = webview_host.assert_csp(&window);
 
             let watcher = approval_watcher::start(
                 app.handle().clone(),
