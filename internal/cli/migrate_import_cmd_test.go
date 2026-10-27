@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -335,7 +336,7 @@ func (b *importBroker) Call(req brokerapi.Request) (brokerapi.Response, error) {
 	case brokerapi.OpPresenceBegin:
 		d := req.Target.Digest()
 		return brokerapi.Response{OK: true, Proof: &brokerapi.Proof{ID: strings.Repeat("ab", 32), Digest: d, Method: "test"}}, nil
-	case brokerapi.OpMigrateImport:
+	case brokerapi.OpMigrateSources:
 		if b.failing {
 			return brokerapi.Response{}, errors.New("socket closed")
 		}
@@ -376,6 +377,13 @@ func TestBrokerImportStoreBatchesOneRequest(t *testing.T) {
 	}}, migrate.Env{}, store, migrate.ImportOptions{})
 	if res.Written != 1 || res.Unchanged != 1 || len(fb.imports) != 1 || len(fb.imports[0].Items) != 1 {
 		t.Fatalf("import: %+v requests %d", res, len(fb.imports))
+	}
+	item := fb.imports[0].Items[0]
+	if !strings.HasPrefix(item.Source, "env:") || !strings.HasSuffix(item.Source, "#B") || item.Path != "apps/b" {
+		t.Fatalf("source and destination were not retained: %+v", item)
+	}
+	if action, summary := fb.imports[0].Describe(); action != "migrate.import" || !strings.Contains(summary, strconv.QuoteToASCII(item.Source)) || !strings.Contains(summary, item.Path) {
+		t.Fatalf("broker import review omitted source or destination: %s %s", action, summary)
 	}
 
 	fb.tamper = true

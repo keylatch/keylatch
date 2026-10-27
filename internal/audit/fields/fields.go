@@ -159,8 +159,9 @@ var safeLogFields = map[string][]string{
 	"guard.block":       {"command", "rule", "caller_kind", "reason"},
 	"backup.export":     {"destination_kind", "caller_kind", "reason"},
 	// broker migration: counts and the digest of the old chain head, never a value.
-	"broker.adopt":  {"count", "old_audit_head", "caller_kind"},
-	"broker.export": {"count", "caller_kind"},
+	"broker.adopt":   {"count", "old_audit_head", "caller_kind"},
+	"migrate.import": {"count", "request_digest", "caller_kind"},
+	"broker.export":  {"count", "caller_kind"},
 
 	// binding changes: host sets are authorities (no credential content).
 	// attempted is the change an agent caller was refused.
@@ -249,7 +250,7 @@ func AllActions() []string {
 		"presence.decision", "policy.change", "backup.export",
 		// binding change actions.
 		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
-		"broker.adopt", "broker.export",
+		"broker.adopt", "broker.export", "migrate.import",
 		"sync.write", "sync.delete", "sync.rotate.verify", "sync.rotate.rollback", "sync.rotate.complete",
 		"service.enroll", "service.revoke", "machine.issue", "machine.revoke",
 	}

@@ -145,7 +145,7 @@ func (a *admin) dispatch(ctx context.Context, peer control.Peer, res callerkind.
 		}
 		h := a.s.cfg.AuditHead()
 		return brokerapi.Response{OK: true, Head: &brokerapi.AuditHead{Hash: h.Hash, Events: h.Seq}}
-	case brokerapi.OpMigrateImport:
+	case brokerapi.OpMigrateImport, brokerapi.OpMigrateSources:
 		return a.migrateIn(ctx, res, req)
 	case brokerapi.OpMigrateExport:
 		return a.migrateOut(ctx, res)
@@ -316,7 +316,12 @@ func (a *admin) migrateIn(ctx context.Context, res callerkind.Result, req broker
 		clear(got)
 	}
 	extra := map[string]any{"count": len(req.Items), "old_audit_head": req.OldAuditHead}
-	if err := a.emit(ctx, audit.ActionBrokerAdopt, audit.OutcomeOK, res, extra); err != nil {
+	action := audit.ActionBrokerAdopt
+	if req.Op == brokerapi.OpMigrateSources {
+		action = audit.ActionMigrateImport
+		extra = map[string]any{"count": len(req.Items), "request_digest": req.Digest()}
+	}
+	if err := a.emit(ctx, action, audit.OutcomeOK, res, extra); err != nil {
 		return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
 	}
 	return brokerapi.Response{OK: true, MACs: macs}

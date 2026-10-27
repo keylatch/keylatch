@@ -36,6 +36,7 @@ const (
 	OpSecretList      Op = "secret.list"
 	OpAuditHead       Op = "audit.head"
 	OpMigrateImport   Op = "migrate.import"
+	OpMigrateSources  Op = "migrate.import_sources"
 	OpMigrateExport   Op = "migrate.export"
 	OpRotateKeys      Op = "keys.rotate"
 	OpSessionRegister Op = "session.register"
@@ -65,7 +66,7 @@ const (
 
 var allOps = []Op{
 	OpStatus, OpPresenceBegin, OpPolicyAccept, OpPolicyImport, OpPolicyExport, OpPolicyCheck,
-	OpSecretSet, OpSecretDelete, OpSecretList, OpAuditHead, OpMigrateImport, OpMigrateExport,
+	OpSecretSet, OpSecretDelete, OpSecretList, OpAuditHead, OpMigrateImport, OpMigrateSources, OpMigrateExport,
 	OpRotateKeys, OpSessionRegister, OpSessionEnd, OpSessionVerify, OpPresenceHelper,
 	OpSyncDiff, OpSyncDrift, OpSyncApply, OpSyncRotate,
 	OpServiceEnroll, OpServiceRevoke, OpServiceList, OpServiceRelease,
@@ -96,7 +97,7 @@ const (
 // presence proof bound to the request.
 func Privileged(op Op) bool {
 	switch op {
-	case OpPolicyAccept, OpPolicyImport, OpSecretSet, OpSecretDelete, OpMigrateImport, OpMigrateExport, OpRotateKeys,
+	case OpPolicyAccept, OpPolicyImport, OpSecretSet, OpSecretDelete, OpMigrateImport, OpMigrateSources, OpMigrateExport, OpRotateKeys,
 		OpSyncApply, OpSyncRotate, OpServiceEnroll, OpServiceRevoke, OpMachineIssue, OpMachineRevoke, OpMachineListen:
 		return true
 	}
@@ -141,6 +142,8 @@ type Request struct {
 type Item struct {
 	Path  string `json:"path"`
 	Value []byte `json:"value"`
+	// Source is the client's source reference, never the secret value.
+	Source string `json:"source,omitempty"`
 }
 
 // Bundle is a signed policy: the files, who signed them and the signature.
@@ -322,7 +325,7 @@ func (r Request) Validate() error {
 		if len(r.Bundle.Signature) > 128 || len(r.Bundle.KeyID) > 64 {
 			return errors.New("malformed bundle signature")
 		}
-	case OpMigrateImport:
+	case OpMigrateImport, OpMigrateSources:
 		return r.validMigration()
 	case OpSessionVerify:
 		if r.Ticket == "" {
@@ -352,6 +355,13 @@ func (r Request) validMigration() error {
 	}
 	seen := map[string]bool{}
 	for _, it := range r.Items {
+		if r.Op == OpMigrateSources {
+			if it.Source == "" || len(it.Source) > 2048 || strings.ContainsRune(it.Source, 0) {
+				return errors.New("each imported item needs a source reference of at most 2048 bytes")
+			}
+		} else if it.Source != "" {
+			return errors.New("source references require migrate.import_sources")
+		}
 		if err := validPath(it.Path); err != nil {
 			return err
 		}
@@ -420,6 +430,9 @@ func (r Request) Digest() string {
 	slices.SortFunc(items, func(a, b Item) int { return strings.Compare(a.Path, b.Path) })
 	for _, it := range items {
 		field([]byte(it.Path))
+		if r.Op == OpMigrateSources {
+			field([]byte(it.Source))
+		}
 		s := sha256.Sum256(it.Value)
 		field(s[:])
 	}
@@ -462,6 +475,15 @@ func (r Request) Describe() (action, summary string) {
 		return "policy.change", fmt.Sprintf("Import a policy bundle of %d file(s) from another host (request %s)", n, short)
 	case OpMigrateImport:
 		return "broker.adopt", fmt.Sprintf("Move %d secret(s) from your account into the broker (request %s)", len(r.Items), short)
+	case OpMigrateSources:
+		items := slices.Clone(r.Items)
+		slices.SortFunc(items, func(a, b Item) int { return strings.Compare(a.Path, b.Path) })
+		var summary strings.Builder
+		fmt.Fprintf(&summary, "Import %d secret(s) into your broker partition (request %s). Sources are reported by the client; values are not displayed.", len(items), short)
+		for _, item := range items {
+			fmt.Fprintf(&summary, "\nSource %+q -> broker destination %+q", item.Source, item.Path)
+		}
+		return "migrate.import", summary.String()
 	case OpMigrateExport:
 		return "broker.export", fmt.Sprintf("Copy every broker secret back into your account (request %s)", short)
 	case OpRotateKeys:

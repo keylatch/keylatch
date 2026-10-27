@@ -108,8 +108,15 @@ func (s *brokerImportStore) Get(_ context.Context, p string) ([]byte, error) {
 	return nil, migrate.ErrNotFound
 }
 
-func (s *brokerImportStore) Put(_ context.Context, p string, v []byte) error {
-	s.pending = append(s.pending, brokerapi.Item{Path: p, Value: bytes.Clone(v)})
+func (s *brokerImportStore) Put(context.Context, string, []byte) error {
+	return errors.New("broker migration requires a source reference")
+}
+
+func (s *brokerImportStore) PutPlanned(_ context.Context, item migrate.PlanItem, v []byte) error {
+	if item.Ref == "" {
+		return errors.New("broker migration requires a source reference")
+	}
+	s.pending = append(s.pending, brokerapi.Item{Path: item.Path, Source: item.Ref, Value: bytes.Clone(v)})
 	return nil
 }
 
@@ -124,7 +131,7 @@ func (s *brokerImportStore) Flush(context.Context) error {
 	if _, err := rand.Read(nonce); err != nil {
 		return err
 	}
-	resp, err := brokerPrivileged(s.c, "migrate import", brokerapi.Request{Op: brokerapi.OpMigrateImport, Items: s.pending, Nonce: nonce})
+	resp, err := brokerPrivileged(s.c, "migrate import", brokerapi.Request{Op: brokerapi.OpMigrateSources, Items: s.pending, Nonce: nonce})
 	if err != nil {
 		return err
 	}
