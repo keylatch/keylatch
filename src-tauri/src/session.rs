@@ -148,14 +148,20 @@ impl DesktopSession {
             .map_err(|_| "WebView bootstrap exchange failed".to_string())
     }
 
-    /// Reset the session: invalidate the current sidecar session and clear
-    /// the WebView cookie jar for the localhost origin.
-    pub fn reset<R: Runtime>(&self, window: &WebviewWindow<R>) -> Result<(), String> {
-        // Send Shutdown+Restart via IPC (in production, call a session-invalidate method).
-        // For now: eval JS to clear cookies for the localhost origin.
-        window.eval("document.cookie.split(';').forEach(c => document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/'));")
-            .map_err(|e| format!("WebView eval for cookie clear: {e}"))?;
-        Ok(())
+    /// Re-enter bootstrap after the server has revoked the expired cookie.
+    pub fn rebootstrap<R: Runtime>(
+        &self,
+        window: &WebviewWindow<R>,
+        base: &str,
+    ) -> Result<(), String> {
+        let expected = bootstrap_url(base)?;
+        let current = window.url().map_err(|_| "read WebView URL")?;
+        if current.origin() != expected.origin() {
+            return Err("refusing session recovery outside the sidecar origin".into());
+        }
+        window
+            .navigate(expected)
+            .map_err(|_| "WebView session recovery failed".into())
     }
 }
 

@@ -6,6 +6,8 @@ use url::Url;
 
 use crate::session::bootstrap_url;
 
+pub const SESSION_EXPIRED: &str = "approval session expired";
+
 /// A separate native session; never reads the WebView cookie jar.
 pub struct DesktopHttp {
     agent: ureq::Agent,
@@ -58,7 +60,10 @@ impl DesktopHttp {
             .get(url.as_str())
             .set("Cookie", &self.cookie)
             .call()
-            .map_err(|_| "approval poll failed")?;
+            .map_err(|error| match error {
+                ureq::Error::Status(401, _) => SESSION_EXPIRED,
+                _ => "approval poll failed",
+            })?;
         if response.status() != 200 {
             return Err("approval poll refused");
         }
@@ -162,6 +167,8 @@ mod tests {
     fn polling_rejects_redirects_malformed_and_oversized_responses() {
         let oversized = "x".repeat(1_048_577);
         for (response, expected) in [
+            ("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string(), SESSION_EXPIRED),
+            ("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string(), "approval poll failed"),
             ("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string(), "approval poll refused"),
             ("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".to_string(), "invalid approval response"),
             (format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{oversized}", oversized.len()), "approval response too large"),

@@ -59,7 +59,41 @@ func TestDesktopBootstrapExpiresAndLimitsOutstandingTokens(t *testing.T) {
 	require.Error(t, err)
 	s.expiresAt = time.Now().Add(-time.Second)
 	_, _, err = s.MintBootstrapToken()
+	require.NoError(t, err)
+}
+
+func TestDesktopRenewalRevokesOldCredentialsWithoutRevivingHTTPBootstrap(t *testing.T) {
+	s, err := New(make([]byte, 32))
+	require.NoError(t, err)
+	oldToken, oldMAC := s.token, s.computeMAC(s.token)
+	oldDesktop, _, err := s.MintBootstrapToken()
+	require.NoError(t, err)
+	oldCookie := s.id
+	s.expiresAt = time.Now().Add(-time.Second)
+	req := httptest.NewRequest(http.MethodGet, "/api/approvals", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: oldCookie})
+	require.ErrorIs(t, s.ValidateRequest(req), ErrTokenExpired)
+	_, err = s.ConsumeBootstrap(oldToken, oldMAC)
 	require.ErrorIs(t, err, ErrTokenExpired)
+
+	token, _, err := s.MintBootstrapToken()
+	require.NoError(t, err)
+	require.NotEqual(t, oldCookie, s.id)
+	require.ErrorIs(t, s.ValidateRequest(req), ErrUnknownSession)
+	_, err = s.ConsumeDesktopBootstrap(oldDesktop)
+	require.ErrorIs(t, err, ErrUnknownSession)
+	_, err = s.ConsumeBootstrap(oldToken, oldMAC)
+	require.ErrorIs(t, err, ErrTokenConsumed)
+	cookie, err := s.ConsumeDesktopBootstrap(token)
+	require.NoError(t, err)
+	req = httptest.NewRequest(http.MethodGet, "/api/approvals", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
+	require.NoError(t, s.ValidateRequest(req))
+	second, _, err := s.MintBootstrapToken()
+	require.NoError(t, err)
+	secondCookie, err := s.ConsumeDesktopBootstrap(second)
+	require.NoError(t, err)
+	require.Equal(t, cookie, secondCookie)
 }
 
 func TestDesktopBootstrapPrunesStaleTokensAndCannotOutliveSession(t *testing.T) {
@@ -79,4 +113,33 @@ func TestDesktopBootstrapPrunesStaleTokensAndCannotOutliveSession(t *testing.T) 
 	s.expiresAt = time.Now().Add(-time.Second)
 	_, err = s.ConsumeDesktopBootstrap(token)
 	require.ErrorIs(t, err, ErrTokenExpired)
+}
+
+func TestConcurrentDesktopRenewalsKeepOneSession(t *testing.T) {
+	s, err := New(make([]byte, 32))
+	require.NoError(t, err)
+	s.expiresAt = time.Now().Add(-time.Second)
+	var wg sync.WaitGroup
+	cookies := make(chan string, 8)
+	for range 8 {
+		wg.Go(func() {
+			token, _, mintErr := s.MintBootstrapToken()
+			if mintErr != nil {
+				t.Error(mintErr)
+				return
+			}
+			cookie, consumeErr := s.ConsumeDesktopBootstrap(token)
+			if consumeErr != nil {
+				t.Error(consumeErr)
+				return
+			}
+			cookies <- cookie
+		})
+	}
+	wg.Wait()
+	close(cookies)
+	require.Len(t, cookies, 8)
+	for cookie := range cookies {
+		require.Equal(t, s.id, cookie)
+	}
 }

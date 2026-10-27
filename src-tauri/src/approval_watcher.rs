@@ -9,7 +9,7 @@ use std::sync::{
 };
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -94,7 +94,7 @@ pub fn start<R: Runtime + 'static>(
     let thread = std::thread::Builder::new()
         .name("approval-watcher".into())
         .spawn(move || {
-            let client = match session.native_http(&base_url) {
+            let mut client = match session.native_http(&base_url) {
                 Ok(client) => client,
                 Err(_) => {
                     log::error!("approval watcher could not establish its native session");
@@ -151,6 +151,32 @@ pub fn start<R: Runtime + 'static>(
                     Err(reason) => {
                         log::debug!("approval watcher: {reason}");
                         show_error(&app, &tray, &stopping);
+                        if reason == crate::desktop_http::SESSION_EXPIRED
+                            && !stopping.load(Ordering::Acquire)
+                        {
+                            match session.native_http(&base_url) {
+                                Ok(renewed) => {
+                                    client = renewed;
+                                    let app_for_recovery = app.clone();
+                                    let session = session.clone();
+                                    let base = base_url.clone();
+                                    let stopping = stopping.clone();
+                                    let _ = app.run_on_main_thread(move || {
+                                        if stopping.load(Ordering::Acquire) {
+                                            return;
+                                        }
+                                        if let Some(window) =
+                                            app_for_recovery.get_webview_window("main")
+                                        {
+                                            if session.rebootstrap(&window, &base).is_err() {
+                                                log::error!("desktop session recovery failed");
+                                            }
+                                        }
+                                    });
+                                }
+                                Err(_) => log::error!("native session renewal failed"),
+                            }
+                        }
                     }
                 }
                 if receiver.recv_timeout(POLL_INTERVAL) != Err(mpsc::RecvTimeoutError::Timeout) {

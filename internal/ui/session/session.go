@@ -59,7 +59,16 @@ func (s *Session) MintBootstrapToken() (string, time.Time, error) {
 	defer s.mu.Unlock()
 	now := time.Now()
 	if !now.Before(s.expiresAt) {
-		return "", time.Time{}, ErrTokenExpired
+		// Only the authenticated IPC minter can replace an expired session.
+		fresh, err := New(s.hmacKey)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		s.id = fresh.id
+		s.token = fresh.token
+		s.consumed = true
+		s.expiresAt = fresh.expiresAt
+		clear(s.desktopTokens)
 	}
 	for digest, expires := range s.desktopTokens {
 		if !now.Before(expires) {

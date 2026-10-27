@@ -12,6 +12,8 @@ Both platforms use an AF_UNIX socket for IPC. The shell sends the IPC authentica
 
 The sidecar announces readiness after both IPC and HTTP listeners bind. Native approval notifications use a separate IPC-issued bootstrap token and an in-memory session cookie. Polling follows no redirects, bypasses environment proxies, and limits response size and request duration. Only pending, unexpired requests produce notifications; polling errors set the tray error state. Shutdown stops polling and joins its worker before stopping the sidecar.
 
+Before opening the WebView, the shell checks the bootstrap response's enforced Content-Security-Policy and stops the sidecar if the policy is missing or unsafe. After the eight-hour UI session expires, authenticated native IPC can create a replacement session. Old cookies and pending bootstrap tokens stay invalid. Native polling reconnects and the WebView reloads through the one-time bootstrap flow; unsaved form edits can be lost. No approval decision or other mutation is replayed. Ordinary HTTP requests cannot renew an expired session.
+
 Each sidecar startup attempt allows 15 seconds and at most 64 KiB of output before a valid ready message. Silence and incomplete lines cannot extend that deadline. Failed startup kills and reaps the child. Shutdown requests the authenticated IPC shutdown method, waits for exit, and escalates only while the child remains unobserved as exited.
 
 ## Connections page
