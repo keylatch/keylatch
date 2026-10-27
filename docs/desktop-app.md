@@ -14,6 +14,8 @@ The sidecar announces readiness after both IPC and HTTP listeners bind. Native a
 
 Before opening the WebView, the shell checks the bootstrap response's enforced Content-Security-Policy and stops the sidecar if the policy is missing or unsafe. After the eight-hour UI session expires, authenticated native IPC can create a replacement session. Old cookies and pending bootstrap tokens stay invalid. Native polling reconnects and the WebView reloads through the one-time bootstrap flow; unsaved form edits can be lost. No approval decision or other mutation is replayed. Ordinary HTTP requests cannot renew an expired session.
 
+The shell launches the bundled `keylatchd` executable beside the application (`keylatchd.exe` on Windows), without searching the working directory or PATH. A missing, linked, or non-executable sidecar is an error. The sidecar binds an available loopback port and reports it after both listeners are ready. Native CI exercises the actual Go/Rust bootstrap exchange, one-use token rejection, IPC key rotation on restart, and shutdown.
+
 Each sidecar startup attempt allows 15 seconds and at most 64 KiB of output before a valid ready message. Silence and incomplete lines cannot extend that deadline. Failed startup kills and reaps the child. Shutdown requests the authenticated IPC shutdown method, waits for exit, and escalates only while the child remains unobserved as exited.
 
 ## Connections page

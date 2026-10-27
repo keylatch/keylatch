@@ -64,6 +64,8 @@ pub struct SidecarSupervisorImpl {
     tx: broadcast::Sender<SidecarStatus>,
     hmac_key: Arc<Mutex<Vec<u8>>>,
     child: Arc<Mutex<Option<Child>>>,
+    #[cfg(test)]
+    test_config_dir: Option<std::path::PathBuf>,
 }
 
 impl SidecarSupervisorImpl {
@@ -80,6 +82,8 @@ impl SidecarSupervisorImpl {
             tx,
             hmac_key: Arc::new(Mutex::new(vec![0u8; 32])),
             child: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            test_config_dir: None,
         };
         (sup, rx)
     }
@@ -151,10 +155,8 @@ impl SidecarSupervisorImpl {
                 let read_pipe = unsafe { std::fs::File::from_raw_fd(read_fd) };
                 let mut write_pipe = unsafe { std::fs::File::from_raw_fd(write_fd) };
 
-                let mut child = Command::new(&self.sidecar_path)
-                    .arg("--from-desktop-shell")
-                    .arg("--ipc-socket")
-                    .arg(&self.ipc_socket_path)
+                let mut child = self
+                    .command()
                     .env("KEYLATCH_IPC_KEY_FD", read_pipe.as_raw_fd().to_string())
                     .stdin(Stdio::null())
                     .stdout(Stdio::piped())
@@ -172,10 +174,8 @@ impl SidecarSupervisorImpl {
 
             #[cfg(windows)]
             {
-                let mut child = Command::new(&self.sidecar_path)
-                    .arg("--from-desktop-shell")
-                    .arg("--ipc-socket")
-                    .arg(&self.ipc_socket_path)
+                let mut child = self
+                    .command()
                     .env_remove("KEYLATCH_IPC_KEY")
                     .env_remove("KEYLATCH_IPC_KEY_FD")
                     .stdin(Stdio::piped())
@@ -205,6 +205,20 @@ impl SidecarSupervisorImpl {
         let child = spawned?;
         let url = self.wait_for_ready(child)?;
         Ok(url)
+    }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.sidecar_path);
+        command
+            .arg("--from-desktop-shell")
+            .arg("--ipc-socket")
+            .arg(&self.ipc_socket_path)
+            .args(["--port", "0"]);
+        #[cfg(test)]
+        if let Some(directory) = &self.test_config_dir {
+            command.env("KEYLATCH_CONFIG_DIR", directory);
+        }
+        command
     }
 
     /// Read stdout of the child until a JSON `ready` line is found,
@@ -251,6 +265,12 @@ impl SidecarSupervisorImpl {
         };
         // Ignore send errors (no subscribers is fine).
         let _ = self.tx.send(status);
+    }
+}
+
+impl Drop for SidecarSupervisorImpl {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -560,6 +580,49 @@ mod tests {
         sup.set_state(SidecarState::Starting);
         let status = rx.try_recv().expect("state broadcast");
         assert_eq!(status.state, SidecarState::Starting);
+    }
+
+    #[test]
+    #[ignore = "requires the real Go sidecar produced by the native CI build"]
+    fn bundled_go_sidecar_bootstraps_and_rejects_old_ipc_after_restart() {
+        let test_binary = std::env::current_exe().unwrap();
+        let release_dir = test_binary.parent().unwrap().parent().unwrap();
+        let binary = crate::bundled::sidecar(&release_dir.join("keylatch-app")).unwrap();
+        #[cfg(unix)]
+        let root = tempfile::Builder::new()
+            .prefix("kl-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        #[cfg(windows)]
+        let root = tempfile::Builder::new().prefix("kl-").tempdir().unwrap();
+        let socket = root.path().join("i.sock");
+        let (mut supervisor, _) = SidecarSupervisorImpl::new(
+            binary.to_str().unwrap().to_string(),
+            socket.to_str().unwrap().to_string(),
+        );
+        supervisor.test_config_dir = Some(root.path().join("config"));
+        let base = supervisor.start().unwrap();
+        crate::csp::verify_sidecar(&base).unwrap();
+        let old_key = supervisor.hmac_key();
+        let ipc = crate::ipc::IpcClient::new(socket.to_str().unwrap().into(), old_key.clone());
+        assert!(ipc.health());
+        let (token, _) = ipc.mint_bootstrap_token().unwrap();
+        let client = crate::desktop_http::DesktopHttp::connect(&base, &token).unwrap();
+        assert!(crate::desktop_http::DesktopHttp::connect(&base, &token).is_err());
+        drop(client);
+        let new_base = supervisor.restart().unwrap();
+        assert_ne!(supervisor.hmac_key(), old_key);
+        assert!(!ipc.health());
+        crate::csp::verify_sidecar(&new_base).unwrap();
+        let new_ipc =
+            crate::ipc::IpcClient::new(socket.to_str().unwrap().into(), supervisor.hmac_key());
+        assert!(new_ipc.health());
+        let (token, _) = new_ipc.mint_bootstrap_token().unwrap();
+        crate::desktop_http::DesktopHttp::connect(&new_base, &token).unwrap();
+        supervisor.stop();
+        assert!(supervisor.child.lock().unwrap().is_none());
+        assert!(supervisor.hmac_key().iter().all(|byte| *byte == 0));
+        assert!(!new_ipc.health());
     }
 }
 

@@ -1,4 +1,5 @@
 mod approval_watcher;
+mod bundled;
 mod csp;
 mod deeplink;
 mod desktop_http;
@@ -65,26 +66,25 @@ pub fn run() {
             );
 
             // Step 5: SidecarSupervisor::start().
-            let app_dir = app
-                .path()
-                .app_data_dir()
-                .unwrap_or_else(|_| "/tmp/keylatch".into());
+            let app_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_dir)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&app_dir, std::fs::Permissions::from_mode(0o700))?;
             }
-            let sidecar_path = app
-                .path()
-                .resource_dir()
-                .unwrap_or_else(|_| ".".into())
-                .join("binaries/keylatchd");
+            let sidecar_path = bundled::sidecar(&tauri::utils::platform::current_exe()?)?;
             let ipc_socket = app_dir.join("ipc.sock");
 
             let (mut supervisor, _status_rx) = sidecar::SidecarSupervisorImpl::new(
-                sidecar_path.to_string_lossy().to_string(),
-                ipc_socket.to_string_lossy().to_string(),
+                sidecar_path
+                    .to_str()
+                    .ok_or("sidecar path is not UTF-8")?
+                    .to_string(),
+                ipc_socket
+                    .to_str()
+                    .ok_or("IPC path is not UTF-8")?
+                    .to_string(),
             );
 
             let localhost_url = match supervisor.start() {
