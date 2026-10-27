@@ -2253,6 +2253,7 @@ dependencies = [
  "uds_windows",
  "ureq",
  "url",
+ "windows-sys 0.61.2",
  "winreg 0.52.0",
 ]
 

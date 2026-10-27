@@ -12,6 +12,8 @@ Both platforms use an AF_UNIX socket for IPC. The shell sends the IPC authentica
 
 The sidecar announces readiness after both IPC and HTTP listeners bind. Native approval notifications use a separate IPC-issued bootstrap token and an in-memory session cookie. Polling follows no redirects, bypasses environment proxies, and limits response size and request duration. Only pending, unexpired requests produce notifications; polling errors set the tray error state. Shutdown stops polling and joins its worker before stopping the sidecar.
 
+Each sidecar startup attempt allows 15 seconds and at most 64 KiB of output before a valid ready message. Silence and incomplete lines cannot extend that deadline. Failed startup kills and reaps the child. Shutdown requests the authenticated IPC shutdown method, waits for exit, and escalates only while the child remains unobserved as exited.
+
 ## Connections page
 
 The **Connections** page (`/connections`) replaces the old single-provider `<select>` with a multi-provider card grid.
