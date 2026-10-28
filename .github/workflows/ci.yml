@@ -17,6 +17,9 @@ permissions:
 # allows a plaintext vault key; no environment variable can.
 
 jobs:
+  vaultwarden:
+    uses: ./.github/workflows/vaultwarden.yml
+
   secret-service:
     runs-on: ubuntu-latest
     timeout-minutes: 10
