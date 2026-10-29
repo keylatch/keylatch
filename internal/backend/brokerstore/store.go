@@ -91,7 +91,20 @@ func (s *Store) Put(_ context.Context, p string, value []byte) (int, error) {
 	defer s.mu.Unlock()
 	version, created := 1, s.now().UTC()
 	if old, err := s.read(p); err == nil {
+		value, _, err := s.decrypt(old)
+		clear(value)
+		if err != nil {
+			return 0, err
+		}
 		version, created = old.Version+1, old.Created
+		if version <= old.Version {
+			return 0, errors.New("brokerstore: version limit reached")
+		}
+		if err := s.writeTo(s.versionFile(p, old.Version), old); err != nil {
+			return 0, err
+		}
+	} else if !errors.Is(err, backend.ErrNotFound) {
+		return 0, err
 	}
 	dek := make([]byte, dekLen)
 	defer clear(dek)
@@ -125,6 +138,51 @@ func (s *Store) Get(_ context.Context, p string) ([]byte, backend.Meta, error) {
 	if err != nil {
 		return nil, backend.Meta{}, err
 	}
+	return s.decrypt(rec)
+}
+
+// GetVersion returns an authenticated historical value; the caller wipes it.
+// A deleted source has no readable history, even if cleanup was interrupted.
+func (s *Store) GetVersion(_ context.Context, p string, version int) ([]byte, backend.Meta, error) {
+	if err := validPath(p); err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if version < 1 {
+		return nil, backend.Meta{}, errors.New("brokerstore: version must be positive")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, err := s.read(p)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if version == current.Version {
+		return s.decrypt(current)
+	}
+	value, _, err := s.decrypt(current)
+	clear(value)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if version > current.Version {
+		return nil, backend.Meta{}, backend.ErrNotFound
+	}
+	var rec record
+	if err := readJSON(s.versionFile(p, version), &rec); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, backend.Meta{}, backend.ErrNotFound
+		}
+		return nil, backend.Meta{}, err
+	}
+	if rec.V != recordFormat || rec.Path != p || rec.Version != version {
+		return nil, backend.Meta{}, ErrAAD
+	}
+	return s.decrypt(rec)
+}
+
+// decrypt checks both encryption layers; the caller holds mu.
+func (s *Store) decrypt(rec record) ([]byte, backend.Meta, error) {
+	p := rec.Path
 	aad := s.aad(p, rec.Version)
 	kek, err := s.keys.KEKFor(rec.KID, s.partition)
 	if err != nil {
@@ -150,11 +208,24 @@ func (s *Store) Delete(_ context.Context, p string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	missing := false
 	if err := os.Remove(s.file(p)); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return backend.ErrNotFound
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("brokerstore: %w", err)
 		}
-		return fmt.Errorf("brokerstore: %w", err)
+		missing = true
+	}
+	files, err := filepath.Glob(strings.TrimSuffix(s.file(p), ".json") + ".v*.json")
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("brokerstore: remove history: %w", err)
+		}
+	}
+	if missing {
+		return backend.ErrNotFound
 	}
 	return nil
 }
@@ -169,7 +240,7 @@ func (s *Store) List(_ context.Context, prefix string) ([]backend.Entry, error) 
 	}
 	var out []backend.Entry
 	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") || strings.Contains(f.Name(), ".v") {
 			continue
 		}
 		var rec record
@@ -200,6 +271,9 @@ func (s *Store) Rewrap(oldKEK, newKEK []byte, newKID string) (int, error) {
 		if err := readJSON(filepath.Join(s.dir, f.Name()), &rec); err != nil {
 			return n, err
 		}
+		if rec.V != recordFormat || rec.Version < 1 || (f.Name() != filepath.Base(s.file(rec.Path)) && f.Name() != filepath.Base(s.versionFile(rec.Path, rec.Version))) {
+			return n, ErrAAD
+		}
 		if rec.KID == newKID {
 			continue
 		}
@@ -214,7 +288,7 @@ func (s *Store) Rewrap(oldKEK, newKEK []byte, newKID string) (int, error) {
 			return n, err
 		}
 		rec.KID, rec.DEKNonce, rec.WrappedDEK = newKID, nonce, wrapped
-		if err := s.write(rec); err != nil {
+		if err := s.writeTo(filepath.Join(s.dir, f.Name()), rec); err != nil {
 			return n, err
 		}
 		n++
@@ -231,6 +305,10 @@ func (s *Store) file(p string) string {
 	return filepath.Join(s.dir, hex.EncodeToString(sum[:])+".json")
 }
 
+func (s *Store) versionFile(p string, version int) string {
+	return strings.TrimSuffix(s.file(p), ".json") + fmt.Sprintf(".v%d.json", version)
+}
+
 func (s *Store) read(p string) (record, error) {
 	var rec record
 	if err := readJSON(s.file(p), &rec); err != nil {
@@ -239,24 +317,37 @@ func (s *Store) read(p string) (record, error) {
 		}
 		return rec, err
 	}
-	if rec.V != recordFormat || rec.Path != p {
+	if rec.V != recordFormat || rec.Path != p || rec.Version < 1 {
 		return rec, fmt.Errorf("%w: record names another path", ErrAAD)
 	}
 	return rec, nil
 }
 
 func (s *Store) write(rec record) error {
+	return s.writeTo(s.file(rec.Path), rec)
+}
+
+func (s *Store) writeTo(dst string, rec record) error {
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
-	dst := s.file(rec.Path)
-	tmp := dst + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	f, err := os.CreateTemp(s.dir, ".record-")
+	if err != nil {
+		return fmt.Errorf("brokerstore: %w", err)
+	}
+	tmp := f.Name()
+	defer func() { _ = f.Close(); _ = os.Remove(tmp) }()
+	if _, err := f.Write(b); err != nil {
+		return fmt.Errorf("brokerstore: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("brokerstore: %w", err)
+	}
+	if err := f.Close(); err != nil {
 		return fmt.Errorf("brokerstore: %w", err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
 		return fmt.Errorf("brokerstore: %w", err)
 	}
 	return nil
