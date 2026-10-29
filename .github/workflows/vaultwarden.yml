@@ -13,7 +13,8 @@ jobs:
     timeout-minutes: 20
     services:
       vaultwarden:
-        image: vaultwarden/server:1.37.4
+        image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+        options: --tmpfs /data
         env:
           ROCKET_PORT: '8080'
           SIGNUPS_ALLOWED: 'true'
