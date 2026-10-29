@@ -9,7 +9,6 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
-	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -41,7 +40,6 @@ type connCtxKey struct{}
 // secretStore is what the sync operations need of a partition's store.
 type secretStore interface {
 	Get(ctx context.Context, p string) ([]byte, backend.Meta, error)
-	Put(ctx context.Context, p string, value []byte) (int, error)
 	List(ctx context.Context, prefix string) ([]backend.Entry, error)
 }
 
@@ -74,6 +72,36 @@ func (s storeSecrets) Value(ctx context.Context, connection, field string) ([]by
 	}
 	v, _, err := s.st.Get(ctx, p)
 	return v, err
+}
+
+func (s storeSecrets) Snapshot(ctx context.Context, connection, field string) (keysync.SourceSnapshot, error) {
+	fields := []string{field}
+	if field == "" {
+		fields = []string{"", "value"}
+	}
+	p, err := s.find(ctx, connection, fields)
+	if err != nil {
+		return keysync.SourceSnapshot{}, err
+	}
+	var current, previous []byte
+	var meta backend.Meta
+	if versioned, ok := s.st.(interface {
+		Snapshot(context.Context, string) ([]byte, []byte, backend.Meta, error)
+	}); ok {
+		current, previous, meta, err = versioned.Snapshot(ctx, p)
+	} else {
+		current, meta, err = s.st.Get(ctx, p)
+	}
+	if err != nil {
+		clear(current)
+		clear(previous)
+		return keysync.SourceSnapshot{}, err
+	}
+	out := keysync.SourceSnapshot{Path: p, Version: meta.Version, Current: current, Previous: previous}
+	if previous != nil {
+		out.PreviousVersion = meta.Version - 1
+	}
+	return out, nil
 }
 
 func (s storeSecrets) credential(ctx context.Context, connection string) (string, error) {
@@ -113,26 +141,6 @@ func (s storeSecrets) credentialKinds(ctx context.Context, m keysync.Manifest) m
 		}
 	}
 	return out
-}
-
-func previousPath(connection, field string) string {
-	if field == "" {
-		field = "_"
-	}
-	return path.Join(".sync", "previous", connection, field)
-}
-
-func (s storeSecrets) Previous(ctx context.Context, connection, field string) ([]byte, error) {
-	v, _, err := s.st.Get(ctx, previousPath(connection, field))
-	if errors.Is(err, backend.ErrNotFound) {
-		return nil, keysync.ErrNoPrevious
-	}
-	return v, err
-}
-
-func (s storeSecrets) Remember(ctx context.Context, connection, field string, value []byte) error {
-	_, err := s.st.Put(ctx, previousPath(connection, field), value)
-	return err
 }
 
 // syncAudit reports the engine's events to the audit log with the caller kind

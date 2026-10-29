@@ -29,9 +29,6 @@ const (
 	OutcomeFailed     = "failed"
 )
 
-// ErrNoPrevious means the engine has no earlier value to restore.
-var ErrNoPrevious = errors.New("sync: no earlier value is recorded for this source")
-
 // TargetClient is one target as the engine drives it.
 type TargetClient interface {
 	// ID is the identity the record of writes is keyed by.
@@ -51,10 +48,18 @@ type Flusher interface {
 // Secrets reads the sources. Only the daemon holds one.
 type Secrets interface {
 	Value(ctx context.Context, connection, field string) ([]byte, error)
-	// Previous returns the value last synced for the source.
-	Previous(ctx context.Context, connection, field string) ([]byte, error)
-	// Remember records value as the one now synced, dropping the one before it.
-	Remember(ctx context.Context, connection, field string, value []byte) error
+	// Snapshot binds current and previous backend versions to one source read.
+	Snapshot(ctx context.Context, connection, field string) (SourceSnapshot, error)
+}
+
+// SourceSnapshot contains daemon-only values and their source version identities.
+// Previous is nil when the backend cannot supply an earlier version.
+type SourceSnapshot struct {
+	Path            string
+	Version         int
+	PreviousVersion int
+	Current         []byte
+	Previous        []byte
 }
 
 // Recorder is the daemon's record of its own writes.
@@ -215,9 +220,6 @@ func (e *Engine) Apply(ctx context.Context, prune bool) ([]Entry, error) {
 			if err == nil {
 				err = e.reshape(ctx, c, v, envs, remote[tn])
 			}
-			if err == nil {
-				err = e.Secrets.Remember(ctx, v.From.Connection, v.From.Field, val)
-			}
 			for _, env := range envs {
 				en := Entry{Target: tn, Environment: env, Name: v.Name}
 				if err != nil {
@@ -363,9 +365,9 @@ func (e *Engine) updatedAt(rs []Remote, name, env string) time.Time {
 type RotateOptions struct {
 	// Target limits the rotation to one target; empty means every target of the variable.
 	Target string
-	// KeepOld is how long the previous value stays recorded after every target verified.
+	// KeepOld delays completion after every target verified.
 	KeepOld time.Duration
-	// NoRollback allows a rotation when no earlier value is recorded.
+	// NoRollback allows a rotation when the backend has no previous version.
 	NoRollback bool
 }
 
@@ -373,7 +375,7 @@ type RotateOptions struct {
 var ErrRotateFailed = errors.New("sync: the rotation failed")
 
 // Rotate writes the source's current value to every target of a variable,
-// verifies each, and only then retires the earlier value. If any target fails
+// verifies each, and records completion. If any target fails
 // verification the earlier value is written back and the rotation stops.
 func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]Entry, error) {
 	v, ok := e.varByName(name)
@@ -389,21 +391,30 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 	if len(tns) == 0 {
 		return nil, fmt.Errorf("sync: %s has no target %q", name, opt.Target)
 	}
-	prev, perr := e.Secrets.Previous(ctx, v.From.Connection, v.From.Field)
-	if perr != nil && !errors.Is(perr, ErrNoPrevious) {
-		return nil, perr
-	}
-	if errors.Is(perr, ErrNoPrevious) && !opt.NoRollback {
-		return nil, fmt.Errorf("sync: no earlier value of %s is recorded, so a failed rotation could not be undone; run 'keylatch sync apply' first or pass --no-rollback", name)
-	}
-	defer clear(prev)
-	next, err := e.Secrets.Value(ctx, v.From.Connection, v.From.Field)
+	snapshot, err := e.Secrets.Snapshot(ctx, v.From.Connection, v.From.Field)
 	if err != nil {
 		return nil, fmt.Errorf("sync: read the source of %s: %w", name, err)
 	}
+	prev, next := snapshot.Previous, snapshot.Current
+	defer clear(prev)
 	defer clear(next)
 	if prev != nil && bytes.Equal(prev, next) {
+		return nil, fmt.Errorf("sync: the source of %s has identical current and previous versions; rotate it at its provider first", name)
+	}
+	alreadySynced := true
+	for _, tn := range tns {
+		for _, env := range v.To[tn] {
+			w, ok := e.State.Written(e.Targets[tn].ID(), env, name)
+			if !ok || w.MAC != e.State.MAC(e.Targets[tn].ID(), env, name, next) {
+				alreadySynced = false
+			}
+		}
+	}
+	if alreadySynced {
 		return nil, fmt.Errorf("sync: the source of %s still holds the value last synced; rotate it at its provider first", name)
+	}
+	if prev == nil && !opt.NoRollback {
+		return nil, fmt.Errorf("sync: the backend has no previous version of %s; a failed rotation could not be undone; pass --no-rollback to proceed", name)
 	}
 
 	var out []Entry
@@ -451,9 +462,6 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 		if err := sleep(ctx, opt.KeepOld); err != nil {
 			return out, err
 		}
-	}
-	if err := e.Secrets.Remember(ctx, v.From.Connection, v.From.Field, next); err != nil {
-		return out, err
 	}
 	for _, tn := range tns {
 		if err := e.recordOne(ctx, tn, v, next); err != nil {

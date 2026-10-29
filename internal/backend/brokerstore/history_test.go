@@ -62,6 +62,64 @@ func TestHistorySurvivesReopenAndKeyRotation(t *testing.T) {
 	require.Empty(t, files)
 }
 
+func TestSnapshotKeepsAdjacentVersionsDuringWrites(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t, newKeys(t), t.TempDir(), "1000")
+	_, err := s.Put(ctx, "key", []byte("1"))
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for i := 2; i <= 40; i++ {
+			_, err := s.Put(ctx, "key", []byte(fmt.Sprint(i)))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	})
+	defer wg.Wait()
+	for range 100 {
+		current, previous, meta, err := s.Snapshot(ctx, "key")
+		require.NoError(t, err)
+		require.Equal(t, fmt.Sprint(meta.Version), string(current))
+		if meta.Version == 1 {
+			require.Nil(t, previous)
+		} else {
+			require.Equal(t, fmt.Sprint(meta.Version-1), string(previous))
+		}
+		clear(current)
+		clear(previous)
+	}
+}
+
+func TestSnapshotFailsClosedOnCorruptHistory(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t, newKeys(t), t.TempDir(), "1000")
+	_, _, _, err := s.Snapshot(ctx, "../invalid")
+	require.Error(t, err)
+	_, _, _, err = s.Snapshot(ctx, "missing")
+	require.ErrorIs(t, err, backend.ErrNotFound)
+	for _, value := range []string{"old", "new"} {
+		_, err := s.Put(ctx, "key", []byte(value))
+		require.NoError(t, err)
+	}
+	var rec record
+	require.NoError(t, readJSON(s.versionFile("key", 1), &rec))
+	rec.CT[0] ^= 1
+	require.NoError(t, s.writeTo(s.versionFile("key", 1), rec))
+	current, previous, _, err := s.Snapshot(ctx, "key")
+	require.ErrorIs(t, err, ErrAAD)
+	require.Nil(t, current)
+	require.Nil(t, previous)
+	require.NoError(t, os.Remove(s.versionFile("key", 1)))
+	current, previous, meta, err := s.Snapshot(ctx, "key")
+	require.NoError(t, err)
+	require.Equal(t, "new", string(current))
+	require.Equal(t, 2, meta.Version)
+	require.Nil(t, previous)
+	clear(current)
+}
+
 func TestHistoryRejectsSubstitutionAndCorruptCurrentRecord(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t, newKeys(t), t.TempDir(), "1000")

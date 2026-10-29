@@ -84,9 +84,9 @@ Change the value at its provider and store the new value in the source connectio
 1. writes the source's current value to every target of the variable;
 2. verifies each target: Vercel `encrypted` entries are read back and compared, write-only stores (Vercel `sensitive`, GitHub) are checked by the update time they report, and a variable's optional `verify: {url: https://...}` makes the daemon send an HTTPS request with the new value as a bearer token and expect a 2xx;
 3. on any failure writes the previous value back and stops (`sync.rotate.rollback`);
-4. after every target verified and `--keep-old` (up to 24 hours) elapsed, retires the previous value (`sync.rotate.complete`).
+4. after every target verified and `--keep-old` (up to 24 hours) elapsed, records completion (`sync.rotate.complete`). Backend retirement and provider revocation are not yet implemented.
 
-The previous value is the one last synced. If none is recorded, `rotate` refuses unless you pass `--no-rollback`. Revoking the old credential at its provider stays a step you do there.
+The broker reads the current and immediately preceding stored versions together. Rollback restores that preceding version, even if it was never synced. If the source has no history, `rotate` refuses unless you pass `--no-rollback`. Corrupt history is always refused. Sync no longer creates separate copies of previously applied values; existing `.sync/previous` records are not used for rollback. Revoking the old credential at its provider stays a step you do there.
 
 ## Run drift in CI
 

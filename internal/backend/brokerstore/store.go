@@ -167,6 +167,36 @@ func (s *Store) GetVersion(_ context.Context, p string, version int) ([]byte, ba
 	if version > current.Version {
 		return nil, backend.Meta{}, backend.ErrNotFound
 	}
+	return s.history(p, version)
+}
+
+// Snapshot reads current and previous values under one lock; the caller wipes both.
+// Missing history is returned as nil, while corrupt history fails the whole read.
+func (s *Store) Snapshot(_ context.Context, p string) (current, previous []byte, m backend.Meta, err error) {
+	if err = validPath(p); err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, err := s.read(p)
+	if err != nil {
+		return nil, nil, backend.Meta{}, err
+	}
+	current, m, err = s.decrypt(rec)
+	if err != nil || rec.Version == 1 {
+		return
+	}
+	previous, _, err = s.history(p, rec.Version-1)
+	if errors.Is(err, backend.ErrNotFound) {
+		err = nil
+	} else if err != nil {
+		clear(current)
+		return nil, nil, backend.Meta{}, err
+	}
+	return
+}
+
+func (s *Store) history(p string, version int) ([]byte, backend.Meta, error) {
 	var rec record
 	if err := readJSON(s.versionFile(p, version), &rec); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
