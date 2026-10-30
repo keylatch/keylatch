@@ -110,6 +110,7 @@ type Hierarchy struct {
 	dir      string
 	rootWrap *secret
 	lock     bool
+	storeMu  sync.RWMutex
 
 	mu         sync.RWMutex
 	bmk        *secret
@@ -161,6 +162,8 @@ func Open(dir string, root []byte, lock bool) (*Hierarchy, error) {
 
 // Close zeroes and unlocks every key held in memory.
 func (h *Hierarchy) Close() {
+	h.storeMu.Lock()
+	defer h.storeMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, s := range []*secret{h.rootWrap, h.bmk, h.pending} {
@@ -199,6 +202,13 @@ func (h *Hierarchy) PendingKeyID() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.pendingKID
+}
+
+// HoldStoreKeys prevents master-key replacement until a store operation finishes.
+// Acquire it before the store mutex and release it after committing the operation.
+func (h *Hierarchy) HoldStoreKeys() func() {
+	h.storeMu.RLock()
+	return h.storeMu.RUnlock
 }
 
 // StoreKEK returns the store key-encryption key of a partition and the id of
@@ -345,6 +355,8 @@ func (h *Hierarchy) ServiceKeyFor(partition string) ([]byte, error) {
 // staged on disk before rewrap runs and committed after it succeeds, so an
 // interrupted rotation is finished with Resume.
 func (h *Hierarchy) Rotate(rewrap Rewrap) error {
+	h.storeMu.Lock()
+	defer h.storeMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.pending != nil {
@@ -385,6 +397,8 @@ func (h *Hierarchy) Rotate(rewrap Rewrap) error {
 
 // Resume finishes a rotation that was staged but not committed.
 func (h *Hierarchy) Resume(rewrap Rewrap) error {
+	h.storeMu.Lock()
+	defer h.storeMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.pending == nil {

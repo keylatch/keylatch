@@ -33,6 +33,8 @@ func (s *Store) SnapshotForRetirement(_ context.Context, p string) ([]byte, []by
 	if err := validPath(p); err != nil {
 		return nil, nil, backend.Meta{}, Retirement{}, err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, err := s.read(p)
@@ -70,6 +72,8 @@ func (s *Store) Retire(_ context.Context, ref Retirement) error {
 	if ref.CurrentVersion < 2 || !validRecordID(ref.CurrentID) || !validRecordID(ref.PreviousID) {
 		return ErrVersionChanged
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, err := s.read(ref.Path)

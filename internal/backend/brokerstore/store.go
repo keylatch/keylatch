@@ -42,6 +42,8 @@ var ErrAAD = errors.New("brokerstore: record failed its integrity check")
 
 // KEKSource hands out the partition's key-encryption keys.
 type KEKSource interface {
+	// HoldStoreKeys returns a release function that excludes concurrent key rotation.
+	HoldStoreKeys() func()
 	// StoreKEK returns the current key and the id of the master key it comes from.
 	StoreKEK(partition string) (kid string, key []byte)
 	// KEKFor returns the key under the master key named kid.
@@ -88,6 +90,8 @@ func (s *Store) Put(_ context.Context, p string, value []byte) (int, error) {
 	if err := validPath(p); err != nil {
 		return 0, err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	version, created := 1, s.now().UTC()
@@ -119,6 +123,8 @@ func (s *Store) Get(_ context.Context, p string) ([]byte, backend.Meta, error) {
 	if err := validPath(p); err != nil {
 		return nil, backend.Meta{}, err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, err := s.read(p)
@@ -137,6 +143,8 @@ func (s *Store) GetVersion(_ context.Context, p string, version int) ([]byte, ba
 	if version < 1 {
 		return nil, backend.Meta{}, errors.New("brokerstore: version must be positive")
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, err := s.read(p)
@@ -215,6 +223,8 @@ func (s *Store) Delete(_ context.Context, p string) error {
 	if err := validPath(p); err != nil {
 		return err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	missing := false
@@ -241,6 +251,8 @@ func (s *Store) Delete(_ context.Context, p string) error {
 
 // List returns the metadata of every secret under prefix. It decrypts nothing.
 func (s *Store) List(_ context.Context, prefix string) ([]backend.Entry, error) {
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	files, err := os.ReadDir(s.dir)
