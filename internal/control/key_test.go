@@ -23,10 +23,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/keyops"
+	"github.com/keylatch/keylatch/internal/presence"
+	"github.com/keylatch/keylatch/internal/presence/presencetest"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -128,6 +131,7 @@ func startKeyDaemonWith(t *testing.T, seed []keyops.Change, keys memoryKeys, tun
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := Config{Env: lookupOf(d.env), Binary: "/bin/false", Keys: svc, KeyAdmin: admin}
+	cfg.KeyPresence = keyPresenceFunc(func(context.Context, presence.Action, string) error { return nil })
 	if tune != nil {
 		tune(&cfg)
 	}
@@ -342,6 +346,7 @@ func TestKeyReplyOnTheWireCarriesNoKey(t *testing.T) {
 
 func TestKeyPolicyThroughDaemon(t *testing.T) {
 	d := startKeyDaemon(t, nil, memoryKeys{})
+	presencetest.Approve(t)
 	agentEnv := map[string]string{"KEYLATCH_AGENT_SESSION": "1"}
 	for k, v := range d.env {
 		agentEnv[k] = v
@@ -457,6 +462,63 @@ func TestSSHAgentEndpointSigns(t *testing.T) {
 	requireAbsent(t, "audit", d.audit.dump(), keyPEM)
 	if !strings.Contains(d.audit.dump(), `"operation":"ssh_sign"`) {
 		t.Fatal("ssh signing is not audited")
+	}
+}
+
+func TestSSHAgentShutdownClosesIdleClients(t *testing.T) {
+	t.Run("ssh", func(t *testing.T) { testKeyAgentShutdown(t, false) })
+	t.Run("gpg", func(t *testing.T) { testKeyAgentShutdown(t, true) })
+}
+
+func testKeyAgentShutdown(t *testing.T, gpg bool) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "klidle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	store := keyops.NewStore(filepath.Join(dir, "keys.json"), bytes.Repeat([]byte{3}, 32))
+	svc, err := keyops.New(store, memoryKeys{}, &recordedAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(Config{Keys: svc})
+	ln, err := Listen(filepath.Join(dir, "agent.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		if gpg {
+			done <- srv.ServeGPGAgent(ctx, ln)
+		} else {
+			done <- srv.ServeSSHAgent(ctx, ln)
+		}
+	}()
+	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: ln.Addr().String(), Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if gpg {
+		if line, err := bufio.NewReader(conn).ReadString('\n'); err != nil || !strings.HasPrefix(line, "OK ") {
+			t.Fatalf("GnuPG greeting: %q, %v", line, err)
+		}
+	} else {
+		if _, err := agent.NewClient(conn).List(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("idle agent client blocked daemon shutdown")
 	}
 }
 

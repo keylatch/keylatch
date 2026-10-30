@@ -2225,6 +2225,7 @@ name = "keylatch-app"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "ciborium",
  "dirs 5.0.1",
  "hex",
@@ -2249,8 +2250,10 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "uds_windows",
  "ureq",
  "url",
+ "windows-sys 0.61.2",
  "winreg 0.52.0",
 ]
 

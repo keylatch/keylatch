@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,7 +41,9 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
+	"github.com/keylatch/keylatch/internal/sidecar/events"
 	"github.com/keylatch/keylatch/internal/sidecar/ipc"
 	"github.com/keylatch/keylatch/internal/ui"
 	"github.com/spf13/cobra"
@@ -181,27 +184,45 @@ When run without --from-desktop-shell, behaviour is identical to
 				if startErr != nil {
 					return fmt.Errorf("keylatchd: IPC server: %w", startErr)
 				}
+				eventMux := events.NewMux()
+				defer eventMux.Stop()
+				ipc.RegisterHandlers(ipcServer.Registry(), eventMux, srv, ipc.ShutdownFunc(cancel))
 				// Zero the key material from the local slice — the server
 				// has copied what it needs.
 				for i := range hmacKey {
 					hmacKey[i] = 0
 				}
+				ipcDone := make(chan error, 1)
 				go func() {
-					if listenErr := ipcServer.Listen(ctx); listenErr != nil {
+					listenErr := ipcServer.Listen(ctx)
+					ipcDone <- listenErr
+					if listenErr != nil {
 						slog.Error("IPC server error", "error", listenErr)
+						cancel()
 					}
 				}()
+				select {
+				case <-ipcServer.Ready():
+				case listenErr := <-ipcDone:
+					return fmt.Errorf("keylatchd: IPC listener stopped before readiness: %v", listenErr)
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 
 				// Emit ready signal to the parent Tauri shell on stdout.
 				// The Tauri shell parses this line to learn the server URL.
 				ready := map[string]string{
 					"event": "ready",
-					"url":   srv.BootstrapURL(),
+					"url":   "http://" + opts.Bind,
 					"build": buildVersion,
 				}
-				if encErr := json.NewEncoder(os.Stdout).Encode(ready); encErr != nil {
-					return fmt.Errorf("keylatchd: emit ready: %w", encErr)
-				}
+				return srv.ServeWithReady(ctx, func(address string) error {
+					ready["url"] = "http://" + address
+					if encErr := json.NewEncoder(os.Stdout).Encode(ready); encErr != nil {
+						return fmt.Errorf("keylatchd: emit ready: %w", encErr)
+					}
+					return nil
+				})
 			}
 
 			return srv.Serve(ctx)
@@ -222,7 +243,7 @@ When run without --from-desktop-shell, behaviour is identical to
 }
 
 func newServeCmd() *cobra.Command {
-	var socket, binary, sshAgentSocket string
+	var socket, binary, sshAgentSocket, gpgAgentSocket string
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the control socket used by the keylatch thin client",
@@ -283,12 +304,23 @@ any agent sandbox.`,
 			cfg.Decide = enforce.Decide
 			cfg.Approve = newApprover(env, emitter)
 			cfg.Contained = newContained(socket, binary, vaultResolver{cfg: loadConfig(env), env: env, log: emitter})
-			var agentLn *net.UnixListener
+			var agentLn, gpgLn *net.UnixListener
 			if keys, admin, closeAudit, err := newKeyService(env); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "keylatchd: key operations are disabled: %v\n", err)
 			} else {
 				defer closeAudit()
 				cfg.Keys, cfg.KeyAdmin = keys, admin
+				cfg.KeyPresence = presence.New().Platform
+				if gpgAgentSocket != "off" {
+					if gpgAgentSocket == "" {
+						gpgAgentSocket = filepath.Join(filepath.Dir(socket), "gpg-agent.sock")
+					}
+					if gpgLn, err = control.Listen(gpgAgentSocket); err != nil {
+						return fmt.Errorf("keylatchd: gpg-agent: %w", err)
+					}
+					defer func() { _ = gpgLn.Close(); _ = os.Remove(gpgAgentSocket) }()
+					fmt.Fprintf(cmd.OutOrStdout(), "keylatchd: gpg-agent on %s\n", gpgAgentSocket)
+				}
 				if sshAgentSocket != "off" {
 					if sshAgentSocket == "" {
 						sshAgentSocket = paths.SSHAgentSocket(env)
@@ -301,6 +333,9 @@ any agent sandbox.`,
 				}
 			}
 			srv := control.NewServer(cfg)
+			if gpgLn != nil {
+				go func() { _ = srv.ServeGPGAgent(ctx, gpgLn) }()
+			}
 			if agentLn != nil {
 				go func() { _ = srv.ServeSSHAgent(ctx, agentLn) }()
 			}
@@ -310,6 +345,7 @@ any agent sandbox.`,
 	cmd.Flags().StringVar(&socket, "socket", "", "control socket path (default: $KEYLATCH_SOCKET or $XDG_RUNTIME_DIR/keylatch/keylatchd.sock)")
 	cmd.Flags().StringVar(&binary, "keylatch-bin", "", "keylatch executable the daemon runs for served verbs (default: next to keylatchd)")
 	cmd.Flags().StringVar(&sshAgentSocket, "ssh-agent-socket", "", "ssh-agent endpoint path (default: $KEYLATCH_SSH_AGENT_SOCKET or ssh-agent.sock next to the control socket; \"off\" disables it)")
+	cmd.Flags().StringVar(&gpgAgentSocket, "gpg-agent-socket", "", "GnuPG signing endpoint path (default: gpg-agent.sock next to the control socket; off disables it)")
 	return cmd
 }
 
@@ -364,6 +400,9 @@ func siblingKeylatch() (string, error) {
 // The caller is responsible for zeroing the returned slice after use.
 func readHMACKeyFromFD() ([]byte, error) {
 	fdStr := os.Getenv("KEYLATCH_IPC_KEY_FD")
+	if fdStr == "" && runtime.GOOS == "windows" {
+		return readHMACKeyFromPipe(os.Stdin)
+	}
 	if fdStr == "" {
 		return nil, fmt.Errorf("KEYLATCH_IPC_KEY_FD is not set; " +
 			"HMAC key must be passed via an inherited file descriptor")
@@ -406,5 +445,19 @@ func readHMACKeyFromFD() ([]byte, error) {
 	// Clear the env var so it is not visible to any subprocesses we might fork.
 	_ = os.Unsetenv("KEYLATCH_IPC_KEY_FD")
 
+	return key, nil
+}
+
+func readHMACKeyFromPipe(f *os.File) ([]byte, error) {
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || info.Mode()&os.ModeNamedPipe == 0 {
+		return nil, fmt.Errorf("IPC key input must be an inherited pipe")
+	}
+	key := make([]byte, 32)
+	if _, err := io.ReadFull(f, key); err != nil {
+		clear(key)
+		return nil, fmt.Errorf("read IPC key pipe: %w", err)
+	}
 	return key, nil
 }

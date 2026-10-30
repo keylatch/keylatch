@@ -325,6 +325,37 @@ func TestSyncEnvFileAtomic0600(t *testing.T) {
 	}
 }
 
+func TestSyncRotateCommitsVerifiedEnvFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes and descriptor passing are Unix features")
+	}
+	for _, outcome := range []string{keysync.OutcomeVerified, keysync.OutcomeRetirementPending} {
+		t.Run(string(outcome), func(t *testing.T) {
+			f := newSyncFixture(t, true)
+			f.broker.answer = func(brokerapi.Request) brokerapi.Response {
+				return brokerapi.Response{OK: true, Sync: &brokerapi.SyncResult{Entries: []keysync.Entry{
+					{Target: "local", Environment: "file", Name: "DATABASE_URL", Outcome: outcome},
+				}}}
+			}
+			if err := f.run(t, "rotate", "DATABASE_URL", "--target", "local"); err != nil {
+				t.Fatalf("rotate = %v\n%s", err, f.out)
+			}
+			path := filepath.Join(f.dir, ".env.local")
+			got, err := os.ReadFile(path)
+			if err != nil || string(got) != f.broker.merged {
+				t.Fatalf("env file = %q, %v", got, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.Mode().Perm() != 0o600 {
+				t.Fatalf("private file mode was not preserved: %v", err)
+			}
+			if matches, _ := filepath.Glob(filepath.Join(f.dir, ".keylatch-sync-*")); len(matches) != 0 {
+				t.Fatalf("temp files left: %v", matches)
+			}
+		})
+	}
+}
+
 func TestSyncApplyIdempotentKeepsTheEnvFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("file modes and descriptor passing are Unix features")

@@ -29,6 +29,7 @@ import (
 	"github.com/keylatch/keylatch/internal/placeholder"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/policy/mint"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -82,6 +83,10 @@ type Config struct {
 	Keys *keyops.Service
 	// KeyAdmin edits the key operation allowlist. Nil disables it.
 	KeyAdmin *keyops.Admin
+	// KeyPresence authenticates the daemon user's policy edits; nil fails closed.
+	KeyPresence presence.Method
+	// KeyPeerPresence authenticates policy edits for an identified broker peer.
+	KeyPeerPresence func(context.Context, Peer, presence.Action, string) error
 	// Audit receives one value-free event per decision. Nil records nothing.
 	Audit audit.Emitter
 	// Callers classifies socket peers. Nil walks the real process tree.
@@ -254,7 +259,9 @@ func (s *Server) ServeConn(ctx context.Context, conn Conn, peer Peer) {
 	case OpKey:
 		_ = writeFrame(conn, s.key(ctx, kind, req.Key))
 	case OpKeyPolicy:
-		_ = writeFrame(conn, s.keyPolicy(ctx, kind, req.KeyPolicy))
+		_ = writeFrame(conn, s.keyPolicyPeer(ctx, kind, req.KeyPolicy, peer))
+	case OpKeyAgent:
+		s.keyAgent(ctx, conn, r, res, peer, req.KeyAgent)
 	default:
 		if s.cfg.Extension != nil && s.cfg.Extension.Handle(ctx, conn, peer, res, raw) {
 			return
@@ -286,7 +293,7 @@ func gated(req Request) bool {
 	switch req.Op {
 	case OpExec:
 		return slices.Contains(valueVerbs, req.Verb) || req.Verb == "call" || req.Verb == "run"
-	case OpRunSession, OpContained, OpGateway, OpProxy, OpCredential, OpKey, OpKeyPolicy:
+	case OpRunSession, OpContained, OpGateway, OpProxy, OpCredential, OpKey, OpKeyPolicy, OpKeyAgent:
 		return true
 	}
 	return false

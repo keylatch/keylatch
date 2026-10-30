@@ -21,16 +21,14 @@ const (
 
 // Entry outcomes.
 const (
-	OutcomeWritten    = "written"
-	OutcomeUnchanged  = "unchanged"
-	OutcomeDeleted    = "deleted"
-	OutcomeVerified   = "verified"
-	OutcomeRolledBack = "rolled-back"
-	OutcomeFailed     = "failed"
+	OutcomeWritten           = "written"
+	OutcomeUnchanged         = "unchanged"
+	OutcomeDeleted           = "deleted"
+	OutcomeVerified          = "verified"
+	OutcomeRolledBack        = "rolled-back"
+	OutcomeFailed            = "failed"
+	OutcomeRetirementPending = "retirement-pending"
 )
-
-// ErrNoPrevious means the engine has no earlier value to restore.
-var ErrNoPrevious = errors.New("sync: no earlier value is recorded for this source")
 
 // TargetClient is one target as the engine drives it.
 type TargetClient interface {
@@ -51,10 +49,20 @@ type Flusher interface {
 // Secrets reads the sources. Only the daemon holds one.
 type Secrets interface {
 	Value(ctx context.Context, connection, field string) ([]byte, error)
-	// Previous returns the value last synced for the source.
-	Previous(ctx context.Context, connection, field string) ([]byte, error)
-	// Remember records value as the one now synced, dropping the one before it.
-	Remember(ctx context.Context, connection, field string, value []byte) error
+	// Snapshot binds current and previous backend versions to one source read.
+	Snapshot(ctx context.Context, connection, field string) (SourceSnapshot, error)
+}
+
+// SourceSnapshot contains daemon-only values and their source version identities.
+// Previous is nil when the backend cannot supply an earlier version.
+type SourceSnapshot struct {
+	Path            string
+	Version         int
+	PreviousVersion int
+	CurrentID       string
+	PreviousID      string
+	Current         []byte
+	Previous        []byte
 }
 
 // Recorder is the daemon's record of its own writes.
@@ -92,6 +100,9 @@ type Engine struct {
 	Probe func(ctx context.Context, url string, value []byte) error
 	// Sleep waits d or until ctx ends; nil uses a timer.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Finalize persists retirement after all selected targets verify and are recorded.
+	// Pending is true when retirement is deferred; errors must not roll back a possibly revoked value.
+	Finalize func(context.Context, Var, SourceSnapshot, []string, time.Duration) (pending bool, err error)
 }
 
 func (e *Engine) now() time.Time {
@@ -214,9 +225,6 @@ func (e *Engine) Apply(ctx context.Context, prune bool) ([]Entry, error) {
 			err = c.Write(ctx, v.Name, val, envs, v.IsSensitive())
 			if err == nil {
 				err = e.reshape(ctx, c, v, envs, remote[tn])
-			}
-			if err == nil {
-				err = e.Secrets.Remember(ctx, v.From.Connection, v.From.Field, val)
 			}
 			for _, env := range envs {
 				en := Entry{Target: tn, Environment: env, Name: v.Name}
@@ -363,9 +371,9 @@ func (e *Engine) updatedAt(rs []Remote, name, env string) time.Time {
 type RotateOptions struct {
 	// Target limits the rotation to one target; empty means every target of the variable.
 	Target string
-	// KeepOld is how long the previous value stays recorded after every target verified.
+	// KeepOld delays completion after every target verified.
 	KeepOld time.Duration
-	// NoRollback allows a rotation when no earlier value is recorded.
+	// NoRollback allows a rotation when the backend has no previous version.
 	NoRollback bool
 }
 
@@ -373,7 +381,7 @@ type RotateOptions struct {
 var ErrRotateFailed = errors.New("sync: the rotation failed")
 
 // Rotate writes the source's current value to every target of a variable,
-// verifies each, and only then retires the earlier value. If any target fails
+// verifies each, and records completion. If any target fails
 // verification the earlier value is written back and the rotation stops.
 func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]Entry, error) {
 	v, ok := e.varByName(name)
@@ -389,36 +397,56 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 	if len(tns) == 0 {
 		return nil, fmt.Errorf("sync: %s has no target %q", name, opt.Target)
 	}
-	prev, perr := e.Secrets.Previous(ctx, v.From.Connection, v.From.Field)
-	if perr != nil && !errors.Is(perr, ErrNoPrevious) {
-		return nil, perr
-	}
-	if errors.Is(perr, ErrNoPrevious) && !opt.NoRollback {
-		return nil, fmt.Errorf("sync: no earlier value of %s is recorded, so a failed rotation could not be undone; run 'keylatch sync apply' first or pass --no-rollback", name)
-	}
-	defer clear(prev)
-	next, err := e.Secrets.Value(ctx, v.From.Connection, v.From.Field)
+	snapshot, err := e.Secrets.Snapshot(ctx, v.From.Connection, v.From.Field)
 	if err != nil {
 		return nil, fmt.Errorf("sync: read the source of %s: %w", name, err)
 	}
+	prev, next := snapshot.Previous, snapshot.Current
+	defer clear(prev)
 	defer clear(next)
 	if prev != nil && bytes.Equal(prev, next) {
+		return nil, fmt.Errorf("sync: the source of %s has identical current and previous versions; rotate it at its provider first", name)
+	}
+	alreadySynced := true
+	for _, tn := range tns {
+		for _, env := range v.To[tn] {
+			w, ok := e.State.Written(e.Targets[tn].ID(), env, name)
+			if !ok || w.MAC != e.State.MAC(e.Targets[tn].ID(), env, name, next) {
+				alreadySynced = false
+			}
+		}
+	}
+	if alreadySynced {
 		return nil, fmt.Errorf("sync: the source of %s still holds the value last synced; rotate it at its provider first", name)
+	}
+	if prev == nil && !opt.NoRollback {
+		return nil, fmt.Errorf("sync: the backend has no previous version of %s; a failed rotation could not be undone; pass --no-rollback to proceed", name)
+	}
+	before := make(map[string][]Remote, len(tns))
+	for _, tn := range tns {
+		before[tn], err = e.Targets[tn].List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("sync: read %s before rotation: %w", tn, err)
+		}
 	}
 
 	var out []Entry
 	wrote := []string{}
 	failWith := func(tn, env string, cause error) ([]Entry, error) {
 		out = append(out, Entry{tn, env, name, OutcomeFailed, cause.Error()})
-		return append(out, e.rollback(ctx, v, wrote, prev)...), fmt.Errorf("%w: %s at %s/%s: %v", ErrRotateFailed, name, tn, env, cause)
+		// A disconnected caller must not cancel restoration of an attempted write.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		return append(out, e.rollback(cleanup, v, wrote, prev)...), fmt.Errorf("%w: %s at %s/%s: %v", ErrRotateFailed, name, tn, env, cause)
 	}
 	for _, tn := range tns {
 		c := e.Targets[tn]
 		envs := v.To[tn]
+		// A failed response can follow a successful or partial remote mutation.
+		wrote = append(wrote, tn)
 		if err := c.Write(ctx, name, next, envs, v.IsSensitive()); err != nil {
 			return failWith(tn, envs[0], err)
 		}
-		wrote = append(wrote, tn)
 		if f, ok := c.(Flusher); ok {
 			if err := f.Flush(ctx); err != nil {
 				return failWith(tn, envs[0], err)
@@ -426,43 +454,53 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 		}
 		for _, env := range envs {
 			if err := e.audit(ctx, ActionWrite, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": name, "outcome": "ok"}); err != nil {
-				return out, err
+				return failWith(tn, env, err)
 			}
 		}
 	}
 	for _, tn := range tns {
 		c := e.Targets[tn]
 		for _, env := range v.To[tn] {
-			if err := e.verify(ctx, c, v, tn, env, next); err != nil {
+			prior := remoteUpdatedAt(before[tn], name, env)
+			if w, ok := e.State.Written(c.ID(), env, name); ok && w.RemoteAt.After(prior) {
+				prior = w.RemoteAt
+			}
+			if err := e.verify(ctx, c, v, env, next, prior); err != nil {
 				_ = e.audit(ctx, ActionRotateVerify, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": name, "outcome": "failed"})
 				return failWith(tn, env, err)
 			}
 			if err := e.audit(ctx, ActionRotateVerify, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": name, "outcome": "ok"}); err != nil {
-				return out, err
+				return failWith(tn, env, err)
 			}
 			out = append(out, Entry{tn, env, name, OutcomeVerified, ""})
 		}
 	}
-	if opt.KeepOld > 0 {
+	if opt.KeepOld > 0 && e.Finalize == nil {
 		sleep := e.Sleep
 		if sleep == nil {
 			sleep = sleepFor
 		}
 		if err := sleep(ctx, opt.KeepOld); err != nil {
-			return out, err
+			return failWith(tns[0], v.To[tns[0]][0], err)
 		}
-	}
-	if err := e.Secrets.Remember(ctx, v.From.Connection, v.From.Field, next); err != nil {
-		return out, err
 	}
 	for _, tn := range tns {
 		if err := e.recordOne(ctx, tn, v, next); err != nil {
-			return out, err
+			return failWith(tn, v.To[tn][0], err)
 		}
+	}
+	if e.Finalize != nil {
+		pending, err := e.Finalize(ctx, v, snapshot, tns, opt.KeepOld)
+		if pending {
+			for i := range out {
+				out[i].Outcome = OutcomeRetirementPending
+			}
+		}
+		return out, err
 	}
 	for _, tn := range tns {
 		if err := e.audit(ctx, ActionRotateComplete, map[string]any{"connection": v.From.Connection, "target": tn, "environment": "", "name": name, "outcome": "ok"}); err != nil {
-			return out, err
+			return failWith(tn, v.To[tn][0], err)
 		}
 	}
 	return out, nil
@@ -479,7 +517,17 @@ func sleepFor(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, tn, env string, next []byte) error {
+func remoteUpdatedAt(entries []Remote, name, env string) time.Time {
+	var latest time.Time
+	for _, remote := range entries {
+		if remote.Name == name && slices.Contains(remote.Environments, env) && !remote.Unmanaged && remote.UpdatedAt.After(latest) {
+			latest = remote.UpdatedAt
+		}
+	}
+	return latest
+}
+
+func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, env string, next []byte, after time.Time) error {
 	rs, err := c.List(ctx)
 	if err != nil {
 		return err
@@ -501,8 +549,13 @@ func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, tn, env stri
 			return errors.New("the target holds a different value than was written")
 		}
 		clear(got)
-	} else if w, had := e.State.Written(c.ID(), env, v.Name); had && !found.UpdatedAt.IsZero() && !found.UpdatedAt.After(w.RemoteAt) {
-		return errors.New("the target did not report an update")
+	} else {
+		if found.UpdatedAt.IsZero() {
+			return errors.New("the target returned neither a value nor an update time")
+		}
+		if !found.UpdatedAt.After(after) {
+			return errors.New("the target did not report an update")
+		}
 	}
 	if v.Verify != nil && e.Probe != nil {
 		if err := e.Probe(ctx, v.Verify.URL, next); err != nil {
@@ -526,7 +579,7 @@ func (e *Engine) recordOne(ctx context.Context, tn string, v Var, val []byte) er
 	return nil
 }
 
-// rollback writes prev back to every target that took the new value.
+// rollback restores every attempted target, including ambiguous write failures.
 func (e *Engine) rollback(ctx context.Context, v Var, targets []string, prev []byte) []Entry {
 	var out []Entry
 	for _, tn := range targets {
@@ -538,9 +591,23 @@ func (e *Engine) rollback(ctx context.Context, v Var, targets []string, prev []b
 			}
 			continue
 		}
+		before, beforeErr := c.List(ctx)
 		err := c.Write(ctx, v.Name, prev, envs, v.IsSensitive())
 		if f, ok := c.(Flusher); ok && err == nil {
 			err = f.Flush(ctx)
+		}
+		if err == nil {
+			err = beforeErr
+		}
+		if err == nil {
+			restored := v
+			restored.Verify = nil
+			for _, env := range envs {
+				prior := remoteUpdatedAt(before, v.Name, env)
+				if err = e.verify(ctx, c, restored, env, prev, prior); err != nil {
+					break
+				}
+			}
 		}
 		if err == nil {
 			err = e.recordOne(ctx, tn, v, prev)
@@ -551,7 +618,9 @@ func (e *Engine) rollback(ctx context.Context, v Var, targets []string, prev []b
 			if err != nil {
 				en.Outcome, en.Error, outcome = OutcomeFailed, err.Error(), "failed"
 			}
-			_ = e.audit(ctx, ActionRotateRollback, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": v.Name, "outcome": outcome})
+			if aerr := e.audit(ctx, ActionRotateRollback, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": v.Name, "outcome": outcome}); aerr != nil {
+				en.Outcome, en.Error = OutcomeFailed, errors.Join(err, aerr).Error()
+			}
 			out = append(out, en)
 		}
 	}

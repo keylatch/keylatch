@@ -42,6 +42,8 @@ var ErrAAD = errors.New("brokerstore: record failed its integrity check")
 
 // KEKSource hands out the partition's key-encryption keys.
 type KEKSource interface {
+	// HoldStoreKeys returns a release function that excludes concurrent key rotation.
+	HoldStoreKeys() func()
 	// StoreKEK returns the current key and the id of the master key it comes from.
 	StoreKEK(partition string) (kid string, key []byte)
 	// KEKFor returns the key under the master key named kid.
@@ -59,6 +61,7 @@ type record struct {
 	WrappedDEK []byte    `json:"wrapped_dek"`
 	Nonce      []byte    `json:"nonce"`
 	CT         []byte    `json:"ct"`
+	Retired    bool      `json:"retired,omitempty"`
 }
 
 // Store is one partition's secret store.
@@ -87,30 +90,31 @@ func (s *Store) Put(_ context.Context, p string, value []byte) (int, error) {
 	if err := validPath(p); err != nil {
 		return 0, err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	version, created := 1, s.now().UTC()
 	if old, err := s.read(p); err == nil {
+		value, _, err := s.decrypt(old)
+		clear(value)
+		if err != nil {
+			return 0, err
+		}
 		version, created = old.Version+1, old.Created
+		if version <= old.Version {
+			return 0, errors.New("brokerstore: version limit reached")
+		}
+		if err := s.writeTo(s.versionFile(p, old.Version), old); err != nil {
+			return 0, err
+		}
+	} else if !errors.Is(err, backend.ErrNotFound) {
+		return 0, err
 	}
-	dek := make([]byte, dekLen)
-	defer clear(dek)
-	if _, err := io.ReadFull(rand.Reader, dek); err != nil {
-		return 0, fmt.Errorf("brokerstore: %w", err)
-	}
-	aad := s.aad(p, version)
-	nonce, ct, err := seal(dek, value, aad)
+	rec, err := s.encrypt(record{V: recordFormat, Path: p, Version: version, Created: created, Updated: s.now().UTC()}, value)
 	if err != nil {
 		return 0, err
 	}
-	kid, kek := s.keys.StoreKEK(s.partition)
-	defer clear(kek)
-	dekNonce, wrapped, err := seal(kek, dek, append(aad, kid...))
-	if err != nil {
-		return 0, err
-	}
-	rec := record{V: recordFormat, Path: p, Version: version, Created: created, Updated: s.now().UTC(),
-		KID: kid, DEKNonce: dekNonce, WrappedDEK: wrapped, Nonce: nonce, CT: ct}
 	return version, s.write(rec)
 }
 
@@ -119,28 +123,99 @@ func (s *Store) Get(_ context.Context, p string) ([]byte, backend.Meta, error) {
 	if err := validPath(p); err != nil {
 		return nil, backend.Meta{}, err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rec, err := s.read(p)
 	if err != nil {
 		return nil, backend.Meta{}, err
 	}
-	aad := s.aad(p, rec.Version)
+	return s.decrypt(rec)
+}
+
+// GetVersion returns an authenticated historical value; the caller wipes it.
+// A deleted source has no readable history, even if cleanup was interrupted.
+func (s *Store) GetVersion(_ context.Context, p string, version int) ([]byte, backend.Meta, error) {
+	if err := validPath(p); err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if version < 1 {
+		return nil, backend.Meta{}, errors.New("brokerstore: version must be positive")
+	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, err := s.read(p)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if version == current.Version {
+		return s.decrypt(current)
+	}
+	value, _, err := s.decrypt(current)
+	clear(value)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if version > current.Version {
+		return nil, backend.Meta{}, backend.ErrNotFound
+	}
+	return s.history(p, version)
+}
+
+// Snapshot reads current and previous values under one lock; the caller wipes both.
+// Missing history is returned as nil, while corrupt history fails the whole read.
+func (s *Store) Snapshot(ctx context.Context, p string) (current, previous []byte, m backend.Meta, err error) {
+	current, previous, m, _, err = s.SnapshotForRetirement(ctx, p)
+	return
+}
+
+func (s *Store) history(p string, version int) ([]byte, backend.Meta, error) {
+	var rec record
+	if err := readJSON(s.versionFile(p, version), &rec); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, backend.Meta{}, backend.ErrNotFound
+		}
+		return nil, backend.Meta{}, err
+	}
+	if rec.V != recordFormat || rec.Path != p || rec.Version != version {
+		return nil, backend.Meta{}, ErrAAD
+	}
+	return s.decrypt(rec)
+}
+
+// decrypt checks both encryption layers; the caller holds mu.
+func (s *Store) decrypt(rec record) ([]byte, backend.Meta, error) {
+	value, err := s.decryptRecord(rec)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if rec.Retired {
+		clear(value)
+		return nil, backend.Meta{}, ErrRetired
+	}
+	return value, meta(rec), nil
+}
+
+func (s *Store) decryptRecord(rec record) ([]byte, error) {
+	aad := s.recordAAD(rec)
 	kek, err := s.keys.KEKFor(rec.KID, s.partition)
 	if err != nil {
-		return nil, backend.Meta{}, fmt.Errorf("brokerstore: %w", err)
+		return nil, fmt.Errorf("brokerstore: %w", err)
 	}
 	defer clear(kek)
 	dek, err := open(kek, rec.DEKNonce, rec.WrappedDEK, append(aad, rec.KID...))
 	if err != nil {
-		return nil, backend.Meta{}, fmt.Errorf("%w: data key", ErrAAD)
+		return nil, fmt.Errorf("%w: data key", ErrAAD)
 	}
 	defer clear(dek)
 	value, err := open(dek, rec.Nonce, rec.CT, aad)
 	if err != nil {
-		return nil, backend.Meta{}, fmt.Errorf("%w: value", ErrAAD)
+		return nil, fmt.Errorf("%w: value", ErrAAD)
 	}
-	return value, meta(rec), nil
+	return value, nil
 }
 
 // Delete removes p.
@@ -148,19 +223,36 @@ func (s *Store) Delete(_ context.Context, p string) error {
 	if err := validPath(p); err != nil {
 		return err
 	}
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	missing := false
 	if err := os.Remove(s.file(p)); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return backend.ErrNotFound
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("brokerstore: %w", err)
 		}
-		return fmt.Errorf("brokerstore: %w", err)
+		missing = true
+	}
+	files, err := filepath.Glob(strings.TrimSuffix(s.file(p), ".json") + ".v*.json")
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("brokerstore: remove history: %w", err)
+		}
+	}
+	if missing {
+		return backend.ErrNotFound
 	}
 	return nil
 }
 
 // List returns the metadata of every secret under prefix. It decrypts nothing.
 func (s *Store) List(_ context.Context, prefix string) ([]backend.Entry, error) {
+	release := s.keys.HoldStoreKeys()
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	files, err := os.ReadDir(s.dir)
@@ -169,7 +261,7 @@ func (s *Store) List(_ context.Context, prefix string) ([]backend.Entry, error) 
 	}
 	var out []backend.Entry
 	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") || strings.Contains(f.Name(), ".v") {
 			continue
 		}
 		var rec record
@@ -200,10 +292,13 @@ func (s *Store) Rewrap(oldKEK, newKEK []byte, newKID string) (int, error) {
 		if err := readJSON(filepath.Join(s.dir, f.Name()), &rec); err != nil {
 			return n, err
 		}
+		if rec.V != recordFormat || rec.Version < 1 || (f.Name() != filepath.Base(s.file(rec.Path)) && f.Name() != filepath.Base(s.versionFile(rec.Path, rec.Version))) {
+			return n, ErrAAD
+		}
 		if rec.KID == newKID {
 			continue
 		}
-		aad := s.aad(rec.Path, rec.Version)
+		aad := s.recordAAD(rec)
 		dek, err := open(oldKEK, rec.DEKNonce, rec.WrappedDEK, append(aad, rec.KID...))
 		if err != nil {
 			return n, fmt.Errorf("%w: data key of %s", ErrAAD, rec.Path)
@@ -214,7 +309,7 @@ func (s *Store) Rewrap(oldKEK, newKEK []byte, newKID string) (int, error) {
 			return n, err
 		}
 		rec.KID, rec.DEKNonce, rec.WrappedDEK = newKID, nonce, wrapped
-		if err := s.write(rec); err != nil {
+		if err := s.writeTo(filepath.Join(s.dir, f.Name()), rec); err != nil {
 			return n, err
 		}
 		n++
@@ -231,6 +326,10 @@ func (s *Store) file(p string) string {
 	return filepath.Join(s.dir, hex.EncodeToString(sum[:])+".json")
 }
 
+func (s *Store) versionFile(p string, version int) string {
+	return strings.TrimSuffix(s.file(p), ".json") + fmt.Sprintf(".v%d.json", version)
+}
+
 func (s *Store) read(p string) (record, error) {
 	var rec record
 	if err := readJSON(s.file(p), &rec); err != nil {
@@ -239,24 +338,37 @@ func (s *Store) read(p string) (record, error) {
 		}
 		return rec, err
 	}
-	if rec.V != recordFormat || rec.Path != p {
+	if rec.V != recordFormat || rec.Path != p || rec.Version < 1 {
 		return rec, fmt.Errorf("%w: record names another path", ErrAAD)
 	}
 	return rec, nil
 }
 
 func (s *Store) write(rec record) error {
+	return s.writeTo(s.file(rec.Path), rec)
+}
+
+func (s *Store) writeTo(dst string, rec record) error {
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
-	dst := s.file(rec.Path)
-	tmp := dst + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	f, err := os.CreateTemp(s.dir, ".record-")
+	if err != nil {
+		return fmt.Errorf("brokerstore: %w", err)
+	}
+	tmp := f.Name()
+	defer func() { _ = f.Close(); _ = os.Remove(tmp) }()
+	if _, err := f.Write(b); err != nil {
+		return fmt.Errorf("brokerstore: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("brokerstore: %w", err)
+	}
+	if err := f.Close(); err != nil {
 		return fmt.Errorf("brokerstore: %w", err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
 		return fmt.Errorf("brokerstore: %w", err)
 	}
 	return nil

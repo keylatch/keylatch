@@ -2,6 +2,7 @@ package control
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -148,6 +149,14 @@ func (c *Client) dialUnix() (*net.UnixConn, error) {
 // Call sends one broker request and returns the daemon's reply. The client's
 // agent signals and ticket ride along; they can only make the daemon stricter.
 func (c *Client) Call(req brokerapi.Request) (brokerapi.Response, error) {
+	return c.CallContext(context.Background(), req)
+}
+
+// CallContext closes the request connection when its caller stops waiting.
+func (c *Client) CallContext(ctx context.Context, req brokerapi.Request) (brokerapi.Response, error) {
+	if err := ctx.Err(); err != nil {
+		return brokerapi.Response{}, err
+	}
 	if req.Signals == nil {
 		req.Signals = c.signals
 	}
@@ -159,11 +168,19 @@ func (c *Client) Call(req brokerapi.Request) (brokerapi.Response, error) {
 		return brokerapi.Response{}, err
 	}
 	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	if err := writeFrame(conn, req); err != nil {
+		if ctx.Err() != nil {
+			return brokerapi.Response{}, ctx.Err()
+		}
 		return brokerapi.Response{}, err
 	}
 	var resp brokerapi.Response
 	if err := readFrame(bufio.NewReader(conn), &resp, maxResponse); err != nil {
+		if ctx.Err() != nil {
+			return brokerapi.Response{}, ctx.Err()
+		}
 		return brokerapi.Response{}, err
 	}
 	return resp, nil

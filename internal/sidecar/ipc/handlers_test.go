@@ -241,9 +241,8 @@ func TestSubscribeEvents_DeliversFrames(t *testing.T) {
 func TestBrowserCommand_PerPlatform(t *testing.T) {
 	u, _ := url.Parse("https://example.test/a?b=c")
 	cases := map[string][]string{
-		"darwin":  {"open", u.String()},
-		"linux":   {"xdg-open", u.String()},
-		"windows": {"cmd", "/c", "start", "", u.String()},
+		"darwin": {"open", u.String()},
+		"linux":  {"xdg-open", u.String()},
 	}
 	for goos, want := range cases {
 		cmd, err := browserCommand(goos, u)

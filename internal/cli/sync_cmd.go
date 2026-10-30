@@ -345,7 +345,7 @@ func openEnvFiles(in *syncInput, names []string) (files []*os.File, commit func(
 		changed := map[string]bool{}
 		for _, en := range entries {
 			switch en.Outcome {
-			case keysync.OutcomeWritten, keysync.OutcomeDeleted, keysync.OutcomeRolledBack:
+			case keysync.OutcomeWritten, keysync.OutcomeDeleted, keysync.OutcomeRolledBack, keysync.OutcomeVerified, keysync.OutcomeRetirementPending:
 				changed[en.Target] = true
 			}
 		}

@@ -9,13 +9,13 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
-	"path"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/brokerstore"
 	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/control"
@@ -41,7 +41,6 @@ type connCtxKey struct{}
 // secretStore is what the sync operations need of a partition's store.
 type secretStore interface {
 	Get(ctx context.Context, p string) ([]byte, backend.Meta, error)
-	Put(ctx context.Context, p string, value []byte) (int, error)
 	List(ctx context.Context, prefix string) ([]backend.Entry, error)
 }
 
@@ -56,11 +55,17 @@ func (s storeSecrets) find(ctx context.Context, connection string, fields []stri
 	if err != nil {
 		return "", err
 	}
-	have := make([]string, len(entries))
-	for i, e := range entries {
-		have[i] = e.Path
+	return keysync.FindPath(syncSourcePaths(entries), connection, fields)
+}
+
+func syncSourcePaths(entries []backend.Entry) []string {
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Path != ".sync" && !strings.HasPrefix(entry.Path, ".sync/") {
+			paths = append(paths, entry.Path)
+		}
 	}
-	return keysync.FindPath(have, connection, fields)
+	return paths
 }
 
 func (s storeSecrets) Value(ctx context.Context, connection, field string) ([]byte, error) {
@@ -74,6 +79,38 @@ func (s storeSecrets) Value(ctx context.Context, connection, field string) ([]by
 	}
 	v, _, err := s.st.Get(ctx, p)
 	return v, err
+}
+
+func (s storeSecrets) Snapshot(ctx context.Context, connection, field string) (keysync.SourceSnapshot, error) {
+	fields := []string{field}
+	if field == "" {
+		fields = []string{"", "value"}
+	}
+	p, err := s.find(ctx, connection, fields)
+	if err != nil {
+		return keysync.SourceSnapshot{}, err
+	}
+	var current, previous []byte
+	var meta backend.Meta
+	var ref brokerstore.Retirement
+	if versioned, ok := s.st.(interface {
+		SnapshotForRetirement(context.Context, string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error)
+	}); ok {
+		current, previous, meta, ref, err = versioned.SnapshotForRetirement(ctx, p)
+	} else {
+		current, meta, err = s.st.Get(ctx, p)
+	}
+	if err != nil {
+		clear(current)
+		clear(previous)
+		return keysync.SourceSnapshot{}, err
+	}
+	out := keysync.SourceSnapshot{Path: p, Version: meta.Version, Current: current, Previous: previous}
+	if previous != nil {
+		out.PreviousVersion = meta.Version - 1
+		out.CurrentID, out.PreviousID = ref.CurrentID, ref.PreviousID
+	}
+	return out, nil
 }
 
 func (s storeSecrets) credential(ctx context.Context, connection string) (string, error) {
@@ -97,10 +134,7 @@ func (s storeSecrets) credentialKinds(ctx context.Context, m keysync.Manifest) m
 	if err != nil {
 		return nil
 	}
-	have := make([]string, len(entries))
-	for i, e := range entries {
-		have[i] = e.Path
-	}
+	have := syncSourcePaths(entries)
 	out := map[string]string{}
 	for name, t := range m.Targets {
 		if t.Credential == "" {
@@ -113,26 +147,6 @@ func (s storeSecrets) credentialKinds(ctx context.Context, m keysync.Manifest) m
 		}
 	}
 	return out
-}
-
-func previousPath(connection, field string) string {
-	if field == "" {
-		field = "_"
-	}
-	return path.Join(".sync", "previous", connection, field)
-}
-
-func (s storeSecrets) Previous(ctx context.Context, connection, field string) ([]byte, error) {
-	v, _, err := s.st.Get(ctx, previousPath(connection, field))
-	if errors.Is(err, backend.ErrNotFound) {
-		return nil, keysync.ErrNoPrevious
-	}
-	return v, err
-}
-
-func (s storeSecrets) Remember(ctx context.Context, connection, field string, value []byte) error {
-	_, err := s.st.Put(ctx, previousPath(connection, field), value)
-	return err
 }
 
 // syncAudit reports the engine's events to the audit log with the caller kind
@@ -165,6 +179,8 @@ func (a *admin) syncState() *syncState {
 }
 
 func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Result, req brokerapi.Request) brokerapi.Response {
+	a.p.syncMu.Lock()
+	defer a.p.syncMu.Unlock()
 	if err := a.p.policy.Gate(ctx, res); err != nil {
 		return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
 	}
@@ -198,6 +214,9 @@ func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Re
 	eng := &keysync.Engine{
 		Manifest: m, Targets: clients, Secrets: store, State: a.syncState(),
 		Audit: syncAudit{a, res, presence}, Probe: guardProbe(allowed, a.probe()),
+	}
+	eng.Finalize = func(ctx context.Context, v keysync.Var, snapshot keysync.SourceSnapshot, selected []string, keep time.Duration) (bool, error) {
+		return a.finishRotation(ctx, eng, v, snapshot, selected, keep, presence)
 	}
 	out := &brokerapi.SyncResult{Credentials: store.credentialKinds(ctx, m)}
 	switch req.Op {

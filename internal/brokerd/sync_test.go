@@ -16,6 +16,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/brokerstore"
 	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	keysync "github.com/keylatch/keylatch/internal/sync"
@@ -95,6 +96,13 @@ func (c *countingStore) Get(ctx context.Context, p string) ([]byte, backend.Meta
 func (c *countingStore) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	c.reads++
 	return c.secretStore.List(ctx, prefix)
+}
+
+func (c *countingStore) SnapshotForRetirement(ctx context.Context, p string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error) {
+	c.reads++
+	return c.secretStore.(interface {
+		SnapshotForRetirement(context.Context, string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error)
+	}).SnapshotForRetirement(ctx, p)
 }
 
 type syncRig struct {
@@ -249,6 +257,64 @@ func TestSyncRotateThroughDaemon(t *testing.T) {
 	}
 }
 
+type rejectingReadback struct{ *fakeRemote }
+
+func (f rejectingReadback) Readback(context.Context, keysync.Remote) ([]byte, bool, error) {
+	return nil, false, errors.New("verification refused")
+}
+
+func TestSyncRollbackUsesBackendHistoryInsteadOfLastAppliedValue(t *testing.T) {
+	r := newSyncRig(t)
+	ctx := context.Background()
+	m := strings.Replace(syncManifest, ", local: [file]", "", 1)
+	apply := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncApply, Sync: &brokerapi.SyncRequest{Manifest: []byte(m)}})
+	if resp := r.h.send(t, r.uid, apply); !resp.OK {
+		t.Fatal(resp.Error)
+	}
+	p, err := r.h.srv.partition(ctx, r.uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"never-applied-v2", "current-v3"} {
+		if _, err := p.store.Put(ctx, "app-db/url", []byte(value)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.h.srv.cfg.Sync.Target = func(string, keysync.Target, targets.Token) (keysync.TargetClient, bool) {
+		return rejectingReadback{r.web}, true
+	}
+	rot := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncRotate, Sync: &brokerapi.SyncRequest{Manifest: []byte(m), Name: "DATABASE_URL"}})
+	resp := r.h.send(t, r.uid, rot)
+	if resp.OK || r.web.values["DATABASE_URL"] != "never-applied-v2" {
+		t.Fatal("rotation did not restore the backend's previous version")
+	}
+	if r.h.rec.count(audit.ActionSyncRotateRollback) != 2 || r.h.rec.count(audit.ActionSyncRotateComplete) != 0 {
+		t.Fatal("incorrect rollback audit")
+	}
+}
+
+type unversionedStore struct{ secretStore }
+
+func TestSyncUnversionedSourceRequiresExplicitNoRollback(t *testing.T) {
+	r := newSyncRig(t)
+	p, err := r.h.srv.partition(context.Background(), r.uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.syncStore = unversionedStore{p.store}
+	m := strings.Replace(syncManifest, ", local: [file]", "", 1)
+	for _, allow := range []bool{false, true} {
+		rot := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncRotate, Sync: &brokerapi.SyncRequest{Manifest: []byte(m), Name: "DATABASE_URL", NoRollback: allow}})
+		resp := r.h.send(t, r.uid, rot)
+		if resp.OK != allow {
+			t.Fatalf("no-rollback=%v: %s", allow, resp.Error)
+		}
+		if !allow && r.web.writes != 0 {
+			t.Fatal("unversioned source wrote before explicit consent")
+		}
+	}
+}
+
 func TestSyncRejectsBadManifestAndUnsignedPolicy(t *testing.T) {
 	r := newSyncRig(t)
 	resp := r.h.send(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncDiff, Sync: &brokerapi.SyncRequest{Manifest: []byte("version: 1\nnope: 2\n")}})
@@ -275,6 +341,7 @@ func TestStoreSecretsResolution(t *testing.T) {
 	for path, v := range map[string]string{
 		"vercel-deploy/token": "tok-1", "plain": "p", "multi/value": "m",
 		"default/cloud/aws/secret": "a", "other/cloud/aws/secret": "b", "default/ci/gh/api_key": "k",
+		".sync/previous/gh/api_key": "legacy-copy", ".sync/retirements/plain": "internal-job",
 	} {
 		if _, err := p.store.Put(ctx, path, []byte(v)); err != nil {
 			t.Fatal(err)
@@ -302,14 +369,14 @@ func TestStoreSecretsResolution(t *testing.T) {
 	if _, err := s.credential(ctx, "missing"); err == nil {
 		t.Fatal("missing credential")
 	}
-	if _, err := s.Previous(ctx, "app-db", "url"); !errors.Is(err, keysync.ErrNoPrevious) {
-		t.Fatalf("no previous = %v", err)
+	if snap, err := s.Snapshot(ctx, "app-db", "url"); err != nil || snap.Previous != nil {
+		t.Fatalf("unexpected previous version: %v", err)
 	}
-	if err := s.Remember(ctx, "app-db", "url", []byte("v1")); err != nil {
+	if _, err := p.store.Put(ctx, "app-db/url", []byte("v2")); err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.Previous(ctx, "app-db", "url"); err != nil || string(v) != "v1" {
-		t.Fatalf("previous = %q %v", v, err)
+	if snap, err := s.Snapshot(ctx, "app-db", "url"); err != nil || string(snap.Previous) != syncCanary+"-db" || string(snap.Current) != "v2" || snap.Version != 2 || snap.PreviousVersion != 1 || !retirementHex(snap.CurrentID, 32) || !retirementHex(snap.PreviousID, 32) {
+		t.Fatalf("incorrect source snapshot: %v", err)
 	}
 }
 

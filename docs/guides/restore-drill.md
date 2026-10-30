@@ -46,6 +46,8 @@ The import asks for your presence, then reads each value from its source and wri
 
 With `--to broker` the daemon stores every item in one request after one presence prompt and answers with a keyed hash per value, which Keylatch compares with its own. The broker never returns a value, so an item it already holds is skipped rather than compared; change one with `keylatch set`.
 
+The broker builds a `migrate.import` prompt showing every reported source reference and broker destination. Values are omitted, and control characters in labels are escaped. Source references are supplied by the client; the broker binds them, the destinations and the values to the one-use presence proof. Changing any of those fields requires a new approval. This operation is separate from `broker adopt`; older brokers that lack it refuse the request without falling back to a less detailed prompt.
+
 ## 3. Verify
 
 ```bash

@@ -45,20 +45,34 @@ keylatch connect openrouter api_key YOUR_KEY
 
 | Platform | Store |
 |----------|-------|
-| macOS | login keychain, generic password with service `keylatch-vault-kek` |
-| Linux / BSD | Secret Service (GNOME Keyring, KWallet) through `secret-tool`, attributes `application=keylatch`, `purpose=kek` |
+| macOS | data protection keychain, generic password with service `keylatch-vault-kek`, requiring user presence |
+| Linux / BSD | Secret Service (GNOME Keyring, KWallet) over an encrypted D-Bus session, attributes `application=keylatch`, `purpose=kek` |
 | Windows | DPAPI (current user) with a random entropy blob, stored under `%LOCALAPPDATA%\keylatch\kek` |
 | Containers, headless hosts, Linux without a Secret Service session | a passphrase, when bootstrap runs in a terminal; otherwise none: bootstrap fails closed |
 
-The secret reaches `security` and `secret-tool` on stdin, never on the command
-line. Keylatch never falls back to a plaintext file on its own: without a
+On Linux and BSD, Keylatch talks directly to Secret Service over D-Bus using
+its encrypted session protocol; no helper process receives the identity.
+On macOS, release builds use Security.framework directly and create the item
+with `kSecAccessControlUserPresence`. A non-cgo build has no macOS keystore
+provider and requires a passphrase. Existing login-keychain identities are
+migrated after an interactive presence check; the protected copy must read back
+correctly before the legacy item is removed. A failed or interrupted migration
+keeps the legacy copy and reports an error rather than silently weakening access.
+Keylatch never falls back to a plaintext file on its own: without a
 reachable store, bootstrap run from a terminal asks for a passphrase and wraps
 the key under it (Argon2id; asked on the terminal on every use, never read from
 a file, a pipe or the environment), and with no terminal bootstrap and
 `keylatch setup --backend file` stop with an error that says so. A keyring item
-is readable by other processes running as your user while the keyring is
-unlocked, so this keeps the key off disk and out of backups and file copies; it
-is not a boundary against a process running as you.
+in Secret Service is readable by other processes running as your user while the
+keyring is unlocked. macOS protected items additionally require the operating
+system's user-presence check. Neither store turns an in-user agent process into
+a separate security principal.
+
+On an interactive macOS test machine, run
+`KEYLATCH_TEST_NATIVE_KEYCHAIN=1 go test -count=1 -run '^TestNativeIdentityRequiresUserPresence$' ./internal/crypto/kek`.
+This creates a temporary protected item, verifies that a read with authentication
+UI disabled fails, then asks for presence to read it and deletes the item.
+Linux and non-cgo builds cannot verify this behavior.
 
 `keylatch bootstrap --kek passphrase` asks for a passphrase even where a keyring
 exists, and `--kek keystore` never falls back to one. Neither a flag nor an

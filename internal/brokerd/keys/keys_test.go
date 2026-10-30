@@ -13,6 +13,52 @@ import (
 
 func testRoot(b byte) []byte { return bytes.Repeat([]byte{b}, 48) }
 
+func TestApprovalSignersAreIsolatedAndSurviveReopen(t *testing.T) {
+	dir := t.TempDir()
+	h := openTest(t, dir, testRoot(3))
+	owner, err := h.ApprovalSignerFor("1000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(owner)
+	other, err := h.ApprovalSignerFor("1001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(other)
+	message := []byte("reviewed request digest")
+	signature := ed25519.Sign(owner, message)
+	if ed25519.Verify(other.Public().(ed25519.PublicKey), message, signature) {
+		t.Fatal("another user's key accepted an approval")
+	}
+	tokenSigner, err := h.Signer(TokenSigning)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(tokenSigner)
+	if ed25519.Verify(tokenSigner.Public().(ed25519.PublicKey), message, signature) {
+		t.Fatal("approval signature is valid as a broker token signature")
+	}
+	tokenMAC, err := h.TokenKeyFor("1000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(tokenMAC)
+	if bytes.Equal(owner.Seed(), tokenMAC) {
+		t.Fatal("approval signing seed reused the session MAC key")
+	}
+	h.Close()
+	reopened := openTest(t, dir, testRoot(3))
+	restored, err := reopened.ApprovalSignerFor("1000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(restored)
+	if !ed25519.Verify(restored.Public().(ed25519.PublicKey), message, signature) {
+		t.Fatal("pending approval signature became invalid after broker restart")
+	}
+}
+
 func openTest(t *testing.T, dir string, root []byte) *Hierarchy {
 	t.Helper()
 	h, err := Open(dir, root, false)

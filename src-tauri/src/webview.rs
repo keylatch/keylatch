@@ -1,13 +1,15 @@
 // src/webview.rs — WebView host configuration.
 //
 // Implements the navigation policy hook that restricts the WebView to
-// ONLY navigate to https://127.0.0.1:<active-port>/*.
+// ONLY navigate to the active HTTP loopback sidecar or bundled assets.
 // All other navigations are blocked and audited.
 //
-// CSP is configured in tauri.conf.json and asserted at startup.
+// The server CSP is verified separately before the window is created.
 
-use std::sync::Arc;
-use tauri::{AppHandle, Runtime, WebviewWindow};
+use std::sync::{
+    atomic::{AtomicU16, Ordering},
+    Arc,
+};
 use url::Url;
 
 /// NavigationPolicy decides whether a navigation should proceed.
@@ -19,17 +21,23 @@ pub enum NavigationPolicy {
 
 /// WebViewHost configures navigation policy for the main WebView window.
 pub struct WebViewHost {
-    active_port: u16,
+    active_port: AtomicU16,
 }
 
 impl WebViewHost {
     /// Create a new WebViewHost for the given sidecar port.
     pub fn new(active_port: u16) -> Self {
-        Self { active_port }
+        Self {
+            active_port: AtomicU16::new(active_port),
+        }
+    }
+
+    pub fn set_port(&self, port: u16) {
+        self.active_port.store(port, Ordering::Release);
     }
 
     /// Evaluate the navigation policy for a target URL.
-    /// Allowed: https://127.0.0.1:<active_port>/* and tauri://localhost/error.html
+    /// Allowed: http://127.0.0.1:<active_port>/* and bundled assets.
     /// Blocked: everything else.
     pub fn evaluate_navigation(&self, url: &str) -> NavigationPolicy {
         // Allow the bundled static error page.
@@ -43,39 +51,37 @@ impl WebViewHost {
         }
 
         match Url::parse(url) {
-            Err(_) => NavigationPolicy::Block { reason: "malformed URL" },
+            Err(_) => NavigationPolicy::Block {
+                reason: "malformed URL",
+            },
             Ok(parsed) => {
-                let scheme_ok = parsed.scheme() == "https";
+                if parsed.scheme() == "http"
+                    && parsed.host_str() == Some("tauri.localhost")
+                    && parsed.path() == "/error.html"
+                    && parsed.port().is_none()
+                    && parsed.username().is_empty()
+                    && parsed.password().is_none()
+                {
+                    return NavigationPolicy::Allow;
+                }
+                let scheme_ok = parsed.scheme() == "http";
                 let host_ok = matches!(parsed.host_str(), Some("127.0.0.1"));
-                let port_ok = parsed.port() == Some(self.active_port);
-                if scheme_ok && host_ok && port_ok {
+                let port = self.active_port.load(Ordering::Acquire);
+                let port_ok = port != 0 && parsed.port() == Some(port);
+                if scheme_ok
+                    && host_ok
+                    && port_ok
+                    && parsed.username().is_empty()
+                    && parsed.password().is_none()
+                {
                     NavigationPolicy::Allow
                 } else {
-                    NavigationPolicy::Block { reason: "navigation target is not localhost sidecar" }
+                    NavigationPolicy::Block {
+                        reason: "navigation target is not localhost sidecar",
+                    }
                 }
             }
         }
-    }
-
-    /// Assert that the window's CSP matches the policy string.
-    /// Returns an error string if the active CSP is weaker than expected.
-    ///
-    /// In Tauri v2 the CSP is set in tauri.conf.json and cannot be weakened
-    /// at runtime; this function serves as a startup sanity check.
-    pub fn assert_csp(&self, _window: &WebviewWindow<impl Runtime>) -> Result<(), String> {
-        // Tauri v2 enforces CSP from tauri.conf.json. We verify the config
-        // was loaded correctly by checking the compile-time constant.
-        // The actual enforcement is in the Tauri runtime.
-        //
-        // Required policy:
-        const REQUIRED_CSP: &str =
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'";
-
-        // We can't read the active CSP at runtime in Tauri v2 without JS eval.
-        // The E2E test (E13-T3) performs the actual runtime check via Playwright.
-        // This function is a placeholder that documents the expected value.
-        let _ = REQUIRED_CSP;
-        Ok(())
     }
 }
 
@@ -136,11 +142,11 @@ mod tests {
     fn test_allow_localhost() {
         let h = host(51842);
         assert_eq!(
-            h.evaluate_navigation("https://127.0.0.1:51842/"),
+            h.evaluate_navigation("http://127.0.0.1:51842/"),
             NavigationPolicy::Allow
         );
         assert_eq!(
-            h.evaluate_navigation("https://127.0.0.1:51842/approvals/123"),
+            h.evaluate_navigation("http://127.0.0.1:51842/approvals/123"),
             NavigationPolicy::Allow
         );
     }
@@ -177,13 +183,49 @@ mod tests {
     fn test_block_wrong_port() {
         let h = host(51842);
         assert!(matches!(
-            h.evaluate_navigation("https://127.0.0.1:9999/"),
+            h.evaluate_navigation("http://127.0.0.1:9999/"),
             NavigationPolicy::Block { .. }
         ));
+    }
+
+    #[test]
+    fn restart_revokes_old_origin_before_accepting_replacement() {
+        let h = host(51842);
+        h.set_port(0);
+        for url in ["http://127.0.0.1:51842/", "http://127.0.0.1:0/"] {
+            assert!(matches!(
+                h.evaluate_navigation(url),
+                NavigationPolicy::Block { .. }
+            ));
+        }
+        h.set_port(51843);
+        assert!(matches!(
+            h.evaluate_navigation("http://127.0.0.1:51842/"),
+            NavigationPolicy::Block { .. }
+        ));
+        assert_eq!(
+            h.evaluate_navigation("http://127.0.0.1:51843/__bootstrap"),
+            NavigationPolicy::Allow
+        );
+    }
+
+    #[test]
+    fn test_block_wrong_scheme_and_embedded_credentials() {
+        let h = host(51842);
+        for url in [
+            "https://127.0.0.1:51842/",
+            "http://user@127.0.0.1:51842/",
+            "http://127.0.0.1.evil.test:51842/",
+        ] {
+            assert!(matches!(
+                h.evaluate_navigation(url),
+                NavigationPolicy::Block { .. }
+            ));
+        }
     }
 }
 
 // Required for HMAC in NavigationGuard.
+use hex;
 use hmac;
 use sha2;
-use hex;

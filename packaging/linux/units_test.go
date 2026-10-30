@@ -99,4 +99,7 @@ func TestSysusersAndPolkitFiles(t *testing.T) {
 	if !strings.Contains(string(p), `id="dev.keylatch.privileged"`) || !strings.Contains(string(p), "auth_self") || strings.Contains(string(p), "auth_self_keep") || strings.Contains(string(p), "auth_admin_keep") {
 		t.Errorf("polkit policy must ask for the user's own password and never retain it:\n%s", p)
 	}
+	if !strings.Contains(string(p), `<annotate key="org.freedesktop.policykit.owner">unix-user:keylatch</annotate>`) {
+		t.Error("only the dedicated broker account must own authorization queries")
+	}
 }

@@ -44,12 +44,72 @@ var ErrUnknownSession = errors.New("session: unknown or expired session cookie")
 
 // Session holds the one-time bootstrap token and tracks its consumed state.
 type Session struct {
-	mu        sync.Mutex
-	id        string
-	hmacKey   []byte
-	token     string // hex-encoded random bytes
-	consumed  bool
-	expiresAt time.Time
+	mu            sync.Mutex
+	id            string
+	hmacKey       []byte
+	token         string // hex-encoded random bytes
+	consumed      bool
+	expiresAt     time.Time
+	desktopTokens map[[sha256.Size]byte]time.Time
+}
+
+// MintBootstrapToken issues an opaque, single-use token for the authenticated desktop IPC caller.
+func (s *Session) MintBootstrapToken() (string, time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if !now.Before(s.expiresAt) {
+		// Only the authenticated IPC minter can replace an expired session.
+		fresh, err := New(s.hmacKey)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		s.id = fresh.id
+		s.token = fresh.token
+		s.consumed = true
+		s.expiresAt = fresh.expiresAt
+		clear(s.desktopTokens)
+	}
+	for digest, expires := range s.desktopTokens {
+		if !now.Before(expires) {
+			delete(s.desktopTokens, digest)
+		}
+	}
+	if len(s.desktopTokens) >= 16 {
+		return "", time.Time{}, errors.New("session: too many pending bootstrap tokens")
+	}
+	raw := make([]byte, tokenLen)
+	if _, err := rand.Read(raw); err != nil {
+		return "", time.Time{}, err
+	}
+	token := hex.EncodeToString(raw)
+	clear(raw)
+	expires := now.Add(time.Minute)
+	if expires.After(s.expiresAt) {
+		expires = s.expiresAt
+	}
+	if s.desktopTokens == nil {
+		s.desktopTokens = make(map[[sha256.Size]byte]time.Time)
+	}
+	s.desktopTokens[sha256.Sum256([]byte(token))] = expires
+	return token, expires, nil
+}
+
+// ConsumeDesktopBootstrap exchanges a fresh IPC-issued token for the UI session cookie.
+func (s *Session) ConsumeDesktopBootstrap(token string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	digest := sha256.Sum256([]byte(token))
+	expires, ok := s.desktopTokens[digest]
+	if !ok {
+		return "", ErrUnknownSession
+	}
+	delete(s.desktopTokens, digest)
+	now := time.Now()
+	if !now.Before(expires) || !now.Before(s.expiresAt) {
+		return "", ErrTokenExpired
+	}
+	return s.id, nil
 }
 
 // New creates a new Session. signingKey must be 32 bytes; it is used both for

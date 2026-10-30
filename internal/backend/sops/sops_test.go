@@ -109,13 +109,17 @@ func TestAgeRefusals(t *testing.T) {
 
 func TestParseIdentities(t *testing.T) {
 	key := newKey(t)
+	badChecksum := key.identity[:len(key.identity)-1] + "Q"
+	if badChecksum == key.identity {
+		badChecksum = key.identity[:len(key.identity)-1] + "P"
+	}
 	if _, err := ParseIdentities(strings.NewReader(key.identity)); err != nil {
 		t.Fatal(err)
 	}
 	for name, in := range map[string]string{
 		"empty":        "# only a comment\n",
 		"not a key":    "age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\n",
-		"bad checksum": key.identity[:len(key.identity)-1] + "Q\n",
+		"bad checksum": badChecksum + "\n",
 		"short":        strings.ToUpper(bech32Encode(ageSecretHRP, []byte{1, 2, 3})) + "\n",
 		"mixed case":   key.identity[:20] + strings.ToLower(key.identity[20:]) + "\n",
 	} {

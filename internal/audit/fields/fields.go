@@ -90,7 +90,7 @@ var safeLogFields = map[string][]string{
 
 	// key operations: names and the digest of the input, never key or data.
 	"key.operation":     {"operation", "alg", "connection", "field", "caller_kind", "input_sha256", "reason"},
-	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason"},
+	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason", "presence_digest"},
 
 	// socket decisions: digests, names and counters only. argv_sha256 and
 	// cwd_sha256 are SHA-256 hex digests; hosts is a list of host names.
@@ -159,8 +159,9 @@ var safeLogFields = map[string][]string{
 	"guard.block":       {"command", "rule", "caller_kind", "reason"},
 	"backup.export":     {"destination_kind", "caller_kind", "reason"},
 	// broker migration: counts and the digest of the old chain head, never a value.
-	"broker.adopt":  {"count", "old_audit_head", "caller_kind"},
-	"broker.export": {"count", "caller_kind"},
+	"broker.adopt":   {"count", "old_audit_head", "caller_kind"},
+	"migrate.import": {"count", "request_digest", "caller_kind"},
+	"broker.export":  {"count", "caller_kind"},
 
 	// binding changes: host sets are authorities (no credential content).
 	// attempted is the change an agent caller was refused.
@@ -249,7 +250,7 @@ func AllActions() []string {
 		"presence.decision", "policy.change", "backup.export",
 		// binding change actions.
 		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
-		"broker.adopt", "broker.export",
+		"broker.adopt", "broker.export", "migrate.import",
 		"sync.write", "sync.delete", "sync.rotate.verify", "sync.rotate.rollback", "sync.rotate.complete",
 		"service.enroll", "service.revoke", "machine.issue", "machine.revoke",
 	}

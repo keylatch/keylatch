@@ -82,7 +82,17 @@ type ApprovalRequest struct {
 	CreatedAt time.Time `json:"created_at"`
 	Note      string    `json:"note,omitempty"`
 	DecidedAt time.Time `json:"decided_at,omitzero"`
-	Signature string    `json:"signature,omitempty"`
+	// PresenceDigest and PresenceMethod record the human-presence proof the
+	// decision was made under; the signature covers both.
+	PresenceDigest string `json:"presence_digest,omitempty"`
+	PresenceMethod string `json:"presence_method,omitempty"`
+	Signature      string `json:"signature,omitempty"`
+}
+
+// Presence is the proof of a human at the keyboard that a decision carries.
+type Presence struct {
+	Digest string
+	Method string
 }
 
 // RequestNew creates a pending approval at approvalsDir/<token>.json (mode 0o600).
@@ -257,8 +267,14 @@ func Approve(ctx context.Context, approvalsDir, token, shown string, key ed25519
 }
 
 // ApproveWithReason is Approve with a reason note.
-func ApproveWithReason(_ context.Context, approvalsDir, token, shown, reason string, key ed25519.PrivateKey) error {
-	return decide(approvalsDir, token, shown, StatusApproved, reason, key, defaultClock)
+func ApproveWithReason(ctx context.Context, approvalsDir, token, shown, reason string, key ed25519.PrivateKey) error {
+	return ApproveWithPresence(ctx, approvalsDir, token, shown, reason, Presence{}, key)
+}
+
+// ApproveWithPresence is ApproveWithReason with the presence proof the
+// decision is signed under.
+func ApproveWithPresence(_ context.Context, approvalsDir, token, shown, reason string, p Presence, key ed25519.PrivateKey) error {
+	return decide(approvalsDir, token, shown, StatusApproved, reason, p, key, defaultClock)
 }
 
 // Deny marks the approval denied and signs the decision with key. shown is
@@ -268,8 +284,14 @@ func Deny(ctx context.Context, approvalsDir, token, shown string, key ed25519.Pr
 }
 
 // DenyWithReason is Deny with a reason note.
-func DenyWithReason(_ context.Context, approvalsDir, token, shown, reason string, key ed25519.PrivateKey) error {
-	return decide(approvalsDir, token, shown, StatusDenied, reason, key, defaultClock)
+func DenyWithReason(ctx context.Context, approvalsDir, token, shown, reason string, key ed25519.PrivateKey) error {
+	return DenyWithPresence(ctx, approvalsDir, token, shown, reason, Presence{}, key)
+}
+
+// DenyWithPresence is DenyWithReason with the presence proof the decision is
+// signed under.
+func DenyWithPresence(_ context.Context, approvalsDir, token, shown, reason string, p Presence, key ed25519.PrivateKey) error {
+	return decide(approvalsDir, token, shown, StatusDenied, reason, p, key, defaultClock)
 }
 
 // Verify checks that token exists, is approved by a decision signed with
@@ -342,7 +364,7 @@ func (e *ErrExpiredTTL) Is(target error) bool {
 	return target == ErrExpired || target == ErrAlreadyActed
 }
 
-func decide(approvalsDir, token, shown, status, reason string, key ed25519.PrivateKey, clk Clock) error {
+func decide(approvalsDir, token, shown, status, reason string, p Presence, key ed25519.PrivateKey, clk Clock) error {
 	if len(key) != ed25519.PrivateKeySize {
 		return ErrUnsigned
 	}
@@ -375,6 +397,7 @@ func decide(approvalsDir, token, shown, status, reason string, key ed25519.Priva
 		ar.Note = reason
 	}
 	ar.DecidedAt = clk.Now().UTC()
+	ar.PresenceDigest, ar.PresenceMethod = p.Digest, p.Method
 	ar.Signature = base64.StdEncoding.EncodeToString(ed25519.Sign(key, decisionMessage(ar)))
 	return writeApproval(root, ar)
 }
@@ -397,6 +420,8 @@ func decisionMessage(ar *ApprovalRequest) []byte {
 		CreatedAt   string `json:"created_at"`
 		ExpiresAt   string `json:"expires_at"`
 		DecidedAt   string `json:"decided_at"`
+		Presence    string `json:"presence_digest,omitempty"`
+		Method      string `json:"presence_method,omitempty"`
 	}{
 		Token:       ar.Token,
 		Actor:       ar.Actor,
@@ -409,6 +434,8 @@ func decisionMessage(ar *ApprovalRequest) []byte {
 		CreatedAt:   ar.CreatedAt.UTC().Format(time.RFC3339Nano),
 		ExpiresAt:   ar.ExpiresAt.UTC().Format(time.RFC3339Nano),
 		DecidedAt:   ar.DecidedAt.UTC().Format(time.RFC3339Nano),
+		Presence:    ar.PresenceDigest,
+		Method:      ar.PresenceMethod,
 	})
 	return append([]byte(decisionDomain), b...)
 }

@@ -158,14 +158,94 @@ func TestSSHAgentPerHostRestriction(t *testing.T) {
 		t.Fatal("signed for a host that is not allowed")
 	}
 
+	client, _ = agentClient(t, s)
 	if _, err := client.Extension(sessionBindExtension, allowedBind); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Sign(pub, []byte("x")); err != nil {
+	if _, err := client.Sign(pub, []byte("x")); err == nil {
+		t.Fatal("host binding authorized an arbitrary signature")
+	}
+	var binding sessionBind
+	if err := ssh.Unmarshal(allowedBind, &binding); err != nil {
+		t.Fatal(err)
+	}
+	request := sshUserAuth{SessionID: binding.SessionID, Message: 50, Username: "deploy", Service: "ssh-connection", Method: "publickey", HasSignature: true, Algorithm: pub.Type(), PublicKey: pub.Marshal()}
+	if _, err := client.Sign(pub, ssh.Marshal(request)); err != nil {
 		t.Fatalf("refused for an allowed host: %v", err)
 	}
 	if !strings.Contains(cap.dump(), `"outcome":"denied"`) {
 		t.Fatal("host refusals are not audited")
+	}
+}
+
+func TestSSHAgentBoundSignatureCannotEscapeSession(t *testing.T) {
+	k := newTestKeys(t)
+	host, bind := hostKeyBind(t)
+	s, _ := service(t, sshPolicy(ssh.FingerprintSHA256(host)), mapKeys{"k": k.ed})
+	client, _ := agentClient(t, s)
+	if _, err := client.Extension(sessionBindExtension, bind); err != nil {
+		t.Fatal(err)
+	}
+	var binding sessionBind
+	if err := ssh.Unmarshal(bind, &binding); err != nil {
+		t.Fatal(err)
+	}
+	pub := mustSSHPub(t, k.edPub)
+	base := sshUserAuth{SessionID: binding.SessionID, Message: 50, Username: "deploy", Service: "ssh-connection", Method: "publickey", HasSignature: true, Algorithm: pub.Type(), PublicKey: pub.Marshal()}
+	for name, mutate := range map[string]func(*sshUserAuth){
+		"different session":   func(r *sshUserAuth) { r.SessionID = []byte("another server") },
+		"different key":       func(r *sshUserAuth) { r.PublicKey = host.Marshal() },
+		"different algorithm": func(r *sshUserAuth) { r.Algorithm = "ssh-rsa" },
+		"different message":   func(r *sshUserAuth) { r.Message = 51 },
+		"different service":   func(r *sshUserAuth) { r.Service = "other" },
+		"different method":    func(r *sshUserAuth) { r.Method = "password" },
+		"unsigned":            func(r *sshUserAuth) { r.HasSignature = false },
+		"trailing bytes":      func(r *sshUserAuth) { r.Rest = []byte{1} },
+		"hostbound wrong host": func(r *sshUserAuth) {
+			r.Method = "publickey-hostbound-v00@openssh.com"
+			r.Rest = ssh.Marshal(struct{ Key []byte }{pub.Marshal()})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := base
+			mutate(&r)
+			if _, err := client.Sign(pub, ssh.Marshal(r)); err == nil {
+				t.Fatal("signed mismatched authentication")
+			}
+		})
+	}
+	base.Method = "publickey-hostbound-v00@openssh.com"
+	base.Rest = ssh.Marshal(struct{ Key []byte }{host.Marshal()})
+	data := ssh.Marshal(base)
+	sig, err := client.Sign(pub, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pub.Verify(data, sig); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Extension(sessionBindExtension, bind); err == nil {
+		t.Fatal("rebound an authenticated connection")
+	}
+}
+
+func TestSSHAgentRejectsForwardingAndInvalidFlags(t *testing.T) {
+	k := newTestKeys(t)
+	s, _ := service(t, sshPolicy(), mapKeys{"k": k.ed})
+	client, _ := agentClient(t, s)
+	_, bind := hostKeyBind(t)
+	var binding sessionBind
+	if err := ssh.Unmarshal(bind, &binding); err != nil {
+		t.Fatal(err)
+	}
+	binding.IsForwarding = true
+	if _, err := client.Extension(sessionBindExtension, ssh.Marshal(binding)); err == nil {
+		t.Fatal("forwarding accepted")
+	}
+	for _, flags := range []agent.SignatureFlags{1, agent.SignatureFlagRsaSha256, agent.SignatureFlagRsaSha512, agent.SignatureFlagRsaSha256 | agent.SignatureFlagRsaSha512, 128} {
+		if _, err := client.SignWithFlags(mustSSHPub(t, k.edPub), []byte("message"), flags); err == nil {
+			t.Fatalf("unsupported flags accepted: %d", flags)
+		}
 	}
 }
 

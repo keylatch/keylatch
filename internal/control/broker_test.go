@@ -290,6 +290,48 @@ func TestIsPolicyCheck(t *testing.T) {
 	}
 }
 
+func TestCallContextCancelsPendingResponse(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	path := startBrokerSocket(t, func(req brokerapi.Request) brokerapi.Response {
+		close(started)
+		<-release
+		return brokerapi.Response{}
+	})
+	client := &Client{socket: path}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.CallContext(ctx, brokerapi.Request{Op: brokerapi.OpApprovalList})
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("broker did not receive the request")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled call returned %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("canceled call still waits for the broker")
+	}
+}
+
+func TestCallContextAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &Client{socket: filepath.Join(t.TempDir(), "absent.sock")}
+	if _, err := client.CallContext(ctx, brokerapi.Request{Op: brokerapi.OpApprovalList}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled call tried to connect: %v", err)
+	}
+}
+
 // startBrokerSocket serves handler on a fresh Unix socket, or skips where the
 // sandbox forbids binding.
 func startBrokerSocket(t *testing.T, handler func(brokerapi.Request) brokerapi.Response) string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -60,6 +61,9 @@ type ServerOptions struct {
 	// SettingsStore holds server-validated settings (optional; nil → ephemeral default per-request).
 	// approval TTL is server-validated and clamped server-side.
 	SettingsStore *api.SettingsStore
+
+	// ApprovalBroker supplies authenticated per-user approvals; nil selects the local broker.
+	ApprovalBroker api.ApprovalBroker
 }
 
 // Server is the local UI HTTP server.
@@ -141,12 +145,28 @@ func (s *Server) BootstrapURL() string {
 	return s.session.URL(fmt.Sprintf("%s://%s", scheme, s.opts.Bind))
 }
 
+// MintBootstrapToken is exposed only through the authenticated desktop IPC registry.
+func (s *Server) MintBootstrapToken() (string, time.Time, error) {
+	return s.session.MintBootstrapToken()
+}
+
 // Serve starts the server and blocks until ctx is cancelled, then performs a
 // graceful shutdown.
 func (s *Server) Serve(ctx context.Context) error {
+	return s.ServeWithReady(ctx, nil)
+}
+
+// ServeWithReady announces readiness only after the HTTP listener is bound.
+func (s *Server) ServeWithReady(ctx context.Context, ready func(address string) error) error {
 	ln, err := net.Listen("tcp", s.opts.Bind)
 	if err != nil {
 		return fmt.Errorf("ui: listen on %s: %w", s.opts.Bind, err)
+	}
+	if ready != nil {
+		if err := ready(ln.Addr().String()); err != nil {
+			_ = ln.Close()
+			return err
+		}
 	}
 
 	errCh := make(chan error, 1)
@@ -244,7 +264,11 @@ func (s *Server) registerRoutes() {
 		_ = runtimeTestHandler // registered via connectionDetailHandler path prefix above
 
 		// Approvals (read + write).
-		approvalsHandler := &api.ApprovalsHandler{}
+		approvalBroker := s.opts.ApprovalBroker
+		if approvalBroker == nil && !s.opts.Demo {
+			approvalBroker = &localApprovalBroker{env: s.opts.Env}
+		}
+		approvalsHandler := &api.ApprovalsHandler{Broker: approvalBroker, CanDecide: ScopeFilter(s.opts.Scope, ScopeAdmin)}
 		s.mux.HandleFunc("/api/approvals", s.requireSession(approvalsHandler.ServeHTTP))
 		s.mux.HandleFunc("/api/approvals/", s.requireSession(csrf.Middleware(approvalsHandler).ServeHTTP))
 
@@ -333,15 +357,38 @@ func (s *Server) registerRoutes() {
 // after the 303 redirect the token is consumed and never appears in
 // any subsequent URL.
 func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	var cookieVal string
+	var err error
+	switch r.Method {
+	case http.MethodGet:
+		if r.URL.RawQuery == "" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, "<!doctype html><html><head><title>Keylatch</title></head><body><p>Connecting to Keylatch…</p></body></html>")
+			return
+		}
+		cookieVal, err = s.session.ConsumeBootstrap(r.URL.Query().Get("b"), r.URL.Query().Get("mac"))
+	case http.MethodPost:
+		var body struct {
+			Token string `json:"token"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&body); err != nil {
+			http.Error(w, "invalid bootstrap request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(w, "invalid bootstrap request", http.StatusBadRequest)
+			return
+		}
+		cookieVal, err = s.session.ConsumeDesktopBootstrap(body.Token)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	token := r.URL.Query().Get("b")
-	mac := r.URL.Query().Get("mac")
-
-	cookieVal, err := s.session.ConsumeBootstrap(token, mac)
 	if err != nil {
 		http.Error(w, "unauthorized: "+err.Error(), http.StatusUnauthorized)
 		return
@@ -357,6 +404,10 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	csrf.SetCookie(w, csrfToken)
+	if r.Method == http.MethodPost {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	// 303 redirect to / — token no longer in any URL.
 	http.Redirect(w, r, "/", http.StatusSeeOther)

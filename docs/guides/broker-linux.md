@@ -73,6 +73,8 @@ keylatch broker rotate-keys
 
 Replaces the broker master key after a presence prompt. Every wrapped key and every stored data key is rewrapped; no stored value is re-encrypted. If the daemon is interrupted in the middle, it finishes the rotation when it starts.
 
+The broker store retains encrypted previous versions when a value changes. Key rotation includes those versions, and deleting a secret removes its history. Versions overwritten before history retention was added cannot be recovered. Sync rotation uses the preceding stored version for rollback. Retaining history does not revoke an old credential at its provider.
+
 ## Go back
 
 ```bash

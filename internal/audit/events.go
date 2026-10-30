@@ -41,8 +41,9 @@ const (
 	// ActionBrokerAdopt records secrets moved from a user's own store into the
 	// broker, and ActionBrokerExport records the reverse. Both carry counts;
 	// adopt also carries the head of the in-user audit chain it replaces.
-	ActionBrokerAdopt  Action = "broker.adopt"
-	ActionBrokerExport Action = "broker.export"
+	ActionBrokerAdopt   Action = "broker.adopt"
+	ActionMigrateImport Action = "migrate.import"
+	ActionBrokerExport  Action = "broker.export"
 
 	// ActionBackupExport records a backup written.
 	ActionBackupExport Action = "backup.export"
@@ -91,6 +92,8 @@ const (
 	ActionSyncRotateVerify   Action = "sync.rotate.verify"
 	ActionSyncRotateRollback Action = "sync.rotate.rollback"
 	ActionSyncRotateComplete Action = "sync.rotate.complete"
+	ActionSyncRotateQueued   Action = "sync.rotate.queued"
+	ActionSyncRotateRetire   Action = "sync.rotate.retire"
 	ActionServiceEnroll      Action = "service.enroll"
 	ActionServiceRevoke      Action = "service.revoke"
 	ActionMachineIssue       Action = "machine.issue"
