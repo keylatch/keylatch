@@ -416,20 +416,31 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 	if prev == nil && !opt.NoRollback {
 		return nil, fmt.Errorf("sync: the backend has no previous version of %s; a failed rotation could not be undone; pass --no-rollback to proceed", name)
 	}
+	before := make(map[string][]Remote, len(tns))
+	for _, tn := range tns {
+		before[tn], err = e.Targets[tn].List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("sync: read %s before rotation: %w", tn, err)
+		}
+	}
 
 	var out []Entry
 	wrote := []string{}
 	failWith := func(tn, env string, cause error) ([]Entry, error) {
 		out = append(out, Entry{tn, env, name, OutcomeFailed, cause.Error()})
-		return append(out, e.rollback(ctx, v, wrote, prev)...), fmt.Errorf("%w: %s at %s/%s: %v", ErrRotateFailed, name, tn, env, cause)
+		// A disconnected caller must not cancel restoration of an attempted write.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		return append(out, e.rollback(cleanup, v, wrote, prev)...), fmt.Errorf("%w: %s at %s/%s: %v", ErrRotateFailed, name, tn, env, cause)
 	}
 	for _, tn := range tns {
 		c := e.Targets[tn]
 		envs := v.To[tn]
+		// A failed response can follow a successful or partial remote mutation.
+		wrote = append(wrote, tn)
 		if err := c.Write(ctx, name, next, envs, v.IsSensitive()); err != nil {
 			return failWith(tn, envs[0], err)
 		}
-		wrote = append(wrote, tn)
 		if f, ok := c.(Flusher); ok {
 			if err := f.Flush(ctx); err != nil {
 				return failWith(tn, envs[0], err)
@@ -437,19 +448,23 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 		}
 		for _, env := range envs {
 			if err := e.audit(ctx, ActionWrite, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": name, "outcome": "ok"}); err != nil {
-				return out, err
+				return failWith(tn, env, err)
 			}
 		}
 	}
 	for _, tn := range tns {
 		c := e.Targets[tn]
 		for _, env := range v.To[tn] {
-			if err := e.verify(ctx, c, v, tn, env, next); err != nil {
+			prior := remoteUpdatedAt(before[tn], name, env)
+			if w, ok := e.State.Written(c.ID(), env, name); ok && w.RemoteAt.After(prior) {
+				prior = w.RemoteAt
+			}
+			if err := e.verify(ctx, c, v, env, next, prior); err != nil {
 				_ = e.audit(ctx, ActionRotateVerify, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": name, "outcome": "failed"})
 				return failWith(tn, env, err)
 			}
 			if err := e.audit(ctx, ActionRotateVerify, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": name, "outcome": "ok"}); err != nil {
-				return out, err
+				return failWith(tn, env, err)
 			}
 			out = append(out, Entry{tn, env, name, OutcomeVerified, ""})
 		}
@@ -460,17 +475,17 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 			sleep = sleepFor
 		}
 		if err := sleep(ctx, opt.KeepOld); err != nil {
-			return out, err
+			return failWith(tns[0], v.To[tns[0]][0], err)
 		}
 	}
 	for _, tn := range tns {
 		if err := e.recordOne(ctx, tn, v, next); err != nil {
-			return out, err
+			return failWith(tn, v.To[tn][0], err)
 		}
 	}
 	for _, tn := range tns {
 		if err := e.audit(ctx, ActionRotateComplete, map[string]any{"connection": v.From.Connection, "target": tn, "environment": "", "name": name, "outcome": "ok"}); err != nil {
-			return out, err
+			return failWith(tn, v.To[tn][0], err)
 		}
 	}
 	return out, nil
@@ -487,7 +502,17 @@ func sleepFor(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, tn, env string, next []byte) error {
+func remoteUpdatedAt(entries []Remote, name, env string) time.Time {
+	var latest time.Time
+	for _, remote := range entries {
+		if remote.Name == name && slices.Contains(remote.Environments, env) && !remote.Unmanaged && remote.UpdatedAt.After(latest) {
+			latest = remote.UpdatedAt
+		}
+	}
+	return latest
+}
+
+func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, env string, next []byte, after time.Time) error {
 	rs, err := c.List(ctx)
 	if err != nil {
 		return err
@@ -509,8 +534,13 @@ func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, tn, env stri
 			return errors.New("the target holds a different value than was written")
 		}
 		clear(got)
-	} else if w, had := e.State.Written(c.ID(), env, v.Name); had && !found.UpdatedAt.IsZero() && !found.UpdatedAt.After(w.RemoteAt) {
-		return errors.New("the target did not report an update")
+	} else {
+		if found.UpdatedAt.IsZero() {
+			return errors.New("the target returned neither a value nor an update time")
+		}
+		if !found.UpdatedAt.After(after) {
+			return errors.New("the target did not report an update")
+		}
 	}
 	if v.Verify != nil && e.Probe != nil {
 		if err := e.Probe(ctx, v.Verify.URL, next); err != nil {
@@ -534,7 +564,7 @@ func (e *Engine) recordOne(ctx context.Context, tn string, v Var, val []byte) er
 	return nil
 }
 
-// rollback writes prev back to every target that took the new value.
+// rollback restores every attempted target, including ambiguous write failures.
 func (e *Engine) rollback(ctx context.Context, v Var, targets []string, prev []byte) []Entry {
 	var out []Entry
 	for _, tn := range targets {
@@ -546,9 +576,23 @@ func (e *Engine) rollback(ctx context.Context, v Var, targets []string, prev []b
 			}
 			continue
 		}
+		before, beforeErr := c.List(ctx)
 		err := c.Write(ctx, v.Name, prev, envs, v.IsSensitive())
 		if f, ok := c.(Flusher); ok && err == nil {
 			err = f.Flush(ctx)
+		}
+		if err == nil {
+			err = beforeErr
+		}
+		if err == nil {
+			restored := v
+			restored.Verify = nil
+			for _, env := range envs {
+				prior := remoteUpdatedAt(before, v.Name, env)
+				if err = e.verify(ctx, c, restored, env, prev, prior); err != nil {
+					break
+				}
+			}
 		}
 		if err == nil {
 			err = e.recordOne(ctx, tn, v, prev)
@@ -559,7 +603,9 @@ func (e *Engine) rollback(ctx context.Context, v Var, targets []string, prev []b
 			if err != nil {
 				en.Outcome, en.Error, outcome = OutcomeFailed, err.Error(), "failed"
 			}
-			_ = e.audit(ctx, ActionRotateRollback, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": v.Name, "outcome": outcome})
+			if aerr := e.audit(ctx, ActionRotateRollback, map[string]any{"connection": v.From.Connection, "target": tn, "environment": env, "name": v.Name, "outcome": outcome}); aerr != nil {
+				en.Outcome, en.Error = OutcomeFailed, errors.Join(err, aerr).Error()
+			}
 			out = append(out, en)
 		}
 	}
