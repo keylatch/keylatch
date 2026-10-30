@@ -16,6 +16,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/brokerstore"
 	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	keysync "github.com/keylatch/keylatch/internal/sync"
@@ -97,11 +98,11 @@ func (c *countingStore) List(ctx context.Context, prefix string) ([]backend.Entr
 	return c.secretStore.List(ctx, prefix)
 }
 
-func (c *countingStore) Snapshot(ctx context.Context, p string) ([]byte, []byte, backend.Meta, error) {
+func (c *countingStore) SnapshotForRetirement(ctx context.Context, p string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error) {
 	c.reads++
 	return c.secretStore.(interface {
-		Snapshot(context.Context, string) ([]byte, []byte, backend.Meta, error)
-	}).Snapshot(ctx, p)
+		SnapshotForRetirement(context.Context, string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error)
+	}).SnapshotForRetirement(ctx, p)
 }
 
 type syncRig struct {
@@ -340,6 +341,7 @@ func TestStoreSecretsResolution(t *testing.T) {
 	for path, v := range map[string]string{
 		"vercel-deploy/token": "tok-1", "plain": "p", "multi/value": "m",
 		"default/cloud/aws/secret": "a", "other/cloud/aws/secret": "b", "default/ci/gh/api_key": "k",
+		".sync/previous/gh/api_key": "legacy-copy", ".sync/retirements/plain": "internal-job",
 	} {
 		if _, err := p.store.Put(ctx, path, []byte(v)); err != nil {
 			t.Fatal(err)
@@ -373,7 +375,7 @@ func TestStoreSecretsResolution(t *testing.T) {
 	if _, err := p.store.Put(ctx, "app-db/url", []byte("v2")); err != nil {
 		t.Fatal(err)
 	}
-	if snap, err := s.Snapshot(ctx, "app-db", "url"); err != nil || string(snap.Previous) != syncCanary+"-db" || string(snap.Current) != "v2" || snap.Version != 2 || snap.PreviousVersion != 1 {
+	if snap, err := s.Snapshot(ctx, "app-db", "url"); err != nil || string(snap.Previous) != syncCanary+"-db" || string(snap.Current) != "v2" || snap.Version != 2 || snap.PreviousVersion != 1 || !retirementHex(snap.CurrentID, 32) || !retirementHex(snap.PreviousID, 32) {
 		t.Fatalf("incorrect source snapshot: %v", err)
 	}
 }

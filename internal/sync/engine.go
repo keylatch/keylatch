@@ -58,6 +58,8 @@ type SourceSnapshot struct {
 	Path            string
 	Version         int
 	PreviousVersion int
+	CurrentID       string
+	PreviousID      string
 	Current         []byte
 	Previous        []byte
 }

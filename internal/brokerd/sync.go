@@ -15,6 +15,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/brokerstore"
 	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/control"
@@ -54,11 +55,17 @@ func (s storeSecrets) find(ctx context.Context, connection string, fields []stri
 	if err != nil {
 		return "", err
 	}
-	have := make([]string, len(entries))
-	for i, e := range entries {
-		have[i] = e.Path
+	return keysync.FindPath(syncSourcePaths(entries), connection, fields)
+}
+
+func syncSourcePaths(entries []backend.Entry) []string {
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Path != ".sync" && !strings.HasPrefix(entry.Path, ".sync/") {
+			paths = append(paths, entry.Path)
+		}
 	}
-	return keysync.FindPath(have, connection, fields)
+	return paths
 }
 
 func (s storeSecrets) Value(ctx context.Context, connection, field string) ([]byte, error) {
@@ -85,10 +92,11 @@ func (s storeSecrets) Snapshot(ctx context.Context, connection, field string) (k
 	}
 	var current, previous []byte
 	var meta backend.Meta
+	var ref brokerstore.Retirement
 	if versioned, ok := s.st.(interface {
-		Snapshot(context.Context, string) ([]byte, []byte, backend.Meta, error)
+		SnapshotForRetirement(context.Context, string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error)
 	}); ok {
-		current, previous, meta, err = versioned.Snapshot(ctx, p)
+		current, previous, meta, ref, err = versioned.SnapshotForRetirement(ctx, p)
 	} else {
 		current, meta, err = s.st.Get(ctx, p)
 	}
@@ -100,6 +108,7 @@ func (s storeSecrets) Snapshot(ctx context.Context, connection, field string) (k
 	out := keysync.SourceSnapshot{Path: p, Version: meta.Version, Current: current, Previous: previous}
 	if previous != nil {
 		out.PreviousVersion = meta.Version - 1
+		out.CurrentID, out.PreviousID = ref.CurrentID, ref.PreviousID
 	}
 	return out, nil
 }
@@ -125,10 +134,7 @@ func (s storeSecrets) credentialKinds(ctx context.Context, m keysync.Manifest) m
 	if err != nil {
 		return nil
 	}
-	have := make([]string, len(entries))
-	for i, e := range entries {
-		have[i] = e.Path
-	}
+	have := syncSourcePaths(entries)
 	out := map[string]string{}
 	for name, t := range m.Targets {
 		if t.Credential == "" {
