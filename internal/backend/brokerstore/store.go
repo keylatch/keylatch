@@ -59,6 +59,7 @@ type record struct {
 	WrappedDEK []byte    `json:"wrapped_dek"`
 	Nonce      []byte    `json:"nonce"`
 	CT         []byte    `json:"ct"`
+	Retired    bool      `json:"retired,omitempty"`
 }
 
 // Store is one partition's secret store.
@@ -106,24 +107,10 @@ func (s *Store) Put(_ context.Context, p string, value []byte) (int, error) {
 	} else if !errors.Is(err, backend.ErrNotFound) {
 		return 0, err
 	}
-	dek := make([]byte, dekLen)
-	defer clear(dek)
-	if _, err := io.ReadFull(rand.Reader, dek); err != nil {
-		return 0, fmt.Errorf("brokerstore: %w", err)
-	}
-	aad := s.aad(p, version)
-	nonce, ct, err := seal(dek, value, aad)
+	rec, err := s.encrypt(record{V: recordFormat, Path: p, Version: version, Created: created, Updated: s.now().UTC()}, value)
 	if err != nil {
 		return 0, err
 	}
-	kid, kek := s.keys.StoreKEK(s.partition)
-	defer clear(kek)
-	dekNonce, wrapped, err := seal(kek, dek, append(aad, kid...))
-	if err != nil {
-		return 0, err
-	}
-	rec := record{V: recordFormat, Path: p, Version: version, Created: created, Updated: s.now().UTC(),
-		KID: kid, DEKNonce: dekNonce, WrappedDEK: wrapped, Nonce: nonce, CT: ct}
 	return version, s.write(rec)
 }
 
@@ -172,27 +159,8 @@ func (s *Store) GetVersion(_ context.Context, p string, version int) ([]byte, ba
 
 // Snapshot reads current and previous values under one lock; the caller wipes both.
 // Missing history is returned as nil, while corrupt history fails the whole read.
-func (s *Store) Snapshot(_ context.Context, p string) (current, previous []byte, m backend.Meta, err error) {
-	if err = validPath(p); err != nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rec, err := s.read(p)
-	if err != nil {
-		return nil, nil, backend.Meta{}, err
-	}
-	current, m, err = s.decrypt(rec)
-	if err != nil || rec.Version == 1 {
-		return
-	}
-	previous, _, err = s.history(p, rec.Version-1)
-	if errors.Is(err, backend.ErrNotFound) {
-		err = nil
-	} else if err != nil {
-		clear(current)
-		return nil, nil, backend.Meta{}, err
-	}
+func (s *Store) Snapshot(ctx context.Context, p string) (current, previous []byte, m backend.Meta, err error) {
+	current, previous, m, _, err = s.SnapshotForRetirement(ctx, p)
 	return
 }
 
@@ -212,23 +180,34 @@ func (s *Store) history(p string, version int) ([]byte, backend.Meta, error) {
 
 // decrypt checks both encryption layers; the caller holds mu.
 func (s *Store) decrypt(rec record) ([]byte, backend.Meta, error) {
-	p := rec.Path
-	aad := s.aad(p, rec.Version)
+	value, err := s.decryptRecord(rec)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if rec.Retired {
+		clear(value)
+		return nil, backend.Meta{}, ErrRetired
+	}
+	return value, meta(rec), nil
+}
+
+func (s *Store) decryptRecord(rec record) ([]byte, error) {
+	aad := s.recordAAD(rec)
 	kek, err := s.keys.KEKFor(rec.KID, s.partition)
 	if err != nil {
-		return nil, backend.Meta{}, fmt.Errorf("brokerstore: %w", err)
+		return nil, fmt.Errorf("brokerstore: %w", err)
 	}
 	defer clear(kek)
 	dek, err := open(kek, rec.DEKNonce, rec.WrappedDEK, append(aad, rec.KID...))
 	if err != nil {
-		return nil, backend.Meta{}, fmt.Errorf("%w: data key", ErrAAD)
+		return nil, fmt.Errorf("%w: data key", ErrAAD)
 	}
 	defer clear(dek)
 	value, err := open(dek, rec.Nonce, rec.CT, aad)
 	if err != nil {
-		return nil, backend.Meta{}, fmt.Errorf("%w: value", ErrAAD)
+		return nil, fmt.Errorf("%w: value", ErrAAD)
 	}
-	return value, meta(rec), nil
+	return value, nil
 }
 
 // Delete removes p.
@@ -307,7 +286,7 @@ func (s *Store) Rewrap(oldKEK, newKEK []byte, newKID string) (int, error) {
 		if rec.KID == newKID {
 			continue
 		}
-		aad := s.aad(rec.Path, rec.Version)
+		aad := s.recordAAD(rec)
 		dek, err := open(oldKEK, rec.DEKNonce, rec.WrappedDEK, append(aad, rec.KID...))
 		if err != nil {
 			return n, fmt.Errorf("%w: data key of %s", ErrAAD, rec.Path)
