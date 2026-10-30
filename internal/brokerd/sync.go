@@ -179,6 +179,8 @@ func (a *admin) syncState() *syncState {
 }
 
 func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Result, req brokerapi.Request) brokerapi.Response {
+	a.p.syncMu.Lock()
+	defer a.p.syncMu.Unlock()
 	if err := a.p.policy.Gate(ctx, res); err != nil {
 		return fail(brokerapi.CodeRefused, exitcode.SecurityBlock, err)
 	}
@@ -212,6 +214,9 @@ func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Re
 	eng := &keysync.Engine{
 		Manifest: m, Targets: clients, Secrets: store, State: a.syncState(),
 		Audit: syncAudit{a, res, presence}, Probe: guardProbe(allowed, a.probe()),
+	}
+	eng.Finalize = func(ctx context.Context, v keysync.Var, snapshot keysync.SourceSnapshot, selected []string, keep time.Duration) (bool, error) {
+		return a.finishRotation(ctx, eng, v, snapshot, selected, keep, presence)
 	}
 	out := &brokerapi.SyncResult{Credentials: store.credentialKinds(ctx, m)}
 	switch req.Op {

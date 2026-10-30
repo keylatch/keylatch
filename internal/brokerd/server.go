@@ -97,9 +97,10 @@ type Server struct {
 	svcOnce sync.Once
 	svc     *serviceStore
 
-	machOnce sync.Once
-	mach     *machineStore
-	machines machineManager
+	machOnce       sync.Once
+	mach           *machineStore
+	machines       machineManager
+	retirementWake chan struct{}
 }
 
 type partition struct {
@@ -112,6 +113,7 @@ type partition struct {
 	approvalMu sync.Mutex
 
 	syncOnce sync.Once
+	syncMu   sync.Mutex
 	sync     *syncState
 	// syncStore stands in for store in the sync operations; tests use it to
 	// count reads.
@@ -147,12 +149,13 @@ func New(cfg Config) (*Server, error) {
 	proofs := NewProofs(cfg.Now)
 	sessions := NewSessions(ticketKey, cfg.Now)
 	s := &Server{
-		cfg:      cfg,
-		proofs:   proofs,
-		sessions: sessions,
-		presence: &Presence{Method: cfg.Presence, Proofs: proofs, Audit: cfg.Audit},
-		callers:  &callerkind.Classifier{NoHuman: true, AgentScope: sessions.InAgentScope},
-		parts:    map[uint32]*partition{},
+		cfg:            cfg,
+		proofs:         proofs,
+		sessions:       sessions,
+		presence:       &Presence{Method: cfg.Presence, Proofs: proofs, Audit: cfg.Audit},
+		callers:        &callerkind.Classifier{NoHuman: true, AgentScope: sessions.InAgentScope},
+		parts:          map[uint32]*partition{},
+		retirementWake: make(chan struct{}, 1),
 	}
 	if cfg.Presence == nil {
 		s.presence.Method = nil
@@ -179,13 +182,16 @@ func UnixListener(l *net.UnixListener) Listener { return unixListener{l} }
 
 // Serve accepts connections until ctx is done.
 func (s *Server) Serve(ctx context.Context, ln Listener) error {
+	ctx, cancel := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); s.runRetirements(ctx) }()
 	s.StartMachineListener(ctx)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
 	}()
 	var wg sync.WaitGroup
-	defer wg.Wait()
+	defer func() { cancel(); wg.Wait(); <-workerDone }()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

@@ -21,12 +21,13 @@ const (
 
 // Entry outcomes.
 const (
-	OutcomeWritten    = "written"
-	OutcomeUnchanged  = "unchanged"
-	OutcomeDeleted    = "deleted"
-	OutcomeVerified   = "verified"
-	OutcomeRolledBack = "rolled-back"
-	OutcomeFailed     = "failed"
+	OutcomeWritten           = "written"
+	OutcomeUnchanged         = "unchanged"
+	OutcomeDeleted           = "deleted"
+	OutcomeVerified          = "verified"
+	OutcomeRolledBack        = "rolled-back"
+	OutcomeFailed            = "failed"
+	OutcomeRetirementPending = "retirement-pending"
 )
 
 // TargetClient is one target as the engine drives it.
@@ -99,6 +100,9 @@ type Engine struct {
 	Probe func(ctx context.Context, url string, value []byte) error
 	// Sleep waits d or until ctx ends; nil uses a timer.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Finalize persists retirement after all selected targets verify and are recorded.
+	// Pending is true when retirement is deferred; errors must not roll back a possibly revoked value.
+	Finalize func(context.Context, Var, SourceSnapshot, []string, time.Duration) (pending bool, err error)
 }
 
 func (e *Engine) now() time.Time {
@@ -471,7 +475,7 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 			out = append(out, Entry{tn, env, name, OutcomeVerified, ""})
 		}
 	}
-	if opt.KeepOld > 0 {
+	if opt.KeepOld > 0 && e.Finalize == nil {
 		sleep := e.Sleep
 		if sleep == nil {
 			sleep = sleepFor
@@ -484,6 +488,15 @@ func (e *Engine) Rotate(ctx context.Context, name string, opt RotateOptions) ([]
 		if err := e.recordOne(ctx, tn, v, next); err != nil {
 			return failWith(tn, v.To[tn][0], err)
 		}
+	}
+	if e.Finalize != nil {
+		pending, err := e.Finalize(ctx, v, snapshot, tns, opt.KeepOld)
+		if pending {
+			for i := range out {
+				out[i].Outcome = OutcomeRetirementPending
+			}
+		}
+		return out, err
 	}
 	for _, tn := range tns {
 		if err := e.audit(ctx, ActionRotateComplete, map[string]any{"connection": v.From.Connection, "target": tn, "environment": "", "name": name, "outcome": "ok"}); err != nil {

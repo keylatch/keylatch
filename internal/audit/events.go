@@ -92,6 +92,8 @@ const (
 	ActionSyncRotateVerify   Action = "sync.rotate.verify"
 	ActionSyncRotateRollback Action = "sync.rotate.rollback"
 	ActionSyncRotateComplete Action = "sync.rotate.complete"
+	ActionSyncRotateQueued   Action = "sync.rotate.queued"
+	ActionSyncRotateRetire   Action = "sync.rotate.retire"
 	ActionServiceEnroll      Action = "service.enroll"
 	ActionServiceRevoke      Action = "service.revoke"
 	ActionMachineIssue       Action = "machine.issue"
