@@ -82,7 +82,7 @@ keylatch sync rotate DATABASE_URL --target web --keep-old 10m
 Change the value at its provider and store the new value in the source connection first. Then `rotate` (presence required):
 
 1. writes the source's current value to every target of the variable;
-2. verifies each target: Vercel `encrypted` entries are read back and compared, write-only stores (Vercel `sensitive`, GitHub) are checked by the update time they report, and a variable's optional `verify: {url: https://...}` makes the daemon send an HTTPS request with the new value as a bearer token and expect a 2xx;
+2. verifies each target: env-file temporary output is read back and compared with the complete merged content, Vercel `encrypted` entries are read back and compared, write-only stores (Vercel `sensitive`, GitHub) are checked by the update time they report, and a variable's optional `verify: {url: https://...}` makes the daemon send an HTTPS request with the new value as a bearer token and expect a 2xx;
 3. on write or verification failure attempts to restore and verify the previous value (`sync.rotate.rollback`);
 4. after all declared remote targets have recorded the current value, persists an encrypted retirement job. The daemon retires the preceding backend version after `--keep-old` (up to 24 hours), then records completion (`sync.rotate.complete`). Pending jobs survive daemon restart and retry failed retirement or audit writes. Retirement failures do not roll back verified destinations.
 

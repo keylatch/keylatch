@@ -66,7 +66,7 @@ func (s *Server) retirementEvent(ctx context.Context, p *partition, job retireme
 	for _, target := range job.Targets {
 		if err := s.cfg.Audit.Emit(ctx, audit.Event{Action: action, Outcome: audit.OutcomeOK, Extra: map[string]any{
 			"connection": job.Connection, "target": target, "environment": "", "name": job.Name,
-			"caller_kind": string(callerkind.Human), "presence": job.Presence, "uid": p.uid,
+			"caller_kind": string(callerkind.Human), "presence": job.Presence,
 			"retirement_scope": "backend",
 		}}); err != nil {
 			return err

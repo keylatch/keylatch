@@ -46,6 +46,11 @@ type Flusher interface {
 	Flush(ctx context.Context) error
 }
 
+// ValueVerifier verifies a destination without returning its stored value.
+type ValueVerifier interface {
+	VerifyValue(context.Context, Remote, []byte) error
+}
+
 // Secrets reads the sources. Only the daemon holds one.
 type Secrets interface {
 	Value(ctx context.Context, connection, field string) ([]byte, error)
@@ -541,7 +546,11 @@ func (e *Engine) verify(ctx context.Context, c TargetClient, v Var, env string, 
 	if found == nil {
 		return errors.New("the entry is missing after the write")
 	}
-	if got, ok, err := c.Readback(ctx, *found); err != nil {
+	if verifier, ok := c.(ValueVerifier); ok {
+		if err := verifier.VerifyValue(ctx, *found, next); err != nil {
+			return err
+		}
+	} else if got, ok, err := c.Readback(ctx, *found); err != nil {
 		return err
 	} else if ok {
 		if e.State.MAC(c.ID(), env, v.Name, got) != e.State.MAC(c.ID(), env, v.Name, next) {

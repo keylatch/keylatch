@@ -423,7 +423,25 @@ func TestSyncStateKeyedAndPersistent(t *testing.T) {
 // The env file travels as descriptors: the daemon reads the existing file and
 // writes the merged content into the temp file, keeping unmanaged lines.
 func TestSyncEnvFileAtomic0600(t *testing.T) {
+	for _, op := range []brokerapi.Op{brokerapi.OpSyncApply, brokerapi.OpSyncRotate} {
+		t.Run(string(op), func(t *testing.T) { testSyncEnvFileAtomic(t, op) })
+	}
+}
+
+func testSyncEnvFileAtomic(t *testing.T, op brokerapi.Op) {
+	t.Helper()
 	r := newSyncRig(t)
+	value := syncCanary + "-db"
+	if op == brokerapi.OpSyncRotate {
+		value += "-rotated"
+		p, err := r.h.srv.partition(context.Background(), r.uid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.store.Put(context.Background(), "app-db/url", []byte(value)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".env.local")
 	if err := os.WriteFile(target, []byte("# mine\nKEEP=1\n"), 0o600); err != nil {
@@ -434,18 +452,24 @@ func TestSyncEnvFileAtomic0600(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer existing.Close()
-	temp, err := os.OpenFile(filepath.Join(dir, ".env.local.tmp"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	temp, err := os.OpenFile(filepath.Join(dir, ".env.local.tmp"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer temp.Close()
 
 	server, client := pair(t)
-	req := r.h.proven(t, r.uid, r.req(brokerapi.OpSyncApply, func(s *brokerapi.SyncRequest) {
+	req := r.h.proven(t, r.uid, r.req(op, func(s *brokerapi.SyncRequest) {
+		if op == brokerapi.OpSyncRotate {
+			s.Name = "DATABASE_URL"
+		}
 		s.EnvFiles, s.EnvKeys = []string{"local"}, nil
 		s.Manifest = []byte(strings.Replace(syncManifest, "web: [production, preview], ", "", 1))
 		s.Manifest = []byte(strings.Replace(string(s.Manifest), "  web:   {type: vercel, project: prj_1, credential: vercel-deploy}\n", "", 1))
 	}))
+	if err := req.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan brokerapi.Response, 1)
 	go func() {
 		p, _ := r.h.srv.partition(context.Background(), r.uid)
@@ -464,10 +488,10 @@ func TestSyncEnvFileAtomic0600(t *testing.T) {
 	}
 	resp := <-done
 	if !resp.OK {
-		t.Fatalf("apply = %+v", resp)
+		t.Fatalf("%s = %+v", op, resp)
 	}
 	merged, _ := os.ReadFile(temp.Name())
-	want := "# mine\nKEEP=1\nDATABASE_URL=" + syncCanary + "-db\n"
+	want := "# mine\nKEEP=1\nDATABASE_URL=" + value + "\n"
 	if string(merged) != want {
 		t.Fatalf("merged content:\n%q\nwant\n%q", merged, want)
 	}

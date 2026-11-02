@@ -176,7 +176,9 @@ var safeLogFields = map[string][]string{
 	"sync.delete":          {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
 	"sync.rotate.verify":   {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
 	"sync.rotate.rollback": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
-	"sync.rotate.complete": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.complete": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome", "retirement_scope"},
+	"sync.rotate.queued":   {"connection", "target", "environment", "name", "caller_kind", "presence", "retirement_scope"},
+	"sync.rotate.retire":   {"connection", "target", "environment", "name", "caller_kind", "presence", "retirement_scope"},
 	// service units and machine credentials: names, scopes and expiry only.
 	"service.enroll": {"connection", "unit", "scope", "allow_transient", "caller_kind", "presence", "outcome"},
 	"service.revoke": {"connection", "unit", "caller_kind", "presence", "outcome"},

@@ -241,7 +241,7 @@ func (a *admin) syncOp(ctx context.Context, peer control.Peer, res callerkind.Re
 func (a *admin) syncTargets(m keysync.Manifest, sr *brokerapi.SyncRequest, store storeSecrets, files map[string]*envFile) (map[string]keysync.TargetClient, error) {
 	io := map[string]targets.EnvFileIO{}
 	for name, f := range files {
-		io[name] = targets.EnvFileIO{Existing: f.existing, Flush: f.flush}
+		io[name] = targets.EnvFileIO{Existing: f.existing, Flush: f.flush, Read: f.read}
 	}
 	return targets.Build(m, targets.BuildOptions{
 		Credential: store.credential, HTTP: a.s.cfg.Sync.HTTP,

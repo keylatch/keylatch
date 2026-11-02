@@ -21,6 +21,7 @@ func TestSyncRequestValidation(t *testing.T) {
 	good := []Request{
 		syncReq(OpSyncDiff, nil), syncReq(OpSyncDrift, nil), syncReq(OpSyncApply, func(s *SyncRequest) { s.EnvFiles = []string{"l"}; s.Prune = true }),
 		syncReq(OpSyncRotate, func(s *SyncRequest) { s.Name = "A"; s.KeepOldSeconds = 60 }),
+		syncReq(OpSyncRotate, func(s *SyncRequest) { s.Name = "A"; s.EnvFiles = []string{"l"} }),
 	}
 	for _, r := range good {
 		if err := r.Validate(); err != nil {

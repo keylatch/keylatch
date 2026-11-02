@@ -17,7 +17,7 @@ const maxEnvFile = 8 << 20
 
 // receiveEnvFiles asks the client for the descriptors of the env-file targets
 // of a request: for each, the existing file opened read-only and a new empty
-// file opened for writing in the same directory. The daemon fills the second;
+// file opened for reading and writing in the same directory. The daemon fills the second;
 // the client renames it over the first, so the value is never in the client.
 func (a *admin) receiveEnvFiles(ctx context.Context, sr *brokerapi.SyncRequest) (map[string]*envFile, func(), error) {
 	out := map[string]*envFile{}
@@ -66,4 +66,13 @@ func checkTemp(f *os.File) error {
 		return errors.New("the output descriptor must be an empty regular file")
 	}
 	return nil
+}
+
+func (f *envFile) read() ([]byte, error) {
+	content, err := io.ReadAll(io.NewSectionReader(f.temp, 0, maxEnvFile+1))
+	if err != nil || len(content) > maxEnvFile {
+		clear(content)
+		return nil, errors.New("the output env file cannot be read or is too large")
+	}
+	return content, nil
 }
