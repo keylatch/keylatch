@@ -53,15 +53,15 @@ func (p Plan) Hash() string {
 }
 
 // Text is the plan as the human reads it: every word of the command, the
-// tier, the hosts, the project and the lifetime, with control characters
-// removed so a command cannot rewrite the screen.
+// tier, the hosts, the project and the lifetime, with command controls visibly
+// escaped so executable bytes cannot disappear from the review.
 func (p Plan) Text() string {
 	hosts := slices.Clone(p.Hosts)
 	slices.Sort(hosts)
 	var b strings.Builder
 	fmt.Fprintf(&b, "run for a %s caller, tier %s, connection %s\n", clean(p.Caller), clean(p.Tier), clean(p.Connection))
 	fmt.Fprintf(&b, "  command:  %s\n", quote(p.Argv))
-	fmt.Fprintf(&b, "  project:  %s (read-write)\n", clean(p.Project))
+	fmt.Fprintf(&b, "  project:  %+q (read-write)\n", p.Project)
 	fmt.Fprintf(&b, "  network:  %s\n", orNone(hosts))
 	fmt.Fprintf(&b, "  lifetime: %s\n", p.TTL)
 	fmt.Fprintf(&b, "  argv sha256: %s\n", p.ArgvDigest())
@@ -102,7 +102,7 @@ func orNone(in []string) string {
 func quote(argv []string) string {
 	parts := make([]string, len(argv))
 	for i, a := range argv {
-		parts[i] = fmt.Sprintf("%q", clean(a))
+		parts[i] = fmt.Sprintf("%+q", a)
 	}
 	return strings.Join(parts, " ")
 }

@@ -16,6 +16,7 @@ import (
 type EnvFileIO struct {
 	Existing []byte
 	Flush    func([]byte) error
+	Read     func() ([]byte, error)
 }
 
 // BuildOptions says how to reach each target of a manifest.
@@ -70,7 +71,9 @@ func Build(m keysync.Manifest, o BuildOptions) (map[string]keysync.TargetClient,
 		case keysync.TypeEnvFile:
 			id := "envfile:" + path.Join(o.Root, t.Path)
 			if f, ok := o.EnvFiles[name]; ok {
-				out[name] = NewEnvFile(id, f.Existing, f.Flush)
+				file := NewEnvFile(id, f.Existing, f.Flush)
+				file.read = f.Read
+				out[name] = file
 			} else {
 				out[name] = NamesOnly{TargetID: id, Names: o.EnvKeys[name]}
 			}

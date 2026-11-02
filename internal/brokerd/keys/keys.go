@@ -110,6 +110,7 @@ type Hierarchy struct {
 	dir      string
 	rootWrap *secret
 	lock     bool
+	storeMu  sync.RWMutex
 
 	mu         sync.RWMutex
 	bmk        *secret
@@ -161,6 +162,8 @@ func Open(dir string, root []byte, lock bool) (*Hierarchy, error) {
 
 // Close zeroes and unlocks every key held in memory.
 func (h *Hierarchy) Close() {
+	h.storeMu.Lock()
+	defer h.storeMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, s := range []*secret{h.rootWrap, h.bmk, h.pending} {
@@ -199,6 +202,13 @@ func (h *Hierarchy) PendingKeyID() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.pendingKID
+}
+
+// HoldStoreKeys prevents master-key replacement until a store operation finishes.
+// Acquire it before the store mutex and release it after committing the operation.
+func (h *Hierarchy) HoldStoreKeys() func() {
+	h.storeMu.RLock()
+	return h.storeMu.RUnlock
 }
 
 // StoreKEK returns the store key-encryption key of a partition and the id of
@@ -294,6 +304,28 @@ func (h *Hierarchy) TokenKeyFor(partition string) ([]byte, error) {
 	return derive(k.Seed(), salt("token", partition), infoTokenHMAC), nil
 }
 
+// KeyPolicyKeyFor seals one partition's key-operation allowlist independently of session tokens.
+func (h *Hierarchy) KeyPolicyKeyFor(partition string) ([]byte, error) {
+	k, err := h.Signer(TokenSigning)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(k)
+	return derive(k.Seed(), salt("key-policy", partition), "keylatch/key-policy-hmac/v1"), nil
+}
+
+// ApprovalSignerFor signs presence-verified decisions for exactly one partition.
+func (h *Hierarchy) ApprovalSignerFor(partition string) (ed25519.PrivateKey, error) {
+	k, err := h.Signer(TokenSigning)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(k)
+	seed := derive(k.Seed(), salt("approval", partition), "keylatch/approval-signing/v1")
+	defer clear(seed)
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
 // SyncKeyFor returns the 32-byte key the keyed hashes of one partition's sync
 // writes are computed with. The daemon alone holds it, so a value is compared
 // with what was written without a plain hash ever existing.
@@ -323,6 +355,8 @@ func (h *Hierarchy) ServiceKeyFor(partition string) ([]byte, error) {
 // staged on disk before rewrap runs and committed after it succeeds, so an
 // interrupted rotation is finished with Resume.
 func (h *Hierarchy) Rotate(rewrap Rewrap) error {
+	h.storeMu.Lock()
+	defer h.storeMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.pending != nil {
@@ -363,6 +397,8 @@ func (h *Hierarchy) Rotate(rewrap Rewrap) error {
 
 // Resume finishes a rotation that was staged but not committed.
 func (h *Hierarchy) Resume(rewrap Rewrap) error {
+	h.storeMu.Lock()
+	defer h.storeMu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.pending == nil {

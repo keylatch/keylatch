@@ -86,6 +86,21 @@ func (p staticPolicy) SSHKeys() ([]KeyRef, error) {
 	return out, nil
 }
 
+func (p staticPolicy) GPGKeys() ([]KeyRef, error) {
+	var out []KeyRef
+	for c, fields := range p.conns {
+		for f, fp := range fields {
+			for _, op := range fp.Operations {
+				if op == string(OpGPGSign) {
+					out = append(out, KeyRef{Connection: c, Field: f, Policy: fp})
+					break
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
 func pkcs8PEM(t *testing.T, k any) []byte {
 	t.Helper()
 	der, err := x509.MarshalPKCS8PrivateKey(k)

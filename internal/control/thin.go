@@ -61,6 +61,9 @@ func Handle(ctx context.Context, lookup llmcontext.Lookup, args []string, stream
 	}
 
 	if verb == KeyVerb {
+		if len(rest) > 0 && rest[0] == "agent" {
+			return runKeyAgent(ctx, client, rest[1:], streams), true
+		}
 		return runKey(client, rest, streams), true
 	}
 	if verb == "run" && !slices.Contains(rest, "--dry-run") {

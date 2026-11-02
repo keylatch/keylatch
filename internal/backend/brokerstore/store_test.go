@@ -120,6 +120,7 @@ func TestStoreAADChecked(t *testing.T) {
 	dir := t.TempDir()
 	s := newStore(t, h, dir, "1000")
 	putAll(t, s, map[string]string{"a": "alpha", "b": "beta"})
+	originalA, originalB := readRecord(t, s, "a"), readRecord(t, s, "b")
 
 	t.Run("record moved to another path", func(t *testing.T) {
 		recA := readRecord(t, s, "a")
@@ -127,7 +128,7 @@ func TestStoreAADChecked(t *testing.T) {
 		if _, _, err := s.Get(ctx, "b"); !errors.Is(err, ErrAAD) {
 			t.Fatalf("Get = %v, want ErrAAD", err)
 		}
-		putAll(t, s, map[string]string{"b": "beta"})
+		writeRecordAt(t, s, "b", originalB)
 	})
 	t.Run("record renamed in place", func(t *testing.T) {
 		recA := readRecord(t, s, "a")
@@ -136,7 +137,7 @@ func TestStoreAADChecked(t *testing.T) {
 		if _, _, err := s.Get(ctx, "b"); !errors.Is(err, ErrAAD) {
 			t.Fatalf("Get = %v, want ErrAAD", err)
 		}
-		putAll(t, s, map[string]string{"b": "beta"})
+		writeRecordAt(t, s, "b", originalB)
 	})
 	t.Run("version rolled back", func(t *testing.T) {
 		rec := readRecord(t, s, "a")
@@ -147,6 +148,7 @@ func TestStoreAADChecked(t *testing.T) {
 		}
 	})
 	t.Run("value ciphertext swapped", func(t *testing.T) {
+		writeRecordAt(t, s, "a", originalA)
 		putAll(t, s, map[string]string{"a": "alpha", "c": "gamma"})
 		a, c := readRecord(t, s, "a"), readRecord(t, s, "c")
 		a.Nonce, a.CT = c.Nonce, c.CT
@@ -156,7 +158,7 @@ func TestStoreAADChecked(t *testing.T) {
 		}
 	})
 	t.Run("another partition", func(t *testing.T) {
-		putAll(t, s, map[string]string{"a": "alpha"})
+		writeRecordAt(t, s, "a", originalA)
 		other := newStore(t, h, dir, "1001")
 		if _, _, err := other.Get(ctx, "a"); !errors.Is(err, ErrAAD) {
 			t.Fatalf("a partition reading another's record = %v, want ErrAAD", err)

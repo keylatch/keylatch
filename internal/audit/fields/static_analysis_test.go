@@ -95,6 +95,9 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			"adapter": "postgres", "connections": 1,
 			// service release keys.
 			"unit": "app.service",
+			// Sync destination identifiers and approved-request digest, never values.
+			"target": "web", "environment": "production", "name": "DATABASE_URL",
+			"presence": "0123456789abcdef", "retirement_scope": "backend",
 		}
 		salt := []byte("allowlist-discovery")
 		out := fields.Redact(salt, action, testExtra)
