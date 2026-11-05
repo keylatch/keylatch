@@ -767,6 +767,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		{"providers", checkACLKeychainUnlock()},
 		{"providers", checkKeychainDBPermissions()},
 		{"environment", checkHookPreToolUse(env)},
+		{"environment", checkHostSandboxKeylatchExcluded(env)},
 		{"environment", checkCosignInstalled(probe)},
 		// Soft checks.
 		{"providers", checkNoConnections(env)},

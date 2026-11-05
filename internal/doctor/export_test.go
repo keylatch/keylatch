@@ -23,3 +23,32 @@ func ExportCheckPlaintextRetention(env llmcontext.Lookup) Check {
 func ExportCheckNoConnections(env llmcontext.Lookup) Check {
 	return checkNoConnections(env)
 }
+
+// ExportCheckHostSandboxKeylatchExcluded exposes checkHostSandboxKeylatchExcluded for unit tests.
+func ExportCheckHostSandboxKeylatchExcluded(lookup llmcontext.Lookup) Check {
+	return checkHostSandboxKeylatchExcluded(lookup)
+}
+
+// ExportMatchKeylatchExclusion exposes matchKeylatchExclusion for unit tests.
+func ExportMatchKeylatchExclusion(pattern string) (bool, bool) {
+	return matchKeylatchExclusion(pattern)
+}
+
+// ExportSetManagedSettingsDir points the managed settings lookup at dir and returns a restore func.
+func ExportSetManagedSettingsDir(dir string) func() {
+	return OverrideManagedSettingsDir(dir)
+}
+
+// ExportKeylatchSafeVerbs returns the subcommands the matcher treats as not spawning children.
+func ExportKeylatchSafeVerbs() []string {
+	var verbs []string
+	for v := range keylatchSafeVerbs {
+		verbs = append(verbs, v)
+	}
+	return verbs
+}
+
+// ExportMatchKeylatchExclusionOn exposes matchKeylatchExclusionOn for unit tests.
+func ExportMatchKeylatchExclusionOn(goos, pattern string) (bool, bool) {
+	return matchKeylatchExclusionOn(goos, pattern)
+}
