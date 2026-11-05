@@ -41,3 +41,19 @@ func TestAuditNoValues(t *testing.T) {
 		t.Errorf("allowlisted name was altered: %v", out["connection"])
 	}
 }
+
+func TestRetirementAuditKeepsMetadataAndRedactsCredentials(t *testing.T) {
+	for _, action := range []string{"sync.rotate.queued", "sync.rotate.retire", "sync.rotate.complete"} {
+		out := Redact([]byte("retirement-test"), action, map[string]any{
+			"connection": "app-db", "target": "web", "name": "DATABASE_URL",
+			"presence": "0123456789abcdef", "retirement_scope": "backend",
+			"value": "private-database-password",
+		})
+		if out["target"] != "web" || out["name"] != "DATABASE_URL" || out["presence"] != "0123456789abcdef" || out["retirement_scope"] != "backend" {
+			t.Errorf("%s lost retirement metadata: %v", action, out)
+		}
+		if out["value"] == "private-database-password" {
+			t.Errorf("%s exposed a credential", action)
+		}
+	}
+}

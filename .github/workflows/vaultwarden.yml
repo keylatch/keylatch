@@ -1,0 +1,46 @@
+name: Vaultwarden restore drill
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      vaultwarden:
+        image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+        options: --tmpfs /data
+        env:
+          ROCKET_PORT: '8080'
+          SIGNUPS_ALLOWED: 'true'
+        ports:
+          - 8080/tcp
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: tests/e2e/bitwarden/package-lock.json
+      - name: Install pinned Bitwarden client
+        run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: tests/e2e/bitwarden
+      - name: Wait for disposable Vaultwarden
+        env:
+          VAULTWARDEN_PORT: ${{ job.services.vaultwarden.ports['8080'] }}
+        run: curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 --max-time 2 "http://127.0.0.1:${VAULTWARDEN_PORT}/alive"
+      - name: Verify collections and fresh-client restore
+        env:
+          KEYLATCH_E2E_BW_REQUIRED: '1'
+          KEYLATCH_E2E_VAULTWARDEN_URL: http://127.0.0.1:${{ job.services.vaultwarden.ports['8080'] }}
+          KEYLATCH_E2E_BW_BIN: ${{ github.workspace }}/tests/e2e/bitwarden/node_modules/.bin/bw
+        run: go test -race -count=1 -timeout 12m -tags e2e ./tests/e2e/... -run '^Test(VaultwardenCollections|RestoreDrill)' -v

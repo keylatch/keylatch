@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -334,41 +333,6 @@ func recordingRunner(calls *[]runnerCall, out []byte, stderr []byte, err error) 
 	}
 }
 
-func TestSecretServiceStore_SecretTravelsOnStdin(t *testing.T) {
-	var calls []runnerCall
-	s := &secretServiceIdentityStore{bin: "secret-tool", run: recordingRunner(&calls, nil, nil, nil)}
-	id := bytes.Repeat([]byte{0xab}, identitySize)
-
-	require.NoError(t, s.Store("vault-0011223344556677", id))
-	require.Len(t, calls, 1)
-	assert.Equal(t, hex.EncodeToString(id), string(calls[0].stdin))
-	assert.NotContains(t, strings.Join(calls[0].args, " "), hex.EncodeToString(id))
-	assert.Equal(t, []string{"store", "--label=" + itemLabel, "application", "keylatch", "purpose", "kek", "account", "vault-0011223344556677"}, calls[0].args)
-}
-
-func TestSecretServiceStore_Load(t *testing.T) {
-	id := bytes.Repeat([]byte{0x01}, identitySize)
-	var calls []runnerCall
-	s := &secretServiceIdentityStore{bin: "secret-tool", run: recordingRunner(&calls, []byte(hex.EncodeToString(id)), nil, nil)}
-	got, err := s.Load("vault-01")
-	require.NoError(t, err)
-	assert.Equal(t, id, got)
-	assert.Equal(t, []string{"lookup", "application", "keylatch", "purpose", "kek", "account", "vault-01"}, calls[0].args)
-
-	s.run = recordingRunner(&calls, nil, nil, exitErr(1))
-	_, err = s.Load("vault-01")
-	require.ErrorIs(t, err, ErrIdentityNotFound)
-
-	s.run = recordingRunner(&calls, nil, []byte("Cannot autolaunch D-Bus"), exitErr(1))
-	_, err = s.Load("vault-01")
-	require.Error(t, err)
-	assert.NotErrorIs(t, err, ErrIdentityNotFound)
-
-	s.run = recordingRunner(&calls, []byte("not-hex"), nil, nil)
-	_, err = s.Load("vault-01")
-	require.Error(t, err)
-}
-
 func TestKeychainStore_SecretNotOnArgv(t *testing.T) {
 	var calls []runnerCall
 	s := &keychainIdentityStore{bin: "/usr/bin/security", run: recordingRunner(&calls, nil, nil, nil)}
@@ -393,7 +357,6 @@ func TestIdentityStores_RejectUnsafeAccounts(t *testing.T) {
 	run := recordingRunner(&calls, nil, nil, nil)
 	for _, s := range []IdentityStore{
 		&keychainIdentityStore{bin: "security", run: run},
-		&secretServiceIdentityStore{bin: "secret-tool", run: run},
 	} {
 		require.Error(t, s.Store("a -w leak\nadd", make([]byte, identitySize)), s.Name())
 		_, err := s.Load("A B")
@@ -401,16 +364,6 @@ func TestIdentityStores_RejectUnsafeAccounts(t *testing.T) {
 		require.Error(t, s.Delete(""), s.Name())
 	}
 	assert.Empty(t, calls)
-}
-
-func TestSessionBusConfigured(t *testing.T) {
-	dir := t.TempDir()
-	lookup := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	assert.True(t, sessionBusConfigured(lookup(map[string]string{"DBUS_SESSION_BUS_ADDRESS": "unix:path=/x"})))
-	assert.False(t, sessionBusConfigured(lookup(map[string]string{"XDG_RUNTIME_DIR": dir})))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bus"), nil, 0o600))
-	assert.True(t, sessionBusConfigured(lookup(map[string]string{"XDG_RUNTIME_DIR": dir})))
-	assert.False(t, sessionBusConfigured(lookup(nil)))
 }
 
 func TestShredFileRemovesFileAndToleratesMissing(t *testing.T) {

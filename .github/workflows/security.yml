@@ -142,27 +142,7 @@ jobs:
 
   integration-bw:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: start Vaultwarden
-        run: docker compose -f docker-compose.vaultwarden.yml up -d
-      - name: Bitwarden integration tests
-        env:
-          KEYLATCH_E2E_BW: '1'
-        run: go test ./internal/backend/bw/... -run Integration
-      - name: Vaultwarden collections
-        env:
-          KEYLATCH_E2E_BW_SERVER: ${{ vars.KEYLATCH_E2E_BW_SERVER }}
-          KEYLATCH_E2E_BW_ORG: ${{ vars.KEYLATCH_E2E_BW_ORG }}
-          KEYLATCH_E2E_BW_COLLECTION: ${{ vars.KEYLATCH_E2E_BW_COLLECTION }}
-          BW_SESSION: ${{ secrets.KEYLATCH_E2E_BW_SESSION }}
-        run: go test -count=1 -tags e2e ./tests/e2e/... -run '^TestVaultwardenCollections$'
+    uses: ./.github/workflows/vaultwarden.yml
 
   fuzz:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

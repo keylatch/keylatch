@@ -16,6 +16,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/approval"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/spf13/cobra"
 )
 
@@ -84,6 +85,17 @@ func printApprovalSummary(w io.Writer, ar *approval.ApprovalRequest) {
 	}
 	fmt.Fprintf(w, "  requested:     %s\n", ar.CreatedAt.UTC().Format(time.RFC3339))
 	fmt.Fprintf(w, "  expires:       %s\n", ar.ExpiresAt.UTC().Format(time.RFC3339))
+}
+
+// approvalSummary is what the presence prompt shows and its proof is bound
+// to: the plan when the request has one, otherwise the request's identifying
+// fields, always with the request hash.
+func approvalSummary(ar *approval.ApprovalRequest) string {
+	return approval.Summary(ar)
+}
+
+func approvalPresence(p presence.Proof) approval.Presence {
+	return approval.Presence{Digest: p.Digest, Method: p.Method}
 }
 
 // displaySafe drops control and format characters (escape sequences,

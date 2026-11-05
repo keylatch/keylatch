@@ -275,6 +275,37 @@ func TestMigrationVerifiesKeyedHashes(t *testing.T) {
 	}
 }
 
+func TestSourceMigrationProofBindsReferencesAndPartitions(t *testing.T) {
+	h := newHarness(t, nil)
+	base := brokerapi.Request{Op: brokerapi.OpMigrateSources, Nonce: bytes.Repeat([]byte{7}, 32), Items: []brokerapi.Item{
+		{Path: "apps/key", Source: "env:/project/.env#TOKEN", Value: []byte("migration-test-value")},
+	}}
+	if got := h.send(t, 1000, base); got.OK {
+		t.Fatal("migration without presence was accepted")
+	}
+	changed := h.proven(t, 1000, base)
+	changed.Items = append([]brokerapi.Item(nil), changed.Items...)
+	changed.Items[0].Source = "env:/other/.env#TOKEN"
+	if got := h.send(t, 1000, changed); got.OK {
+		t.Fatal("changed source reused presence proof")
+	}
+	cross := h.proven(t, 1000, base)
+	if got := h.send(t, 1001, cross); got.OK {
+		t.Fatal("another user reused migration proof")
+	}
+	req := h.proven(t, 1000, base)
+	got := h.send(t, 1000, req)
+	if !got.OK || got.MACs["apps/key"] != KeyedHash(base.Nonce, "apps/key", base.Items[0].Value) {
+		t.Fatalf("reviewed source import failed: %+v", got)
+	}
+	if got := h.send(t, 1000, req); got.OK {
+		t.Fatal("migration proof replayed")
+	}
+	if ev, ok := h.rec.last(audit.ActionMigrateImport); !ok || ev.Extra["request_digest"] != base.Digest() || ev.Extra["count"] != 1 {
+		t.Fatalf("migration audit omitted request binding: %+v", ev)
+	}
+}
+
 func TestRotateKeysRewrapsEveryPartition(t *testing.T) {
 	h := newHarness(t, nil)
 	setSecret(t, h, 1000, "a", "alpha")

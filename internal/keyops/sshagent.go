@@ -3,6 +3,7 @@ package keyops
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -18,8 +19,9 @@ const sessionBindExtension = "session-bind@openssh.com"
 var errReadOnlyAgent = errors.New("keylatch ssh-agent lists and signs only")
 
 type sshKey struct {
-	ref    KeyRef
-	signer ssh.Signer
+	ref     KeyRef
+	signer  ssh.Signer
+	private crypto.Signer
 }
 
 // loadSSHKeys reads every configured ssh key. The signers hold the parsed keys
@@ -45,7 +47,7 @@ func (s *Service) loadSSHKeys(ctx context.Context) ([]sshKey, error) {
 			zeroSigner(cs)
 			continue
 		}
-		out = append(out, sshKey{ref: ref, signer: sg})
+		out = append(out, sshKey{ref: ref, signer: sg, private: cs})
 	}
 	return out, nil
 }
@@ -55,9 +57,11 @@ func (s *Service) loadSSHKeys(ctx context.Context) ([]sshKey, error) {
 // key is restricted to host keys, signing needs a session-bind from the
 // client naming one of them.
 type SSHAgent struct {
-	svc    *Service
-	caller Caller
-	bound  string
+	svc       *Service
+	caller    Caller
+	bound     string
+	sessionID []byte
+	hostKey   []byte
 }
 
 // NewSSHAgent returns the agent for one accepted connection.
@@ -71,6 +75,7 @@ func (a *SSHAgent) List() ([]*agent.Key, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer clearSSHKeys(keys)
 	out := make([]*agent.Key, 0, len(keys))
 	for _, k := range keys {
 		pub := k.signer.PublicKey()
@@ -86,11 +91,15 @@ func (a *SSHAgent) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) 
 
 // SignWithFlags implements agent.ExtendedAgent.
 func (a *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
+	if flags != 0 && flags != agent.SignatureFlagRsaSha256 && flags != agent.SignatureFlagRsaSha512 {
+		return nil, errors.New("unsupported signature flags")
+	}
 	ctx := context.Background()
 	keys, err := a.svc.loadSSHKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer clearSSHKeys(keys)
 	want := key.Marshal()
 	for _, k := range keys {
 		if !bytes.Equal(k.signer.PublicKey().Marshal(), want) {
@@ -104,6 +113,9 @@ func (a *SSHAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Sig
 
 func (a *SSHAgent) signWith(ctx context.Context, k sshKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
 	alg := k.signer.PublicKey().Type()
+	if alg != ssh.KeyAlgoRSA && flags != 0 {
+		return nil, errors.New("RSA signature flags require an RSA key")
+	}
 	switch {
 	case alg == ssh.KeyAlgoRSA && flags&agent.SignatureFlagRsaSha512 != 0:
 		alg = ssh.KeyAlgoRSASHA512
@@ -113,9 +125,11 @@ func (a *SSHAgent) signWith(ctx context.Context, k sshKey, data []byte, flags ag
 		_ = a.svc.record(ctx, a.caller, OpSSHSign, k.ref, alg, data, audit.OutcomeDenied, "SHA-1 RSA signatures are refused")
 		return nil, errors.New("SHA-1 RSA signatures are refused")
 	}
-	if hk := k.ref.Policy.SSHAgent.HostKeys; len(hk) > 0 && !slices.Contains(hk, a.bound) {
-		_ = a.svc.record(ctx, a.caller, OpSSHSign, k.ref, alg, data, audit.OutcomeDenied, "host key is not allowed for this key")
-		return nil, errors.New("this key may not sign for that host")
+	if hk := k.ref.Policy.SSHAgent.HostKeys; len(hk) > 0 {
+		if !slices.Contains(hk, a.bound) || !a.matchesUserAuth(k.signer.PublicKey(), alg, data) {
+			_ = a.svc.record(ctx, a.caller, OpSSHSign, k.ref, alg, data, audit.OutcomeDenied, "authentication does not match the allowed host session")
+			return nil, errors.New("this key may sign only authentication for its bound allowed host session")
+		}
 	}
 	as, ok := k.signer.(ssh.AlgorithmSigner)
 	if !ok {
@@ -139,6 +153,42 @@ type sessionBind struct {
 	IsForwarding bool
 }
 
+func clearSSHKeys(keys []sshKey) {
+	for _, key := range keys {
+		zeroSigner(key.private)
+	}
+}
+
+type sshUserAuth struct {
+	SessionID    []byte
+	Message      byte
+	Username     string
+	Service      string
+	Method       string
+	HasSignature bool
+	Algorithm    string
+	PublicKey    []byte
+	Rest         []byte `ssh:"rest"`
+}
+
+func (a *SSHAgent) matchesUserAuth(key ssh.PublicKey, algorithm string, data []byte) bool {
+	var request sshUserAuth
+	if ssh.Unmarshal(data, &request) != nil || len(a.sessionID) == 0 || !bytes.Equal(request.SessionID, a.sessionID) ||
+		request.Message != 50 || request.Service != "ssh-connection" || !request.HasSignature ||
+		request.Algorithm != algorithm || !bytes.Equal(request.PublicKey, key.Marshal()) {
+		return false
+	}
+	switch request.Method {
+	case "publickey":
+		return len(request.Rest) == 0
+	case "publickey-hostbound-v00@openssh.com":
+		var host struct{ Key []byte }
+		return ssh.Unmarshal(request.Rest, &host) == nil && bytes.Equal(host.Key, a.hostKey)
+	default:
+		return false
+	}
+}
+
 // Extension implements agent.ExtendedAgent. It accepts session-bind, which
 // tells the agent which server host key the client's session is with.
 func (a *SSHAgent) Extension(extensionType string, contents []byte) ([]byte, error) {
@@ -148,6 +198,9 @@ func (a *SSHAgent) Extension(extensionType string, contents []byte) ([]byte, err
 	var b sessionBind
 	if err := ssh.Unmarshal(contents, &b); err != nil {
 		return nil, fmt.Errorf("session-bind: %w", err)
+	}
+	if a.bound != "" || b.IsForwarding || len(b.SessionID) == 0 || len(b.SessionID) > 64 {
+		return nil, errors.New("session-bind: forwarding, rebinding, or invalid session identifier")
 	}
 	hostKey, err := ssh.ParsePublicKey(b.HostKey)
 	if err != nil {
@@ -161,6 +214,8 @@ func (a *SSHAgent) Extension(extensionType string, contents []byte) ([]byte, err
 		return nil, errors.New("session-bind: host key signature is invalid")
 	}
 	a.bound = ssh.FingerprintSHA256(hostKey)
+	a.sessionID = slices.Clone(b.SessionID)
+	a.hostKey = slices.Clone(b.HostKey)
 	return nil, nil
 }
 

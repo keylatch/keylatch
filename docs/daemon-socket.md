@@ -74,6 +74,40 @@ nothing answers. The caller kinds differ from the user-level daemon: a peer with
 `human` means a presence proof bound to the request, and a peer inside a registered agent scope or carrying a
 daemon-signed ticket is `agent`.
 
+The broker also serves `approval.list` and `approval.decide`. Listing returns the connected user's pending requests,
+their complete plan summaries and review digests. A decision carries `approval: {token, digest, decision, reason}`,
+where `decision` is `approve` or `deny`. The broker reloads the request, compares the digest, and asks its trusted OS
+presence method to authenticate that exact plan for the socket peer. Agent callers cannot open a prompt. A changed
+request, expired approval, departed peer, invalid policy or failed audit leaves the request unsigned.
+
+Broker decisions use an Ed25519 key derived separately for each user from the protected key hierarchy. The run
+approver pins that user's public key and consumes an approved decision once. A copied decision cannot authorize a
+different user or command. Standalone daemon approvals continue to use the locally configured approver passphrase.
+Shell arguments in review summaries retain newline and control bytes as visible escapes.
+
+`keylatch approve list`, `approve <token>`, `deny <token>` and `deny --all` use broker records when the system
+broker is installed. Decisions still require a human terminal; the broker performs OS confirmation and signing,
+so no local approver passphrase is requested. Bulk denial authenticates each exact request, even with `--yes`;
+a refusal stops the operation and reports how many requests were already denied. An explicit `KEYLATCH_SOCKET`
+selects that endpoint for approval operations and requires broker support. Existing socket-owner verification
+still applies: explicit sockets must be owned by the caller or root. An unreachable or refusing broker never
+falls back to local approval files.
+
+The UI exposes the same records at `GET /api/approvals` as a JSON array. `GET /api/approvals/stream` emits
+`approval` events when records change; the bounded stream reconnects automatically. Both require the UI session.
+`POST /api/approvals/{token}/approve` and `/deny` accept only `{digest, reason?}`, require an admin session and CSRF
+token, and forward the displayed digest to the broker. The `/v1/approvals` aliases have the same protections.
+The UI shows the complete plan and expiry; expiration disables decisions without manufacturing a denial.
+Leaving the inbox cancels an outstanding decision request and its broker presence prompt. An unavailable broker
+returns an error rather than an empty inbox or a successful decision.
+
+The desktop sidecar registers its five authenticated IPC methods before announcing its base URL. The ready
+message contains no bootstrap credential. `MintBootstrapToken` returns a single-use token valid for at most
+one minute; `POST /__bootstrap` exchanges `{token}` for the HttpOnly session cookie and CSRF cookie without
+putting that token in a URL. Tokens are bound to the existing UI session and cannot extend its lifetime.
+IPC event subscriptions use separate bounded connections, so they cannot monopolize bootstrap or health calls.
+Idle frame reads and blocked writes time out; shutdown closes clients before clearing the IPC key.
+
 ## `keylatch-relay`
 
 Some harness sandboxes cannot reach a Unix socket at all. For those, `keylatch-relay` is a separate, tiny binary

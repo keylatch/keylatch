@@ -16,6 +16,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/brokerstore"
 	"github.com/keylatch/keylatch/internal/brokerapi"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	keysync "github.com/keylatch/keylatch/internal/sync"
@@ -95,6 +96,13 @@ func (c *countingStore) Get(ctx context.Context, p string) ([]byte, backend.Meta
 func (c *countingStore) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
 	c.reads++
 	return c.secretStore.List(ctx, prefix)
+}
+
+func (c *countingStore) SnapshotForRetirement(ctx context.Context, p string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error) {
+	c.reads++
+	return c.secretStore.(interface {
+		SnapshotForRetirement(context.Context, string) ([]byte, []byte, backend.Meta, brokerstore.Retirement, error)
+	}).SnapshotForRetirement(ctx, p)
 }
 
 type syncRig struct {
@@ -249,6 +257,64 @@ func TestSyncRotateThroughDaemon(t *testing.T) {
 	}
 }
 
+type rejectingReadback struct{ *fakeRemote }
+
+func (f rejectingReadback) Readback(context.Context, keysync.Remote) ([]byte, bool, error) {
+	return nil, false, errors.New("verification refused")
+}
+
+func TestSyncRollbackUsesBackendHistoryInsteadOfLastAppliedValue(t *testing.T) {
+	r := newSyncRig(t)
+	ctx := context.Background()
+	m := strings.Replace(syncManifest, ", local: [file]", "", 1)
+	apply := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncApply, Sync: &brokerapi.SyncRequest{Manifest: []byte(m)}})
+	if resp := r.h.send(t, r.uid, apply); !resp.OK {
+		t.Fatal(resp.Error)
+	}
+	p, err := r.h.srv.partition(ctx, r.uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"never-applied-v2", "current-v3"} {
+		if _, err := p.store.Put(ctx, "app-db/url", []byte(value)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.h.srv.cfg.Sync.Target = func(string, keysync.Target, targets.Token) (keysync.TargetClient, bool) {
+		return rejectingReadback{r.web}, true
+	}
+	rot := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncRotate, Sync: &brokerapi.SyncRequest{Manifest: []byte(m), Name: "DATABASE_URL"}})
+	resp := r.h.send(t, r.uid, rot)
+	if resp.OK || r.web.values["DATABASE_URL"] != "never-applied-v2" {
+		t.Fatal("rotation did not restore the backend's previous version")
+	}
+	if r.h.rec.count(audit.ActionSyncRotateRollback) != 2 || r.h.rec.count(audit.ActionSyncRotateComplete) != 0 {
+		t.Fatal("incorrect rollback audit")
+	}
+}
+
+type unversionedStore struct{ secretStore }
+
+func TestSyncUnversionedSourceRequiresExplicitNoRollback(t *testing.T) {
+	r := newSyncRig(t)
+	p, err := r.h.srv.partition(context.Background(), r.uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.syncStore = unversionedStore{p.store}
+	m := strings.Replace(syncManifest, ", local: [file]", "", 1)
+	for _, allow := range []bool{false, true} {
+		rot := r.h.proven(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncRotate, Sync: &brokerapi.SyncRequest{Manifest: []byte(m), Name: "DATABASE_URL", NoRollback: allow}})
+		resp := r.h.send(t, r.uid, rot)
+		if resp.OK != allow {
+			t.Fatalf("no-rollback=%v: %s", allow, resp.Error)
+		}
+		if !allow && r.web.writes != 0 {
+			t.Fatal("unversioned source wrote before explicit consent")
+		}
+	}
+}
+
 func TestSyncRejectsBadManifestAndUnsignedPolicy(t *testing.T) {
 	r := newSyncRig(t)
 	resp := r.h.send(t, r.uid, brokerapi.Request{Op: brokerapi.OpSyncDiff, Sync: &brokerapi.SyncRequest{Manifest: []byte("version: 1\nnope: 2\n")}})
@@ -275,6 +341,7 @@ func TestStoreSecretsResolution(t *testing.T) {
 	for path, v := range map[string]string{
 		"vercel-deploy/token": "tok-1", "plain": "p", "multi/value": "m",
 		"default/cloud/aws/secret": "a", "other/cloud/aws/secret": "b", "default/ci/gh/api_key": "k",
+		".sync/previous/gh/api_key": "legacy-copy", ".sync/retirements/plain": "internal-job",
 	} {
 		if _, err := p.store.Put(ctx, path, []byte(v)); err != nil {
 			t.Fatal(err)
@@ -302,14 +369,14 @@ func TestStoreSecretsResolution(t *testing.T) {
 	if _, err := s.credential(ctx, "missing"); err == nil {
 		t.Fatal("missing credential")
 	}
-	if _, err := s.Previous(ctx, "app-db", "url"); !errors.Is(err, keysync.ErrNoPrevious) {
-		t.Fatalf("no previous = %v", err)
+	if snap, err := s.Snapshot(ctx, "app-db", "url"); err != nil || snap.Previous != nil {
+		t.Fatalf("unexpected previous version: %v", err)
 	}
-	if err := s.Remember(ctx, "app-db", "url", []byte("v1")); err != nil {
+	if _, err := p.store.Put(ctx, "app-db/url", []byte("v2")); err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.Previous(ctx, "app-db", "url"); err != nil || string(v) != "v1" {
-		t.Fatalf("previous = %q %v", v, err)
+	if snap, err := s.Snapshot(ctx, "app-db", "url"); err != nil || string(snap.Previous) != syncCanary+"-db" || string(snap.Current) != "v2" || snap.Version != 2 || snap.PreviousVersion != 1 || !retirementHex(snap.CurrentID, 32) || !retirementHex(snap.PreviousID, 32) {
+		t.Fatalf("incorrect source snapshot: %v", err)
 	}
 }
 
@@ -356,7 +423,25 @@ func TestSyncStateKeyedAndPersistent(t *testing.T) {
 // The env file travels as descriptors: the daemon reads the existing file and
 // writes the merged content into the temp file, keeping unmanaged lines.
 func TestSyncEnvFileAtomic0600(t *testing.T) {
+	for _, op := range []brokerapi.Op{brokerapi.OpSyncApply, brokerapi.OpSyncRotate} {
+		t.Run(string(op), func(t *testing.T) { testSyncEnvFileAtomic(t, op) })
+	}
+}
+
+func testSyncEnvFileAtomic(t *testing.T, op brokerapi.Op) {
+	t.Helper()
 	r := newSyncRig(t)
+	value := syncCanary + "-db"
+	if op == brokerapi.OpSyncRotate {
+		value += "-rotated"
+		p, err := r.h.srv.partition(context.Background(), r.uid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.store.Put(context.Background(), "app-db/url", []byte(value)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".env.local")
 	if err := os.WriteFile(target, []byte("# mine\nKEEP=1\n"), 0o600); err != nil {
@@ -367,18 +452,24 @@ func TestSyncEnvFileAtomic0600(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer existing.Close()
-	temp, err := os.OpenFile(filepath.Join(dir, ".env.local.tmp"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	temp, err := os.OpenFile(filepath.Join(dir, ".env.local.tmp"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer temp.Close()
 
 	server, client := pair(t)
-	req := r.h.proven(t, r.uid, r.req(brokerapi.OpSyncApply, func(s *brokerapi.SyncRequest) {
+	req := r.h.proven(t, r.uid, r.req(op, func(s *brokerapi.SyncRequest) {
+		if op == brokerapi.OpSyncRotate {
+			s.Name = "DATABASE_URL"
+		}
 		s.EnvFiles, s.EnvKeys = []string{"local"}, nil
 		s.Manifest = []byte(strings.Replace(syncManifest, "web: [production, preview], ", "", 1))
 		s.Manifest = []byte(strings.Replace(string(s.Manifest), "  web:   {type: vercel, project: prj_1, credential: vercel-deploy}\n", "", 1))
 	}))
+	if err := req.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan brokerapi.Response, 1)
 	go func() {
 		p, _ := r.h.srv.partition(context.Background(), r.uid)
@@ -397,10 +488,10 @@ func TestSyncEnvFileAtomic0600(t *testing.T) {
 	}
 	resp := <-done
 	if !resp.OK {
-		t.Fatalf("apply = %+v", resp)
+		t.Fatalf("%s = %+v", op, resp)
 	}
 	merged, _ := os.ReadFile(temp.Name())
-	want := "# mine\nKEEP=1\nDATABASE_URL=" + syncCanary + "-db\n"
+	want := "# mine\nKEEP=1\nDATABASE_URL=" + value + "\n"
 	if string(merged) != want {
 		t.Fatalf("merged content:\n%q\nwant\n%q", merged, want)
 	}

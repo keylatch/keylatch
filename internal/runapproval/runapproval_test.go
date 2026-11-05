@@ -129,6 +129,18 @@ func TestPlanTextShowsEverythingTheHumanDecides(t *testing.T) {
 	assert.Contains(t, none, "hosts before: none")
 }
 
+func TestPlanTextPreservesExecutableControlBytes(t *testing.T) {
+	p := testPlan()
+	p.Argv = []string{"sh", "-c", "echo harmless\nrm -rf /example\r\t\x1b\u202e"}
+	p.Project = "/work/name\nother"
+	text := p.Text()
+	assert.Contains(t, text, `"echo harmless\nrm -rf /example\r\t\x1b\u202e"`)
+	assert.NotContains(t, text, "echo harmlessrm")
+	assert.Contains(t, text, `"/work/name\nother" (read-write)`)
+	assert.NotContains(t, text, "\u202e")
+	assert.NotContains(t, text, "\x1b")
+}
+
 func TestBindingSummaryNamesTheExactBeforeAndAfterSets(t *testing.T) {
 	one := BindingSummary("billing", "widen", []string{"a.example"}, []string{"a.example", "b.example"})
 	other := BindingSummary("billing", "widen", []string{"a.example"}, []string{"a.example", "evil.example"})

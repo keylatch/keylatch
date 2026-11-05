@@ -49,6 +49,8 @@ const (
 	OpKey Op = "key"
 	// OpKeyPolicy lists or edits the key operation allowlist.
 	OpKeyPolicy Op = "key_policy"
+	// OpKeyAgent opens an SSH or GnuPG stream within the authenticated partition.
+	OpKeyAgent Op = "key_agent"
 	// OpContained runs a command in a Keylatch sandbox the daemon starts, with
 	// the real value in its environment. The connection stays open for the
 	// run: output frames come back, stdin, resize and signal frames go out.
@@ -86,6 +88,7 @@ type Request struct {
 	Credential *CredentialRequest `json:"credential,omitempty"`
 	Key        *KeyRequest        `json:"key,omitempty"`
 	KeyPolicy  *KeyPolicyRequest  `json:"key_policy,omitempty"`
+	KeyAgent   string             `json:"key_agent,omitempty"`
 	// RunID names the decided run an OpGateway, OpProxy or OpRunExit request
 	// belongs to, and Exit is the status OpRunExit reports.
 	RunID string `json:"run_id,omitempty"`
@@ -125,6 +128,9 @@ type KeyPolicyRequest struct {
 	HostKeys     []string `json:"host_keys,omitempty"`
 	AgentDecrypt bool     `json:"agent_decrypt,omitempty"`
 	SSHAgent     bool     `json:"ssh_agent,omitempty"`
+	// PresenceDigest is the proof the CLI obtained from the human before it
+	// asked to add or widen an entry; the daemon refuses an allow without one.
+	PresenceDigest string `json:"presence_digest,omitempty"`
 }
 
 // KeyRequest names a key operation. The daemon reads the key; the reply
