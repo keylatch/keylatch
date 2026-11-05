@@ -96,10 +96,10 @@ type netPortAttr struct {
 // apply restricts the calling thread, and everything it starts, to the plan.
 // no_new_privs must already be set.
 func (p landlockPlan) apply() error {
-	attr := unix.LandlockRulesetAttr{Access_fs: p.fsHandled, Access_net: p.netHandled}
-	size := unsafe.Sizeof(attr.Access_fs)
+	attr := unix.LandlockRulesetAttr{Handled_access_fs: p.fsHandled, Handled_access_net: p.netHandled}
+	size := unsafe.Sizeof(attr.Handled_access_fs)
 	if p.abi >= 4 {
-		size += unsafe.Sizeof(attr.Access_net)
+		size += unsafe.Sizeof(attr.Handled_access_net)
 	}
 	fd, _, e := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, uintptr(unsafe.Pointer(&attr)), size, 0) //nolint:gosec // G103: the kernel reads the attribute struct during the call
 	if e != 0 {
