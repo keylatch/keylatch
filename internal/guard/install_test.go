@@ -48,7 +48,11 @@ func TestInstall_ClaudeCode_CreatesSettingsAndScript(t *testing.T) {
 	cmd, ok := inner[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "command", cmd["type"])
-	assert.Equal(t, scriptPath, cmd["command"])
+	if runtime.GOOS == "windows" {
+		assert.Equal(t, `bash "`+filepath.ToSlash(scriptPath)+`"`, cmd["command"])
+	} else {
+		assert.Equal(t, `"`+scriptPath+`"`, cmd["command"])
+	}
 }
 
 func TestInstall_ClaudeCode_Idempotent(t *testing.T) {
