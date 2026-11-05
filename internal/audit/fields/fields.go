@@ -21,14 +21,14 @@ import (
 var safeLogFields = map[string][]string{
 	"write":        {"version", "backend", "key_term"},
 	"read":         {"version", "backend", "key_term"},
-	"delete":       {"version", "backend"},
+	"delete":       {"version", "backend", "caller_kind"},
 	"list":         {"prefix", "count"},
 	"decrypt":      {"version", "backend", "key_term"},
 	"encrypt":      {"version", "backend", "key_term"},
 	"revoke":       {"version"},
 	"rotate":       {"new_term", "old_term"},
 	"keyring_init": {"algorithm", "kek_type"},
-	"kek_rotate":   {"old_kek_type", "new_kek_type"},
+	"kek_rotate":   {"old_kek_type", "new_kek_type", "caller_kind"},
 	"term_destroy": {"term"},
 	// rotated_to/rotated_from are file paths (no credential content).
 	// prev_file_hmac is a chain MAC value needed for cross-file chain verification.
@@ -88,9 +88,38 @@ var safeLogFields = map[string][]string{
 	// denied_paths: list of filesystem paths denied in the sandbox (no values).
 	"sandbox.deny_applied": {"provider", "runtime", "denied_paths"},
 
+	// key operations: names and the digest of the input, never key or data.
+	"key.operation":     {"operation", "alg", "connection", "field", "caller_kind", "input_sha256", "reason"},
+	"key.policy_change": {"change", "connection", "field", "caller_kind", "before", "after", "reason"},
+
+	// socket decisions: digests, names and counters only. argv_sha256 and
+	// cwd_sha256 are SHA-256 hex digests; hosts is a list of host names.
+	"run.decided": {
+		"op", "verb", "connection", "tier", "child_location", "caller_kind",
+		"harness", "argv_sha256", "cwd_sha256", "hosts", "approval_id", "run_id", "reason", "sandbox_sha256",
+	},
+	// contained runs: counts, names and digests only.
+	"contained.leak_suspected": {"run_id", "connection", "caller_kind", "files"},
+	"sandbox.degraded":         {"run_id", "connection", "reason"},
+	"canary.tripped":           {"run_id", "connection", "session_id_hmac", "host", "where", "caller_kind", "reason"},
+	"run.exited": {
+		"run_id", "op", "verb", "exit", "duration_ms", "bytes_relayed", "redactions", "reason",
+	},
+	"approval.requested": {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+	"approval.granted":   {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+	"approval.denied":    {"approval_id", "run_id", "connection", "tier", "caller_kind", "reason"},
+
 	// operating-mode actions.
 	// ActionCanaryInjected — provider slug and session_id_hmac (no canary token value).
 	"canary.injected": {"provider", "session_id_hmac"},
+
+	// placeholder proxy actions: identifiers and counters only.
+	"placeholder.misuse": {"provider", "field", "host", "where", "reason", "session_id_hmac"},
+	"proxy.substituted":  {"provider", "field", "host", "count"},
+	"egress.denied":      {"provider", "host", "reason"},
+	"proxy.session":      {"provider", "reason", "hosts", "substitutions", "session_id_hmac"},
+	// protocol adapter connections: names only, never a token or a password.
+	"adapter.connection": {"provider", "adapter", "host", "reason", "connections", "session_id_hmac"},
 
 	// broker dry-run action.
 	// command: the binary/subcommand name requested (no credential content).
@@ -107,10 +136,51 @@ var safeLogFields = map[string][]string{
 		"provider_revocation_attempted", "provider_revocation_succeeded",
 	},
 	// permissions: sorted "name=level" pairs joined by commas.
+	// role_arn and session_policy_sha256 describe an AWS STS session.
 	"mint": {
 		"connection", "namespace", "repository", "permissions",
-		"expires_at", "caller_kind", "reason",
+		"expires_at", "caller_kind", "reason", "role_arn", "session_policy_sha256",
 	},
+	// brokered-action events: names, decisions, counters and the digest of an
+	// approved summary only.
+	"run": {
+		"connection", "runtime", "capability", "caller_kind", "decision", "exit", "duration_ms", "reason",
+	},
+	"call":    {"connection", "action", "caller_kind", "status", "reason", "machine", "serial"},
+	"release": {"connection", "field", "unit", "caller_kind", "reason"},
+	"connect": {"connection", "backend", "caller_kind", "reason"},
+	"set":     {"connection", "field", "backend", "caller_kind", "reason"},
+	// before and after summarise the rule, never a credential.
+	"policy.change": {
+		"change", "actor", "connection", "capability", "caller_kind", "before", "after", "digest", "reason",
+	},
+	"presence.decision": {"operation", "method", "result", "digest", "caller_kind", "reason"},
+	"security.block":    {"command", "signals", "caller_kind"},
+	"guard.block":       {"command", "rule", "caller_kind", "reason"},
+	"backup.export":     {"destination_kind", "caller_kind", "reason"},
+	// broker migration: counts and the digest of the old chain head, never a value.
+	"broker.adopt":  {"count", "old_audit_head", "caller_kind"},
+	"broker.export": {"count", "caller_kind"},
+
+	// binding changes: host sets are authorities (no credential content).
+	// attempted is the change an agent caller was refused.
+	"binding.created":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.widened":  {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.narrowed": {"connection", "caller_kind", "hosts_before", "hosts_after"},
+	"binding.refused":  {"connection", "caller_kind", "attempted", "hosts_before", "hosts_after"},
+
+	// deploy-secret sync: names, targets, environments and outcomes. presence
+	// is the digest of the request the human approved.
+	"sync.write":           {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.delete":          {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.verify":   {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.rollback": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	"sync.rotate.complete": {"connection", "target", "environment", "name", "caller_kind", "presence", "outcome"},
+	// service units and machine credentials: names, scopes and expiry only.
+	"service.enroll": {"connection", "unit", "scope", "allow_transient", "caller_kind", "presence", "outcome"},
+	"service.revoke": {"connection", "unit", "caller_kind", "presence", "outcome"},
+	"machine.issue":  {"name", "domain", "caps", "serial", "not_after", "caller_kind", "presence", "outcome"},
+	"machine.revoke": {"name", "serial", "caller_kind", "presence", "outcome"},
 }
 
 // Redact filters extra map keys against the SafeLogFields allowlist for action.
@@ -162,11 +232,26 @@ func AllActions() []string {
 		"child_env.filter", "child_env.clean",
 		// sandbox actions.
 		"sandbox.launched", "sandbox.launch_refused", "sandbox.deny_applied",
+		"key.operation", "key.policy_change",
 		// canary actions.
 		"canary.injected",
 		// broker dry-run and token revocation actions.
 		"broker.dry_run_requested", "broker.token_revoked",
+		// placeholder proxy actions.
+		"placeholder.misuse", "proxy.substituted", "egress.denied", "proxy.session",
+		"adapter.connection",
 		"mint",
+		"run", "call", "release", "connect", "set", "policy.change",
+		"presence.decision", "security.block", "guard.block", "backup.export",
+		"run.decided", "run.exited",
+		"contained.leak_suspected", "sandbox.degraded", "canary.tripped",
+		"approval.requested", "approval.granted", "approval.denied",
+		"presence.decision", "policy.change", "backup.export",
+		// binding change actions.
+		"binding.created", "binding.widened", "binding.narrowed", "binding.refused",
+		"broker.adopt", "broker.export",
+		"sync.write", "sync.delete", "sync.rotate.verify", "sync.rotate.rollback", "sync.rotate.complete",
+		"service.enroll", "service.revoke", "machine.issue", "machine.revoke",
 	}
 }
 

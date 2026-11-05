@@ -4,7 +4,10 @@
 #   - Go module (root)
 #   - npm package (web/ — SPA dependencies)
 #   - Cargo crate (src-tauri/ — desktop shell)
-#   - GitHub Actions workflow versions
+#   - GitHub Actions workflow versions (pinned by commit SHA)
+#   - Docker base images (pinned by digest)
+#
+# Every Dependabot pull request needs a human review; nothing is auto-merged.
 #
 # Schedule: weekly to keep PR volume manageable while still surfacing
 # CVEs and minor updates within a reasonable window. Security updates
@@ -100,4 +103,18 @@ updates:
       - github-actions
     commit-message:
       prefix: "chore(deps-ci)"
+      include: scope
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "chore(deps-docker)"
       include: scope

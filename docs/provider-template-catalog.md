@@ -38,7 +38,7 @@ keylatch run github -- gh repo list
 printf '%s' "$GITHUB_PAT" | keylatch connect github -f api_key=@-
 ```
 
-> **Note:** The GitHub App installation strategy supports `direct_brokered` runtime for short-lived token exchange (GitHub App installation tokens), not just `gateway_typed`. This allows zero-credential-storage workflows where the broker exchanges an App JWT for a scoped installation token at request time.
+> **Note:** The GitHub App installation strategy supports the `minted` runtime: the command gets a GitHub App installation token for one repository, minted from the App key at run time and revoked when the command exits. The `aws` template does the same with STS credentials behind a loopback credential endpoint.
 
 ## Cloud infrastructure
 

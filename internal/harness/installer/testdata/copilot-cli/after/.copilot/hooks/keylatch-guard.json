@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "\"/opt/keylatch/bin/keylatch\" guard hook --harness copilot-cli",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

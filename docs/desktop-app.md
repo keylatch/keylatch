@@ -1,8 +1,8 @@
 # Desktop App
 
-The KeyLatch desktop app (Tauri) bundles the Go backend and a React SPA into a single native window. All API routes are served locally on `127.0.0.1:7890`.
+The Keylatch desktop app (Tauri) bundles the Go backend and a React SPA into a single native window. All API routes are served locally on `127.0.0.1:7890`.
 
-> **Availability:** Currently shipped for **Linux** (AppImage/.deb). macOS and Windows desktop builds are deferred to a post-MVP release — on those platforms, use the CLI; `keylatch ui` serves the same UI in your browser.
+> **Availability:** No desktop installer is shipped in a release. The desktop shell can be built from the `src-tauri` directory. Everywhere else use the CLI; `keylatch ui` serves the same UI in your browser.
 
 ## Connections page
 
@@ -88,35 +88,27 @@ Settings gated behind Advanced mode:
 |---------|-------------|----------------|
 | Canary operating mode | Advanced off | `keylatch modes` |
 | Custom operating mode | Advanced off | `keylatch modes` |
-| Telemetry kill-switch | Advanced off | `KEYLATCH_TELEMETRY_DISABLE=1` |
 | Experimental opt-in | Advanced off | `KEYLATCH_EXPERIMENTAL=1` |
 
 Settings always visible:
 
 | Setting | Section | CLI equivalent |
 |---------|---------|----------------|
-| Operating mode (standard / telemetry) | Settings | `keylatch modes` |
+| Operating mode (standard) | Settings | `keylatch modes` |
 | Approval policy default | Settings | `keylatch policy` |
 | Approval TTL | Settings | `keylatch config set approval_ttl` |
 
 ### Operating mode
 
-Four operating modes are available:
+Three operating modes are available:
 
 | Mode | Advanced only | Description |
 |------|:---:|-------------|
 | `standard` | | Stable production mode |
-| `telemetry` | | Standard plus anonymous usage telemetry |
 | `canary` | yes | Pre-release features; may be unstable |
 | `custom` | yes | Fully custom configuration |
 
 Mode changes are persisted via `PUT /api/settings` with `{"operating_mode": "<mode>"}`.
-
-### Telemetry kill-switch
-
-The **Telemetry** toggle disables all usage telemetry collection. Equivalent to exporting `KEYLATCH_TELEMETRY_DISABLE=1`. Only visible when Advanced mode is on.
-
-Changes take effect immediately for the current process. Set `KEYLATCH_TELEMETRY_DISABLE=1` in your shell environment for persistence across restarts.
 
 ### Experimental features
 
@@ -146,6 +138,6 @@ The **Approval policy** radio sets the default action when an agent requests cre
 | `GET` | `/api/password-managers` | Detect available PM CLIs (cached per session) |
 | `GET` | `/api/pm-browse?pm=op\|aws_sm\|hashivault` | List items from a PM CLI |
 | `GET` | `/api/settings` | Load current settings |
-| `PUT` | `/api/settings` | Update settings (`approval_ttl_seconds`, `advanced_mode`, `operating_mode`, `telemetry_disable`, `experimental`, `approval_policy`) |
+| `PUT` | `/api/settings` | Update settings (`approval_ttl_seconds`, `advanced_mode`, `operating_mode`, `experimental`, `approval_policy`) |
 | `GET` | `/api/doctor` | Run health checks (optionally filtered by `connection=` and `verbose=true`) |
 | `GET` | `/diagnostics` | Diagnostics page — full doctor report with section grouping and quiet-mode toggle |

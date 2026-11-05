@@ -60,6 +60,14 @@ redaction:
   - pattern: 'sntrys_[A-Za-z0-9\-_]{32,}'
     replacement: "****"
 
+# Routes that create, read or list auth tokens and client keys.
+deny_routes:
+  - "/api/0/api-tokens/**"
+  - "/api/0/organizations/*/api-keys/**"
+  - "/api/0/projects/*/*/keys/**"
+  - "/api/0/sentry-apps/*/api-tokens/**"
+  - "/api/0/sentry-app-installations/*/authorizations/**"
+
 test_strategy:
   kind: http_get
   endpoint: https://sentry.io/api/0/organizations/

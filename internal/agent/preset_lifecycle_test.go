@@ -56,17 +56,13 @@ func TestAllPresets_HealthCheck_Lifecycle(t *testing.T) {
 
 	// Config file locations per preset (mirrors each preset's HealthCheck).
 	configFor := map[string]string{
-		"claude-code": filepath.Join(home, ".claude", "settings.json"),
-		"codex":       filepath.Join(home, ".codex", "config.json"),
-		"cursor":      filepath.Join(home, ".cursor", "settings.json"),
-		"opencode":    filepath.Join(home, ".opencode", "config.json"),
-		"openclaw":    filepath.Join(home, ".openclaw", "config.json"),
-		"nanoclaw":    filepath.Join(home, ".nanoclaw", "config.json"),
-		"openhands":   filepath.Join(home, ".openhands", "config.json"),
-		"hermes":      filepath.Join(home, ".hermes", "config.json"),
-		"n8n":         filepath.Join(home, ".n8n", "keylatch.env"),
-		"dify":        filepath.Join(home, ".dify", "keylatch.env"),
-		"custom":      filepath.Join(home, ".keylatch-custom", "config.json"),
+		"openclaw":  filepath.Join(home, ".openclaw", "config.json"),
+		"nanoclaw":  filepath.Join(home, ".nanoclaw", "config.json"),
+		"openhands": filepath.Join(home, ".openhands", "config.json"),
+		"hermes":    filepath.Join(home, ".hermes", "config.json"),
+		"n8n":       filepath.Join(home, ".n8n", "keylatch.env"),
+		"dify":      filepath.Join(home, ".dify", "keylatch.env"),
+		"custom":    filepath.Join(home, ".keylatch-custom", "config.json"),
 	}
 
 	for _, name := range registeredNames() {
@@ -93,7 +89,7 @@ func TestAllPresets_HealthCheck_Lifecycle(t *testing.T) {
 		if !st.Healthy {
 			t.Errorf("%s: HealthCheck unhealthy with config present: %s", name, st.Detail)
 		}
-		if err := os.RemoveAll(filepath.Dir(cfgPath)); err != nil {
+		if err := os.Remove(cfgPath); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -106,9 +102,6 @@ func TestAllPresets_Uninstall(t *testing.T) {
 	ctx := context.Background()
 
 	uninstallConfig := map[string]string{
-		"codex":    filepath.Join(home, ".codex", "config.json"),
-		"cursor":   filepath.Join(home, ".cursor", "settings.json"),
-		"opencode": filepath.Join(home, ".opencode", "config.json"),
 		"openclaw": filepath.Join(home, ".openclaw", "config.json"),
 		"nanoclaw": filepath.Join(home, ".nanoclaw", "config.json"),
 	}

@@ -440,6 +440,11 @@ func Rollback(
 	return err
 }
 
+// CanonicalPath resolves a shorthand credential path the way set and get do.
+func CanonicalPath(path string) (string, error) {
+	return canonicalizePath(path, config.Config{}, nil)
+}
+
 // canonicalizePath resolves a possibly-shorthand path to canonical form.
 // Uses the default namespace "default" if not specified.
 func canonicalizePath(path string, _ config.Config, _ llmcontext.Lookup) (string, error) {

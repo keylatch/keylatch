@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build experimental && !darwin
 
 // Package secureenclave provides a Secure Enclave trust adapter.
 // On non-darwin platforms all operations return ErrRootUnavailable.

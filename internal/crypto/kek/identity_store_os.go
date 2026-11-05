@@ -31,9 +31,16 @@ func execIdentityRunner(ctx context.Context, stdin []byte, name string, args ...
 	return runBounded(ctx, stdin, name, args...)
 }
 
+// osKeyringDisabled reports that no OS keyring may be used. Only the
+// end-to-end test build sets it.
+var osKeyringDisabled = func() bool { return false }
+
 // DefaultIdentityStore returns the OS keyring for this platform, or nil when
 // none is supported or reachable from this session.
 func DefaultIdentityStore() IdentityStore {
+	if osKeyringDisabled() {
+		return nil
+	}
 	switch runtime.GOOS {
 	case "darwin":
 		const bin = "/usr/bin/security"

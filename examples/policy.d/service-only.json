@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "description": "Only the deploy service unit may use vercel, and only through the gateway. Agents and other processes are denied. Service classification is advisory until the broker daemon enrolls units.",
+  "connection": "vercel",
+  "default": "deny",
+  "callers": {
+    "service": { "allow": true, "runtimes": ["gateway_typed"], "units": ["deploy.service"] },
+    "agent": "deny",
+    "host": "deny",
+    "human": "deny"
+  }
+}

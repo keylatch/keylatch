@@ -1,29 +1,13 @@
 # Keylatch Integration — Aider
 
-Blocks credential-exfiltration patterns in Aider sessions via the `pre-tool-use-hook` config.
-
-## Hook Mechanism
-
-Aider's `pre-tool-use-hook` key in `~/.aider.conf.yml`. The value is a shell command invoked before every tool call. The guard exits non-zero to block the call.
-
-## Install
+Aider has no pre-tool hook API, so there is no guard to install. Keylatch protects Aider sessions by launching it under a session ticket:
 
 ```bash
-keylatch install-guard aider
+keylatch launch -- aider
 ```
 
-## What It Blocks
+Every process below the launcher is treated as an agent session, so `keylatch get` is blocked and values reach commands only through `keylatch run`.
 
-- `keylatch get` (without `--masked`)
-- `security find-password` / `security find-generic-password`
-- `op read`, `bw get`
-- `cat ~/.keylatch/config.yaml`
-- Direct reads of `~/.keylatch/keylatch.keychain-db`
+Aider sets no environment variable of its own. When it is started some other way, set `CREDENTIALS_LLM_SESSION=aider` in the shell rc so the session guard applies.
 
-## Verify
-
-```bash
-keylatch doctor
-```
-
-See also: `contrib/agent-guards/aider/README.md`
+`keylatch install-guard aider` prints this guidance and installs nothing.

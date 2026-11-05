@@ -1,11 +1,12 @@
 package cli
 
 // cov_b_setup_pure_test.go — Agent B coverage for pure/unit-testable functions in
-// setup_cmd.go: validateURISegments, detectCLI, findExecutable, platformBackend.
+// setup_cmd.go: validateURISegments, detectCLI, findExecutable, recommendedBackend.
 // These are pure functions with no I/O side effects (except PATH lookups).
 // Hermetic: no network, no OS keychain.
 
 import (
+	"errors"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -139,31 +140,38 @@ func TestFindExecutable_NonExistent(t *testing.T) {
 	}
 }
 
-// --- platformBackend ---
+// --- recommendedBackend ---
 
-func TestPlatformBackend_ReturnsNameAndDesc(t *testing.T) {
-	name, desc := platformBackend()
-	if name == "" {
-		t.Error("expected non-empty name from platformBackend")
-	}
-	if desc == "" {
-		t.Error("expected non-empty desc from platformBackend")
-	}
-}
-
-func TestPlatformBackend_CurrentPlatform(t *testing.T) {
-	name, _ := platformBackend()
-	switch runtime.GOOS {
-	case "darwin":
-		if name != "keychain" {
-			t.Errorf("expected 'keychain' on darwin, got: %q", name)
-		}
-	case "windows":
-		if name != "file" {
-			t.Errorf("expected 'file' on windows, got: %q", name)
+func TestRecommendedBackend(t *testing.T) {
+	installed := func(names ...string) func(string) (string, error) {
+		return func(n string) (string, error) {
+			for _, have := range names {
+				if have == n {
+					return "/usr/bin/" + n, nil
+				}
+			}
+			return "", errors.New("not found")
 		}
 	}
-	// Linux defaults to file until a Linux keyring backend is fully registered.
+	for _, tc := range []struct {
+		name string
+		have []string
+		want string
+	}{
+		{"nothing installed uses the file store", nil, "file"},
+		{"bitwarden is preferred", []string{"bw", "op"}, "bw"},
+		{"1password when it is the only manager", []string{"op"}, "op"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, desc := recommendedBackend(installed(tc.have...))
+			if got != tc.want {
+				t.Errorf("backend = %q, want %q", got, tc.want)
+			}
+			if desc == "" {
+				t.Error("expected a description")
+			}
+		})
+	}
 }
 
 // --- readFieldFromStdin ---

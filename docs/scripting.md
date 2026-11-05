@@ -34,7 +34,7 @@ keylatch gateway up --detach
 keylatch gateway status
 ```
 
-The gateway must be running for `gateway_typed` mode. If you prefer a mode that does not require a running gateway, use `--runtime direct_brokered`. See [Configuration](./configuration.md) for gateway settings.
+The gateway must be running for `gateway_typed` mode. If you prefer a mode that does not require a running gateway, use `--runtime minted` with a connection whose template mints credentials. See [Configuration](./configuration.md) for gateway settings.
 
 ---
 

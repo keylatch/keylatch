@@ -70,7 +70,7 @@ func TestProfileFilesDoNotContainCanary(t *testing.T) {
 	}, store)
 	require.NoError(t, err)
 
-	profile, err := GenerateProfile(ctx, "claude-code", ProfileModeMCP, store)
+	profile, err := GenerateProfile(ctx, "openclaw", ProfileModeMCP, store)
 	require.NoError(t, err)
 
 	for _, f := range profile.Files {

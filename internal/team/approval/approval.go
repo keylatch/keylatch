@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package approval implements two-person and N-of-M approval workflows.
 //
 // Security invariants:

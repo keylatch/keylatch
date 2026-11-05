@@ -3,10 +3,13 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/keylatch/keylatch/internal/agent"
 	"github.com/keylatch/keylatch/internal/agentsnippet"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/harness/installer"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/spf13/cobra"
 )
@@ -17,6 +20,8 @@ func newAgentCmd() *cobra.Command {
 		Use:   "agent",
 		Short: "Manage AI agent integrations",
 	}
+	agentCmd.AddCommand(newAgentInstallCmd())
+	agentCmd.AddCommand(newAgentUninstallCmd())
 	agentCmd.AddCommand(newAgentSetupCmd())
 	agentCmd.AddCommand(newAgentSnippetCmd())
 	return agentCmd
@@ -26,9 +31,15 @@ func newAgentCmd() *cobra.Command {
 func newAgentSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup <agent>",
-		Short: "Install keylatch integration for an AI agent",
+		Short: "Install keylatch integration for an AI agent (coding agents: use agent install)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
+			if d, ok := harness.Resolve(args[0]); ok {
+				fmt.Fprintf(c.ErrOrStderr(), "Warning: keylatch agent setup is deprecated for coding agents; use keylatch agent install %s --mcp.\n", d.ID)
+				dryRun, _ := c.Flags().GetBool("dry-run")
+				diff, _ := c.Flags().GetBool("diff")
+				return runHarnessInstall(c, []string{d.ID}, installFlags{dryRun: dryRun || diff, parts: installer.Parts{MCP: true}})
+			}
 			ctx := c.Context()
 			cfg := loadCLIConfig(c)
 			store := newDispatchedStore(cfg, llmcontext.DefaultLookup)
@@ -53,21 +64,9 @@ func newAgentSetupCmd() *cobra.Command {
 			preset, err := agent.Get(args[0])
 			if err != nil {
 				// Actionable error for unknown/undetected agents.
-				agentName := args[0]
-				home, homeErr := os.UserHomeDir()
-				configDir := "~/.claude/"
-				if homeErr == nil {
-					configDir = home + "/.claude/"
-				}
-				fmt.Fprintf(c.ErrOrStderr(), "Error: agent %q not found.\n\n", agentName)
-				if agentName == "claude-code" {
-					fmt.Fprintf(c.ErrOrStderr(), "  Claude Code config dir not found at %s\n", configDir)
-					fmt.Fprintln(c.ErrOrStderr(), "  Install Claude Code first: https://claude.ai/download")
-					fmt.Fprintln(c.ErrOrStderr())
-				} else {
-					fmt.Fprintf(c.ErrOrStderr(), "  %v\n\n", err)
-				}
-				fmt.Fprintln(c.ErrOrStderr(), "  Supported agents: claude-code, codex, cursor, openhands, opencode")
+				fmt.Fprintf(c.ErrOrStderr(), "Error: agent %q not found.\n\n  %v\n\n", args[0], err)
+				fmt.Fprintf(c.ErrOrStderr(), "  Coding agents (keylatch agent install): %s\n", strings.Join(installableIDs(), ", "))
+				fmt.Fprintln(c.ErrOrStderr(), "  Other agents (keylatch agent setup): openhands, openclaw, nanoclaw, hermes, n8n, dify, custom")
 				os.Exit(exitcode.UserError)
 			}
 

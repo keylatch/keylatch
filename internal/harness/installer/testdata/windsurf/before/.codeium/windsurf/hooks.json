@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "pre_run_command": [
+      {"command": "/home/dev/bin/my-audit.sh", "show_output": true}
+    ],
+    "post_run_command": [
+      {"command": "/home/dev/bin/log.sh"}
+    ]
+  }
+}

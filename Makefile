@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-containment test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
 
 ## build: compile all packages
 build:
@@ -44,17 +44,24 @@ test-core-packages:
 test-canary:
 	go test -race -count=1 -run TestCanary ./...
 
+## test-containment: run the thin client inside a bubblewrap sandbox (skips when bwrap is unavailable)
+test-containment:
+	go test -tags containment -count=1 ./tests/containment/...
+
 ## test-canary-meta: run meta coverage check for canary AssertNoLeak usage
 test-canary-meta:
 	go test -tags meta -race -count=1 ./internal/canary/...
 
-## test-hook: run agent-guard hook tests
+## test-hook: run the Go guard tests and the shell agent-guard hook tests (the last two run the guard without jq)
 test-hook:
+	go test -count=1 ./internal/guard/...
 	bash contrib/agent-guards/claude-code/block-keylatch-exfiltration.test.sh --verbose
-	bash contrib/agent-guards/aider/block-keylatch-exfiltration.test.sh
-	bash contrib/agent-guards/copilot/block-keylatch-exfiltration.test.sh
-	bash contrib/agent-guards/cursor/block-keylatch-exfiltration.test.sh
-	bash contrib/agent-guards/windsurf/block-keylatch-exfiltration.test.sh
+	bash contrib/agent-guards/harness-contract.test.sh
+	bash contrib/agent-guards/deny-corpus.test.sh
+	bash contrib/agent-guards/guard-edge.test.sh
+	bash contrib/agent-guards/install-scripts.test.sh
+	KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/harness-contract.test.sh
+	KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/deny-corpus.test.sh
 
 ## test-prop: run property-based tests in internal/vault
 test-prop:

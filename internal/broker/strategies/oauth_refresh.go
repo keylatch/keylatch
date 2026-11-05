@@ -4,10 +4,12 @@ package strategies
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,14 +31,37 @@ type OAuthRefreshStrategy struct {
 	getRefreshToken func(actor, namespace string) ([]byte, error)
 	// httpClient is the HTTP client used for token requests.
 	httpClient *http.Client
+	// scopes, when set, are requested with the refresh and checked against the
+	// scope the provider reports for the access token.
+	scopes []string
+}
+
+// ErrOAuthScopeMismatch is returned when the provider issued an access token
+// whose scope is missing or wider than the one requested. No token is
+// returned with it.
+var ErrOAuthScopeMismatch = errors.New("oauth_refresh: issued token scope does not match the requested scope")
+
+// OAuthOption configures an OAuthRefreshStrategy.
+type OAuthOption func(*OAuthRefreshStrategy)
+
+// WithScopes limits the access token to scopes. The provider's reply must
+// report a scope within them or the exchange fails closed.
+func WithScopes(scopes ...string) OAuthOption {
+	return func(s *OAuthRefreshStrategy) { s.scopes = scopes }
+}
+
+// WithOAuthHTTPClient replaces the HTTP client.
+func WithOAuthHTTPClient(c *http.Client) OAuthOption {
+	return func(s *OAuthRefreshStrategy) { s.httpClient = c }
 }
 
 // NewOAuthRefreshStrategy creates a strategy that POSTs to tokenEndpoint.
 func NewOAuthRefreshStrategy(
 	provider, tokenEndpoint, clientID, clientSecret string,
 	getRefreshToken func(actor, namespace string) ([]byte, error),
+	opts ...OAuthOption,
 ) *OAuthRefreshStrategy {
-	return &OAuthRefreshStrategy{
+	s := &OAuthRefreshStrategy{
 		provider:        provider,
 		tokenEndpoint:   tokenEndpoint,
 		clientID:        clientID,
@@ -44,6 +69,10 @@ func NewOAuthRefreshStrategy(
 		getRefreshToken: getRefreshToken,
 		httpClient:      &http.Client{Timeout: 15 * time.Second},
 	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Provider returns the provider slug.
@@ -65,6 +94,9 @@ func (s *OAuthRefreshStrategy) Exchange(ctx context.Context, actor, sessionID, n
 	form.Set("refresh_token", string(refreshToken))
 	form.Set("client_id", s.clientID)
 	form.Set("client_secret", s.clientSecret)
+	if len(s.scopes) > 0 {
+		form.Set("scope", strings.Join(s.scopes, " "))
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.tokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -102,6 +134,14 @@ func (s *OAuthRefreshStrategy) Exchange(ctx context.Context, actor, sessionID, n
 		return broker.ExchangeResult{}, fmt.Errorf("oauth_refresh: missing access_token in response")
 	}
 
+	if len(s.scopes) > 0 {
+		granted, _ := payload["scope"].(string)
+		fields := strings.Fields(granted)
+		if len(fields) == 0 || !subset(fields, s.scopes) {
+			return broker.ExchangeResult{}, fmt.Errorf("%w: requested %q, issued %q", ErrOAuthScopeMismatch, strings.Join(s.scopes, " "), granted)
+		}
+	}
+
 	// Parse TTL.
 	ttl := time.Hour // default
 	if expiresIn, ok := payload["expires_in"].(float64); ok && expiresIn > 0 {
@@ -122,6 +162,16 @@ func (s *OAuthRefreshStrategy) Exchange(ctx context.Context, actor, sessionID, n
 // Defined here to avoid import cycles; callers use the value directly.
 func FreshExchangeType() broker.ExchangeType {
 	return broker.FreshExchange
+}
+
+// subset reports whether every element of got is in want.
+func subset(got, want []string) bool {
+	for _, g := range got {
+		if !slices.Contains(want, g) {
+			return false
+		}
+	}
+	return true
 }
 
 func zeroBytes(b []byte) {

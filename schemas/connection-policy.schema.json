@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keylatch.dev/schemas/connection-policy.schema.json",
+  "title": "Keylatch connection policy",
+  "description": "Who may use one connection, and how: which caller kinds, under which runtimes and executables, in which delivery tiers, toward which hosts, with which filesystem and egress, and with what approval. A connection with no entry for a caller kind is unusable by that kind: everything not allowed is denied. Unknown keys are rejected so that nothing a policy author writes is silently ignored.",
+  "type": "object",
+  "required": ["schema_version", "connection"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "connection": {
+      "description": "The connection this document governs. \"*\" is the fallback for connections without a document of their own.",
+      "type": "string",
+      "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9._-]{0,127})$"
+    },
+    "default": {
+      "description": "What happens to a caller kind with no entry. Only deny exists.",
+      "const": "deny"
+    },
+    "capabilities": {
+      "description": "Capabilities the connection may be used for, as globs. Omitted means every capability a caller kind entry allows.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true
+    },
+    "max_ttl": {
+      "description": "Longest lifetime of a session token or child process, as a Go duration such as 15m.",
+      "type": "string",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"
+    },
+    "hosts": {
+      "description": "Narrows the hosts the connection's credential may reach. Only hosts that both the provider template and this list name stay, so the list can remove hosts and never add one. Patterns are host[:port], the port defaulting to 443, with an optional leading \"*.\".",
+      "type": "array",
+      "items": { "$ref": "#/$defs/host" },
+      "uniqueItems": true
+    },
+    "egress": {
+      "description": "Non-secret destinations a contained run may reach beyond the connection's own hosts, for example package registries.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/host" },
+          "uniqueItems": true
+        },
+        "deny_private_ranges": {
+          "description": "Private, link-local and cloud-metadata ranges are never reachable; the field exists so a document can say so.",
+          "const": true
+        }
+      }
+    },
+    "fs": {
+      "description": "What a contained run may read and write. Paths are absolute, start with ~/ or start with a ${variable}: project, toolchain_caches, keylatch_state, browser_profiles or harness_config.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "read": { "$ref": "#/$defs/paths" },
+        "write": { "$ref": "#/$defs/paths" },
+        "deny": { "$ref": "#/$defs/paths" }
+      }
+    },
+    "commands": {
+      "description": "Argv patterns, matched against the executable a command resolves to. A matched command can narrow the tiers and set the approval; with exe_sha256 and an executable only root can write, it runs at D5 without an approval.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["match"],
+        "additionalProperties": false,
+        "properties": {
+          "match": {
+            "description": "The absolute path pattern of the executable, then one pattern per argument: * matches one argument, a final ** matches the rest.",
+            "type": "array",
+            "items": { "type": "string", "maxLength": 512 },
+            "minItems": 1
+          },
+          "tiers": { "$ref": "#/$defs/tiers" },
+          "approval": { "$ref": "#/$defs/approval" },
+          "exe_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "host": {
+      "description": "Limits of the agent's own sandbox, recorded by `policy import --from`. They only narrow this document: egress is the intersection, writes must lie inside the host's writable paths and the host's denies are added.",
+      "type": "object",
+      "required": ["source"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "egress_restricted": { "type": "boolean" },
+        "egress_allow": { "type": "array", "items": { "$ref": "#/$defs/host" } },
+        "write_restricted": { "type": "boolean" },
+        "fs_write": { "$ref": "#/$defs/paths" },
+        "fs_deny": { "$ref": "#/$defs/paths" }
+      }
+    },
+    "callers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent": { "$ref": "#/$defs/callerRule" },
+        "host": { "$ref": "#/$defs/callerRule" },
+        "service": { "$ref": "#/$defs/callerRule" },
+        "human": { "$ref": "#/$defs/callerRule" },
+        "machine": { "$ref": "#/$defs/callerRule" }
+      }
+    }
+  },
+  "$defs": {
+    "host": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 260
+    },
+    "paths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+      "uniqueItems": true
+    },
+    "tiers": {
+      "description": "Delivery tiers D1 (action) to D6 (uncontained raw value). D6 is for human callers only.",
+      "type": "array",
+      "items": { "enum": ["D1", "D2", "D3", "D4", "D5", "D6"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "approval": {
+      "description": "auto: no approval. ask: a human approves each run. auto_if_contained: containment is the approval for D1 to D4; D5 needs one unless the command is pinned. presence_for_D6: automatic below D6. presence: a human present at the machine confirms.",
+      "enum": ["auto", "ask", "auto_if_contained", "presence_for_D6", "presence"]
+    },
+    "callerRule": {
+      "oneOf": [
+        { "const": "deny" },
+        {
+          "type": "object",
+          "required": ["allow"],
+          "additionalProperties": false,
+          "properties": {
+            "allow": { "type": "boolean" },
+            "runtimes": {
+              "description": "Runtimes the caller may use. Omitted means any. A request with no runtime, such as call, is not covered by an entry that lists runtimes.",
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "exe": {
+              "description": "Executables a run may start, matched against the command exactly as written: a bare name such as python3 does not cover /tmp/x/python3. Not checked for requests without a command, such as gateway calls.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "units": {
+              "description": "systemd units a service caller must run in.",
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9:_.\\\\@-]+\\.service$" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "tiers": {
+              "description": "Delivery tiers this kind may use. Omitted selects D1 to D4 for agent and host callers, D1 to D5 for service callers and D1 to D6 for human callers.",
+              "$ref": "#/$defs/tiers"
+            },
+            "approval": { "$ref": "#/$defs/approval" },
+            "ttl": {
+              "description": "Longest lifetime of a session or child for this kind, as a Go duration such as 15m.",
+              "type": "string",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"
+            },
+            "max_requests": {
+              "description": "Most requests a placeholder session serves for this kind.",
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

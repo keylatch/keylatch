@@ -23,13 +23,22 @@ import (
 	"golang.org/x/crypto/hkdf"
 )
 
-// DeriveChainMACKey derives the 32-byte HMAC chain key from the audit salt.
-// This key is salt-dependent but not DEK-dependent so VerifyChain works
-// in header-only mode without the AuditDEK.
-func DeriveChainMACKey(salt []byte) []byte {
-	// ikm is the audit salt; info provides domain separation.
-	ikm := salt
-	r := hkdf.New(sha256.New, ikm, nil, []byte("keylatch/audit/mac-key/v1"))
+// ChainSeed derives the secret a log's chain MAC key comes from:
+// HKDF(secret, salt, "keylatch/audit/v1"). secret is the KEK-wrapped audit key,
+// so the seed cannot be recomputed from the audit salt, which is a readable
+// file. It is independent of the vault DEK.
+func ChainSeed(secret, salt []byte) []byte {
+	r := hkdf.New(sha256.New, secret, salt, []byte("keylatch/audit/v1"))
+	seed := make([]byte, 32)
+	_, _ = io.ReadFull(r, seed)
+	return seed
+}
+
+// DeriveChainMACKey derives the 32-byte HMAC chain key from seed (see
+// ChainSeed). The key does not depend on the DEK, so VerifyChain works in
+// header-only mode.
+func DeriveChainMACKey(seed []byte) []byte {
+	r := hkdf.New(sha256.New, seed, nil, []byte("keylatch/audit/mac-key/v1"))
 	key := make([]byte, 32)
 	_, _ = io.ReadFull(r, key)
 	return key
@@ -117,8 +126,8 @@ const (
 	ActionCanaryInjected Action = "canary.injected"
 
 	// sandbox actions.
-	// ActionSandboxLaunched records a successful sandbox launch via
-	// direct_classic_sandboxed mode. Extra.executable_sha256 holds the verified
+	// ActionSandboxLaunched records a successful sandbox launch.
+	// Extra.executable_sha256 holds the verified
 	// hash; Extra.executable holds the path (not the value).
 	ActionSandboxLaunched Action = "sandbox.launched"
 	// ActionSandboxLaunchRefused records a refused sandbox launch due to a hash
@@ -129,10 +138,28 @@ const (
 	// sandbox run. Extra.denied_paths lists the paths (no values).
 	ActionSandboxDenyApplied Action = "sandbox.deny_applied"
 
-	// ActionMint records one scoped credential mint. Extra holds the
-	// connection, repository, permissions, expires_at and caller kind;
-	// the minted credential is never recorded.
-	ActionMint Action = "mint"
+	// placeholder proxy actions. Extra carries provider, field, host and a
+	// short reason; never a placeholder or a credential value.
+	ActionPlaceholderMisuse Action = "placeholder.misuse"
+	ActionProxySubstituted  Action = "proxy.substituted"
+	ActionEgressDenied      Action = "egress.denied"
+	ActionProxySession      Action = "proxy.session"
+
+	// ActionAdapterConnection records a protocol adapter connection: opened,
+	// refused for a wrong session token, or failed upstream. Extra carries the
+	// provider, adapter kind, upstream host and a short reason.
+	ActionAdapterConnection Action = "adapter.connection"
+
+	// ActionKeyOperation records a sign, verify, encrypt, decrypt or ssh
+	// signing request served from a key that never leaves the daemon.
+	// Extra holds the operation, algorithm, connection, field, caller kind and
+	// the SHA-256 of the input; never the key or the data.
+	ActionKeyOperation Action = "key.operation"
+
+	// ActionKeyPolicyChange records an allow or revoke on the key operation
+	// allowlist, including refused attempts. Extra holds a digest-free summary
+	// of the entry before and after; never a key or a secret path.
+	ActionKeyPolicyChange Action = "key.policy_change"
 )
 
 // Emitter is a minimal interface for components that need to emit audit events
@@ -310,6 +337,9 @@ type Logger struct {
 
 	// fsyncFailHook is used for fault-injection tests.
 	fsyncFailHook func() error
+
+	// anchorSink receives the head hash every AnchorEvery events.
+	anchorSink func(Head) error
 }
 
 func openLogFile(path string) (*os.File, error) {
@@ -330,8 +360,9 @@ func (l *Logger) keys() [][]byte {
 
 // Open opens or creates the audit log at path.
 //
-// salt is the 32-byte HMAC salt (from audit/salt.LoadOrCreate).
-// auditDEK is the 32-byte key used to AEAD-seal each event.
+// salt is the 32-byte chain seed (see ChainSeed); it also keys the hashes of
+// fields that are not allowlisted. auditDEK is the 32-byte key used to
+// AEAD-seal each event.
 //
 // The parent directory must exist with mode 0o700.
 // The log file is created with mode 0o600.
@@ -346,9 +377,8 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 		return nil, err
 	}
 
-	// Derive the chain MAC key from salt only (no DEK).
-	// This allows VerifyChain to work in header-only mode without the AuditDEK:
-	// the chain MAC key depends only on the salt, not the DEK.
+	// The chain MAC key does not depend on the DEK, so VerifyChain works in
+	// header-only mode.
 	chainMACKey := DeriveChainMACKey(salt)
 
 	l := &Logger{
@@ -369,6 +399,17 @@ func Open(path string, salt []byte, auditDEK []byte) (*Logger, error) {
 	}
 
 	return l, nil
+}
+
+// SetRetainFiles sets how many rotated generations are kept; values below 1
+// leave the setting unchanged.
+func (l *Logger) SetRetainFiles(n int) {
+	if n < 1 {
+		return
+	}
+	l.mu.Lock()
+	l.retainFiles = n
+	l.mu.Unlock()
 }
 
 // Path returns the file path of the audit log.

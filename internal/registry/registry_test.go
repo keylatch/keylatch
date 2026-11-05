@@ -112,11 +112,11 @@ func TestBackwardCompatFieldsDerived(t *testing.T) {
 		provider    string
 		wantGateway bool
 	}{
-		{"openrouter", true},        // preferred: gateway_sdk
-		{"sentry", true},            // preferred: gateway_typed
-		{"cloudflare", true},        // preferred: gateway_typed
-		{"dropbox", false},          // preferred: direct_brokered
-		{"google_workspace", false}, // preferred: direct_brokered
+		{"openrouter", true},       // preferred: gateway_sdk
+		{"sentry", true},           // preferred: gateway_typed
+		{"cloudflare", true},       // preferred: gateway_typed
+		{"dropbox", true},          // preferred: gateway_proxy
+		{"google_workspace", true}, // preferred: gateway_proxy
 	}
 
 	for _, tc := range tests {

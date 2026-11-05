@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -76,10 +77,21 @@ func Connect(ctx context.Context, provider string, opts ConnectOptions, store St
 		mode = tmpl.RuntimeSupport.Preferred
 	}
 
+	if err := validateLocalOnly(tmpl, opts.Class, opts.LocalOnly); err != nil {
+		return nil, err
+	}
+
 	// Step 2 & 3: process each secret field.
 	fieldNames := make([]string, 0, len(tmpl.SecretFields))
 	for _, sf := range tmpl.SecretFields {
 		fieldNames = append(fieldNames, sf.Name)
+
+		if opts.LocalOnly[sf.Name] == localonly.Ephemeral {
+			if _, supplied := opts.Fields[sf.Name]; supplied {
+				return nil, fmt.Errorf("connections: field %q is ephemeral and takes no stored value", sf.Name)
+			}
+			continue
+		}
 
 		var value []byte
 		if v, ok := opts.Fields[sf.Name]; ok {
@@ -147,6 +159,8 @@ func Connect(ctx context.Context, provider string, opts ConnectOptions, store St
 		UpdatedAt: now,
 		Fields:    fieldNames,
 		Status:    "untested",
+		Class:     opts.Class,
+		LocalOnly: opts.LocalOnly,
 	}
 
 	connMeta := backend.Meta{

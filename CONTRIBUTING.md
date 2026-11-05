@@ -75,8 +75,9 @@ validated against `templates/providers/schema.json` (JSON Schema draft-07).
    ```
 5. Open a pull request. The CI pipeline runs validation automatically.
 
-See [`templates/providers/README.md`](templates/providers/README.md) for field
-descriptions and the full schema reference.
+See [`docs/provider-templates.md`](docs/provider-templates.md) for field
+descriptions and [`templates/providers/schema.json`](templates/providers/schema.json)
+for the schema.
 
 ## Pre-commit Hooks
 

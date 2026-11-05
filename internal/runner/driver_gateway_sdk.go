@@ -12,7 +12,6 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/canary"
-	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -96,72 +95,25 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	if actor == "" {
 		actor = "sdk_driver"
 	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = 1 * time.Hour
-	}
-
-	cap := tmpl.Provider + "." + req.Capability
-	if req.Capability == "" || req.Capability == "inject" {
-		// Default: grant all gateway actions for this provider.
-		cap = tmpl.Provider + ".*"
-	}
-
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        actor,
-		Capabilities: []string{cap},
-		TTL:          ttl,
-		LLMSession:   false,
-		SigningKey:   d.key,
-		StorePath:    d.store,
-	})
+	jwtStr, revoke, err := sessionToken(d.key, d.store, actor, req.Caller, sessionCapabilities(tmpl, req.Capability), req.TTL)
 	if err != nil {
 		receipt.PolicyDecision = "token_mint_failed"
 		return receipt, fmt.Errorf("gateway_sdk driver: mint token: %w", err)
 	}
+	defer revoke()
 
 	// Step 2: Build child env: base URL + session token. No provider key.
-	// Rules:
-	//   1. Strip provider API key vars declared in InjectionRules.
-	//   2. Strip all KEYLATCH_* configuration vars (FilterChildEnv).
-	//   3. Re-inject only gateway vars + KEYLATCH_RUNTIME.
-	denyVars := make(map[string]struct{}, len(tmpl.InjectionRules))
-	for _, rule := range tmpl.InjectionRules {
-		denyVars[rule.EnvVar] = struct{}{}
-	}
-	raw := os.Environ()
-	stripped := make([]string, 0, len(raw))
-	for _, e := range raw {
-		idx := strings.IndexByte(e, '=')
-		if idx < 0 {
-			stripped = append(stripped, e)
-			continue
-		}
-		if _, skip := denyVars[e[:idx]]; !skip {
-			stripped = append(stripped, e)
-		}
-	}
-	// Strip remaining KEYLATCH_* vars; re-inject only gateway token + runtime.
-	// When CleanEnv is requested, use CleanBaseEnv for a minimal start.
-	var childEnv []string
-	if req.CleanEnv {
-		childEnv = runtime.CleanBaseEnv(stripped, req.ExtraEnvVars...)
-	} else {
-		childEnv = runtime.FilterChildEnv(stripped,
-			"KEYLATCH_GATEWAY_TOKEN",
-			"KEYLATCH_RUNTIME",
-		)
-	}
-	baseURL := "http://" + d.server.Addr()
-	childEnv = appendOrReplace(childEnv, sdkBaseURLVar(tmpl), baseURL)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
-	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewaySdkMode)
+	childEnv := GatewaySessionEnv(runtime.RuntimeGatewaySDK, tmpl, "http://"+d.server.Addr(), jwtStr).
+		Apply(os.Environ(), req.CleanEnv, req.ExtraEnvVars)
+	childEnv = mergeEnvPairs(childEnv, req.LocalEnv)
 
 	// Canary injection — when enabled, mint a canary token and inject it
 	// into the child env. The token value is never logged; only metadata is emitted.
+	secrets := [][]byte{[]byte(jwtStr)}
 	if d.settings.CanaryInjectionEnabled {
 		canaryToken, canaryErr := canary.BuildCanary(tmpl.Provider)
 		if canaryErr == nil {
+			secrets = append(secrets, []byte(canaryToken))
 			envVar := canary.EnvVarName(tmpl.Provider)
 			childEnv = appendOrReplace(childEnv, envVar, canaryToken)
 			if d.auditEmitter != nil {
@@ -191,8 +143,9 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	//nolint:gosec // G204: command allowlist enforcement is caller-side (DispatchRunner.Run).
 	cmd := exec.CommandContext(ctx, req.Command[0], req.Command[1:]...)
 	cmd.Env = childEnv
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	guard := newOutputGuard(stdout, stderr, req.WorkingDir, req.FileScan, secrets...)
+	cmd.Stdout = guard.Stdout()
+	cmd.Stderr = guard.Stderr()
 	if req.Stdin != nil {
 		cmd.Stdin = req.Stdin
 	} else {
@@ -205,6 +158,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	start := time.Now()
 	runErr := cmd.Run()
 	receipt.TTL = time.Since(start) // stores actual execution duration (not a cap)
+	receipt.LeakedFiles = guard.Finish()
 
 	if runErr != nil {
 		var exitErr *exec.ExitError

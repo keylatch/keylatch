@@ -141,11 +141,11 @@ For the full provider catalog with template details, see [provider-template-cata
 | Name | `keylatch connect` example | Preferred runtime mode | Trust level |
 |------|---------------------------|------------------------|:-----------:|
 | Cloudflare | `keylatch connect cloudflare api_token YOUR_TOKEN` | `gateway_typed` | 0 |
-| Dropbox | `keylatch connect dropbox access_token YOUR_TOKEN` | `direct_brokered` | 0 |
-| Google Workspace | `keylatch connect google_workspace oauth_credentials YOUR_CREDS` | `direct_brokered` | 0 |
+| Dropbox | `keylatch connect dropbox access_token YOUR_TOKEN` | `gateway_proxy` (unavailable in this release) | 0 |
+| Google Workspace | `keylatch connect google_workspace oauth_credentials YOUR_CREDS` | `gateway_proxy` (unavailable in this release) | 0 |
 
 ---
 
 ## Adding a provider
 
-See [Authoring Provider Templates](../dev/authoring-providers.md) for the YAML schema, trust level guide, and PR workflow.
+See [Provider Templates](../provider-templates.md) for the YAML schema and [CONTRIBUTING.md](../../CONTRIBUTING.md) for the PR workflow.

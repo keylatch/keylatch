@@ -2,7 +2,9 @@ package proxy
 
 import (
 	"bytes"
+	"crypto/x509"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -171,6 +173,32 @@ func TestNewTLSCA_CertForHost_ReturnsCert(t *testing.T) {
 	}
 	if cert.Leaf.DNSNames[0] != "test.example.com" {
 		t.Errorf("expected DNS name test.example.com, got %v", cert.Leaf.DNSNames)
+	}
+}
+
+// TestNewTLSCA_CertForHost_IPLiteral verifies an IP-literal host gets an IP SAN
+// that verifies against the CA.
+func TestNewTLSCA_CertForHost_IPLiteral(t *testing.T) {
+	kr := newMemKeyring()
+	caCert, caKey, err := LoadOrCreateCA(kr, "cert-ip-key")
+	if err != nil {
+		t.Fatalf("LoadOrCreateCA: %v", err)
+	}
+
+	cert, err := newTLSCA(caCert, caKey).CertForHost("203.0.113.7")
+	if err != nil {
+		t.Fatalf("CertForHost: %v", err)
+	}
+	if len(cert.Leaf.DNSNames) != 0 {
+		t.Errorf("expected no DNS SANs for an IP host, got %v", cert.Leaf.DNSNames)
+	}
+	if len(cert.Leaf.IPAddresses) != 1 || !cert.Leaf.IPAddresses[0].Equal(net.ParseIP("203.0.113.7")) {
+		t.Fatalf("expected IP SAN 203.0.113.7, got %v", cert.Leaf.IPAddresses)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(caCert)
+	if _, err := cert.Leaf.Verify(x509.VerifyOptions{Roots: pool, DNSName: "203.0.113.7"}); err != nil {
+		t.Errorf("leaf must verify for its IP host: %v", err)
 	}
 }
 

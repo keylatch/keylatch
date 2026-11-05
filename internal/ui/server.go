@@ -103,6 +103,10 @@ func New(opts ServerOptions) (*Server, error) {
 		return nil, fmt.Errorf("ui: signing key must be 32 bytes, got %d", len(opts.SigningKey))
 	}
 
+	if !opts.Demo && opts.Store == nil && !isLLM {
+		opts.Store = &configuredStore{env: opts.Env}
+	}
+
 	sess, err := session.New(opts.SigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("ui: create session: %w", err)
@@ -243,14 +247,6 @@ func (s *Server) registerRoutes() {
 		approvalsHandler := &api.ApprovalsHandler{}
 		s.mux.HandleFunc("/api/approvals", s.requireSession(approvalsHandler.ServeHTTP))
 		s.mux.HandleFunc("/api/approvals/", s.requireSession(csrf.Middleware(approvalsHandler).ServeHTTP))
-
-		// Gateway (scoped to ScopeAdmin+; token minting additionally requires ScopeTokenMinting).
-		gatewayHandler := &api.GatewayHandler{AllowTokenMinting: s.opts.Scope >= ScopeTokenMinting}
-		s.mux.HandleFunc("/api/gateway/", s.requireSession(csrf.Middleware(gatewayHandler).ServeHTTP))
-
-		// Broker (501 stub).
-		brokerHandler := &api.BrokerHandler{}
-		s.mux.HandleFunc("/api/broker/", s.requireSession(csrf.Middleware(brokerHandler).ServeHTTP))
 
 		// Audit summary (read-only).
 		auditHandler := &api.AuditHandler{Logger: s.opts.AuditLogger}

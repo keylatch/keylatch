@@ -14,10 +14,10 @@ keylatch install-guard opencode
 
 ## What It Blocks
 
-- `keylatch get` / `keylatch secret get`
+- `keylatch get`
 - `security find-password` / `security find-generic-password`
 - `op read`, `bw get`
-- `cat ~/.keylatch/config.yaml`
+- `cat ~/.keylatch/config.json`
 - Direct access to `~/.keylatch/keylatch.keychain-db`
 
 ## Verify

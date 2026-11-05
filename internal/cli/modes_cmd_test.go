@@ -30,33 +30,22 @@ func runModesCmd(t *testing.T, args ...string) string {
 
 // TestModesCmdTable verifies the tabwriter output of `keylatch modes`.
 //
-// Updated to reflect the new AVAILABLE and FIX columns.
-// direct_classic_sandboxed is now listed (reinstated as a new sibling mode).
-// direct_classic remains permanently removed and must not appear.
+// The table has AVAILABLE and FIX columns and lists only the modes that exist.
 func TestModesCmdTable(t *testing.T) {
 	out := runModesCmd(t)
 
 	assert.Contains(t, out, "gateway_typed", "table must list gateway_typed mode")
 	assert.Contains(t, out, "gateway_sdk", "table must list gateway_sdk mode")
-	assert.Contains(t, out, "direct_brokered", "table must list direct_brokered mode")
+	assert.Contains(t, out, "minted", "table must list minted mode")
 	assert.Contains(t, out, "gateway_proxy", "table must list gateway_proxy mode")
-	// reinstated mode must appear.
-	assert.Contains(t, out, "direct_classic_sandboxed", "table must list direct_classic_sandboxed")
 	assert.Contains(t, out, "USE WHEN", "table must have USE WHEN header")
 	assert.Contains(t, out, "AVAILABLE", "table must have AVAILABLE header")
 	assert.Contains(t, out, "FIX", "table must have FIX header")
-
-	// direct_classic (without _sandboxed suffix) is permanently removed and
-	// must not appear as a mode row. The note may mention it.
-	// We check for the tab-separated row marker to distinguish from the note.
-	assert.NotContains(t, out, "direct_classic\t", "direct_classic row must not appear (permanently removed)")
-
-	// Note about removed modes should still be present.
-	assert.Contains(t, out, "direct_classic", "removal note must mention direct_classic")
+	assert.NotContains(t, out, "classic", "removed runtimes must not be listed")
 }
 
 // TestModesCmdJSON verifies `keylatch modes --json` returns valid JSON
-// with exactly 5 modes (original 4 + direct_classic_sandboxed).
+// with exactly the 4 modes that exist.
 func TestModesCmdJSON(t *testing.T) {
 	out := runModesCmd(t, "--json")
 
@@ -67,17 +56,16 @@ func TestModesCmdJSON(t *testing.T) {
 	err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result)
 	require.NoError(t, err, "modes --json must emit valid JSON, got: %s", out)
 
-	// 5 entries (original 4 + direct_classic_sandboxed).
-	assert.Len(t, result.Modes, 5, "modes --json must have exactly 5 entries")
+	assert.Len(t, result.Modes, 4, "modes --json must have exactly 4 entries")
 
 	// First entry must be gateway_typed.
 	require.NotEmpty(t, result.Modes, "modes must not be empty")
 	assert.Equal(t, "gateway_typed", result.Modes[0].Name, "first entry must be gateway_typed")
 	assert.NotEmpty(t, result.Modes[0].Requires, "gateway_typed should have a Requires value")
 
-	// Last entry must be direct_classic_sandboxed.
+	// Last entry must be gateway_proxy.
 	lastMode := result.Modes[len(result.Modes)-1]
-	assert.Equal(t, "direct_classic_sandboxed", lastMode.Name, "last entry must be direct_classic_sandboxed")
+	assert.Equal(t, "gateway_proxy", lastMode.Name, "last entry must be gateway_proxy")
 
 	// Every entry must have the Available field.
 	for _, m := range result.Modes {

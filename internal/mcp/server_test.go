@@ -116,28 +116,3 @@ func TestRateLimiterAllowsOncePerWindow(t *testing.T) {
 	// Immediate second call should be denied.
 	assert.False(t, rl.Allow(key), "second call within window should be denied")
 }
-
-// TestCommandMatchesAllowlist verifies allowlist pre-flight logic.
-func TestCommandMatchesAllowlist(t *testing.T) {
-	tests := []struct {
-		name     string
-		cmdLine  string
-		prefixes []string
-		want     bool
-	}{
-		{"empty allowlist denies all", "node script.js", []string{}, false},
-		{"nil allowlist denies all", "node script.js", nil, false},
-		{"matching prefix allowed", "node script.js", []string{"node "}, true},
-		{"tsx allowed", "tsx scripts/summarise.ts", []string{"node ", "tsx "}, true},
-		{"python3 rejected with node-only list", "python3 -c 'import os'", []string{"node "}, false},
-		{"shell injection rejected", "bash -c env", []string{"node ", "tsx "}, false},
-		{"env -0 rejected", "env -0", []string{"node ", "tsx "}, false},
-	}
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			got := commandMatchesAllowlist(tc.cmdLine, tc.prefixes)
-			assert.Equal(t, tc.want, got, "commandMatchesAllowlist(%q, %v)", tc.cmdLine, tc.prefixes)
-		})
-	}
-}

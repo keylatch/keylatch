@@ -1,11 +1,13 @@
+//go:build experimental
+
 package gateway_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/ci"
 	"github.com/keylatch/keylatch/internal/gateway"
-	"github.com/keylatch/keylatch/internal/team/ci"
 )
 
 func TestBuildTeamClaims_ValueFree(t *testing.T) {
@@ -43,16 +45,16 @@ func TestBuildTeamClaims_WithApprovalRoot(t *testing.T) {
 
 func TestBuildCIClaims_ValueFree(t *testing.T) {
 	identity := ci.Identity{
-		Provider: ci.ProviderGitHubActions,
-		Subject:  "repo:myorg/myrepo:ref:refs/heads/main",
-		Repo:     "myorg/myrepo",
-		Branch:   "main",
-		Workflow: "ci.yml",
+		Provider:   ci.GitHubActions,
+		Subject:    "repo:myorg/myrepo:ref:refs/heads/main",
+		Repository: "myorg/myrepo",
+		Ref:        "refs/heads/main",
+		Workflow:   "ci.yml",
 	}
 
 	claims := gateway.BuildCIClaims("team-test", identity)
 
-	if claims.CIProvider != string(ci.ProviderGitHubActions) {
+	if claims.CIProvider != ci.GitHubActions {
 		t.Errorf("CIProvider = %q, want github-actions", claims.CIProvider)
 	}
 	// Repo must be HMACd.

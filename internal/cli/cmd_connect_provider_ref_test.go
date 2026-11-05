@@ -245,3 +245,39 @@ func (f *fakeRunner) RunEnv(_ context.Context, _ string, _ []string, _ []byte, _
 
 // Compile-time check: fakeRunner satisfies store.CommandRunner.
 var _ store.CommandRunner = (*fakeRunner)(nil)
+
+func TestResolveProviderRefs_BW_StoresCanonicalIDReference(t *testing.T) {
+	orig := bwCanonicalizeRef
+	t.Cleanup(func() { bwCanonicalizeRef = orig })
+	bwCanonicalizeRef = func(_ context.Context, ref store.BWRef) (store.BWRef, error) {
+		return store.BWRef{Scope: store.BWPersonal, Collection: store.BWAny, Item: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Field: ref.Field}, nil
+	}
+	fields := map[string][]byte{}
+	if err := resolveProviderRefs(context.Background(), []string{"api_key=bw://personal/-/My%20Item/password"}, fields); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(fields["api_key"]), "bw://personal/-/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/password"; got != want {
+		t.Errorf("stored %q, want %q", got, want)
+	}
+}
+
+func TestResolveProviderRefs_BW_CanonicalizeErrorBlocksStore(t *testing.T) {
+	orig := bwCanonicalizeRef
+	t.Cleanup(func() { bwCanonicalizeRef = orig })
+	bwCanonicalizeRef = func(context.Context, store.BWRef) (store.BWRef, error) {
+		return store.BWRef{}, errors.New("2 items are named x")
+	}
+	fields := map[string][]byte{}
+	if err := resolveProviderRefs(context.Background(), []string{"api_key=bw://personal/-/x/password"}, fields); err == nil {
+		t.Fatal("expected error")
+	}
+	if len(fields) != 0 {
+		t.Error("nothing may be stored on error")
+	}
+}
+
+func TestResolveProviderRefs_BW_InvalidShape(t *testing.T) {
+	if err := resolveProviderRefs(context.Background(), []string{"api_key=bw://personal/item"}, map[string][]byte{}); err == nil {
+		t.Fatal("expected usage error")
+	}
+}

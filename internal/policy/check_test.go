@@ -255,7 +255,7 @@ func TestCheck_RuleNoMatch_Runtime(t *testing.T) {
 		Actor:      "anyone",
 		Connection: "a:b",
 		Capability: "inject",
-		Runtime:    "direct_brokered",
+		Runtime:    "minted",
 	})
 	if d.Allow {
 		t.Error("expected deny: runtime does not match")

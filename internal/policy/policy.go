@@ -63,9 +63,11 @@ func isReadClassCap(cap string) bool {
 
 // Policy holds the top-level policy document.
 type Policy struct {
-	SchemaVersion    int       `json:"schema_version"`
-	Mode             Mode      `json:"mode"`
-	Rules            []Rule    `json:"rules"`
+	SchemaVersion int    `json:"schema_version"`
+	Mode          Mode   `json:"mode"`
+	Rules         []Rule `json:"rules"`
+	// DefaultDeny denies a request no rule allows. A file that omits it
+	// denies; only an explicit false allows.
 	DefaultDeny      bool      `json:"default_deny"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
@@ -182,6 +184,14 @@ func Load(path string) (Policy, error) {
 	var p Policy
 	if err := json.Unmarshal(data, &p); err != nil {
 		return Policy{}, fmt.Errorf("policy: parse %q: %w", path, err)
+	}
+	// A file that does not say what happens to an unmatched request denies it:
+	// the zero value of a Go bool must not turn omission into allow.
+	var probe struct {
+		DefaultDeny *bool `json:"default_deny"`
+	}
+	if err := json.Unmarshal(data, &probe); err == nil && probe.DefaultDeny == nil {
+		p.DefaultDeny = true
 	}
 	// Validate runtime mode on every rule that specifies one.
 	// Also reject rate_limit fields: the RateSpec is parsed but never enforced.
@@ -385,11 +395,6 @@ func anyMatch(patterns []string, value string, fn func(string, string) bool) boo
 // (zero, false) to continue.
 func checkLLMSessionRuntime(rule Rule, req Request) (Decision, bool) {
 	if rule.LLMSessions == nil {
-		// No LLM session overrides configured.
-		// direct_classic_sandboxed without explicit key → approval_required.
-		if req.Runtime == "direct_classic_sandboxed" {
-			return Decision{Allow: true, ApprovalRequired: true}, true
-		}
 		return Decision{}, false
 	}
 	switch rule.LLMSessions[req.Runtime] {
@@ -405,9 +410,6 @@ func checkLLMSessionRuntime(rule Rule, req Request) (Decision, bool) {
 		return Decision{}, false
 	default:
 		// Key absent.
-		if req.Runtime == "direct_classic_sandboxed" {
-			return Decision{Allow: true, ApprovalRequired: true}, true
-		}
 		return Decision{}, false
 	}
 }

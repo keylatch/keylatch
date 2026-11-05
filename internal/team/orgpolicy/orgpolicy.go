@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package orgpolicy implements org policy bundle management.
 //
 // Security invariants:

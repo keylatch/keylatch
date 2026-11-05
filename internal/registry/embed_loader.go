@@ -42,13 +42,13 @@ func getCompiledSchema() (*jsonschema.Schema, error) {
 		compiler := jsonschema.NewCompiler()
 		compiler.Draft = jsonschema.Draft7
 		if err := compiler.AddResource(
-			"https://keylatch.io/schemas/provider-template/v1",
+			"https://keylatch.dev/schemas/provider-template/v1",
 			bytes.NewReader(embeddedSchemaBytes),
 		); err != nil {
 			schemaCompileErr = fmt.Errorf("registry: compile schema: %w", err)
 			return
 		}
-		s, err := compiler.Compile("https://keylatch.io/schemas/provider-template/v1")
+		s, err := compiler.Compile("https://keylatch.dev/schemas/provider-template/v1")
 		if err != nil {
 			schemaCompileErr = fmt.Errorf("registry: compile schema: %w", err)
 			return
@@ -99,7 +99,15 @@ func validateTemplateBytes(yamlBytes []byte) error {
 	if err := schema.Validate(jsonVal); err != nil {
 		return fmt.Errorf("schema validation: %w", err)
 	}
-	return nil
+
+	tmpl, err := parseTemplate(yamlBytes)
+	if err != nil {
+		return err
+	}
+	if err := ValidateBindings(tmpl); err != nil {
+		return err
+	}
+	return ValidateDenyRoutes(tmpl)
 }
 
 // normalizeYAML converts yaml.v3 decoded values (which can have map[string]any)

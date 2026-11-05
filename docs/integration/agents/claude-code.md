@@ -51,10 +51,12 @@ After installation, the settings file contains:
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.keylatch/hooks/block-keylatch-exfiltration.sh"
+            "command": "\"/absolute/path/to/keylatch\" guard hook --harness claude-code",
+            "timeout": 10
           }
         ]
       }
@@ -63,7 +65,7 @@ After installation, the settings file contains:
 }
 ```
 
-The hook script exits non-zero when it detects credential exfiltration patterns (e.g. `keylatch get`, `security find-generic-password`, `op read`, `cat .env`), causing Claude Code to block the tool call before it executes.
+The hook parses each shell command and exits 2 when it finds credential exfiltration (e.g. `keylatch get`, `security find-generic-password`, `op read`, `cat .env`, an environment dump), causing Claude Code to block the tool call before it executes. See [docs/integrations/claude-code.md](../../integrations/claude-code.md) for what it denies and for `--config-dir`, `--upgrade` and `--dry-run`.
 
 ## `CREDENTIALS_LLM_SESSION` signal
 

@@ -35,9 +35,9 @@ func TestEmbedTemplatesMatchOldRegistrations(t *testing.T) {
 	cases := []expected{
 		{"openrouter", "OpenRouter", "ai", registry.AuthAPIKey, registry.RuntimeGatewaySDK},
 		{"sentry", "Sentry", "observability", registry.AuthAPIKey, registry.RuntimeGatewayTyped},
-		{"dropbox", "Dropbox", "storage", registry.AuthOAuthBrowser, registry.RuntimeDirectBrokered},
+		{"dropbox", "Dropbox", "storage", registry.AuthOAuthBrowser, registry.RuntimeGatewayProxy},
 		{"cloudflare", "Cloudflare", "cdn", registry.AuthAPIKey, registry.RuntimeGatewayTyped},
-		{"google_workspace", "Google Workspace", "workspace", registry.AuthOAuthBrowser, registry.RuntimeDirectBrokered},
+		{"google_workspace", "Google Workspace", "workspace", registry.AuthOAuthBrowser, registry.RuntimeGatewayProxy},
 	}
 
 	for _, tc := range cases {

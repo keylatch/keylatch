@@ -1,3 +1,5 @@
+//go:build experimental
+
 package pkcs11
 
 import (

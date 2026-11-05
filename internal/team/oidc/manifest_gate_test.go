@@ -1,3 +1,5 @@
+//go:build experimental
+
 package oidc_test
 
 import (

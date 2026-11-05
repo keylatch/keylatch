@@ -1,7 +1,6 @@
 package cli_test
 
-// runtime_doctor_test.go verifies the `runtime doctor` output includes
-// direct_classic (available) and direct_classic_sandboxed (not available).
+// runtime_doctor_test.go verifies the `runtime doctor` output.
 
 import (
 	"bytes"
@@ -66,17 +65,11 @@ func TestRuntimeDoctor_RequiresProviderArg(t *testing.T) {
 	assert.Error(t, err, "runtime doctor without argument must return an error")
 }
 
-// TestRuntimeDoctorReport_SandboxedReported validates that
-// buildRuntimeDoctorReport (via the CLI) always appends the
-// direct_classic_sandboxed entry and that it contains a meaningful reason string.
-//
-// direct_classic_sandboxed is now implemented.
-// On Linux it is available when bwrap is present; on macOS it is available
-// via sandbox-exec; on Windows it is never available.
-func TestRuntimeDoctorReport_SandboxedReported(t *testing.T) {
+// TestRuntimeDoctorReport_NoRemovedRuntime validates that the report never
+// lists the removed classic sandboxed runtime.
+func TestRuntimeDoctorReport_NoRemovedRuntime(t *testing.T) {
 	t.Parallel()
 
-	// Run with the openrouter provider which is likely in the embedded registry.
 	root := cli.NewRootCommand()
 	var outBuf bytes.Buffer
 	root.SetOut(&outBuf)
@@ -85,29 +78,7 @@ func TestRuntimeDoctorReport_SandboxedReported(t *testing.T) {
 	_ = root.Execute()
 
 	out := outBuf.String()
-	if !strings.Contains(out, "direct_classic_sandboxed") {
-		// Provider may not be in registry in this test environment — skip the
-		// detailed assertion but verify the command ran.
-		require.NotEmpty(t, out, "runtime doctor must produce output")
-		return
-	}
-
-	// Provider is present: direct_classic must appear in the output.
-	assert.Contains(t, out, "direct_classic",
-		"runtime doctor output must include direct_classic mode")
-
-	// direct_classic_sandboxed entry must be present and have a non-empty reason.
-	idx := strings.Index(out, "direct_classic_sandboxed")
-	require.True(t, idx >= 0, "direct_classic_sandboxed must appear in runtime doctor output")
-
-	// Grab the JSON window for this entry.
-	window := out[idx:]
-	nextMode := strings.Index(window[1:], "\"mode\"")
-	if nextMode > 0 {
-		window = window[:nextMode+1]
-	}
-
-	// The reason field must be non-empty (either "available — ..." or "not available — ...").
-	assert.True(t, strings.Contains(window, "available"),
-		"direct_classic_sandboxed reason must contain 'available'")
+	require.NotEmpty(t, out, "runtime doctor must produce output")
+	assert.False(t, strings.Contains(out, "direct_classic"),
+		"runtime doctor output must not include removed runtimes")
 }

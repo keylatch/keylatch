@@ -9,6 +9,8 @@ var canonicalBackends = map[string]string{
 	"keychain":       "keychain",
 	"op":             "op",
 	"bw":             "bw",
+	"bws":            "bws",
+	"sops":           "sops",
 	"proton-pass":    "proton-pass",
 	"protonpass":     "proton-pass",
 	"keeper":         "keeper",

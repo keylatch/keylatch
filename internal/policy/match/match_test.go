@@ -107,6 +107,27 @@ func TestMatchCommand(t *testing.T) {
 	}
 }
 
+// A pattern matches exactly unless it ends in "*": there is no implicit
+// trailing wildcard that lets extra arguments through.
+func TestMatcherNoImplicitExtension(t *testing.T) {
+	cases := []struct {
+		pattern string
+		argv    []string
+		want    bool
+	}{
+		{"pnpm test", []string{"pnpm", "test"}, true},
+		{"pnpm test", []string{"pnpm", "test", "--", "rm", "-rf", "/"}, false},
+		{"pnpm test", []string{"pnpm", "testing"}, false},
+		{"pnpm test *", []string{"pnpm", "test", "--watch"}, true},
+		{"pnpm test*", []string{"pnpm", "test:unit"}, true},
+	}
+	for _, tc := range cases {
+		if got := match.MatchCommand(tc.pattern, tc.argv); got != tc.want {
+			t.Errorf("MatchCommand(%q, %v) = %v, want %v", tc.pattern, tc.argv, got, tc.want)
+		}
+	}
+}
+
 func TestMatchCWD(t *testing.T) {
 	cases := []struct {
 		pattern string

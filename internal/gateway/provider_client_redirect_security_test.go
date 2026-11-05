@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package gateway
 
 import (
@@ -13,9 +11,8 @@ type stubRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// KNOWN-FAILING: newProviderHTTPClient has no CheckRedirect, so a
-// cross-host HTTPS-to-HTTP redirect forwards custom auth headers to the
-// redirect target.
+// The production gateway HTTP client never follows a redirect, so a custom
+// auth header is not forwarded to a different host.
 func TestSecurityRegression_GatewayRedirect(t *testing.T) {
 	c := newProviderHTTPClient()
 	escaped := false

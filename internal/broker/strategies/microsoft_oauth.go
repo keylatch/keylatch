@@ -17,6 +17,7 @@ type MicrosoftOAuthStrategy struct {
 func NewMicrosoftOAuthStrategy(
 	tenantID, clientID, clientSecret string,
 	getRefreshToken func(actor, namespace string) ([]byte, error),
+	opts ...OAuthOption,
 ) *MicrosoftOAuthStrategy {
 	endpoint := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
 	return &MicrosoftOAuthStrategy{
@@ -26,6 +27,7 @@ func NewMicrosoftOAuthStrategy(
 			clientID,
 			clientSecret,
 			getRefreshToken,
+			opts...,
 		),
 	}
 }

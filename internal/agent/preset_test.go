@@ -87,13 +87,13 @@ func TestClaudeCodeSetupIsIdempotent(t *testing.T) {
 	store := newMockStore()
 
 	opts := SetupOptions{Mode: agentsnippet.ProfileModeMCP}
-	preset := &ClaudeCodePreset{}
+	preset := &OpenClawPreset{}
 
 	// First run.
 	_, err := preset.Setup(ctx, opts, store)
 	require.NoError(t, err)
 
-	settingsPath := filepath.Join(tmpHome, ".claude", "settings.json")
+	settingsPath := filepath.Join(tmpHome, ".openclaw", "config.json")
 	data1, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
 
@@ -110,28 +110,25 @@ func TestClaudeCodeSetupIsIdempotent(t *testing.T) {
 	_ = tmpHome // used via settingsPath
 }
 
-// TestDiffShowsExactChanges verifies that Diff returns modifications when the
-// existing config differs from the generated profile.
-func TestDiffShowsExactChanges(t *testing.T) {
+// TestDiffReportsMissingFiles verifies that Diff lists the files Setup would
+// create and none once they exist.
+func TestDiffReportsMissingFiles(t *testing.T) {
 	tmpHome := withTempHome(t)
 	ctx := context.Background()
 	store := newMockStore()
+	preset := &OpenClawPreset{}
+	opts := SetupOptions{Mode: agentsnippet.ProfileModeMCP}
 
-	// Write a different config first.
-	settingsDir := filepath.Join(tmpHome, ".claude")
-	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(settingsDir, "settings.json"),
-		[]byte(`{"mcpServers":{}}`),
-		0o600,
-	))
-
-	preset := &ClaudeCodePreset{}
-	diff, err := preset.Diff(ctx, SetupOptions{Mode: agentsnippet.ProfileModeMCP}, store)
+	diff, err := preset.Diff(ctx, opts, store)
 	require.NoError(t, err)
+	assert.NotEmpty(t, diff.Added, "a fresh home needs the config file")
 
-	// Should detect a modification.
-	assert.NotEmpty(t, diff.Modified, "diff must detect modified files")
+	settingsDir := filepath.Join(tmpHome, ".openclaw")
+	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(settingsDir, "config.json"), []byte(`{"mcpServers":{}}`), 0o600))
+	diff, err = preset.Diff(ctx, opts, store)
+	require.NoError(t, err)
+	assert.Empty(t, diff.Added)
 }
 
 // TestDryRunProducesNoWrites verifies DryRun=true writes no files.
@@ -144,7 +141,7 @@ func TestDryRunProducesNoWrites(t *testing.T) {
 		Mode:   agentsnippet.ProfileModeMCP,
 		DryRun: true,
 	}
-	preset := &ClaudeCodePreset{}
+	preset := &OpenClawPreset{}
 	receipt, err := preset.Setup(ctx, opts, store)
 	require.NoError(t, err)
 
@@ -152,7 +149,7 @@ func TestDryRunProducesNoWrites(t *testing.T) {
 	assert.Empty(t, receipt.FilesWritten, "DryRun must produce no written files")
 
 	// Verify the file does not exist in the temp home.
-	settingsPath := filepath.Join(tmpHome, ".claude", "settings.json")
+	settingsPath := filepath.Join(tmpHome, ".openclaw", "config.json")
 	_, err = os.Stat(settingsPath)
 	assert.True(t, os.IsNotExist(err), "settings.json must not exist after dry-run")
 }
@@ -165,14 +162,14 @@ func TestUninstallRestoresPriorState(t *testing.T) {
 	store := newMockStore()
 
 	// First, set up with an existing mcpServers config.
-	settingsDir := filepath.Join(tmpHome, ".claude")
+	settingsDir := filepath.Join(tmpHome, ".openclaw")
 	require.NoError(t, os.MkdirAll(settingsDir, 0o700))
 	original := `{"mcpServers":{"other-server":{"command":"other"}},"theme":"dark"}`
-	settingsPath := filepath.Join(settingsDir, "settings.json")
+	settingsPath := filepath.Join(settingsDir, "config.json")
 	require.NoError(t, os.WriteFile(settingsPath, []byte(original), 0o600))
 
 	// Install keylatch.
-	preset := &ClaudeCodePreset{}
+	preset := &OpenClawPreset{}
 	_, err := preset.Setup(ctx, SetupOptions{Mode: agentsnippet.ProfileModeMCP}, store)
 	require.NoError(t, err)
 
@@ -199,7 +196,7 @@ func TestUninstallRestoresPriorState(t *testing.T) {
 func TestHealthCheckReturnsValidStatus(t *testing.T) {
 	withTempHome(t)
 
-	preset := &ClaudeCodePreset{}
+	preset := &OpenClawPreset{}
 	status := preset.HealthCheck(context.Background())
 	// Status must be a valid struct — not panicked.
 	assert.NotEmpty(t, status.Detail)
@@ -247,8 +244,7 @@ func TestWriteGuardErrSecretInContent(t *testing.T) {
 // TestGetRegisteredPresets verifies that all expected presets are registered.
 func TestGetRegisteredPresets(t *testing.T) {
 	expected := []string{
-		"claude-code", "codex", "cursor", "openhands",
-		"opencode", "openclaw", "nanoclaw", "hermes",
+		"openhands", "openclaw", "nanoclaw", "hermes",
 		"n8n", "dify", "custom",
 	}
 	for _, name := range expected {
@@ -271,8 +267,7 @@ func TestPresetSetupDryRunAllPresets(t *testing.T) {
 	store := newMockStore()
 
 	agentNames := []string{
-		"claude-code", "codex", "cursor", "openhands",
-		"opencode", "openclaw", "nanoclaw", "hermes",
+		"openhands", "openclaw", "nanoclaw", "hermes",
 		"n8n", "dify",
 	}
 
@@ -292,4 +287,28 @@ func TestPresetSetupDryRunAllPresets(t *testing.T) {
 	}
 	_ = connections.Connect // reference to avoid unused import
 	_ = tmpHome
+}
+
+func TestPresetSetupKeepsOtherKeysAndRejectsMalformedConfig(t *testing.T) {
+	home := withTempHome(t)
+	path := filepath.Join(home, ".openclaw", "config.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	preset := &OpenClawPreset{}
+	require.NoError(t, os.WriteFile(path, []byte(`{"account":{"id":"account-id"},"mcpServers":{"other":{"command":"other"}}}`), 0o600))
+	_, err := preset.Setup(context.Background(), SetupOptions{Mode: agentsnippet.ProfileModeMCP}, newMockStore())
+	require.NoError(t, err)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "account-id")
+	require.Contains(t, string(data), "keylatch")
+	diff, err := preset.Diff(context.Background(), SetupOptions{Mode: agentsnippet.ProfileModeMCP}, newMockStore())
+	require.NoError(t, err)
+	require.NotContains(t, diff.Content, "account-id")
+	malformed := []byte(`{"account":`)
+	require.NoError(t, os.WriteFile(path, malformed, 0o600))
+	_, err = preset.Setup(context.Background(), SetupOptions{Mode: agentsnippet.ProfileModeMCP}, newMockStore())
+	require.Error(t, err)
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, malformed, data)
 }

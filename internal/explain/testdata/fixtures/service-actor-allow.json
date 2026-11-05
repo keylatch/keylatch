@@ -1,0 +1,48 @@
+{
+  "description": "non-agent service actor with a rule",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {
+        "id": "r1",
+        "actor": "ci-runner",
+        "connections": [
+          "openai"
+        ],
+        "capabilities": [
+          "inject"
+        ]
+      }
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "openai",
+    "hosts": [
+      "api.openai.com"
+    ],
+    "runtimes": [
+      "gateway_typed",
+      "gateway_sdk"
+    ],
+    "typed_actions": true
+  },
+  "enabled_runtimes": [
+    "gateway_typed",
+    "gateway_sdk"
+  ],
+  "request": {
+    "actor": "ci-runner",
+    "llm_session": false,
+    "connection": "openai",
+    "argv": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": "/work/app",
+    "tier": ""
+  }
+}

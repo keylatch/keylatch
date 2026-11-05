@@ -84,6 +84,10 @@ var (
 	// ErrForbiddenBind is returned when the caller tries to bind to 0.0.0.0.
 	ErrForbiddenBind = errors.New("mcp: binding to 0.0.0.0 is forbidden")
 
+	// ErrSocketTransportUnsupported is returned for the socket transport on
+	// Windows, where connection peers cannot be verified; use stdio.
+	ErrSocketTransportUnsupported = errors.New("mcp: the socket transport is not available on Windows; use stdio")
+
 	// ErrTokenInStdioMode is returned when a SessionToken is provided for stdio.
 	ErrTokenInStdioMode = errors.New("mcp: session token must not be set in stdio mode")
 

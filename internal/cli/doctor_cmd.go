@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/contained"
 	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -37,16 +38,19 @@ type doctorJSONV1 struct {
 
 // doctorSummaryV1 holds aggregate counts.
 type doctorSummaryV1 struct {
-	OK   int `json:"ok"`
-	Warn int `json:"warn"`
-	Fail int `json:"fail"`
+	OK      int `json:"ok"`
+	Warn    int `json:"warn"`
+	Fail    int `json:"fail"`
+	Skipped int `json:"skipped"`
 }
 
 // buildDoctorJSONV1 converts a doctor.Report to the v1 JSON shape.
 func buildDoctorJSONV1(report doctor.Report, exitCode int) doctorJSONV1 {
 	var summary doctorSummaryV1
 	for _, s := range report.Checks {
-		if !s.OK {
+		if s.Skipped {
+			summary.Skipped++
+		} else if !s.OK {
 			summary.Fail++
 		} else if s.Warn {
 			summary.Warn++
@@ -113,6 +117,22 @@ Exit codes:
 			categoryStr, _ := c.Flags().GetString("category")
 			repair, _ := c.Flags().GetBool("repair")
 			yes, _ := c.Flags().GetBool("yes")
+
+			if agentsOnly, _ := c.Flags().GetBool("agents"); agentsOnly {
+				code, err := runDoctorAgents(c.OutOrStdout(), jsonOut)
+				if err != nil {
+					return err
+				}
+				os.Exit(code)
+			}
+
+			if sandboxOnly, _ := c.Flags().GetBool("sandbox"); sandboxOnly {
+				report := contained.Probe()
+				if err := writeSandboxReport(c.OutOrStdout(), report, jsonOut); err != nil {
+					return err
+				}
+				os.Exit(sandboxExitCode(report))
+			}
 
 			// --repair's per-check confirmation prompt
 			// is written to stdout, which --quiet discards — without --yes
@@ -195,6 +215,8 @@ Exit codes:
 	cmd.Flags().Bool("yes", false, "skip the interactive confirmation prompt for --repair (required when combined with --quiet --repair)")
 	cmd.Flags().Bool("quiet", false, "suppress table output; only exits with the appropriate code")
 	cmd.Flags().String("category", "", "comma-separated list of categories to run (e.g. environment,backends)")
+	cmd.Flags().Bool("agents", false, "report, for every supported agent harness, whether it is installed here and whether its Keylatch hook, MCP server and rules are in place")
+	cmd.Flags().Bool("sandbox", false, "report what this host lets the contained tier (D5) do: namespaces, Landlock, seccomp and cgroups")
 	// NOTE: --connection flag for gateway scoping is deferred.
 
 	return cmd
@@ -296,7 +318,9 @@ func printDoctorReport(c *cobra.Command, report doctor.Report) {
 // printStatusLine writes a single check line (and optional fix line) to w.
 func printStatusLine(w interface{ Write([]byte) (int, error) }, s doctor.Status) {
 	icon := "[ ok ]"
-	if !s.OK {
+	if s.Skipped {
+		icon = "[skip]"
+	} else if !s.OK {
 		icon = "[FAIL]"
 	} else if s.Warn {
 		icon = "[warn]"

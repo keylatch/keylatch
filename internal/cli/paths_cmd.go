@@ -38,7 +38,7 @@ type envEntry struct {
 // knownEnvVars is the ordered list of keylatch-relevant environment
 // variables; the agent session signals come from internal/harness.
 var knownEnvVars = append([]envEntry{
-	{"KEYLATCH_BACKEND", "sets storage backend (file|keychain|op|bw)"},
+	{"KEYLATCH_BACKEND", "storage backend when config.json sets none (see keylatch backend list)"},
 	{"KEYLATCH_CONFIG_DIR", "override default config directory (~/.keylatch)"},
 	{"KEYLATCH_VAULT_PATH", "overrides vault directory"},
 	{"KEYLATCH_AUDIT_PATH", "overrides audit log path"},

@@ -3,18 +3,23 @@
 //
 // Security invariants:
 //   - List zero-fills field values before returning.
-//   - Server URL must use https:// (no TLS bypass for self-hosted).
+//   - Server URL must use https:// (no TLS bypass for self-hosted), and when a
+//     server is configured `bw config server` must name the same server.
 //   - Fail-closed on binary unavailability (ErrUnavailable).
 //   - BW_SESSION passed via subprocess env, never via --session CLI arg.
 //   - Raw subprocess stderr never propagated; auth-failure hints only.
 //   - Single-flight collapse for concurrent Get calls.
+//   - With organization namespaces configured, a namespace that is not mapped
+//     to a collection fails before any `bw` call.
 package bw
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,18 +27,29 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/crypto/kek"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // compile-time interface check.
 var _ backend.Backend = (*BitwardenBackend)(nil)
 
+// ErrNamespaceUnmapped is returned when namespaces are mapped to organization
+// collections and the namespace of a path is not one of them.
+var ErrNamespaceUnmapped = errors.New("bw: namespace is not mapped to a collection")
+
+// ErrServerMismatch is returned when `bw config server` names a different
+// server than the one configured.
+var ErrServerMismatch = errors.New("bw: the bw CLI is configured for a different server")
+
+// defaultNamespace is the namespace of a path that names none.
+const defaultNamespace = "default"
+
 // Options configures a BitwardenBackend.
 type Options struct {
 	// Server is the Vaultwarden self-hosted URL (https:// required).
-	// Empty means Bitwarden Cloud.
+	// Empty means Bitwarden Cloud. When set, `bw config server` must equal it.
 	Server string
 
 	// Folder filters items by folder name when set.
@@ -41,6 +57,16 @@ type Options struct {
 
 	// Collection filters items by collection name when set.
 	Collection string
+
+	// OrganizationID is the organization whose collections hold the items when
+	// Namespaces is used.
+	OrganizationID string
+
+	// Namespaces maps a namespace to the name of an organization collection
+	// (for example "Work/infra"). Items are created in, and looked up from, the
+	// mapped collection. A namespace not in the map is refused. It needs
+	// OrganizationID and excludes Folder and Collection.
+	Namespaces map[string]string
 
 	// Bin is the explicit path to the `bw` binary. If empty, PATH is searched.
 	Bin string
@@ -53,6 +79,10 @@ type Options struct {
 
 	// AutoSync enables `bw sync` before List and Get when true. Default false.
 	AutoSync bool
+
+	// KEKLoader opens the vault KEK that seals the cached session. Defaults to
+	// DefaultKEK(Env). It is called only when a cached session exists.
+	KEKLoader func() (kek.KEK, error)
 }
 
 // ErrInvalidServer is returned when Server does not start with https://.
@@ -85,15 +115,31 @@ type BitwardenBackend struct {
 
 	cache sync.Map
 	sf    singleflight.Group
+
+	// serverChecked is set once `bw config server` has matched Options.Server.
+	serverMu      sync.Mutex
+	serverChecked bool
+
+	// collections caches collection name -> ID per organization.
+	collMu      sync.Mutex
+	collections map[string]string
 }
 
 // Open validates options, resolves the `bw` binary, resolves a BW_SESSION
-// (ambient env first, then the session cache — see session_cache.go), and
-// returns an initialized BitwardenBackend.
+// (ambient env first, then the sealed session cache — see session_cache.go),
+// and returns an initialized BitwardenBackend.
 func Open(opts Options) (*BitwardenBackend, error) {
 	// Reject non-https server URLs.
 	if opts.Server != "" && !strings.HasPrefix(opts.Server, "https://") {
 		return nil, ErrInvalidServer{URL: opts.Server}
+	}
+	if len(opts.Namespaces) > 0 {
+		if opts.OrganizationID == "" {
+			return nil, fmt.Errorf("bw: namespaces need an organization_id")
+		}
+		if opts.Folder != "" || opts.Collection != "" {
+			return nil, fmt.Errorf("bw: namespaces replace folder and collection; set only one way to place items")
+		}
 	}
 
 	// Resolve binary.
@@ -118,7 +164,7 @@ func Open(opts Options) (*BitwardenBackend, error) {
 	session := opts.Env("BW_SESSION")
 	fromCache := false
 	if session == "" {
-		if cached, ok, _ := LoadSession(opts.Env); ok {
+		if cached, ok := cachedSession(opts); ok {
 			session = cached
 			fromCache = true
 		}
@@ -129,17 +175,37 @@ func Open(opts Options) (*BitwardenBackend, error) {
 		bin:              bin,
 		session:          session,
 		sessionFromCache: fromCache,
+		collections:      map[string]string{},
 	}, nil
 }
 
-// Unlock runs `bw unlock --raw`, piping masterPassword via stdin (never as
-// an argument or env var), and returns the raw session token on success. The
+// cachedSession returns the sealed session when one is cached and unexpired.
+// The KEK is opened only then.
+func cachedSession(opts Options) (string, bool) {
+	status, err := StatSession(opts.Env)
+	if err != nil || !status.Present || status.Expired {
+		return "", false
+	}
+	load := opts.KEKLoader
+	if load == nil {
+		load = func() (kek.KEK, error) { return DefaultKEK(opts.Env) }
+	}
+	k, err := load()
+	if err != nil {
+		return "", false
+	}
+	token, ok, _ := LoadSession(opts.Env, k)
+	return token, ok
+}
+
+// Unlock runs `bw unlock --raw`, piping masterPassword via stdin (never as an
+// argument or env var), and returns the raw session token on success. The
 // token is never logged; callers are responsible for persisting it (see
 // SaveSession) and for zeroing masterPassword/the returned token once done.
 //
 // This does not mutate b.session — a fresh BitwardenBackend (or the next
 // keylatch invocation) picks up the newly cached token through Open()'s
-// LoadSession seam.
+// session cache seam.
 func (b *BitwardenBackend) Unlock(ctx context.Context, masterPassword []byte) (string, error) {
 	stdout, stderr, exitCode, err := b.opts.Runner.Run(ctx, b.bin, []string{"unlock", "--raw"}, masterPassword)
 	if err != nil {
@@ -175,19 +241,62 @@ func (b *BitwardenBackend) Capabilities() []backend.Capability {
 	}
 }
 
+// mapped reports whether items are placed by namespace in organization
+// collections.
+func (b *BitwardenBackend) mapped() bool {
+	return b.opts.OrganizationID != "" || len(b.opts.Namespaces) > 0
+}
+
+// collectionFor returns the collection name a namespace is mapped to. It makes
+// no bw call, so an unmapped namespace is refused before anything runs.
+func (b *BitwardenBackend) collectionFor(namespace string) (string, error) {
+	name, ok := b.opts.Namespaces[namespace]
+	if !ok || name == "" {
+		return "", fmt.Errorf("%w: %q", ErrNamespaceUnmapped, namespace)
+	}
+	return name, nil
+}
+
+// checkServer makes sure the bw CLI talks to the configured server before it
+// is handed a secret. The result is remembered once it matches.
+func (b *BitwardenBackend) checkServer(ctx context.Context) error {
+	if b.opts.Server == "" {
+		return nil
+	}
+	b.serverMu.Lock()
+	defer b.serverMu.Unlock()
+	if b.serverChecked {
+		return nil
+	}
+	stdout, _, exitCode, err := b.opts.Runner.Run(ctx, b.bin, []string{"config", "server"}, nil)
+	if err != nil {
+		return fmt.Errorf("bw config server: runner error: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("bw config server: bw exited %d", exitCode)
+	}
+	want, got := strings.TrimRight(b.opts.Server, "/"), strings.TrimRight(strings.TrimSpace(string(stdout)), "/")
+	if !strings.EqualFold(want, got) {
+		return fmt.Errorf("%w: configured %q, bw is using %q; run `bw config server %s`", ErrServerMismatch, want, got, want)
+	}
+	b.serverChecked = true
+	return nil
+}
+
 // Get returns the plaintext bytes for a canonical path via `bw get item`.
 // BW_SESSION is injected as a subprocess env var. Uses single-flight
 // collapse and 60-second metadata cache.
-//
-// Checks runner.OK before returning plaintext.
 func (b *BitwardenBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
-	connection, field, err := parsePath(path)
+	namespace, connection, field, err := parsePath(path)
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("bw Get: %w", err)
+	}
+	collection, err := b.placement(namespace)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	if err := b.checkServer(ctx); err != nil {
+		return nil, backend.Meta{}, err
 	}
 
 	if b.opts.AutoSync {
@@ -196,7 +305,7 @@ func (b *BitwardenBackend) Get(ctx context.Context, path string) ([]byte, backen
 		}
 	}
 
-	item, err := b.fetchItem(ctx, connection)
+	item, err := b.fetchItem(ctx, collection, connection)
 	if err != nil {
 		return nil, backend.Meta{}, err
 	}
@@ -222,19 +331,38 @@ func (b *BitwardenBackend) Get(ctx context.Context, path string) ([]byte, backen
 		backend.ErrNotFound, field, connection)
 }
 
+// placement returns the collection name for namespace, or "" when items are
+// not placed by namespace.
+func (b *BitwardenBackend) placement(namespace string) (string, error) {
+	if !b.mapped() {
+		return "", nil
+	}
+	return b.collectionFor(namespace)
+}
+
 // Set writes a value via `bw create item` or `bw edit item <id>`.
 func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, meta backend.Meta) error {
-	connection, field, err := parsePath(path)
+	namespace, connection, field, err := parsePath(path)
 	if err != nil {
 		return fmt.Errorf("bw Set: %w", err)
 	}
+	collection, err := b.placement(namespace)
+	if err != nil {
+		return err
+	}
+	if err := b.checkServer(ctx); err != nil {
+		return err
+	}
 
 	// Invalidate cache with zeroing.
-	b.evictCacheEntry(connection)
+	b.evictCacheEntry(collection, connection)
 
 	// Determine if item exists.
-	existing, fetchErr := b.fetchItemDirect(ctx, connection)
+	existing, fetchErr := b.fetchScoped(ctx, collection, connection)
 	exists := fetchErr == nil
+	if fetchErr != nil && collection != "" && !isErrNotFound(fetchErr) {
+		return fetchErr
+	}
 
 	fieldType := 1 // 1=hidden (concealed)
 	if !isSecretField(field) {
@@ -286,17 +414,26 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 			},
 		}
 
-		// Set folder if configured.
-		if b.opts.Folder != "" {
-			folderID, err := b.resolveFolderID(ctx, b.opts.Folder)
-			if err == nil && folderID != "" {
-				newItem.FolderID = &folderID
+		if collection != "" {
+			cid, err := b.collectionID(ctx, collection)
+			if err != nil {
+				return err
 			}
-		}
+			newItem.OrganizationID = b.opts.OrganizationID
+			newItem.CollectionIDs = []string{cid}
+		} else {
+			// Set folder if configured.
+			if b.opts.Folder != "" {
+				folderID, err := b.resolveFolderID(ctx, b.opts.Folder)
+				if err == nil && folderID != "" {
+					newItem.FolderID = &folderID
+				}
+			}
 
-		// Set collection if configured.
-		if b.opts.Collection != "" {
-			newItem.CollectionIDs = []string{b.opts.Collection}
+			// Set collection if configured.
+			if b.opts.Collection != "" {
+				newItem.CollectionIDs = []string{b.opts.Collection}
+			}
 		}
 
 		body, err := json.Marshal(newItem)
@@ -318,21 +455,28 @@ func (b *BitwardenBackend) Set(ctx context.Context, path string, value []byte, m
 	}
 
 	// Invalidate cache with zeroing after write.
-	b.evictCacheEntry(connection)
+	b.evictCacheEntry(collection, connection)
 	return nil
 }
 
 // Delete removes a Bitwarden item via `bw delete item <id>`.
 func (b *BitwardenBackend) Delete(ctx context.Context, path string) error {
-	connection, _, err := parsePath(path)
+	namespace, connection, _, err := parsePath(path)
 	if err != nil {
 		return fmt.Errorf("bw Delete: %w", err)
 	}
+	collection, err := b.placement(namespace)
+	if err != nil {
+		return err
+	}
+	if err := b.checkServer(ctx); err != nil {
+		return err
+	}
 
 	// Invalidate cache with zeroing.
-	b.evictCacheEntry(connection)
+	b.evictCacheEntry(collection, connection)
 
-	item, err := b.fetchItemDirect(ctx, connection)
+	item, err := b.fetchScoped(ctx, collection, connection)
 	if err != nil {
 		if isErrNotFound(err) {
 			return fmt.Errorf("%w: %s", backend.ErrNotFound, connection)
@@ -356,10 +500,16 @@ func (b *BitwardenBackend) Delete(ctx context.Context, path string) error {
 
 // List returns metadata-only entries with zero-filled field values.
 func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.Entry, error) {
+	if err := b.checkServer(ctx); err != nil {
+		return nil, err
+	}
 	if b.opts.AutoSync {
 		if err := b.sync(ctx); err != nil {
 			return nil, err
 		}
+	}
+	if b.mapped() {
+		return b.listMapped(ctx, prefix)
 	}
 
 	stdout, stderr, exitCode, err := b.runWithSession(ctx,
@@ -386,10 +536,16 @@ func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.E
 		return nil, fmt.Errorf("bw List: decode response: %w", err)
 	}
 
+	folderID := ""
+	if b.opts.Folder != "" {
+		// A folder that does not exist holds no items.
+		folderID, _ = b.resolveFolderID(ctx, b.opts.Folder)
+	}
+
 	var entries []backend.Entry
 	for _, item := range items {
-		// Apply folder filter.
-		if b.opts.Folder != "" && (item.FolderID == nil || *item.FolderID == "") {
+		// Apply folder filter: only the configured folder.
+		if b.opts.Folder != "" && (folderID == "" || item.FolderID == nil || *item.FolderID != folderID) {
 			continue
 		}
 		// Apply collection filter.
@@ -405,26 +561,67 @@ func (b *BitwardenBackend) List(ctx context.Context, prefix string) ([]backend.E
 				continue
 			}
 		}
+		entries = appendEntries(entries, defaultNamespace, item, prefix)
+	}
+	return entries, nil
+}
 
-		for _, f := range item.Fields {
-			// Zero-fill field values unconditionally on list.
-			path := "default/" + item.Name + "/" + f.Name
-			if prefix != "" && !strings.HasPrefix(path, prefix) {
-				continue
+// listMapped lists the items of every mapped collection.
+func (b *BitwardenBackend) listMapped(ctx context.Context, prefix string) ([]backend.Entry, error) {
+	namespaces := make([]string, 0, len(b.opts.Namespaces))
+	for ns := range b.opts.Namespaces {
+		namespaces = append(namespaces, ns)
+	}
+	sort.Strings(namespaces)
+
+	var entries []backend.Entry
+	for _, ns := range namespaces {
+		cid, err := b.collectionID(ctx, b.opts.Namespaces[ns])
+		if err != nil {
+			return nil, err
+		}
+		var items []bwItem
+		args := []string{"list", "items", "--organizationid=" + b.opts.OrganizationID, "--collectionid=" + cid}
+		if err := b.runJSONNoSync(ctx, args, &items); err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item.OrganizationID == b.opts.OrganizationID && containsString(item.CollectionIDs, cid) {
+				entries = appendEntries(entries, ns, item, prefix)
 			}
-			entries = append(entries, backend.Entry{
-				Meta: backend.Meta{
-					Path:      path,
-					Backend:   "bw",
-					Accessor:  backend.ID(item.ID),
-					UpdatedAt: item.updatedTime(),
-					Version:   1,
-				},
-				Exists: true,
-			})
 		}
 	}
 	return entries, nil
+}
+
+func appendEntries(entries []backend.Entry, namespace string, item bwItem, prefix string) []backend.Entry {
+	for _, f := range item.Fields {
+		// Field values are never returned from a list.
+		path := namespace + "/" + item.Name + "/" + f.Name
+		if prefix != "" && !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		entries = append(entries, backend.Entry{
+			Meta: backend.Meta{
+				Path:      path,
+				Backend:   "bw",
+				Accessor:  backend.ID(item.ID),
+				UpdatedAt: item.updatedTime(),
+				Version:   1,
+			},
+			Exists: true,
+		})
+	}
+	return entries
+}
+
+func containsString(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }
 
 // Close is a no-op for the bw backend.
@@ -432,12 +629,16 @@ func (b *BitwardenBackend) Close() error { return nil }
 
 // --- internal helpers ---
 
+// cacheKey identifies an item by where it lives and its name.
+func cacheKey(collection, connection string) string { return collection + "\x00" + connection }
+
 // fetchItem returns a bwItem using cache + single-flight collapse.
-func (b *BitwardenBackend) fetchItem(ctx context.Context, connection string) (bwItem, error) {
+func (b *BitwardenBackend) fetchItem(ctx context.Context, collection, connection string) (bwItem, error) {
 	const ttl = 60 * time.Second
+	key := cacheKey(collection, connection)
 
 	// Check cache.
-	if v, ok := b.cache.Load(connection); ok {
+	if v, ok := b.cache.Load(key); ok {
 		entry := v.(cacheEntry)
 		if time.Now().Before(entry.expiresAt) {
 			return entry.item, nil
@@ -450,19 +651,19 @@ func (b *BitwardenBackend) fetchItem(ctx context.Context, connection string) (bw
 		if entry.item.Login != nil {
 			entry.item.Login.zero()
 		}
-		b.cache.Delete(connection)
+		b.cache.Delete(key)
 	}
 
 	type result struct {
 		item bwItem
 		err  error
 	}
-	ch := b.sf.DoChan(connection, func() (interface{}, error) {
-		item, err := b.fetchItemDirect(ctx, connection)
+	ch := b.sf.DoChan(key, func() (interface{}, error) {
+		item, err := b.fetchScoped(ctx, collection, connection)
 		if err != nil {
 			return result{err: err}, nil
 		}
-		b.cache.Store(connection, cacheEntry{
+		b.cache.Store(key, cacheEntry{
 			item:      item,
 			expiresAt: time.Now().Add(ttl),
 		})
@@ -479,6 +680,75 @@ func (b *BitwardenBackend) fetchItem(ctx context.Context, connection string) (bw
 		r := res.Val.(result)
 		return r.item, r.err
 	}
+}
+
+// fetchScoped finds the item connection where the backend places it: in the
+// named organization collection, or (without namespaces) by name, restricted to
+// the configured folder.
+func (b *BitwardenBackend) fetchScoped(ctx context.Context, collection, connection string) (bwItem, error) {
+	if collection == "" {
+		item, err := b.fetchItemDirect(ctx, connection)
+		if err != nil {
+			return bwItem{}, err
+		}
+		if b.opts.Folder != "" {
+			folderID, ferr := b.resolveFolderID(ctx, b.opts.Folder)
+			if ferr != nil || item.FolderID == nil || *item.FolderID != folderID {
+				zeroItem(&item)
+				return bwItem{}, fmt.Errorf("%w: %s is not in folder %q", backend.ErrNotFound, connection, b.opts.Folder)
+			}
+		}
+		return item, nil
+	}
+
+	cid, err := b.collectionID(ctx, collection)
+	if err != nil {
+		return bwItem{}, err
+	}
+	var items []bwItem
+	args := []string{"list", "items", "--organizationid=" + b.opts.OrganizationID, "--collectionid=" + cid, "--search=" + connection}
+	if err := b.runJSONNoSync(ctx, args, &items); err != nil {
+		return bwItem{}, err
+	}
+	var match []bwItem
+	for _, it := range items {
+		if it.Name == connection && it.OrganizationID == b.opts.OrganizationID && containsString(it.CollectionIDs, cid) {
+			match = append(match, it)
+		} else {
+			zeroItem(&it)
+		}
+	}
+	switch len(match) {
+	case 0:
+		return bwItem{}, fmt.Errorf("%w: %s", backend.ErrNotFound, connection)
+	case 1:
+		return match[0], nil
+	}
+	for i := range match {
+		zeroItem(&match[i])
+	}
+	return bwItem{}, fmt.Errorf("bw: %d items named %q are in collection %q", len(match), connection, collection)
+}
+
+// collectionID resolves an organization collection name (or ID) to its ID, once
+// per backend.
+func (b *BitwardenBackend) collectionID(ctx context.Context, name string) (string, error) {
+	b.collMu.Lock()
+	defer b.collMu.Unlock()
+	if id, ok := b.collections[name]; ok {
+		return id, nil
+	}
+	var cols []bwNamed
+	args := []string{"list", "collections", "--organizationid=" + b.opts.OrganizationID}
+	if err := b.runJSONNoSync(ctx, args, &cols); err != nil {
+		return "", err
+	}
+	id, err := pickNamed(cols, name, "collection")
+	if err != nil {
+		return "", err
+	}
+	b.collections[name] = id
+	return id, nil
 }
 
 // fetchItemDirect invokes `bw get item` without cache.
@@ -592,8 +862,9 @@ func (b *BitwardenBackend) resolveFolderID(ctx context.Context, name string) (st
 // evictCacheEntry removes the cache entry for connection, zeroing any field
 // values and login credentials before deletion to prevent plaintext lingering
 // in memory. Called on TTL expiry, explicit invalidation (Set/Delete).
-func (b *BitwardenBackend) evictCacheEntry(connection string) {
-	if v, ok := b.cache.Load(connection); ok {
+func (b *BitwardenBackend) evictCacheEntry(collection, connection string) {
+	key := cacheKey(collection, connection)
+	if v, ok := b.cache.Load(key); ok {
 		entry := v.(cacheEntry)
 		for i := range entry.item.Fields {
 			entry.item.Fields[i].zero()
@@ -602,23 +873,20 @@ func (b *BitwardenBackend) evictCacheEntry(connection string) {
 			entry.item.Login.zero()
 		}
 	}
-	b.cache.Delete(connection)
+	b.cache.Delete(key)
 }
 
-// parsePath splits a canonical path into (connection, field).
-func parsePath(canonical string) (connection, field string, err error) {
+// parsePath splits a canonical path into (namespace, connection, field). A
+// path without a namespace is in the default namespace.
+func parsePath(canonical string) (namespace, connection, field string, err error) {
 	parts := strings.Split(canonical, "/")
 	if len(parts) >= 3 {
-		connection = parts[1]
-		field = strings.Join(parts[2:], "/")
-		return
+		return parts[0], parts[1], strings.Join(parts[2:], "/"), nil
 	}
 	if len(parts) == 2 {
-		connection = parts[0]
-		field = parts[1]
-		return
+		return defaultNamespace, parts[0], parts[1], nil
 	}
-	return "", "", fmt.Errorf("invalid canonical path %q: expected namespace/connection/field", canonical)
+	return "", "", "", fmt.Errorf("invalid canonical path %q: expected namespace/connection/field", canonical)
 }
 
 // isLocked returns true when stderr indicates the vault is locked.
@@ -643,7 +911,7 @@ func isErrNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), backend.ErrNotFound.Error())
+	return errors.Is(err, backend.ErrNotFound) || strings.Contains(err.Error(), backend.ErrNotFound.Error())
 }
 
 // isSecretField returns true for field names that should use hidden type.

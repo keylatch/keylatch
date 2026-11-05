@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package gateway — team JWT claim helpers.
 //
 // Security invariants:
@@ -10,7 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/keylatch/keylatch/internal/team/ci"
+	"github.com/keylatch/keylatch/internal/ci"
 )
 
 // TeamJWTClaims holds team-mode claims to add to a gateway JWT.
@@ -65,9 +67,9 @@ func BuildTeamClaims(teamID, memberID, role, approvalRootID string) TeamJWTClaim
 // All sensitive values (repo, branch, workflow, subject) are HMACd.
 func BuildCIClaims(teamID string, identity ci.Identity) CIJWTClaims {
 	return CIJWTClaims{
-		CIProvider: string(identity.Provider),
-		CIRepo:     hmacClaim(teamID, identity.Repo),
-		CIBranch:   hmacClaim(teamID, identity.Branch),
+		CIProvider: identity.Provider,
+		CIRepo:     hmacClaim(teamID, identity.Repository),
+		CIBranch:   hmacClaim(teamID, identity.Ref),
 		CIWorkflow: hmacClaim(teamID, identity.Workflow),
 		CISubject:  hmacClaim(teamID, identity.Subject),
 	}

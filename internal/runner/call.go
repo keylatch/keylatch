@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -94,6 +95,14 @@ func executeAction(
 	rawURL, err := buildActionURL(baseURL, action.Path, params, action.Params)
 	if err != nil {
 		return nil, fmt.Errorf("runner: build action URL: %w", err)
+	}
+
+	// The final URL must still be the provider's: same scheme and host as the
+	// base, a path with no dot segments below the base path, and not one of
+	// the routes the template denies.
+	rawURL, err = confineActionURL(rawURL, baseURL, tmpl, action)
+	if err != nil {
+		return nil, err
 	}
 
 	// 5. Build body (JSON-encoded body params).
@@ -199,6 +208,9 @@ func buildActionURL(baseURL, path string, params map[string]string, paramSpecs m
 			}
 			continue
 		}
+		if err := checkPathParam(name, val); err != nil {
+			return "", err
+		}
 		resolvedPath = strings.ReplaceAll(resolvedPath, placeholder, url.PathEscape(val))
 	}
 
@@ -224,6 +236,48 @@ func buildActionURL(baseURL, path string, params map[string]string, paramSpecs m
 	}
 
 	return parsedURL.String(), nil
+}
+
+// checkPathParam refuses a value that could change which route a path
+// parameter reaches: a dot segment, a separator in either direction, or a
+// control character. url.PathEscape leaves ".." and a backslash alone, so they
+// would walk out of the action's path.
+func checkPathParam(name, val string) error {
+	if val == "" || val == "." || val == ".." || strings.ContainsAny(val, "/\\") {
+		return fmt.Errorf("path param %q may not be empty, a dot segment or contain a path separator", name)
+	}
+	for _, r := range val {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("path param %q contains a control character", name)
+		}
+	}
+	return nil
+}
+
+// confineActionURL checks the URL ExecuteAction is about to request against the
+// base URL and the template, and returns it rebuilt from the base's own scheme
+// and host, so nothing a caller supplied can name another destination.
+func confineActionURL(raw, baseURL string, tmpl registry.ConnectionTemplate, action template.Action) (string, error) {
+	base, err := url.Parse(baseURL)
+	if err != nil || base.Host == "" || (base.Scheme != "https" && base.Scheme != "http") {
+		return "", fmt.Errorf("runner: the provider base URL %q is not a usable http(s) URL", baseURL)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("runner: build action URL: %w", err)
+	}
+	if u.Scheme != base.Scheme || u.Host != base.Host || u.User != nil {
+		return "", fmt.Errorf("runner: the action URL leaves the provider's host")
+	}
+	basePath := strings.TrimRight(base.Path, "/")
+	if trimmed := strings.TrimSuffix(u.Path, "/"); trimmed != path.Clean(trimmed) || (basePath != "" && !strings.HasPrefix(u.Path, basePath+"/")) {
+		return "", fmt.Errorf("runner: the action path %q is not a clean path below the provider's", u.Path)
+	}
+	if tmpl.DeniesRoute(action.Method, u.Path) {
+		return "", fmt.Errorf("runner: the action resolves to a route the provider template denies")
+	}
+	out := url.URL{Scheme: base.Scheme, Host: base.Host, Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery}
+	return out.String(), nil
 }
 
 // collectParamsByIn returns a map of param name → value for params whose In field

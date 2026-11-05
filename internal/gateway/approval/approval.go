@@ -69,21 +69,30 @@ const (
 
 // ApprovalRequest represents an approval record.
 type ApprovalRequest struct {
-	Token       string    `json:"token"` // "apv_" + 32 lowercase hex
-	Actor       string    `json:"actor"`
-	Capability  string    `json:"capability"`
-	Connection  string    `json:"connection"`
-	RequestHash string    `json:"request_hash"` // HMAC of original request
-	Status      string    `json:"status"`       // "pending"|"approved"|"denied"|"expired"
-	ExpiresAt   time.Time `json:"expires_at"`
-	CreatedAt   time.Time `json:"created_at"`
-	Note        string    `json:"note,omitempty"`
-	DecidedAt   time.Time `json:"decided_at,omitzero"`
-	Signature   string    `json:"signature,omitempty"`
+	Token       string `json:"token"` // "apv_" + 32 lowercase hex
+	Actor       string `json:"actor"`
+	Capability  string `json:"capability"`
+	Connection  string `json:"connection"`
+	RequestHash string `json:"request_hash"` // HMAC of original request
+	// Plan is the exact text a human reads before deciding; the signed
+	// decision covers it, so the plan shown is the plan approved.
+	Plan      string    `json:"plan,omitempty"`
+	Status    string    `json:"status"` // "pending"|"approved"|"denied"|"expired"
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+	Note      string    `json:"note,omitempty"`
+	DecidedAt time.Time `json:"decided_at,omitzero"`
+	Signature string    `json:"signature,omitempty"`
 }
 
 // RequestNew creates a pending approval at approvalsDir/<token>.json (mode 0o600).
-func RequestNew(_ context.Context, approvalsDir, actor, capability, connection string, reqHash string, ttl time.Duration) (*ApprovalRequest, error) {
+func RequestNew(ctx context.Context, approvalsDir, actor, capability, connection string, reqHash string, ttl time.Duration) (*ApprovalRequest, error) {
+	return RequestNewPlan(ctx, approvalsDir, actor, capability, connection, reqHash, "", ttl)
+}
+
+// RequestNewPlan is RequestNew with the plan text a human will read and the
+// decision will cover.
+func RequestNewPlan(_ context.Context, approvalsDir, actor, capability, connection string, reqHash, plan string, ttl time.Duration) (*ApprovalRequest, error) {
 	tok, err := newApprovalToken()
 	if err != nil {
 		return nil, fmt.Errorf("approval: generate token: %w", err)
@@ -101,6 +110,7 @@ func RequestNew(_ context.Context, approvalsDir, actor, capability, connection s
 		Capability:  capability,
 		Connection:  connection,
 		RequestHash: reqHash,
+		Plan:        plan,
 		Status:      StatusPending,
 		ExpiresAt:   now.Add(ttl),
 		CreatedAt:   now,
@@ -381,6 +391,7 @@ func decisionMessage(ar *ApprovalRequest) []byte {
 		Capability  string `json:"capability"`
 		Connection  string `json:"connection"`
 		RequestHash string `json:"request_hash"`
+		Plan        string `json:"plan,omitempty"`
 		Status      string `json:"status"`
 		Note        string `json:"note"`
 		CreatedAt   string `json:"created_at"`
@@ -392,6 +403,7 @@ func decisionMessage(ar *ApprovalRequest) []byte {
 		Capability:  ar.Capability,
 		Connection:  ar.Connection,
 		RequestHash: ar.RequestHash,
+		Plan:        ar.Plan,
 		Status:      ar.Status,
 		Note:        ar.Note,
 		CreatedAt:   ar.CreatedAt.UTC().Format(time.RFC3339Nano),

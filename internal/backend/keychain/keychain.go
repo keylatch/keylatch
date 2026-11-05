@@ -23,7 +23,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // Options configures a KeychainBackend.
@@ -107,20 +106,14 @@ func (k *KeychainBackend) Capabilities() []backend.Capability {
 // Get implements the full unlock→manifest→getOneValue→lock sequence.
 //
 // Sequence per architecture spec:
-//  1. Check runner.OK(ctx) → ErrLocked if not approved
-//  2. acquireFlock → defer release
-//  3. Read unlock password from LOGIN keychain (no -k flag)
-//  4. unlock-keychain -p $pw $KeychainPath
-//  5. defer lock-keychain — registered immediately after step 4
-//  6. loadManifest → resolve ManifestRow
-//  7. getOneValue(row, field) — exactly one value read
-//  8. Return value
+//  1. acquireFlock → defer release
+//  2. Read unlock password from LOGIN keychain (no -k flag)
+//  3. unlock-keychain -p $pw $KeychainPath
+//  4. defer lock-keychain — registered immediately after step 3
+//  5. loadManifest → resolve ManifestRow
+//  6. getOneValue(row, field) — exactly one value read
+//  7. Return value
 func (k *KeychainBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	// Check runner/gateway approval before returning plaintext.
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	// Acquire flock for cross-process serialization.
 	release, err := acquireFlock(k.opts.LockPath)
 	if err != nil {
@@ -207,16 +200,15 @@ func (k *KeychainBackend) Set(ctx context.Context, path string, value []byte, me
 	// Parse path into connection and field.
 	conn, field := k.parsePathToConnField(path)
 
-	// Add or update the generic password item.
-	_, _, _, err = k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"add-generic-password",
-			"-U",
-			"-s", "keylatch-" + conn,
-			"-a", field,
-			"-w", string(value),
-			"-k", k.opts.KeychainPath,
-		},
-		nil)
+	// Add or update the generic password item. The value goes to security
+	// on stdin, never in its argument list.
+	err = k.script(ctx, "add-generic-password",
+		sflag("-U"),
+		sflag("-s"), sval("keylatch-"+conn),
+		sflag("-a"), sval(field),
+		sflag("-X"), shex(value),
+		sflag("-k"), sval(k.opts.KeychainPath),
+	)
 	if err != nil {
 		return fmt.Errorf("keychain Set: add-generic-password: %w", err)
 	}
@@ -503,15 +495,10 @@ func (k *KeychainBackend) readUnlockPassword(ctx context.Context) (string, error
 }
 
 // unlockKeychain runs security unlock-keychain.
+// The password goes to security on stdin, never in its argument list.
 func (k *KeychainBackend) unlockKeychain(ctx context.Context, pw string) error {
-	_, stderr, exitCode, err := k.opts.Runner.Run(ctx, k.opts.SecurityBin,
-		[]string{"unlock-keychain", "-p", pw, k.opts.KeychainPath},
-		nil)
-	if err != nil {
-		return fmt.Errorf("keychain: unlock: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("keychain: unlock-keychain exited %d: %s", exitCode, stderr)
+	if err := k.script(ctx, "unlock-keychain", sflag("-p"), sval(pw), sval(k.opts.KeychainPath)); err != nil {
+		return fmt.Errorf("keychain: unlock-keychain: %w", err)
 	}
 	return nil
 }

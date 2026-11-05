@@ -73,12 +73,13 @@ make_release() {
     [[ $p == windows_* ]] && ext=zip
     echo "$p" >"$rel/keylatch_1.2.3_${p}.${ext}"
   done
-  (cd "$rel" && sha256sum keylatch_1.2.3_* >keylatch-1.2.3_checksums.txt)
+  echo testendpoint >"$rel/keylatch-testendpoint_1.2.3_linux_amd64.tar.gz"
+  (cd "$rel" && sha256sum keylatch_1.2.3_* keylatch-testendpoint_1.2.3_* >keylatch-1.2.3_checksums.txt)
   echo '{}' >"$rel/keylatch-${tag}.cdx.json"
   echo '{}' >"$rel/keylatch-${tag}.spdx.json"
   echo '{}' >"$rel/keylatch-${tag}-provenance.intoto.jsonl"
   local f
-  for f in "$rel"/keylatch_1.2.3_* "$rel"/keylatch-1.2.3_checksums.txt "$rel"/*.cdx.json "$rel"/*.spdx.json; do
+  for f in "$rel"/keylatch_1.2.3_* "$rel"/keylatch-testendpoint_1.2.3_* "$rel"/keylatch-1.2.3_checksums.txt "$rel"/*.cdx.json "$rel"/*.spdx.json; do
     touch "$f.sig" "$f.pem"
   done
 }
@@ -87,6 +88,12 @@ make_release
 expect pass "complete release" assets
 rm "$rel/keylatch_1.2.3_linux_arm64.tar.gz.sig"
 expect fail "missing archive signature" assets
+make_release
+rm "$rel/keylatch-testendpoint_1.2.3_linux_amd64.tar.gz.sig"
+expect fail "missing test endpoint signature" assets
+make_release
+grep -v testendpoint "$rel/keylatch-1.2.3_checksums.txt" >"$rel/trimmed.txt" && mv "$rel/trimmed.txt" "$rel/keylatch-1.2.3_checksums.txt"
+expect fail "test endpoint archive not in the checksums" assets
 make_release
 rm "$rel/keylatch-${tag}-provenance.intoto.jsonl"
 expect fail "missing provenance" assets

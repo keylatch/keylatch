@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# check-binary-size.sh — verifies the compiled keylatch binary stays under 30 MiB.
+# check-binary-size.sh — verifies the compiled keylatch binary stays under 32 MiB.
 # Usage: check-binary-size.sh [binary-path]
 set -euo pipefail
 
 BINARY="${1:-./keylatch}"
-LIMIT_BYTES=$((30 * 1024 * 1024))  # 30 MiB hard fail
-WARN_BYTES=$((25 * 1024 * 1024))   # 25 MiB warning
+# The contained runtime (sandbox launcher, shell parser for command policy,
+# Postgres wire adapter) accounts for the step from the previous 30 MiB ceiling.
+LIMIT_BYTES=$((32 * 1024 * 1024))  # 32 MiB hard fail
+WARN_BYTES=$((28 * 1024 * 1024))   # 28 MiB warning
 
 if [[ ! -f "$BINARY" ]]; then
   echo "check-binary-size: INFO: binary not found at $BINARY — skipping size check" >&2

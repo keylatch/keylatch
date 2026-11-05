@@ -68,6 +68,29 @@ validate:
 | `description` | yes | Human-readable description shown in connect wizard |
 | `env_var` | yes | Environment variable injected into the subprocess by `keylatch run` |
 
+### Host bindings
+
+Templates can declare where a secret may be substituted into outgoing requests.
+
+| Field | Description |
+|-------|-------------|
+| `hosts` | Authorities (`host[:port]`, port defaults to 443) the secret may be sent to. A leading `*.` matches one or more labels below the suffix, never the suffix itself. |
+| `slots` | Request positions per secret `field`: `in: header` (with `name`, optional `scheme`), `in: query` (with `name`) or `in: basic` (with `part: user` or `password`), each with its own `hosts` subset of the template `hosts`. |
+| `placeholder_shape` | `prefix` and `min_length` so a placeholder passes client-library format checks. |
+| `adapter` | Protocol adapter (`postgres`, `mysql`, `redis`, `ssh_agent`, `git_credential`, `docker_credential`) with the secret `field` and `hosts` it authenticates to. |
+| `env_class` | `default` (`test`, `dev`, `prod`) and optional `by_prefix` overrides keyed on the secret value prefix. |
+
+`keylatch registry validate` rejects the core providers (GitHub, Vercel, Supabase, Stripe, OpenAI, Anthropic) when they omit `hosts`, `slots`, `placeholder_shape` or `env_class`. Go callers read the contract with `registry.BindingFor(provider)`.
+
+### Denied routes and forwarded headers
+
+| Field | Description |
+|-------|-------------|
+| `deny_routes` | Provider routes that create, read or list credentials or keys (create/roll/list API tokens, key and secret endpoints, token exchange). Each entry is a path, optionally prefixed by an HTTP method and a space (`PUT /v1/tokens/*/value`); each segment is a glob (`*` matches within one segment) and a final `**` matches the rest. The gateway answers `403 route_denied` for a route that matches, and `keylatch call` refuses an action that does. |
+| `forward_headers` | Extra inbound header names the gateway forwards to the provider, beyond its built-in list (`Accept`, `Content-Type`, `User-Agent`, SDK version headers). Names that look like credentials (`key`, `token`, `auth`, `secret`, `cookie`, ...) are never forwarded. |
+
+Every core template lists its provider's credential routes in `deny_routes`. `keylatch registry validate` fails a template whose `actions` or `gateway_actions` expose a path with a segment such as `api_keys`, `keys`, `tokens`, `credentials` or `secrets` when `deny_routes` does not list it, and one that exposes a route its own `deny_routes` refuses.
+
 ### `trust_level` values
 
 | Level | Meaning |
@@ -108,3 +131,20 @@ validate:
 
 - [CLI Reference](./cli-reference.md#keylatch-registry)
 - [CONTRIBUTING.md](../CONTRIBUTING.md)
+
+## Custom connections
+
+A connection without a template declares its own bindings:
+
+```
+keylatch connect billing-internal --provider custom \
+  --provider-ref api_key=op://Dev/Billing API/credential \
+  --host api.billing.internal.example:443 \
+  --slot "header:Authorization:Bearer" --env BILLING_API_KEY
+```
+
+- `--host` is repeatable; `--slot` is `header:Name[:Scheme]`, `query:name` or `basic:user|password`; `--env` is `NAME`, or `field=NAME` when the connection has several secret fields.
+- `--placeholder-prefix` and `--placeholder-min-length` set the placeholder shape (default length 32).
+- Validation matches templates: no bare `*`, no wildcard over a public suffix (`*.com`, `*.co.uk`), and slot hosts must be among the connection's hosts.
+- Creating or widening a binding (a new host or slot) is refused inside an agent session. Narrowing is allowed from any caller. Every change is audited as `binding.created`, `binding.widened`, `binding.narrowed` or `binding.refused` with the before and after host sets.
+- A connection with no binding is reported as `no_binding`; `registry.NoBindingFix` gives the command that adds one.

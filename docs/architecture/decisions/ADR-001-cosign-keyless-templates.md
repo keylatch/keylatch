@@ -2,14 +2,13 @@
 
 **Status:** Accepted
 **Date:** 2026-05-18
-**Epic:** EPIC-08
 
 ---
 
 ## Context
 
 Keylatch ships provider template bundles (community JSON archives) alongside the CLI.
-Until EPIC-08 these bundles were signed with a long-lived ECDSA-P256 key pair:
+These bundles used to be signed with a long-lived ECDSA-P256 key pair:
 
 - Private key stored as a GitHub Actions secret (`REGISTRY_COSIGN_PRIVATE_KEY`).
 - Public key committed at `internal/registry/cosign.pub` for runtime verification.

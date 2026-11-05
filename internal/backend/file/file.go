@@ -6,6 +6,7 @@ package file
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,10 +18,22 @@ import (
 	"github.com/keylatch/keylatch/internal/crypto/aad"
 	"github.com/keylatch/keylatch/internal/crypto/envelope"
 	"github.com/keylatch/keylatch/internal/crypto/keyring"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 	vpath "github.com/keylatch/keylatch/internal/vault/path"
 )
+
+// ErrAADMismatch is returned by Get when the stored binding of a secret names a
+// different partition, path or version than the one requested, as when two
+// secrets' files have been swapped.
+var ErrAADMismatch = errors.New("file backend: aad binding mismatch")
+
+// namespaceOf is the partition a canonical path belongs to.
+func namespaceOf(path string) string {
+	if parts, err := vpath.Parts(path); err == nil {
+		return parts.Namespace
+	}
+	return "default"
+}
 
 // Options configures a FileBackend.
 type Options struct {
@@ -95,14 +108,20 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 	fb.mu.Lock()
 	defer fb.mu.Unlock()
 
-	if err := fb.ensureManifestLocked(); err != nil {
+	// Another process may have written since this one loaded the manifest, so
+	// reload it under the vault lock before changing and saving it.
+	release, err := fb.lockVault()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := fb.reloadManifestLocked(); err != nil {
 		return err
 	}
 
-	// Path-traversal guard.
-	dir := filepath.Join(fb.dir, filepath.FromSlash(path))
-	if !strings.HasPrefix(dir, filepath.Clean(fb.dir)+string(filepath.Separator)) {
-		return fmt.Errorf("file backend: path escapes vault root")
+	dir, err := fb.secretDir(path)
+	if err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -111,10 +130,7 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 
 	// AEAD encryption.
 	now := time.Now().UTC()
-	namespace := "default"
-	if parts, err := vpath.Parts(path); err == nil {
-		namespace = parts.Namespace
-	}
+	namespace := namespaceOf(path)
 
 	_, term, err := fb.keyring.ActiveDEK()
 	if err != nil {
@@ -196,13 +212,7 @@ func (fb *FileBackend) Set(ctx context.Context, path string, value []byte, meta 
 // Get reads value.enc, decrypts via AEAD, and returns plaintext bytes.
 // Returns ErrNotFound if path is not in the manifest.
 // Requires a keyring — returns ErrBootstrapRequired if no keyring is configured.
-// Checks runner.OK before returning plaintext.
 func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	// Check LLM/runner approval before returning plaintext.
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	// Require keyring: no plaintext read path in v1.0.0.
 	if fb.keyring == nil {
 		return nil, backend.Meta{}, backend.ErrBootstrapRequired
@@ -221,7 +231,11 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	}
 
 	// Only read value.enc on explicit Get; List/GetMeta never read it.
-	encPath := filepath.Join(fb.dir, filepath.FromSlash(path), "value.enc")
+	dir, err := fb.secretDir(path)
+	if err != nil {
+		return nil, backend.Meta{}, err
+	}
+	encPath := filepath.Join(dir, "value.enc")
 	ct, err := os.ReadFile(encPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -252,11 +266,12 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	// generation) to another would get a validly-decrypting response for the
 	// wrong path, since the AEAD tag only proves the AAD bytes are unchanged —
 	// not that they match what was actually requested. Require the stored
-	// binding to match the requested path. The backend ID embeds the vault
-	// directory, so comparing it would break a vault that was moved.
-	if binding.Path != path {
+	// binding to match the requested partition, path and version. The backend
+	// ID embeds the vault directory, so comparing it would break a vault that
+	// was moved.
+	if binding.Path != path || binding.Namespace != namespaceOf(path) || (meta.Version > 0 && binding.Version != meta.Version) {
 		return nil, backend.Meta{}, fmt.Errorf(
-			"file backend: aad binding mismatch for %q: stored path=%q", path, binding.Path)
+			"%w for %q: stored namespace=%q path=%q version=%d", ErrAADMismatch, path, binding.Namespace, binding.Path, binding.Version)
 	}
 	// Re-marshal to get canonical AAD bytes (same as used during encryption).
 	aadBytes, err := aad.Marshal(binding)
@@ -275,6 +290,20 @@ func (fb *FileBackend) Get(ctx context.Context, path string) ([]byte, backend.Me
 	return plaintext, meta, nil
 }
 
+// secretDir returns the directory holding the secret at path, refusing any
+// path that would resolve outside the vault root.
+func (fb *FileBackend) secretDir(path string) (string, error) {
+	if strings.Contains(path, "..") {
+		return "", fmt.Errorf("file backend: path escapes vault root")
+	}
+	root := filepath.Clean(fb.dir)
+	dir := filepath.Clean(filepath.Join(root, filepath.FromSlash(path)))
+	if !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+		return "", fmt.Errorf("file backend: path escapes vault root")
+	}
+	return dir, nil
+}
+
 // Delete removes the path directory and updates the manifest.
 // Returns ErrNotFound if the path is not present.
 func (fb *FileBackend) Delete(ctx context.Context, path string) error {
@@ -282,12 +311,17 @@ func (fb *FileBackend) Delete(ctx context.Context, path string) error {
 	defer fb.mu.Unlock()
 
 	// Path-traversal guard: must run before manifest lookup.
-	dir := filepath.Join(fb.dir, filepath.FromSlash(path))
-	if !strings.HasPrefix(filepath.Clean(dir), filepath.Clean(fb.dir)+string(filepath.Separator)) {
-		return fmt.Errorf("file backend: path escapes vault root")
+	dir, err := fb.secretDir(path)
+	if err != nil {
+		return err
 	}
 
-	if err := fb.ensureManifestLocked(); err != nil {
+	release, err := fb.lockVault()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := fb.reloadManifestLocked(); err != nil {
 		return err
 	}
 

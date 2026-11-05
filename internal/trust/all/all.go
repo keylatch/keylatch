@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package all imports all trust adapter sub-packages so their init() functions
 // register themselves with the trust registry.
 //

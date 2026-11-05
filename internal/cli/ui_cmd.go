@@ -13,9 +13,14 @@ import (
 
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/presence"
 	"github.com/keylatch/keylatch/internal/ui"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
+
+// stdoutIsTTY reports whether stdout is a terminal. Replaced in tests.
+var stdoutIsTTY = func() bool { return term.IsTerminal(int(os.Stdout.Fd())) }
 
 // newUICmd returns the `keylatch ui` subcommand.
 func newUICmd() *cobra.Command {
@@ -34,8 +39,10 @@ func newUICmd() *cobra.Command {
 		Long: `Start a local HTTP server that serves the keylatch browser UI.
 
 The server binds only to 127.0.0.1 by default. A one-time bootstrap URL is
-printed to stdout; opening it in a browser exchanges the token for a session
-cookie and redirects to the main UI.
+handed to the OS browser opener and shown when stdout is a terminal; opening
+it exchanges the token for a session cookie and redirects to the main UI.
+The default scope is read; any wider scope needs a human to approve at a
+terminal.
 
 Container reachability: --listen (or KEYLATCH_UI_LISTEN) explicitly opts in
 to a non-loopback bind address, e.g. for Docker port-forwarding. This does
@@ -48,7 +55,8 @@ Security notes:
     locked to status-only and write endpoints are not mounted (return 404).
   - --unsafe-bind-all and --listen/KEYLATCH_UI_LISTEN are both ignored in
     LLM sessions — non-loopback binds are refused unconditionally.
-  - --scope=token-minting must be explicitly requested for token minting.`,
+  - --scope=token-minting must be explicitly requested for token minting.
+  - The URL is never printed to a non-terminal stdout.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 			isLLM := llmcontext.IsLLMSession(env)
@@ -88,6 +96,17 @@ Security notes:
 				}
 			}
 
+			if scope > ui.ScopeStatusOnly {
+				if _, err := requirePresence(c.Context(), presence.ActionUIAdmin, "Open the local UI with %s scope", scope); err != nil {
+					return err
+				}
+			}
+			// Without a terminal the one-time URL has no safe place to go but the
+			// browser opener, which --no-open turns off.
+			if noOpen && !stdoutIsTTY() {
+				return NewSecurityBlock("ui: --no-open needs a terminal to show the one-time URL; stdout is not a terminal")
+			}
+
 			bind, allowExternalBind, bindErr := resolveAndValidateUIBindAddr(port, listenAddr, unsafeBindAll, bindEnv)
 			if bindErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "ui: %v\n", bindErr)
@@ -123,8 +142,16 @@ Security notes:
 				return fmt.Errorf("ui: %w", err)
 			}
 
+			// The URL carries the session bootstrap token. Anything that can read
+			// stdout (a pipe, a tool call's captured output) could open the
+			// session, so only a terminal sees it; otherwise it goes straight to
+			// the OS browser opener.
 			bootstrapURL := srv.BootstrapURL()
-			fmt.Fprintf(c.OutOrStdout(), "keylatch ui: open this URL in your browser:\n\n  %s\n\n", bootstrapURL)
+			if stdoutIsTTY() {
+				fmt.Fprintf(c.OutOrStdout(), "keylatch ui: open this URL in your browser:\n\n  %s\n\n", bootstrapURL)
+			} else {
+				fmt.Fprintln(c.OutOrStdout(), "keylatch ui: stdout is not a terminal, so the one-time URL goes only to the browser opener")
+			}
 
 			if !noOpen {
 				// Attempt to open browser (best-effort; ignore errors).
@@ -151,7 +178,7 @@ Security notes:
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "do not attempt to open browser automatically")
 	cmd.Flags().BoolVar(&unsafeBindAll, "unsafe-bind-all", false, "bind to 0.0.0.0 (non-LLM sessions only)")
 	cmd.Flags().StringVar(&listenAddr, "listen", "", "explicit non-loopback bind address, e.g. 0.0.0.0:7890 (Docker; non-LLM sessions only; overrides KEYLATCH_UI_LISTEN)")
-	cmd.Flags().StringVar(&scopeStr, "scope", "admin", "session scope: status-only|setup|admin|token-minting")
+	cmd.Flags().StringVar(&scopeStr, "scope", "read", "session scope: read|setup|admin|token-minting (anything above read needs a human at a terminal)")
 
 	return cmd
 }
