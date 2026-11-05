@@ -81,6 +81,7 @@ func TestNoUnallowlistedExtraKeys(t *testing.T) {
 			// mint keys.
 			"repository":  "octo/repo",
 			"permissions": "contents=write,metadata=read",
+			"scope":       "read",
 			"expires_at":  "2026-10-07T13:00:00Z",
 			"caller_kind": "service",
 			// brokered-action event keys.
