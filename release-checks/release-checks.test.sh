@@ -59,6 +59,14 @@ expect fail "latest run failed" checks "b"
 expect pass "in-progress rerun ignored" checks "c"
 expect fail "check never ran" checks "d"
 expect fail "one of several failed" checks "a b c"
+protected_runs="$work/protected-runs"
+mkdir -p "$protected_runs"
+while IFS= read -r name; do
+  jq -s '{check_runs: .}' <(run success 2026-01-01T00:00:00Z) >"$protected_runs/$name.json"
+done < <(jq -r '.required_status_checks.contexts[]' "$here/../.github/branch-protection.json")
+expect pass "default checks come from branch protection" env CHECK_RUNS_DIR="$protected_runs" bash "$here/required-checks-passed.sh" "$sha"
+rm "$protected_runs/coverage.json"
+expect fail "coverage is a required check" env CHECK_RUNS_DIR="$protected_runs" bash "$here/required-checks-passed.sh" "$sha"
 expect fail "short sha rejected" bash "$here/required-checks-passed.sh" 0123abc
 
 # verify-release-assets and render-package-manifests
@@ -147,6 +155,44 @@ expect pass "unchanged manifest push" push
 unchanged_ok() { [[ "$(git -C "$remote/keylatch/homebrew-tap.git" rev-list --count main)" == "$commits_before" ]]; }
 expect pass "unchanged manifest adds no commit" unchanged_ok
 expect fail "push without token" env -u PUSH_TOKEN PACKAGE_REPO_BASE="file://$remote" bash "$here/push-package-manifest.sh" keylatch/homebrew-tap keylatch.rb "$out/keylatch.rb" "$tag"
+
+# coverage-threshold
+cov="$work/cov"
+mkdir -p "$cov"
+m=github.com/keylatch/keylatch
+cat >"$cov/profile.out" <<EOF
+mode: atomic
+$m/internal/sec/a.go:1.1,2.2 90 1
+$m/internal/sec/a.go:3.1,4.2 10 0
+$m/internal/sec/sub/b.go:1.1,2.2 80 1
+$m/internal/sec/sub/b.go:3.1,4.2 20 0
+$m/internal/other/c.go:1.1,2.2 70 1
+$m/internal/other/c.go:3.1,4.2 30 0
+$m/internal/other/c.go:3.1,4.2 30 2
+$m/cmd/tool/main.go:1.1,2.2 10 0
+EOF
+floors() { printf '%s\n' "$@" >"$cov/floors.txt"; }
+threshold() { bash "$here/coverage-threshold.sh" --floors "$cov/floors.txt" "$cov/profile.out"; }
+floors "total 80" "default 80" "internal/sec/... 80" "cmd/tool exempt main package"
+expect pass "floors met, duplicate blocks merged" threshold
+floors "total 80" "default 80" "internal/sec/... 85" "cmd/tool exempt main package"
+expect fail "subpackage below pattern floor" threshold
+floors "total 80" "default 80" "internal/sec/... 85" "internal/sec/sub 80" "cmd/tool exempt main package"
+expect pass "exact floor overrides pattern" threshold
+floors "total 80" "default 80"
+expect fail "unexempt package at zero" threshold
+floors "total 90" "default 0"
+expect fail "total below floor" threshold
+floors "total 80" "default 80" "cmd/tool exempt"
+expect fail "exemption without reason" threshold
+floors "total 80" "default 80" "cmd/tool exempt main package" "internal/gone 80"
+expect fail "stale floor entry" threshold
+floors "default 80" "cmd/tool exempt main package"
+expect fail "missing total floor" threshold
+floors "total 80" "default 80" "internal/sec 120" "cmd/tool exempt main package"
+expect fail "floor out of range" threshold
+expect fail "missing profile" bash "$here/coverage-threshold.sh" --floors "$cov/floors.txt" "$cov/absent.out"
+expect pass "checked-in floors file parses" bash -c "bash '$here/coverage-threshold.sh' --floors '$here/coverage-floors.txt' '$cov/profile.out' 2>&1 | grep -q 'matches no package'"
 
 echo "release checks: $passed passed, $failed failed"
 ((failed == 0))

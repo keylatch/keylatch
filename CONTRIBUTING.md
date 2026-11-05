@@ -39,23 +39,26 @@ make test-canary
 ## Running Coverage Locally
 
 ```bash
-# Generate coverage profile
-go test -coverprofile=coverage.out ./...
+# Run the tests and check the floors the way CI does
+make coverage
 
-# Check the 85% threshold gate (same script CI runs)
+# Check the floors against an existing profile
 bash release-checks/coverage-threshold.sh coverage.out
 
-# Print per-package report even when the gate passes
-bash release-checks/coverage-threshold.sh coverage.out --report
+# Print the per-package table even when every floor is met
+bash release-checks/coverage-threshold.sh --report coverage.out
 
 # Open an interactive HTML coverage view in the browser
 go tool cover -html=coverage.out
 ```
 
-The gate reads `release-checks/coverage-allowlist.txt` to skip packages that are
-intentionally below threshold (hardware drivers, CLI entry points, test helpers).
-If you add a new package, make sure it either reaches 85% or is added to the
-allowlist with a one-line rationale.
+`release-checks/coverage-floors.txt` sets the floors: 85% for the whole module,
+85% for security-critical packages (guard, agent detection, backends, gateway,
+broker, approvals, policy, crypto, audit, vault) and 80% for every other
+package. A new package gets the default floor; add tests rather than an
+exemption. Exemptions are only for main packages and code that needs real
+hardware, and each one names its reason. When a package's coverage rises, raise
+its floor in the same change.
 
 ## Adding a Provider Template
 
@@ -127,6 +130,18 @@ registry is encouraged via a separate template review process — details TBD.
 3. Run `make ci` and confirm it passes.
 4. Open a pull request against `main` with a clear description.
 5. At least one maintainer review is required before merge.
+
+### Required checks
+
+`.github/branch-protection.json` lists the checks that must pass before a pull
+request merges into `main`, including `coverage` (the floors above), `lint`,
+`naming`, the three `go-test` jobs and `govulncheck`. The release workflow
+reads the same list to refuse tags whose commit has not passed them.
+Maintainers apply it with:
+
+```bash
+gh api -X PUT repos/keylatch/keylatch/branches/main/protection --input .github/branch-protection.json
+```
 
 ## License
 

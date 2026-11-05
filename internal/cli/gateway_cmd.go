@@ -196,7 +196,7 @@ func newGatewayInitCmd() *cobra.Command {
 
 			// Optionally write Docker Compose.
 			if useDocker {
-				composePath := paths.GatewayDir(env) + "/docker-compose.yml"
+				composePath := filepath.Join(paths.GatewayDir(env), "docker-compose.yml")
 				if err := docker.WriteAt(composePath, docker.ComposeOptions{
 					Port:    7878,
 					Version: version.Version,
@@ -634,12 +634,8 @@ func newGatewayStatusCmd() *cobra.Command {
 					pid = pid[:len(pid)-1]
 				}
 				pidStr = pid
-				if p, err := strconv.Atoi(pid); err == nil {
-					if proc, err := os.FindProcess(p); err == nil {
-						if err := proc.Signal(syscall.Signal(0)); err == nil {
-							running = true
-						}
-					}
+				if _, err := strconv.Atoi(pid); err == nil {
+					_, running = gateway.IsRunning(pidPath)
 				}
 			}
 

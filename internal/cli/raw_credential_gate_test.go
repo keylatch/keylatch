@@ -34,6 +34,7 @@ func isolatedGateEnv(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("KEYLATCH_CONFIG_DIR", filepath.Join(home, "override"))
 	t.Setenv("KEYLATCH_KEYRING_DIR", "")
 	testutil.ClearLLMSessionEnv(t)

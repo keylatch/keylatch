@@ -20,6 +20,7 @@ const canaryBWSession = "KEYLATCH_CANARY_BW_SESSION_0xDEADBEEF"
 func TestDoctor_BWSession_NotInOutput(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	env := func(k string) string {
 		switch k {
 		case "KEYLATCH_CONFIG_DIR":
@@ -61,6 +62,7 @@ func TestDoctor_OPServiceAccountToken_NotInOutput(t *testing.T) {
 
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	env := func(k string) string {
 		switch k {
 		case "KEYLATCH_CONFIG_DIR":

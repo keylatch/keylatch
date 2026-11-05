@@ -2,8 +2,8 @@
 # Fails unless the most recent completed run of every required check on a
 # commit concluded "success".
 # Usage: required-checks-passed.sh <commit-sha>
-# Env:   REQUIRED_CHECKS  space-separated check names (default: the checks
-#                         required by main's branch protection)
+# Env:   REQUIRED_CHECKS  space-separated check names (default: the contexts
+#                         in .github/branch-protection.json)
 #        GITHUB_REPOSITORY owner/repo (default keylatch/keylatch)
 #        CHECK_RUNS_DIR    read <name>.json fixtures instead of calling the API
 set -euo pipefail
@@ -12,7 +12,13 @@ set -euo pipefail
 sha="${1:?usage: required-checks-passed.sh <commit-sha>}"
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "expected a full commit sha, got: $sha"
 repo="${GITHUB_REPOSITORY:-keylatch/keylatch}"
-read -r -a checks <<<"${REQUIRED_CHECKS:-gitleaks canary-regression sidecar-canary docs-leak-scan govulncheck}"
+if [[ -n "${REQUIRED_CHECKS:-}" ]]; then
+  read -r -a checks <<<"$REQUIRED_CHECKS"
+else
+  mapfile -t checks < <(jq -r '.required_status_checks.contexts[]' \
+    "$(dirname "${BASH_SOURCE[0]}")/../.github/branch-protection.json")
+fi
+((${#checks[@]})) || die "no required checks configured"
 
 check_runs() {
   if [[ -n "${CHECK_RUNS_DIR:-}" ]]; then
