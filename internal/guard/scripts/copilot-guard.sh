@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# keylatch-hook-version: 3
+# keylatch-hook-version: 4
 # GitHub Copilot CLI guard — blocks credential-access patterns.
 # Since the exact native hook config path is unconfirmed (the original gh copilot
 # extension is retired), this script is used as a shell wrapper fallback that
@@ -95,6 +95,29 @@ function positional_default_literal(w,    p) {
 	p = index(w, "-")
 	return substr(w, p + 1, length(w) - p - 1)
 }
+# env followed by a command only runs that command; env with no command
+# prints the environment. Options are accepted only when they can neither
+# print the environment nor re-parse a string as a command (-S does), and
+# -C/--chdir must name an absolute directory. Anything else is blocked.
+function env_segment(tt, tv, tf, j, end, depth,    w) {
+	while (j <= end) {
+		w = tv[j]
+		if (w == "--") { j++; break }
+		if (w == "-" || w == "-i" || w == "--ignore-environment") { j++; continue }
+		if (w == "-u" || w == "--unset") { if (j + 1 > end) return 1; j += 2; continue }
+		if (w ~ /^--unset=[A-Za-z_][A-Za-z0-9_]*$/) { j++; continue }
+		if (w == "-C" || w == "--chdir") {
+			if (j + 1 > end || tv[j + 1] !~ /^\//) return 1
+			j += 2; continue
+		}
+		if (w ~ /^--chdir=\//) { j++; continue }
+		if (w ~ /^-/) return 1
+		break
+	}
+	while (j <= end && tv[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/) j++
+	if (j > end) return 1
+	return resolve_segment(tt, tv, tf, j, end, depth)
+}
 function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p, payload) {
 	i = start
 	while (i <= end && tt[i] == "WORD" && is_in(RESERVED, tv[i])) i++
@@ -110,7 +133,8 @@ function resolve_segment(tt, tv, tf, start, end, depth,    i, cw, base, k, j, p,
 	}
 	if (tf[i] == "A") return 1
 	if (depth > 0 && tf[i] == "D") return 1
-	if (base == "env" || base == "printenv") return 1
+	if (base == "printenv") return 1
+	if (base == "env") return env_segment(tt, tv, tf, i + 1, end, depth)
 	if (is_in(SHELLS, base)) {
 		for (j = i + 1; j <= end; j++) {
 			if (tt[j] == "WORD" && tv[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) {

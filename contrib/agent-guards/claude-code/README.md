@@ -20,11 +20,13 @@ Hook version is tracked via the comment `# keylatch-hook-version: N` at the top 
 | `~/.keylatch/` path | Read | Direct vault file read blocked |
 | `keylatch run ... -- env` | Bash | Environment dump via run blocked |
 | `cat ... keylatch` / `cat ... .env` | Bash | Direct file read of env/vault files blocked |
+| `env` / `printenv` printing the environment | Bash | Bare `env`, `env -0`, `env -C /abs` with no command, `printenv`, and any of them behind `sh -c`/`eval`/wrappers blocked |
 
 ## Allowed patterns
 
 - `keylatch get --masked` — returns masked values only
 - `keylatch run <conn> -- <safe-cmd>` — runs whitelisted commands
+- `env [-C /abs/dir | --chdir=/abs/dir] [-i] [-u NAME] [NAME=value ...] <cmd>` — env only runs `<cmd>`, which is checked like any other command (`env -C /x printenv` stays blocked)
 - `keylatch list`, `keylatch describe`, `keylatch validate` — safe metadata commands
 
 ## Installation

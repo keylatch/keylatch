@@ -73,6 +73,20 @@ run_case "p9 sh -c double-quoted env blocked"   Bash      'sh -c "env"'         
 run_case "p9 prose near-miss allowed"           Bash      "grep -n 'env' settings.json"                      0
 run_case "p9 VAR=val env still blocked"         Bash      "FOO=bar env"                                      2
 
+# env that runs a checked command (env -C <dir> <cmd>) is allowed
+run_case "p9 env -C /abs cmd allowed"           Bash      "env -C /home/u/repo go test ./..."               0
+run_case "p9 env --chdir= cmd allowed"          Bash      "env --chdir=/home/u/repo pnpm --dir /home/u/repo test" 0
+run_case "p9 env -C /abs FOO=1 cmd allowed"     Bash      "env -C /home/u/repo FOO=1 make"                  0
+run_case "p9 env -u -C cmd allowed"             Bash      "env -u FOO -C /home/u/repo git status"           0
+run_case "p9 env -0 blocked"                    Bash      "env -0"                                          2
+run_case "p9 env -C /abs (no cmd) blocked"      Bash      "env -C /home/u/repo"                             2
+run_case "p9 env -C relative blocked"           Bash      "env -C repo ls"                                  2
+run_case "p9 env -C /abs printenv blocked"      Bash      "env -C /home/u/repo printenv"                    2
+run_case "p9 env -C /abs env blocked"           Bash      "env -C /home/u/repo env"                         2
+run_case "p9 env -C /abs sh -c printenv blocked" Bash     "env -C /home/u/repo sh -c printenv"              2
+run_case "p9 bash -c env -C printenv blocked"   Bash      "bash -c 'env -C /x printenv'"                    2
+run_case "p9 env -C /abs keylatch get blocked"  Bash      "env -C /home/u/repo keylatch get svc key"        2
+
 # Copy-sync assertion: the go:embed source of truth (internal/guard/scripts)
 # must stay byte-identical to this contrib copy. This is exactly the check
 # that would have caught the internal copy silently drifting at
