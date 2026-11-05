@@ -28,7 +28,7 @@ keylatch doctor
 Claude Code sets `CLAUDECODE=1` (and `CLAUDE_CODE_ENTRYPOINT`) in the shells it spawns. Keylatch reads these signals and activates LLM-session mode automatically. The agent can unset these variables, so detection is a convenience, not a security boundary. In this mode:
 
 - `keylatch get` — blocked, exit code 2 (SecurityBlock)
-- `keylatch run` — allowed for all runtime modes
+- `keylatch run` — checked against the connection's caller and runtime policy
 - `keylatch ui` — scope locked to status-only
 - Raw credential values are never returned to the agent process
 
@@ -66,6 +66,28 @@ After installation, the settings file contains:
 ```
 
 The hook parses each shell command and exits 2 when it finds credential exfiltration (e.g. `keylatch get`, `security find-generic-password`, `op read`, `cat .env`, an environment dump), causing Claude Code to block the tool call before it executes. See [docs/integrations/claude-code.md](../../integrations/claude-code.md) for what it denies and for `--config-dir`, `--upgrade` and `--dry-run`.
+
+## Never exclude keylatch from the sandbox
+
+Claude Code's sandbox can exempt commands through `sandbox.excludedCommands`. Do not list `keylatch` there, in user, project or local settings.
+
+A command in `excludedCommands` runs outside the sandbox, and so does everything it launches. With the patterns "keylatch run:*" or "keylatch launch:*" excluded, `keylatch run <connection> -- pnpm test` starts `pnpm test`, and every test, build script and `postinstall` hook it triggers, as your user with no filesystem or network limits from the host sandbox. That process can read `~/.keylatch`, `~/.ssh`, browser profiles and every other credential store unless another isolation boundary prevents it. The exfiltration guard blocks known credential-access patterns; it cannot establish the safety of arbitrary project code such as `pnpm test`.
+
+Remove the entries:
+
+```json
+{
+  "sandbox": {
+    "excludedCommands": ["docker:*"]
+  }
+}
+```
+
+The example shows a list with the `keylatch` entries removed and an unrelated entry (`docker:*`) kept. Agents can use `keylatch call`, which has no child process, or policy-approved `keylatch run` operations inside the host sandbox. `keylatch agent install claude-code --sandbox --dry-run` previews exclusion removal, state read restrictions and socket access; see the [harness guide](../../harnesses/claude-code.md) before applying it.
+
+`keylatch doctor` reads the managed settings, the user settings (`~/.claude/settings.json`, or `$CLAUDE_CONFIG_DIR/settings.json`), and the project (`.claude/settings.json`) and local (`.claude/settings.local.json`) settings of `$CLAUDE_PROJECT_DIR` or the working directory. Managed settings are `managed-settings.json` plus `managed-settings.d/*.json` in `/etc/claude-code` (Linux), `/Library/Application Support/ClaudeCode` (macOS) or `C:\Program Files\ClaudeCode` (Windows); doctor tells you to ask the administrator to change those.
+
+The `host.sandbox.keylatch_excluded` check warns for known subcommands that start no child process chosen by their arguments (such as `call` or `doctor`, whose own probes are fixed). `run`, `launch` and unknown subcommands fail, as do the exclusion patterns that can reach them: "keylatch", "keylatch:*", "keylatch run:*", "keylatch launch:*", leading global flags ("keylatch --quiet run:*"), wildcards in the subcommand ("keylatch r*"), and quoted or absolute paths, including Windows `.exe` paths. The program name is matched case-insensitively on macOS and Windows. The detail names the project directory and the files checked, and any file it could not read.
 
 ## `CREDENTIALS_LLM_SESSION` signal
 

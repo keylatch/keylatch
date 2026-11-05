@@ -44,6 +44,34 @@ All four modes are permitted in LLM sessions. Raw credential values are never re
 
 ## Commands
 
+### `keylatch agent install` and `keylatch agent uninstall`
+
+```sh
+keylatch agent install claude-code --dry-run
+keylatch agent install cursor --mcp --mcp-proxy remote-docs=https://mcp.example.com/mcp
+keylatch agent install claude-code --sandbox
+keylatch agent uninstall claude-code --sandbox
+keylatch doctor --agents --json
+keylatch doctor --agents --drift-results /path/to/results --json
+keylatch doctor --agent-socket-probe --json
+```
+
+With no component flags, install writes the guard, MCP server and rules. `--guard`, `--mcp` and `--rules` select individual components. `--mcp-proxy` is repeatable and writes only a connection name and URL; tokens remain in Keylatch. URLs require HTTPS except for loopback development servers. Duplicate connection names and credential-bearing URLs are rejected before configuration is written. Existing entries remain unchanged unless `--upgrade` is supplied. `--project` selects project configuration; `--all` selects detected harnesses.
+
+`--sandbox` is an explicit, separate component for Claude Code. It enables the sandbox, removes Keylatch exclusions, disables unsandboxed fallback, adds state read restrictions and allows daemon sockets. Linux must allow all Unix socket creation; macOS permits the named sockets. Inspect the `--dry-run` diff before applying host settings. Uninstall requires human presence and retains read restrictions and disabled fallback. `doctor --agents` reports `excluded` when a Keylatch exclusion remains and `unknown` when settings could not be read; this field is an exclusion check, not proof that the host sandbox is running.
+
+### `keylatch mcp proxy`
+
+```sh
+keylatch mcp proxy remote-docs --url https://mcp.example.com/mcp
+keylatch mcp proxy remote-docs --url https://mcp.example.com/mcp \
+  --oauth refresh_token --oauth-client-id registered-client
+```
+
+The stdio proxy injects the connection's bound header credential without putting it in the agent configuration. `--namespace` selects the vault namespace. OAuth supports `refresh_token` and `client_credentials`; store the refresh token or client secret in the bound header field. `--oauth-token-url` overrides discovery and `--oauth-scope` selects the requested scope. Every OAuth endpoint must match the field's declared host bindings; redirects are refused. Rotated refresh tokens are saved before the new access token is used. Failed persistence refuses forwarding.
+
+The standard MCP server also exposes `keylatch_explain` with `provider`, optional `account`, `command`, optional `cwd` and `tier`. Prefer an argument array for `command` to preserve spaces within individual arguments. It evaluates the request as an agent without executing it or returning credential values.
+
 ### `keylatch setup`
 
 Guided first-time setup wizard.

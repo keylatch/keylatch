@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/keylatch/keylatch/internal/harness/installer"
 )
@@ -123,4 +124,59 @@ func TestRunDoctorAgentsReadsThisMachine(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, []int{doctorExitOK, doctorExitWarnings}, code)
 	assert.Contains(t, out.String(), `"claude-code"`)
+	driftDir := t.TempDir()
+	artifact := filepath.Join(driftDir, "claude-code.json")
+	require.NoError(t, os.WriteFile(artifact, []byte(`{"harness":"claude-code","version":"2.0","result":"pass","checked_at":"2026-01-01T00:00:00Z","scope":"published-cli-config-reader"}`), 0600))
+	out.Reset()
+	_, err = runDoctorAgents(&out, true, driftDir)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), `"last_drift"`)
+	assert.Contains(t, out.String(), `"published-cli-config-reader"`)
+	out.Reset()
+	_, err = runDoctorAgents(&out, false, driftDir)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "pass 2026-01-01T00:00:00Z 2.0")
+	require.NoError(t, os.WriteFile(artifact, []byte(`{}`), 0600))
+	_, err = runDoctorAgents(&out, true, driftDir)
+	require.ErrorContains(t, err, "claude-code drift evidence")
+}
+
+func TestDoctorAgentsSandboxUsesSelectedHomeAndProject(t *testing.T) {
+	t.Cleanup(doctor.OverrideManagedSettingsDir(t.TempDir()))
+	for _, scope := range []string{"home", "project"} {
+		t.Run(scope, func(t *testing.T) {
+			env := agentTestEnv(t.TempDir())
+			env.Project = t.TempDir()
+			d, _ := harness.Lookup("claude-code")
+			selected := env
+			if scope == "home" {
+				selected.Project = ""
+			}
+			file := d.Layout(selected).Hook
+			require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o700))
+			require.NoError(t, os.WriteFile(file, []byte(`{"sandbox":{"excludedCommands":["keylatch run:*"]}}`), 0o600))
+			rows := collectAgents(env, noExecutables, func(string) bool { return true })
+			claude := row(t, rows, "claude-code")
+			assert.Equal(t, "excluded", claude.Sandbox)
+			assert.True(t, claude.fail)
+			assert.Equal(t, doctorExitFailure, agentsExit(rows))
+			var out bytes.Buffer
+			require.NoError(t, writeAgents(&out, rows, true))
+			assert.Contains(t, out.String(), `"sandbox": "excluded"`)
+		})
+	}
+}
+
+func TestDoctorAgentsUnreadableSandboxIsUnknown(t *testing.T) {
+	t.Cleanup(doctor.OverrideManagedSettingsDir(t.TempDir()))
+	env := agentTestEnv(t.TempDir())
+	env.Project = t.TempDir()
+	d, _ := harness.Lookup("claude-code")
+	file := d.Layout(env).Hook
+	require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o700))
+	require.NoError(t, os.WriteFile(file, []byte("{"), 0o600))
+	rows := collectAgents(env, noExecutables, func(string) bool { return true })
+	claude := row(t, rows, "claude-code")
+	assert.Equal(t, "unknown", claude.Sandbox)
+	assert.Contains(t, claude.Problem, "could not read Claude Code settings")
 }

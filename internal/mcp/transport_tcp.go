@@ -165,11 +165,10 @@ func (s *Server) ServeTCP(ctx context.Context, store connections.Store, dispatch
 		},
 		nil,
 	)
-	RegisterTools(srv, store, dispatch)
+	RegisterTools(srv, store, dispatch, s.opts.Explain)
 
-	// Assert exactly five tools are registered (mirrors ServeStdio).
-	if len(registeredTools) != 5 {
-		return fmt.Errorf("mcp: tool registration invariant violated: expected 5 tools, got %d", len(registeredTools))
+	if len(registeredTools) != toolCount {
+		return fmt.Errorf("mcp: tool registration invariant violated: expected %d tools, got %d", toolCount, len(registeredTools))
 	}
 
 	switch s.opts.ConnectionAuth {

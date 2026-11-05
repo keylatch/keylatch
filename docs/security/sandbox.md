@@ -29,6 +29,10 @@ keylatch gateway up --detach
 keylatch run openrouter -- my-command
 ```
 
+## Never exclude keylatch from an agent sandbox
+
+Agent harnesses such as Claude Code let you exempt commands from their sandbox. An exempted `keylatch run` launches its child process, and everything that child executes, outside the sandbox. Keep `keylatch` out of every exclusion list. `keylatch doctor` fails on the `host.sandbox.keylatch_excluded` check when Claude Code settings exclude it; see [Claude Code integration](../integration/agents/claude-code.md#never-exclude-keylatch-from-the-sandbox) for the settings change.
+
 ## Diagnosing mode availability
 
 ```bash

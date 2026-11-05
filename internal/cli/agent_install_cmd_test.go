@@ -54,6 +54,37 @@ func TestAgentInstallMatchesInstallGuard(t *testing.T) {
 	assert.Equal(t, trees[0], trees[1], "both spellings write the same bytes")
 }
 
+func TestAgentInstallMCPProxyFlags(t *testing.T) {
+	for _, id := range []string{"cursor", "gemini-cli", "codex", "opencode"} {
+		t.Run(id, func(t *testing.T) {
+			home := isolatedHome(t)
+			_, errOut, code := runCLI(t, "", "agent", "install", id, "--mcp", "--mcp-proxy", "docs=https://example.test/mcp")
+			require.Equal(t, 0, code, errOut)
+			d, _ := harness.Lookup(id)
+			file := d.Layout(harness.Env{Home: home}).MCP
+			data, err := os.ReadFile(file)
+			require.NoError(t, err)
+			assert.Contains(t, string(data), "keylatch-docs")
+			assert.Contains(t, string(data), "https://example.test/mcp")
+			_, errOut, code = runCLI(t, "", "agent", "uninstall", id, "--mcp")
+			require.Equal(t, 0, code, errOut)
+			data, err = os.ReadFile(file)
+			require.NoError(t, err)
+			assert.NotContains(t, string(data), "keylatch-docs")
+		})
+	}
+	for _, args := range [][]string{
+		{"--mcp-proxy", "missing-equals"},
+		{"--guard", "--mcp-proxy", "docs=https://example.test"},
+		{"--mcp-proxy", "docs=https://example.test", "--mcp-proxy", "docs=https://other.test"},
+	} {
+		home := isolatedHome(t)
+		_, _, code := runCLI(t, "", append([]string{"agent", "install", "cursor"}, args...)...)
+		assert.NotEqual(t, 0, code)
+		assert.Empty(t, readTree(t, home))
+	}
+}
+
 func TestDeprecatedAliasesWarn(t *testing.T) {
 	isolatedHome(t)
 	_, errOut, code := runCLI(t, "", "install-guard", "claude-code", "--dry-run")

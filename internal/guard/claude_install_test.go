@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/guard"
+	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/harness/installer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +71,44 @@ func TestClaudeInstallMergesExistingHooks(t *testing.T) {
 	assert.JSONEq(t, `{"matcher": "Bash", "hooks": [{"type": "command", "command": "/usr/local/bin/audit.sh", "timeout": 5}]}`, string(mustMarshal(t, pre[0])))
 	assert.JSONEq(t, `{"hooks": []}`, string(mustMarshal(t, pre[1])))
 	assert.JSONEq(t, `{"matcher": "*", "hooks": [{"type": "command", "command": `+string(mustMarshal(t, guardCommand(bin)))+`, "timeout": 10}]}`, string(mustMarshal(t, pre[2])))
+}
+
+func TestClaudeSandboxInstallAndUninstall(t *testing.T) {
+	home, bin := claudeHome(t)
+	settings := filepath.Join(home, ".claude", "settings.json")
+	original := `{"theme":"dark","sandbox":{"excludedCommands":["keylatch run:*","docker:*"],"filesystem":{"denyRead":["~/.ssh"]},"network":{"allowUnixSockets":["/other.sock"]}}}`
+	writeFile(t, settings, original)
+	d, _ := harness.Lookup("claude-code")
+	o := installer.Options{Parts: installer.Parts{Sandbox: true}}
+	opts := guard.InstallOpts{KeylatchPath: bin, SocketPaths: []string{"/run/keylatch/broker.sock"}, DryRun: true}
+	res, err := guard.InstallHarness(d, o, opts)
+	require.NoError(t, err)
+	require.True(t, res.Changed())
+	data, err := os.ReadFile(settings)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(data))
+	opts.DryRun = false
+	_, err = guard.InstallHarness(d, o, opts)
+	require.NoError(t, err)
+	got := readJSON(t, settings)
+	assert.Equal(t, "dark", got["theme"])
+	assert.NotContains(t, got, "hooks", "sandbox-only install leaves hooks unchanged")
+	box := got["sandbox"].(map[string]any)
+	assert.Equal(t, true, box["enabled"])
+	assert.Equal(t, false, box["allowUnsandboxedCommands"])
+	assert.Equal(t, []any{"docker:*"}, box["excludedCommands"])
+	denies := box["filesystem"].(map[string]any)["denyRead"]
+	assert.Contains(t, denies, "~/.ssh")
+	assert.Contains(t, denies, "~/.keylatch")
+	res, err = guard.InstallHarness(d, o, opts)
+	require.NoError(t, err)
+	assert.False(t, res.Changed())
+	_, err = guard.UninstallHarness(d, o, opts)
+	require.NoError(t, err)
+	box = readJSON(t, settings)["sandbox"].(map[string]any)
+	assert.Equal(t, []any{"/other.sock"}, box["network"].(map[string]any)["allowUnixSockets"])
+	assert.Equal(t, false, box["allowUnsandboxedCommands"])
+	assert.Contains(t, box["filesystem"].(map[string]any)["denyRead"], "~/.keylatch")
 }
 
 func TestClaudeInstallIdempotent(t *testing.T) {

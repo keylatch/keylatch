@@ -21,21 +21,23 @@ import (
 	"github.com/keylatch/keylatch/internal/runner"
 )
 
+// toolCount is the number of tools the server registers; the set is fixed so a
+// new tool is a reviewed change.
+const toolCount = 6
+
 // registeredTools is the canonical list of tool names.
-// Must have exactly five entries.
 var registeredTools = []string{
 	"keylatch_status",
 	"keylatch_list_connections",
 	"keylatch_describe",
 	"keylatch_test",
 	"keylatch_run",
+	"keylatch_explain",
 }
 
 func init() {
-	// Compile-time assertion that exactly five tools are registered.
-	const assertFiveTools = 5
-	if len(registeredTools) != assertFiveTools {
-		panic(fmt.Sprintf("mcp: exactly five tools required; got %d", len(registeredTools)))
+	if len(registeredTools) != toolCount {
+		panic(fmt.Sprintf("mcp: exactly %d tools required; got %d", toolCount, len(registeredTools)))
 	}
 }
 
@@ -72,8 +74,9 @@ var objectSchema = json.RawMessage(`{"type":"object"}`)
 // Package-level to avoid recompiling on every sanitizeError call (Warning 4).
 var tokenRedactRE = regexp.MustCompile(`[A-Za-z0-9\-_\.]{32,}`)
 
-// RegisterTools adds all five tool handlers to the MCP Server.
-func RegisterTools(s *sdkmcp.Server, store connections.Store, dispatch runner.Dispatcher) {
+// RegisterTools adds every tool handler to the MCP Server. explainer answers
+// keylatch_explain; the tool refuses when it is nil.
+func RegisterTools(s *sdkmcp.Server, store connections.Store, dispatch runner.Dispatcher, explainer ExplainFunc) {
 	s.AddTool(
 		&sdkmcp.Tool{
 			Name:        "keylatch_status",
@@ -117,6 +120,15 @@ func RegisterTools(s *sdkmcp.Server, store connections.Store, dispatch runner.Di
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"provider":{"type":"string"},"account":{"type":"string"},"namespace":{"type":"string"},"command":{}},"required":["provider","command"]}`),
 		},
 		makeRunHandler(store, dispatch),
+	)
+
+	s.AddTool(
+		&sdkmcp.Tool{
+			Name:        "keylatch_explain",
+			Description: "Explain whether a keylatch_run would be allowed and how its secret would be delivered, without running anything: delivery tier, approval need, hosts, scope, containment and residual risk. Reads policy only and returns no secret values.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"provider":{"type":"string"},"account":{"type":"string"},"command":{},"cwd":{"type":"string"},"tier":{"type":"string"}},"required":["provider","command"]}`),
+		},
+		makeExplainHandler(explainer),
 	)
 }
 

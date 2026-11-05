@@ -1,6 +1,10 @@
 package installer
 
-import "github.com/keylatch/keylatch/internal/harness/merge"
+import (
+	"strings"
+
+	"github.com/keylatch/keylatch/internal/harness/merge"
+)
 
 // Codex reads hooks.json as an object keyed by event; each event holds
 // matcher groups. The tool Keylatch guards is the shell. Non-managed hooks need
@@ -14,7 +18,23 @@ func codexPlan() hookPlan {
 	}
 }
 
-// codexServer is the config.toml table that registers the MCP server.
-func codexServer(s Server) string {
-	return "[mcp_servers.keylatch]\ncommand = " + tomlString(s.Command) + "\nargs = " + tomlStrings(s.args()) + "\n"
+// tomlKey writes a table name as a bare key when TOML allows it and quoted
+// otherwise, so a connection name with a dot stays one key.
+func tomlKey(name string) string {
+	if strings.Trim(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") == "" {
+		return name
+	}
+	return tomlString(name)
+}
+
+// codexServers is the config.toml tables that register the MCP servers.
+func codexServers(entries []serverEntry) string {
+	var b strings.Builder
+	for i, e := range entries {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("[mcp_servers." + tomlKey(e.name) + "]\ncommand = " + tomlString(e.server.Command) + "\nargs = " + tomlStrings(e.server.args()) + "\n")
+	}
+	return b.String()
 }

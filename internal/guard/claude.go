@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/harness/sandbox"
+	"github.com/keylatch/keylatch/internal/paths"
 )
 
 // ClaudeChange is the outcome of installing the guard into one Claude Code
@@ -110,9 +112,18 @@ func installClaudeFile(path, command string, opts InstallOpts) (ClaudeChange, er
 	if err != nil {
 		return change, err
 	}
-	changed, err := mergeClaudeGuard(settings, command, opts.Upgrade)
-	if err != nil {
-		return change, fmt.Errorf("install-guard: %s: %w", path, err)
+	changed := false
+	if !opts.HookOff {
+		if changed, err = mergeClaudeGuard(settings, command, opts.Upgrade); err != nil {
+			return change, fmt.Errorf("install-guard: %s: %w", path, err)
+		}
+	}
+	if opts.Sandbox {
+		hardened, err := sandbox.HardenClaudeSettings(settings, opts.SocketPaths, paths.SandboxReadDenies(os.Getenv)...)
+		if err != nil {
+			return change, fmt.Errorf("install-guard: %s: %w", path, err)
+		}
+		changed = changed || hardened
 	}
 	if !changed {
 		return change, nil
@@ -155,14 +166,27 @@ func uninstallClaudeCode(opts InstallOpts) (string, bool, error) {
 		if err != nil {
 			return "", false, err
 		}
-		_, did := pruneHooks(settings, func(cmd string) bool { return isCurrentGuard(cmd) || isLegacyGuard(cmd) })
+		did := false
+		if !opts.HookOff {
+			_, did = pruneHooks(settings, func(cmd string) bool { return isCurrentGuard(cmd) || isLegacyGuard(cmd) })
+		}
+		if opts.Sandbox {
+			dropped, err := sandbox.RemoveClaudeSockets(settings, opts.SocketPaths)
+			if err != nil {
+				return "", false, fmt.Errorf("install-guard: %s: %w", path, err)
+			}
+			did = did || dropped
+		}
 		if !did {
+			continue
+		}
+		removed = true
+		if opts.DryRun {
 			continue
 		}
 		if err := saveSettings(path, settings); err != nil {
 			return "", false, err
 		}
-		removed = true
 	}
 	return paths[0], removed, nil
 }

@@ -720,6 +720,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		plain("external", checkExternalHashiVault(env, probe)),
 		plain("providers", checkACLKeychainUnlock()),
 		plain("providers", checkKeychainDBPermissions()),
+		plain("environment", checkHostSandboxKeylatchExcluded(env)),
 		plain("environment", checkCosignInstalled(probe)),
 		// Soft checks.
 		plain("providers", checkNoConnections(env)),

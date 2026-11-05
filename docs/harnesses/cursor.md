@@ -11,6 +11,8 @@ Support level: guard plus detection
 keylatch agent install cursor
 ```
 
+Use `keylatch agent install cursor --mcp --mcp-proxy remote-docs=https://mcp.example.com/mcp` to register a remote server through Keylatch. Cursor receives only the connection name and URL, not a bearer token. OAuth server commands use the additional `mcp proxy --oauth` options described in the [CLI reference](../cli-reference.md#keylatch-mcp-proxy). The standard Keylatch MCP server also provides `keylatch_explain` for a policy-only run explanation.
+
 | What | Where |
 |------|-------|
 | Hooks (`beforeShellExecution`, `beforeReadFile`, `beforeMCPExecution`) | `~/.cursor/hooks.json` (a project's own: `.cursor/hooks.json`) |
