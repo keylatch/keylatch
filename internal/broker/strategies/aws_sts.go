@@ -21,6 +21,10 @@ import (
 	"github.com/keylatch/keylatch/internal/broker"
 )
 
+// MaxTokenLifetime is the default ceiling on the lifetime of a token a
+// strategy hands out.
+const MaxTokenLifetime = time.Hour
+
 // MaxAWSSessionDuration is the longest session MintScoped asks STS for.
 const MaxAWSSessionDuration = time.Hour
 
@@ -90,7 +94,7 @@ func WithSTSEndpoint(endpoint string) AWSStsOption {
 
 // WithSTSHTTPClient replaces the HTTP client.
 func WithSTSHTTPClient(c *http.Client) AWSStsOption {
-	return func(s *AWSStsStrategy) { s.httpClient = c }
+	return func(s *AWSStsStrategy) { s.httpClient = credentialHTTPClient(c) }
 }
 
 // WithSTSClock replaces the clock used to check the reply's expiry.
@@ -110,7 +114,7 @@ func NewAWSStsStrategy(
 		region:             region,
 		endpoint:           "https://sts." + region + ".amazonaws.com",
 		getBaseCredentials: getBaseCredentials,
-		httpClient:         &http.Client{Timeout: 15 * time.Second},
+		httpClient:         credentialHTTPClient(nil),
 		now:                time.Now,
 	}
 	for _, o := range opts {

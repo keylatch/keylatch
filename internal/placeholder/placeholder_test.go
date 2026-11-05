@@ -129,7 +129,7 @@ func selfSigned(t *testing.T, names ...string) tls.Certificate {
 func newUpstream(t *testing.T) *upstreamFake {
 	t.Helper()
 	u := &upstreamFake{}
-	cert := selfSigned(t, "api.stripe.com", "files.stripe.com", "other.stripe.com", "api.github.com", "github.com")
+	cert := selfSigned(t, "api.stripe.com", "files.stripe.com", "other.stripe.com", "api.github.com", "github.com", "registry.npmjs.org", "upload.pypi.org", "crates.io", "index.crates.io")
 	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
 	u.pool = x509.NewCertPool()
 	u.pool.AddCert(leaf)

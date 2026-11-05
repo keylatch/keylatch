@@ -64,3 +64,30 @@ func PostgresAdapterEnv(tmpl registry.ConnectionTemplate, user, database, token 
 	}
 	return env
 }
+
+// DatabaseAdapterEnv clears ambient credentials and routes the child through its session.
+func DatabaseAdapterEnv(tmpl registry.ConnectionTemplate, user, database, token string) SessionEnv {
+	if tmpl.Adapter.Kind == registry.AdapterMySQL {
+		env := SessionEnv{Strip: []string{"MYSQL_HOST", "MYSQL_TCP_PORT", "MYSQL_UNIX_PORT", "MYSQL_PWD", "MYSQL_HOME", "MYSQL_TEST_LOGIN_FILE", "MYSQL_URL", "DATABASE_URL"}}
+		for _, rule := range tmpl.InjectionRules {
+			env.Strip = append(env.Strip, rule.EnvVar)
+		}
+		dsn := "mysql://" + url.UserPassword(user, token).String() + "@127.0.0.1:" + AdapterPortPlaceholder + "/" + url.PathEscape(database)
+		env.Set = []EnvAssign{{"MYSQL_HOST", "127.0.0.1"}, {"MYSQL_TCP_PORT", AdapterPortPlaceholder}, {"MYSQL_PWD", token}, {"MYSQL_URL", dsn}, {"DATABASE_URL", dsn}, {"KEYLATCH_RUNTIME", "adapter"}}
+		return env
+	}
+	if tmpl.Adapter.Kind != registry.AdapterRedis {
+		return PostgresAdapterEnv(tmpl, user, database, token)
+	}
+	env := SessionEnv{Strip: []string{"REDIS_URL", "REDISCLI_AUTH", "REDIS_PASSWORD", "REDIS_HOST", "REDIS_PORT", "REDIS_USERNAME", "VALKEYCLI_AUTH"}}
+	for _, rule := range tmpl.InjectionRules {
+		env.Strip = append(env.Strip, rule.EnvVar)
+	}
+	dsn := "redis://" + url.UserPassword(user, token).String() + "@127.0.0.1:" + AdapterPortPlaceholder
+	env.Set = []EnvAssign{
+		{"REDIS_URL", dsn}, {"REDISCLI_AUTH", token}, {"VALKEYCLI_AUTH", token},
+		{"REDIS_HOST", "127.0.0.1"}, {"REDIS_PORT", AdapterPortPlaceholder},
+		{"REDIS_USERNAME", user}, {"KEYLATCH_RUNTIME", "adapter"},
+	}
+	return env
+}

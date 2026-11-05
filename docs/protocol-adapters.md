@@ -43,13 +43,47 @@ Limits, by design:
 - The child can run every statement the role allows until the session ends. The role's grants and
   the audit log bound that; the adapter does not parse SQL.
 - SCRAM channel binding (`SCRAM-SHA-256-PLUS`) and non-ASCII passwords (SASLprep) are not
-  supported upstream. MySQL, Redis and the SSH agent adapters are not implemented.
+  supported upstream. The SSH agent adapter is not implemented.
 
 Policy treats D4 like D2 and D3: `enforce.Decide` is asked for runtime `adapter`, a caller that
 needs an approval collects one before the session opens, and `run.decided` records the target.
 Each adapter connection writes `adapter.connection` with the provider, adapter, host and a reason
 (`opened`, `connected`, `bad_token`, `refused`, `upstream_failed`, `cancel`, the close reason);
 neither the token nor the password is ever logged.
+
+## MySQL
+
+Templates can declare `adapter.kind: mysql`, a stored password field and allowed upstream
+`adapter.hosts`. Use `--target db.example:3306 --db-user app --database appdb` with tier D4.
+The child receives `MYSQL_HOST=127.0.0.1`, `MYSQL_TCP_PORT`, `MYSQL_PWD=<session-token>`, and
+the same `mysql://<user>:<token>@127.0.0.1:<port>/<database>` in `MYSQL_URL` and `DATABASE_URL`.
+The template's credential injection variables and ambient MySQL environment settings are removed.
+For the MySQL command-line client, use `--no-defaults --no-login-paths --protocol=TCP` to avoid
+its per-user option files; applications can use `DATABASE_URL` directly.
+
+The adapter supports `caching_sha2_password`, including fast, full and switched authentication,
+and requires verified TLS upstream. Legacy password plugins, compression, local-file loading,
+multi-statement negotiation and replication-specific protocol extensions are not enabled.
+The client authenticates with a fresh challenge and the session token; it cannot select another
+upstream user or change the database named during login. Subsequent statements and database
+selection remain subject to the upstream role's grants. Prepared queries are relayed unchanged.
+The default role is `root`; explicitly choose a restricted application role with `--db-user`.
+
+## Redis and Valkey
+
+Templates can declare `adapter.kind: redis`, a stored password field and exact upstream
+`adapter.hosts` entries. Run with `--tier D4 --target cache.example:6379 --db-user app`;
+the default ACL user is `default`. The adapter requires verified TLS upstream and accepts a
+session token through RESP2 `AUTH` or RESP3 `HELLO ... AUTH`. The client's user name cannot
+change the upstream ACL user. After login, the user's ACL permissions bound its commands.
+
+The child receives `REDIS_URL=redis://<user>:<token>@127.0.0.1:<port>`, `REDIS_HOST`,
+`REDIS_PORT`, `REDIS_USERNAME`, and the token in `REDISCLI_AUTH` and `VALKEYCLI_AUTH`.
+Use `redis-cli -u "$REDIS_URL"` or a client that reads `REDIS_URL`. Ambient Redis credentials
+and every injection variable declared by the template are cleared. Inline command login,
+unauthenticated connections and a stored password presented to the adapter are refused.
+Five incorrect tokens disable authentication for that session; expiry closes active connections.
+Upstream AUTH failures are sanitized and never return a server's credential-bearing message.
 
 ## Credential helpers
 
@@ -70,10 +104,68 @@ missing daemon answers `credentials not found in native keychain` and exits 1. T
 shipped as its own executable for use outside a Keylatch run. The temporary Docker config replaces
 the user's `~/.docker/config.json` for the child, and the wrapper is Unix only.
 
+## Cloud metadata
+
+The minted GCP runtime exposes Google Compute metadata through `GCE_METADATA_HOST`, including
+a per-session path. It serves the configured account's email and scopes, project ID, and access
+token. The minted Azure runtime exposes `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`; Azure SDK
+managed-identity clients use the App Service request format. The same session-bound token route
+accepts the IMDS `Metadata: true` request format. Both protocols restrict token requests to the
+operator's configured scope or resource, audit each token response, and close at token expiry or
+command exit. They never inject the minted access token into the child environment.
+
+Conformance uses Google's metadata and OAuth2 libraries and Azure's ManagedIdentityCredential.
+Additional tests run an actual child process, check its environment, fetch the scoped token,
+verify output redaction, and verify that exit closes the endpoint. Provider issuance is tested
+separately; these local SDK checks do not replace real-cloud deployment proof. See
+[runtime modes](runtime-modes.md) for policy configuration and credential-chain limitations.
+
+## Package registries
+
+The `npm`, `pypi`, and `cargo` connections declare D3 registry slots. The child receives
+only a session placeholder; the TLS proxy substitutes the stored token in the declared
+Authorization position for the registry host. A placeholder in a query, body, another header,
+or another host is refused. Cargo download and index hosts have no credential slot.
+
+| Connection | Placeholder environment | Client setup |
+|------------|-------------------------|--------------|
+| `npm` | `NPM_TOKEN`, `NODE_AUTH_TOKEN` | A user npm config containing `//registry.npmjs.org/:_authToken=${NPM_TOKEN}` |
+| `pypi` | `TWINE_PASSWORD` | `twine upload --username __token__ dist/*` |
+| `cargo` | `CARGO_REGISTRY_TOKEN` | `cargo publish` with the `cargo:token` credential provider |
+
+Use `keylatch run --tier D3 <connection> -- <command>` after connecting the registry token.
+For npm or pnpm, point `NPM_CONFIG_USERCONFIG` at the config file so authentication does not
+depend on an ambient home-directory configuration. The file contains the environment-variable
+reference, never a token. PyPI and Cargo templates do not claim a non-mutating credential
+validation endpoint. Publishing permissions and package scopes are determined by the token
+configured at the registry.
+
 ## Testing
 
 `internal/adapter/postgres` runs the adapter against an in-process fake server that speaks
 cleartext and SCRAM-SHA-256 with and without TLS, an MD5 request (refused), and against `psql` when it is installed.
-`tests/adapters` (build tag `adapters`) runs `psql` and the Node `pg` client against a real server;
-the CI job `adapters` provides one as a service container. Without the server the tests skip and
-name what is missing.
+`tests/adapters` (build tag `adapters`) runs `psql`, the Node `pg` client and a generated Prisma
+client against a real server. Each child receives only the session token, and its query must
+return the stored upstream role. The CI job `adapters` provides the server and Node 26. Without
+the server the tests skip and name what is missing; skipped tests provide no conformance evidence.
+
+For a local run, start the declared PostgreSQL service with `infractl dev services up <checkout>`.
+Install and generate the Prisma fixture with `npm ci --prefix tests/adapters/prisma` and
+`npm run generate --prefix tests/adapters/prisma`. Set `KEYLATCH_TEST_PG_ADDR=127.0.0.1:55432`,
+`KEYLATCH_TEST_PG_USER=app_owner`, `KEYLATCH_TEST_PG_PASSWORD=test`,
+`KEYLATCH_TEST_PG_DATABASE=appdb` and `KEYLATCH_TEST_NODE_PG` to the absolute
+`tests/adapters/prisma/node_modules` path. Run `go test -tags adapters -count=1 ./tests/adapters/...`.
+Stop the service with `infractl dev services down <checkout>`; its data is temporary.
+
+The same managed service declaration provides Redis on `127.0.0.1:56379`. Set
+`KEYLATCH_TEST_REDIS_ADDR` to that address and `KEYLATCH_TEST_REDIS_PASSWORD=test` to run
+the Redis CLI conformance test. It checks RESP2, RESP3, the upstream ACL identity, and refusal
+of the stored password at the adapter. Unit tests additionally verify TLS, credential wiping,
+bounded frame parsing, failure sanitization and cancellation.
+
+MySQL conformance uses the managed service on `127.0.0.1:53306`, with
+`KEYLATCH_TEST_MYSQL_ADDR` set to that address and `KEYLATCH_TEST_MYSQL_PASSWORD=test`.
+The mysql2 fixture runs a prepared query with only the session token and verifies the upstream
+role; the upstream authentication test also exercises the real server handshake. The disposable
+server's self-signed certificate is accepted only in these tests. Unit tests verify TLS against
+a trusted test certificate and refuse servers that do not offer TLS.

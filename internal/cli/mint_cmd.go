@@ -20,6 +20,7 @@ import (
 	"github.com/keylatch/keylatch/internal/mintsession"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/policy/mint"
+	"github.com/keylatch/keylatch/internal/providermint"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/spf13/cobra"
 )
@@ -57,47 +58,63 @@ type mintOptions struct {
 	namespace   string
 	repo        string
 	permissions []string
+	scopes      []string
 	format      string
 }
 
 func newMintCmd() *cobra.Command {
 	var opts mintOptions
 	cmd := &cobra.Command{
-		Use:   "mint <connection> --repo <owner/name> --permission <name>=<level> ... --format json",
-		Short: "Mint a short-lived token scoped to one repository",
-		Long: `mint issues a GitHub App installation token for exactly one repository
-and the listed permissions. The App's JWT is signed inside Keylatch; the
-private key never leaves it.
+		Use:   "mint <connection> --scope <key>=<value> ... --format json",
+		Short: "Mint a short-lived, scoped credential",
+		Long: `mint issues a short-lived credential limited to the scope you name. The
+provider's root credential is read inside Keylatch and never leaves it.
 
-The connection's mint.github_app policy in the operator's config.json is
-checked before the key is read: caller kind (service and host by default;
-agent sessions never), owner deny list, owner and repository allowlists,
-permission ceiling and max_ttl. GitHub's reply must match the request
-exactly, or the token is revoked and mint fails. Each mint writes one
-audit line without the token.
+The connection's mint policy in the operator's config.json is checked before
+anything is read: caller kind (service and host by default; agent sessions
+never), what the policy allows, and max_ttl. The provider's reply must match
+the request, or nothing is returned. Each mint writes one audit line without
+the credential.
 
-Output (--format json): {"token","expires_at","repository","permissions"}.
+Scope keys (--scope key=value, repeatable where noted):
+  github-app   repo=<owner/name>, and <permission>=read|write|admin for each
+               permission (--repo and --permission are the same thing)
+  aws          role_arn=<IAM role ARN>, duration=<seconds>; the policy's role
+               and session policy, with 900 seconds up to its max_ttl
+  gcp          scope=<oauth scope>, repeatable; at most the policy's scopes
+  azure        resource=<application ID URI>; the policy's resource
+  oauth-refresh scope=<scope>, repeatable; at most the policy's scopes
+  hashicorp-vault path=<dynamic-secret path>; the policy's path
+
+Output (--format json): GitHub App {"token","expires_at","repository",
+"permissions"}. Other providers {"expires_at","scope"} with "token" for an
+access token, "data" for AWS credentials, or "data" and "lease_id" for a Vault secret. A Vault lease is
+not revoked here, because the credential is handed to you; it ends by itself
+within an hour. keylatch run --runtime minted revokes it when the command
+exits.
+
+AWS sessions cannot be revoked by Keylatch and expire at the granted time.
+Use keylatch run --runtime minted to expose an AWS credential endpoint to a command.
 
 Exit codes: 0 minted; 1 usage error; 2 refused for an agent session or a
-missing audit log; 3 refused by policy; 4 store unavailable; 5 GitHub
-refused, the reply did not match (token revoked) or auditing failed
-(token revoked); 6 connection field missing (private_key, app_id or
-installation_<owner>).
+missing audit log; 3 refused by policy; 4 store unavailable; 5 the provider
+refused, the reply did not match (nothing returned; a GitHub token or Vault
+lease is revoked) or auditing failed; 6 connection field missing.
 
 Example:
-  keylatch mint github-app --repo octo/app --permission contents=write \
-    --permission metadata=read --format json`,
+  keylatch mint github-app --scope repo=octo/app --scope contents=write \
+    --scope metadata=read --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts.connection = args[0]
 			return runMint(c, opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.repo, "repo", "", "repository the token is limited to, as owner/name (required)")
-	cmd.Flags().StringArrayVar(&opts.permissions, "permission", nil, "permission to grant, as name=read|write|admin (repeatable, at least one)")
+	cmd.Flags().StringArrayVar(&opts.scopes, "scope", nil, "what the credential is limited to, as key=value (repeatable); see the keys per provider above")
+	cmd.Flags().StringVar(&opts.repo, "repo", "", "GitHub App: repository the token is limited to, as owner/name (same as --scope repo=)")
+	cmd.Flags().StringArrayVar(&opts.permissions, "permission", nil, "GitHub App: permission to grant, as name=read|write|admin (same as --scope name=level)")
 	cmd.Flags().StringVar(&opts.format, "format", "json", "output format: json")
 	cmd.Flags().StringVar(&opts.namespace, "namespace", "default", "vault namespace of the connection")
-	_ = cmd.MarkFlagRequired("repo")
 	return cmd
 }
 
@@ -111,13 +128,22 @@ func runMint(c *cobra.Command, opts mintOptions) error {
 		ctx = context.Background()
 	}
 
+	tmpl, tmplErr := registry.Get(opts.connection)
+	if tmplErr == nil && providermint.Supports(tmpl.Provider) {
+		return runProviderMint(ctx, c, opts, tmpl)
+	}
+	if err := applyGitHubScopes(&opts); err != nil {
+		return err
+	}
 	req, err := parseMintRequest(opts)
 	if err != nil {
 		return err
 	}
-	tmpl, err := registry.Get(opts.connection)
-	if err != nil || !slices.ContainsFunc(tmpl.Capabilities, func(cp registry.Capability) bool { return cp.Name == mintCapability }) {
-		return NewUsageError("mint: %q is not a connection type that can mint (use a github-app connection)", opts.connection)
+	if tmplErr != nil || !slices.ContainsFunc(tmpl.Capabilities, func(cp registry.Capability) bool { return cp.Name == mintCapability }) {
+		return NewUsageError("mint: %q is not a connection type that can mint (use a github-app, aws, gcp, azure, oauth-refresh or hashicorp-vault connection)", opts.connection)
+	}
+	if tmpl.Provider != "github-app" {
+		return NewUsageError("mint: %q has no mint scope; it is minted for one command with keylatch run --runtime minted", opts.connection)
 	}
 
 	caller := mintCallerKind(mintLookup)

@@ -34,13 +34,22 @@ func (t *AzureToken) Zero() { clear(t.AccessToken) }
 type AzureClientCredentialsStrategy struct {
 	tenant, clientID string
 	getClientSecret  func(namespace string) ([]byte, error)
+	federated        bool
 	authority        string
+	maxLifetime      time.Duration
 	httpClient       *http.Client
 	now              func() time.Time
 }
 
 // AzureOption configures an AzureClientCredentialsStrategy.
 type AzureOption func(*AzureClientCredentialsStrategy)
+
+// WithAzureMaxLifetime sets the longest token lifetime accepted. Entra ID
+// chooses the lifetime itself, so a longer one is refused rather than
+// shortened. The default is one hour.
+func WithAzureMaxLifetime(d time.Duration) AzureOption {
+	return func(s *AzureClientCredentialsStrategy) { s.maxLifetime = d }
+}
 
 // WithAzureAuthority points the strategy at another login host.
 func WithAzureAuthority(authority string) AzureOption {
@@ -51,13 +60,21 @@ func WithAzureAuthority(authority string) AzureOption {
 func NewAzureClientCredentialsStrategy(tenant, clientID string, getClientSecret func(namespace string) ([]byte, error), opts ...AzureOption) *AzureClientCredentialsStrategy {
 	s := &AzureClientCredentialsStrategy{
 		tenant: tenant, clientID: clientID, getClientSecret: getClientSecret,
-		authority:  DefaultAzureAuthority,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-		now:        time.Now,
+		authority:   DefaultAzureAuthority,
+		maxLifetime: MaxTokenLifetime,
+		httpClient:  credentialHTTPClient(nil),
+		now:         time.Now,
 	}
 	for _, o := range opts {
 		o(s)
 	}
+	return s
+}
+
+// NewAzureFederatedStrategy exchanges an external identity provider's assertion.
+func NewAzureFederatedStrategy(tenant, clientID string, getAssertion func(namespace string) ([]byte, error), opts ...AzureOption) *AzureClientCredentialsStrategy {
+	s := NewAzureClientCredentialsStrategy(tenant, clientID, getAssertion, opts...)
+	s.federated = true
 	return s
 }
 
@@ -75,11 +92,19 @@ func (s *AzureClientCredentialsStrategy) MintScoped(ctx context.Context, namespa
 		return AzureToken{}, fmt.Errorf("azure_client_credentials: get client secret: %w", err)
 	}
 	defer clear(secret)
+	if len(secret) == 0 {
+		return AzureToken{}, errors.New("azure_client_credentials: empty client credential")
+	}
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", s.clientID)
-	form.Set("client_secret", string(secret))
+	if s.federated {
+		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		form.Set("client_assertion", string(secret))
+	} else {
+		form.Set("client_secret", string(secret))
+	}
 	form.Set("scope", strings.TrimRight(resource, "/")+"/.default")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		s.authority+"/"+url.PathEscape(s.tenant)+"/oauth2/v2.0/token", strings.NewReader(form.Encode()))
@@ -105,6 +130,9 @@ func (s *AzureClientCredentialsStrategy) MintScoped(ctx context.Context, namespa
 	}
 	if err := json.Unmarshal(body, &reply); err != nil || reply.AccessToken == "" || reply.ExpiresIn <= 0 {
 		return AzureToken{}, fmt.Errorf("%w: incomplete reply", ErrAzureScopeMismatch)
+	}
+	if reply.ExpiresIn > int((s.maxLifetime+stsClockSkew)/time.Second) {
+		return AzureToken{}, fmt.Errorf("%w: token lives %d seconds, longer than the %s allowed", ErrAzureScopeMismatch, reply.ExpiresIn, s.maxLifetime)
 	}
 	if aud := jwtAudience(reply.AccessToken); aud != strings.TrimRight(resource, "/") && aud != resource {
 		return AzureToken{}, fmt.Errorf("%w: audience %q, wanted %q", ErrAzureScopeMismatch, aud, resource)

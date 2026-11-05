@@ -1,0 +1,46 @@
+provider: npm
+display_name: npm
+category: packages
+description: "Publish packages through a host-bound registry placeholder."
+docs_url: https://docs.npmjs.com/about-access-tokens
+secret_fields:
+  - name: token
+    label: Granular Access Token
+    required: true
+    sensitive: true
+    env_var: NPM_TOKEN
+    secret_kind: personal_token
+env_mappings:
+  token: NPM_TOKEN
+auth_flow: bearer
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Bearer
+storage_path_tpl: "{{.Namespace}}/packages/npm/{{.Account}}"
+trust_level: 2
+runtime_support:
+  preferred: gateway_proxy
+  supported: [gateway_proxy]
+injection_rules:
+  - env_var: NPM_TOKEN
+    source: token
+  - env_var: NODE_AUTH_TOKEN
+    source: token
+hosts: [registry.npmjs.org]
+slots:
+  - field: token
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts: [registry.npmjs.org]
+placeholder_shape:
+  min_length: 32
+env_class:
+  default: prod
+test_strategy:
+  kind: http_get
+  endpoint: https://registry.npmjs.org/-/whoami
+  expect:
+    status_code: 200
+    markers: [username]

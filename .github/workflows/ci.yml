@@ -175,12 +175,30 @@ jobs:
         run: go test -tags containment -count=1 -timeout 900s -v ./tests/containment/...
 
   adapters:
-    # The Postgres adapter against a real server: psql and the Node pg client
+    # The Postgres adapter against a real server: psql, Prisma and Node pg
     # log in with only the session token, and the server sees the stored role.
     needs: go-test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      mysql:
+        image: mysql:innovation
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: appdb
+          MYSQL_USER: app_owner
+          MYSQL_PASSWORD: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ptest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
       postgres:
         image: postgres:17
         env:
@@ -200,19 +218,28 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install the Postgres client and the Node driver
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '26'
+      - name: Install the Postgres clients
         run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          npm install --prefix "$RUNNER_TEMP/pgdriver" pg@8
+          sudo apt-get update && sudo apt-get install -y postgresql-client redis-tools
+          redis-cli -h 127.0.0.1 CONFIG SET requirepass test
+          npm ci --prefix tests/adapters/prisma
+          npm run generate --prefix tests/adapters/prisma
       - name: Adapter against a real server
         env:
           KEYLATCH_TEST_PG_ADDR: 127.0.0.1:5432
           KEYLATCH_TEST_PG_USER: app_owner
           KEYLATCH_TEST_PG_PASSWORD: stored-database-password
           KEYLATCH_TEST_PG_DATABASE: appdb
+          KEYLATCH_TEST_REDIS_ADDR: 127.0.0.1:6379
+          KEYLATCH_TEST_REDIS_PASSWORD: test
+          KEYLATCH_TEST_MYSQL_ADDR: 127.0.0.1:3306
+          KEYLATCH_TEST_MYSQL_PASSWORD: test
         run: |
-          export KEYLATCH_TEST_NODE_PG="$RUNNER_TEMP/pgdriver/node_modules"
-          go test -tags adapters -count=1 -timeout 300s -v ./tests/adapters/...
+          export KEYLATCH_TEST_NODE_PG="$GITHUB_WORKSPACE/tests/adapters/prisma/node_modules"
+          go test -tags adapters -count=1 -timeout 300s -v ./internal/adapter/mysql ./tests/adapters/...
 
   bootstrap-smoke:
     # Clean-machine smoke test for the bootstrap onboarding flow.

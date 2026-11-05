@@ -20,6 +20,11 @@ const mintedMode = string(runtime.RuntimeMinted)
 // required runtime support configuration for the requested driver.
 var ErrUnsupportedRuntime = errors.New("runner: template does not support this runtime mode")
 
+// ErrMintedFieldAbsent is returned by Value when the provider issued no value
+// for a field. The driver leaves that field's variable unset: a dynamic secret
+// carries only the fields its engine defines.
+var ErrMintedFieldAbsent = errors.New("runner: the provider issued no value for this field")
+
 // MintedCredential is a credential minted for one run. Close wipes it and
 // revokes it with the provider.
 type MintedCredential interface {
@@ -83,6 +88,9 @@ func (d *mintedDriver) Run(ctx context.Context, req ExecRequest, tmpl registry.C
 			continue
 		}
 		v, err := cred.Value(ctx, rule.Source)
+		if errors.Is(err, ErrMintedFieldAbsent) {
+			continue
+		}
 		if err != nil {
 			return receipt, fmt.Errorf("minted: %w", err)
 		}
@@ -91,6 +99,9 @@ func (d *mintedDriver) Run(ctx context.Context, req ExecRequest, tmpl registry.C
 	}
 	if len(secrets) == 0 {
 		return receipt, fmt.Errorf("%w: %s injects no minted field", ErrUnsupportedRuntime, tmpl.Provider)
+	}
+	if endpoint, ok := cred.(interface{ RedactionValues() [][]byte }); ok {
+		secrets = append(secrets, endpoint.RedactionValues()...)
 	}
 	env = append(env, "KEYLATCH_RUNTIME="+mintedMode)
 	env = mergeEnvPairs(env, req.LocalEnv)

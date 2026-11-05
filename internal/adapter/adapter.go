@@ -16,7 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/adapter/mysql"
 	"github.com/keylatch/keylatch/internal/adapter/postgres"
+	"github.com/keylatch/keylatch/internal/adapter/redis"
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/placeholder"
 	"github.com/keylatch/keylatch/internal/registry"
@@ -97,8 +99,10 @@ type Session struct {
 	target     string
 	user       string
 	database   string
-	pg         *postgres.Server
-	cfg        Config
+	server     interface {
+		Serve(context.Context, net.Conn)
+	}
+	cfg Config
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -110,25 +114,32 @@ type Session struct {
 	conns  int
 }
 
-// Open creates a session for the template's postgres adapter.
+// Open creates a session for the template's database adapter.
 func (m *Manager) Open(req OpenRequest) (*Session, error) {
 	ad := req.Template.Adapter
-	if ad.Kind != registry.AdapterPostgres {
+	if ad.Kind != registry.AdapterPostgres && ad.Kind != registry.AdapterRedis && ad.Kind != registry.AdapterMySQL {
 		return nil, ErrNotAdapter
 	}
 	target := strings.ToLower(strings.TrimSpace(req.Target))
 	if target == "" {
 		return nil, fmt.Errorf("%w: name the database as host:port", ErrTarget)
 	}
+	port, defaultUser := "5432", "postgres"
+	if ad.Kind == registry.AdapterRedis {
+		port, defaultUser = "6379", "default"
+	}
+	if ad.Kind == registry.AdapterMySQL {
+		port, defaultUser = "3306", "root"
+	}
 	if h, p, err := net.SplitHostPort(target); err != nil || h == "" || p == "" {
-		target = net.JoinHostPort(strings.Trim(target, "[]"), "5432")
+		target = net.JoinHostPort(strings.Trim(target, "[]"), port)
 	}
 	if !matchesAny(ad.Hosts, target) {
 		return nil, fmt.Errorf("%w (%s)", ErrTarget, strings.Join(ad.Hosts, ", "))
 	}
 	user := req.User
 	if user == "" {
-		user = "postgres"
+		user = defaultUser
 	}
 	id, err := randomString(16)
 	if err != nil {
@@ -145,20 +156,35 @@ func (m *Manager) Open(req OpenRequest) (*Session, error) {
 	}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	field := ad.Field
-	srv, err := postgres.New(postgres.Config{
-		Token: s.token, Target: target, User: user, Database: req.Database,
-		Password: func(ctx context.Context) ([]byte, error) {
-			return m.cfg.Resolver.Resolve(ctx, s.connection, field)
-		},
-		TLS: m.cfg.TLS, PlainUpstream: m.cfg.PlainUpstream,
-		Dial:   m.cfg.Upstream.DialContext,
-		Report: s.report,
-	})
+	password := func(ctx context.Context) ([]byte, error) {
+		return m.cfg.Resolver.Resolve(ctx, s.connection, field)
+	}
+	switch ad.Kind {
+	case registry.AdapterMySQL:
+		s.server, err = mysql.New(mysql.Config{
+			Token: s.token, Target: target, User: user, Database: req.Database, Password: password,
+			TLS: m.cfg.TLS, PlainUpstream: m.cfg.PlainUpstream,
+			Dial: m.cfg.Upstream.DialContext, Report: s.report,
+		})
+	case registry.AdapterRedis:
+		s.server, err = redis.New(redis.Config{
+			Token: s.token, Target: target, User: user, Password: password,
+			TLS: m.cfg.TLS, PlainUpstream: m.cfg.PlainUpstream,
+			Dial: m.cfg.Upstream.DialContext, Report: s.report,
+		})
+	default:
+		s.server, err = postgres.New(postgres.Config{
+			Token: s.token, Target: target, User: user, Database: req.Database,
+			Password: password,
+			TLS:      m.cfg.TLS, PlainUpstream: m.cfg.PlainUpstream,
+			Dial:   m.cfg.Upstream.DialContext,
+			Report: s.report,
+		})
+	}
 	if err != nil {
 		s.cancel()
 		return nil, err
 	}
-	s.pg = srv
 	if err := s.emit("opened"); err != nil {
 		s.cancel()
 		return nil, fmt.Errorf("adapter: audit log: %w", err)
@@ -228,7 +254,7 @@ func (s *Session) Serve(conn net.Conn) {
 	}
 	s.conns++
 	s.mu.Unlock()
-	s.pg.Serve(s.ctx, conn)
+	s.server.Serve(s.ctx, conn)
 }
 
 // Close revokes the session: its token stops working and its connections end.

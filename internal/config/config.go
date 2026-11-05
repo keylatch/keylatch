@@ -88,10 +88,31 @@ type CITrust struct {
 	// JobWorkflowRefs restricts the job_workflow_ref claim (the
 	// ci_config_ref_uri claim on GitLab) when set.
 	JobWorkflowRefs []string `json:"job_workflow_refs,omitempty"`
+	// Cloud makes the exchange also point the cloud SDKs, and so the
+	// aws-sm, gcp-sm and azure-kv backends, at the job's verified token for
+	// workload identity federation.
+	Cloud *CICloud `json:"cloud,omitempty"`
 	// Connections are the only connections the exchanged session may use.
 	Connections []string `json:"connections"`
 	// MaxTTL is the session lifetime in seconds, 1-3600. Zero means 3600.
 	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// CICloud names the cloud identity a CI job's token is federated to.
+type CICloud struct {
+	// Provider is "aws", "gcp" or "azure".
+	Provider string `json:"provider"`
+	// RoleARN and Region are for AWS (AssumeRoleWithWebIdentity).
+	RoleARN string `json:"role_arn,omitempty"`
+	Region  string `json:"region,omitempty"`
+	// WorkloadIdentityProvider is the full resource name of the GCP workload
+	// identity provider (//iam.googleapis.com/projects/…/providers/…);
+	// ServiceAccount, when set, is impersonated through it.
+	WorkloadIdentityProvider string `json:"workload_identity_provider,omitempty"`
+	ServiceAccount           string `json:"service_account,omitempty"`
+	// TenantID and ClientID are for Azure federated credentials.
+	TenantID string `json:"tenant_id,omitempty"`
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // ConnectionPolicy is the policy attached to one connection.
@@ -103,6 +124,65 @@ type ConnectionPolicy struct {
 type MintPolicy struct {
 	GitHubApp *GitHubAppMintPolicy `json:"github_app,omitempty"`
 	AWS       *AWSMintPolicy       `json:"aws,omitempty"`
+	Vault     *VaultMintPolicy     `json:"vault,omitempty"`
+	GCP       *GCPMintPolicy       `json:"gcp,omitempty"`
+	Azure     *AzureMintPolicy     `json:"azure,omitempty"`
+	OAuth     *OAuthMintPolicy     `json:"oauth,omitempty"`
+}
+
+// VaultMintPolicy limits the dynamic secrets a HashiCorp Vault connection may
+// read for a command. Each lease is revoked when the command exits.
+type VaultMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint ("service", "host",
+	// "human"). Empty means service and host. Agent sessions are never allowed.
+	Callers []string `json:"callers,omitempty"`
+	// Path is the dynamic-secret path that is read, for example
+	// database/creds/readonly. It is the only path that can be minted.
+	Path string `json:"path"`
+	// MaxTTL is the longest lease accepted in seconds, 1–3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// GCPMintPolicy limits the access tokens an impersonation connection may mint.
+type GCPMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint; see VaultMintPolicy.
+	Callers []string `json:"callers,omitempty"`
+	// ServiceAccount is the email of the account that is impersonated.
+	ServiceAccount string `json:"service_account"`
+	// Scopes are the OAuth scopes a token may carry; a request may ask for
+	// fewer. A command run with --runtime minted gets all of them.
+	Scopes []string `json:"scopes"`
+	// MaxTTL is the token lifetime in seconds, 1–3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// AzureMintPolicy limits the client-credentials tokens an Azure connection may
+// mint.
+type AzureMintPolicy struct {
+	// Authentication chooses client_secret (default) or federated assertion.
+	Authentication string `json:"authentication,omitempty"`
+	// Callers lists the caller kinds allowed to mint; see VaultMintPolicy.
+	Callers []string `json:"callers,omitempty"`
+	// Resource is the application ID URI or client ID the token is for. It is
+	// the only resource that can be minted.
+	Resource string `json:"resource"`
+	// MaxTTL is the longest token lifetime accepted in seconds, 1–5400. Entra
+	// ID picks the lifetime itself, between 60 and 90 minutes by default, so
+	// a token that outlives the limit is refused. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// OAuthMintPolicy limits the access tokens minted from a stored refresh token.
+type OAuthMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint; see VaultMintPolicy.
+	Callers []string `json:"callers,omitempty"`
+	// TokenEndpoint is the https URL of the provider's token endpoint.
+	TokenEndpoint string `json:"token_endpoint"`
+	// Scopes are the scopes a token may carry; a request may ask for fewer.
+	Scopes []string `json:"scopes"`
+	// MaxTTL is the longest token lifetime accepted in seconds, 1–5400. The
+	// provider picks the lifetime, so a longer token is refused. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
 }
 
 // AWSMintPolicy limits the STS sessions an AWS connection may mint for a
