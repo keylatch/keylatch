@@ -15,26 +15,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
 	_ "github.com/keylatch/keylatch/internal/backend/all"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
-	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/canary"
 	cmdregistry "github.com/keylatch/keylatch/internal/cmd/regvalidate"
-	cmdtrust "github.com/keylatch/keylatch/internal/cmd/trust"
 	"github.com/keylatch/keylatch/internal/cmderr"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/daemon"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/proxy"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
-	_ "github.com/keylatch/keylatch/internal/trust/all"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -137,7 +139,6 @@ func NewRootCommand() *cobra.Command {
 	root.AddGroup(&cobra.Group{ID: "start", Title: "Getting Started"})
 	root.AddGroup(&cobra.Group{ID: "daily", Title: "Daily Use"})
 	root.AddGroup(&cobra.Group{ID: "gateway", Title: "Gateway"})
-	root.AddGroup(&cobra.Group{ID: "team", Title: "Team"})
 	root.AddGroup(&cobra.Group{ID: "advanced", Title: "Advanced"})
 
 	Register(root)
@@ -189,27 +190,27 @@ func Register(root *cobra.Command) {
 	addCmd(root, newUICmd(), "start")
 	addCmd(root, newBootstrapCmd(), "start")
 	addCmd(root, newInstallGuardCmd(), "start")
+	addCmd(root, newGuardCmd(), "start")
 	addHelpTopics(root)
 
 	// --- Daily Use ---
 	addCmd(root, newGetCmd(), "daily")
-	addCmd(root, newGetMaskedCmd(), "daily")
 	addCmd(root, newListCmdImpl(), "daily")
 	addCmd(root, newStatusCmd(), "daily")
 	addCmd(root, newRunCmd(), "daily")
-	addCmd(root, newShareCmd(), "daily")
 	addCmd(root, newAllowCmd(), "daily")
 	addCmd(root, newDisconnectCmd(), "daily")
 	// keylatch inject was removed in v1.0.0. Running it returns cobra's "unknown command" error.
 	addCmd(root, newTestCmd(), "daily")
 	addCmd(root, newDescribeCmd(), "daily")
+	addCmd(root, newLocalOnlyCmd(), "daily")
 	addCmd(root, newModesCmd(), "daily")
 
 	// --- Gateway ---
 	addCmd(root, newGatewayCmd(), "gateway")
 
-	// --- Team ---
-	addCmd(root, newTeamCmd(), "team")
+	// --- Team and trust (experimental builds only) ---
+	registerExperimentalFeatures(root)
 
 	// --- Advanced (everything else) ---
 	addCmd(root, newPolicyCmd(), "advanced")
@@ -217,6 +218,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newActorsCmd(), "advanced")
 	addCmd(root, newAuditCmd(), "advanced")
 	addCmd(root, newSecurityCmd(), "advanced")
+	addCmd(root, newScanCmd(), "advanced")
 	addCmd(root, newVerifyCmd(), "advanced")
 	addCmd(root, newValidateCmd(), "advanced")
 	addCmd(root, newBackendCmd(), "advanced")
@@ -225,19 +227,18 @@ func Register(root *cobra.Command) {
 	addCmd(root, newCryptoCmd(), "advanced")
 	addCmd(root, newHealthCmd(), "advanced")
 	addCmd(root, newMigrateCmd(), "advanced")
-	addCmd(root, newProjectsCmd(), "advanced")
-	addCmd(root, newReceiptsCmd(), "advanced")
+	addCmd(root, newDrillCmd(), "advanced")
+	addCmd(root, newSyncCmd(), "advanced")
+	addCmd(root, newServiceCmd(), "advanced")
+	addCmd(root, newMachineCmd(), "advanced")
 	addCmd(root, newRegistryCmd(), "advanced")
 	addCmd(root, newRollbackCmd(), "advanced")
-	addCmd(root, newRulesCmd(), "advanced")
-	addCmd(root, newSessionsCmd(), "advanced")
 	addCmd(root, newSetCmd(), "advanced")
-	// Trust and shared-secret commands are now registered from internal/cmd/trust.
-	cmdtrust.RegisterCommands(root, "advanced")
 	addCmd(root, newVersionsCmd(), "advanced")
 	addCmd(root, newDestroyVersionCmd(), "advanced")
 	addCmd(root, newCheckExpiryCmd(), "advanced")
 	addCmd(root, newKeyringCmd(), "advanced")
+	addCmd(root, newKeysCmd(), "advanced")
 	addCmd(root, newMCPCmd(), "advanced")
 	addCmd(root, newTokenCmd(), "advanced")
 
@@ -267,7 +268,6 @@ func Register(root *cobra.Command) {
 	// Registered unconditionally so shell completion and invocation work without
 	// KEYLATCH_EXPERIMENTAL=1.
 	root.AddCommand(newProxyCmdFull())
-	root.AddCommand(newSandboxCmd())
 	root.AddCommand(newCallCmd())
 	root.AddCommand(newBrokerCmd())
 
@@ -277,6 +277,10 @@ func Register(root *cobra.Command) {
 	root.AddCommand(newDenyCmd())
 	root.AddCommand(newLaunchCmd())
 	root.AddCommand(newMintCmd())
+	root.AddCommand(newCICmd())
+	root.AddCommand(newGitCredentialCmd())
+	root.AddCommand(newDockerCredentialCmd())
+	addCmd(root, newKeyCmd(), "advanced")
 	if isExperimentalEnabled() {
 		registerExperimentalAliases(experimentalGroup, root)
 	}
@@ -288,14 +292,14 @@ func Register(root *cobra.Command) {
 	// Backup command.
 	addCmd(root, newBackupCmd(), "advanced")
 
-	// `verify` — cosign signature verification.
-	addCmd(root, newVerifyCmd(), "advanced")
-
 	// runtime group is now implemented.
 	addCmd(root, newRuntimeCmd(), "advanced")
 
 	// `scope` — prints the support manifest (internal/manifest).
 	addCmd(root, newScopeCmd(), "advanced")
+
+	// `explain` reports whether a run is allowed and how, for humans and host guards.
+	addCmd(root, newExplainCmd(), "advanced")
 }
 
 // newRegistryCmd returns the `registry` subcommand group.
@@ -405,8 +409,7 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 		gatewayRunning = true
 	}
 
-	// v1.0.0 mode set (direct_classic_sandboxed reinstated).
-	allModes := []string{"gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy", "direct_classic_sandboxed"}
+	allModes := []string{"gateway_typed", "gateway_sdk", "minted", "gateway_proxy"}
 	for _, m := range allModes {
 		status := runtimeModeStatus{Mode: m}
 
@@ -429,26 +432,13 @@ func buildRuntimeDoctorReport(env llmcontext.Lookup, provider string) runtimeDoc
 				reason = "gateway not running: run 'keylatch gateway up'"
 				status.Available = false
 			}
-		case m == "direct_brokered":
+		case m == "minted":
 			if preferred {
-				reason = "preferred mode — broker strategy available"
+				reason = "preferred mode — mint strategy available"
 			} else {
 				reason = "supported"
 			}
 			status.Available = true
-		case m == "direct_classic_sandboxed":
-			// sandbox availability depends on platform primitive.
-			sandboxAvail, sandboxReason, _ := sandboxModeAvailability()
-			if sandboxAvail {
-				reason = "sandbox primitive available: " + sandboxReason
-				if preferred {
-					reason += " (preferred mode)"
-				}
-				status.Available = true
-			} else {
-				reason = "sandbox not available: " + sandboxReason + " — run 'keylatch sandbox doctor'"
-				status.Available = false
-			}
 		default:
 			reason = "unknown mode"
 			status.Available = false
@@ -469,7 +459,6 @@ func newGetCmd() *cobra.Command {
 		Use:   "get <service> <key>",
 		Short: "Retrieve a credential value",
 	}
-	cmd.Flags().Bool("masked", false, "return masked value (safe in LLM sessions)")
 
 	// notImplementedGetHandler is value-bearing but not yet implemented.
 	// GuardLLMSession (applied by AsValueBearing, below) wraps this handler
@@ -478,8 +467,7 @@ func newGetCmd() *cobra.Command {
 	// never reaches this inner handler at all — no escape hatch applies.
 	//
 	// Once GuardLLMSession has passed, the raw-credential gate still applies:
-	// `get` (non-masked) always returns a raw value. See
-	// RequireRawCredentialOptIn.
+	// `get` always returns a raw value. See RequireRawCredentialOptIn.
 	notImpl := Handler(func(_ context.Context, hArgs HandlerArgs) (Result, error) {
 		if verErr := RequireRawCredentialOptIn(true, configAllowsUnverifiedSession()); verErr != nil {
 			fmt.Fprintf(hArgs.Stderr, "%v\n", verErr)
@@ -491,19 +479,6 @@ func newGetCmd() *cobra.Command {
 	vbh := AsValueBearing(notImpl)
 
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		masked, _ := c.Flags().GetBool("masked")
-		if masked {
-			// --masked is NOT guarded — it never outputs raw credentials.
-			// get --masked is a safe path.
-			stdout := c.OutOrStdout()
-			if len(args) >= 2 {
-				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
-			} else {
-				fmt.Fprintf(stdout, "**** = ****\n")
-			}
-			return nil
-		}
-
 		hArgs := handlerArgsFromCmd(c, args)
 		res, err := vbh.Invoke(c.Context(), hArgs)
 		if err != nil {
@@ -517,24 +492,6 @@ func newGetCmd() *cobra.Command {
 	return cmd
 }
 
-// newGetMaskedCmd returns the `get-masked` subcommand — NOT guarded.
-// get-masked is a safe path.
-func newGetMaskedCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "get-masked <service> <key>",
-		Short: "Retrieve a masked credential (safe in LLM sessions)",
-		RunE: func(c *cobra.Command, args []string) error {
-			stdout := c.OutOrStdout()
-			if len(args) >= 2 {
-				fmt.Fprintf(stdout, "%s.%s = ****\n", args[0], args[1])
-			} else {
-				fmt.Fprintf(stdout, "**** = ****\n")
-			}
-			return nil
-		},
-	}
-}
-
 // newRunCmd returns the `run` subcommand with --runtime and --approval-jwt flags.
 // `run` is NOT value-bearing — not wrapped by GuardLLMSession.
 // GuardRuntime enforces mode restrictions for LLM sessions.
@@ -546,6 +503,9 @@ func newRunCmd() *cobra.Command {
 		Short: "Run a command with injected credentials",
 		RunE: func(c *cobra.Command, args []string) error {
 			mode := runtime.RuntimeMode(c.Flag("runtime").Value.String())
+			if mode == "" {
+				mode = templateRuntime(c.Context(), args)
+			}
 			modeFlag, _ := c.Flags().GetString("mode")
 			approvalJWT := c.Flag("approval-jwt").Value.String()
 			rawAllows, _ := c.Flags().GetStringArray("allow")
@@ -558,6 +518,14 @@ func newRunCmd() *cobra.Command {
 			// Mode validation runs first because it is pure/stateless and the
 			// E2E tests expect removed-mode errors to take priority (exit 5).
 
+			// The service runtime is served through the system broker, which
+			// answers before this code runs; reaching it means no broker did.
+			if string(mode) == runner.ServiceRuntime {
+				cliErr := NewRuntimeNotAvailable("--runtime service releases a credential to an enrolled systemd unit through the system broker, and no broker answered; see 'keylatch service enroll --help'")
+				fmt.Fprint(c.ErrOrStderr(), cliErr.Stderr())
+				os.Exit(exitcode.RuntimeNotAvailable)
+			}
+
 			// Guard 1 (mode): validate that the requested runtime mode is available.
 			// This runs first so removed-mode errors take priority over bootstrap
 			// errors — the mode check is stateless and has no filesystem dependency.
@@ -565,6 +533,30 @@ func newRunCmd() *cobra.Command {
 				cliErr := NewRuntimeNotAvailable("runtime mode %q has been removed: %s", mode, hint)
 				fmt.Fprint(c.ErrOrStderr(), cliErr.Stderr())
 				os.Exit(exitcode.RuntimeNotAvailable)
+			}
+
+			// A mode that does not exist (including every removed runtime) is a
+			// usage error; suggest the closest match on a typo.
+			if !isKnownMode(mode) {
+				suggestion := suggestMode(string(mode))
+				if suggestion != "" {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q. Did you mean %q?\n", mode, suggestion)
+				} else {
+					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q.\n", mode)
+				}
+				fmt.Fprintln(c.ErrOrStderr(), "  Run 'keylatch modes' to see all available modes.")
+				os.Exit(exitcode.UserError)
+			}
+
+			// A tier is chosen and served by the daemon; with no daemon reachable
+			// the thin client never gets here, so a local run cannot honour one
+			// and must not quietly pick another.
+			if tier, _ := c.Flags().GetString("tier"); tier != "" {
+				if dry, _ := c.Flags().GetBool("dry-run"); !dry {
+					cliErr := NewRuntimeNotAvailable("--tier %s is served by keylatchd and no daemon answers; start it with `keylatchd serve`", tier)
+					fmt.Fprint(c.ErrOrStderr(), cliErr.Stderr())
+					os.Exit(exitcode.RuntimeNotAvailable)
+				}
 			}
 
 			// --dry-run mode must bypass all infrastructure guards because it
@@ -636,23 +628,12 @@ func newRunCmd() *cobra.Command {
 				os.Exit(exitcode.SecurityBlock)
 			}
 
-			// Validate mode early and suggest closest match on typo.
-			if !isKnownMode(mode) {
-				suggestion := suggestMode(string(mode))
-				if suggestion != "" {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q. Did you mean %q?\n", mode, suggestion)
-				} else {
-					fmt.Fprintf(c.ErrOrStderr(), "Error: unknown runtime mode %q.\n", mode)
-				}
-				fmt.Fprintln(c.ErrOrStderr(), "  Run 'keylatch modes' to see all available modes.")
-				os.Exit(exitcode.UserError)
-			}
-
 			// signingKey is nil here: the gateway signing key is not loaded at
 			// CLI startup. GuardRuntime will block any approval JWT because it
 			// cannot verify the signature — callers must obtain approval via a
 			// running gateway instance that holds the key.
 			if block, code := GuardRuntime(mode, approvalJWT, llmcontext.DefaultLookup, nil); block {
+				recordGuardBlock(c.Context(), "run", "runtime_mode:"+string(mode), "runtime mode not permitted in an agent session")
 				WriteGuardRuntimeError(&stderrBuf, mode)
 				fmt.Fprint(c.ErrOrStderr(), stderrBuf.String())
 				os.Exit(code)
@@ -715,6 +696,16 @@ func newRunCmd() *cobra.Command {
 				os.Exit(exitcode.OperationFailed)
 			}
 
+			if len(tmpl.MintedFields) > 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "keylatch run: connection %q mints its credential; run it through the daemon with 'keylatchd serve' so the child receives a placeholder\n", connectionName)
+				os.Exit(exitcode.UserError)
+			}
+
+			var localCfg runner.LocalOnly
+			if lc, lcErr := connections.Load(ctx, "default", connectionName, b); lcErr == nil {
+				localCfg = runner.LocalOnly{Class: lc.Class, Fields: lc.LocalOnly}
+			}
+
 			// Track start time for summary.
 			start := time.Now()
 
@@ -733,7 +724,7 @@ func newRunCmd() *cobra.Command {
 			// if the key is absent. This is acceptable: without a signing key the
 			// gateway cannot have been initialized so gateway_is_running returns false.
 			env := llmcontext.DefaultLookup
-			signingKey, _ := os.ReadFile(paths.GatewaySigningKey(env))
+			signingKey, _ := LoadGatewaySigningKey(env, false)
 			tokenStorePath := paths.GatewayTokens(env)
 			pidPath := paths.GatewayPID(env)
 
@@ -770,27 +761,31 @@ func newRunCmd() *cobra.Command {
 			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
 			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
 
-			// The support manifest excludes direct_brokered, gateway_proxy and
-			// direct_classic_sandboxed from the supported runtime set
+			// The support manifest excludes gateway_proxy from the supported
+			// runtime set
 			// — WithManifestGuard makes each unreachable regardless
 			// of runtime.Resolve's fallback hierarchy, so a denied or
 			// unavailable gateway can never fall back into a direct
 			// secret-injection mode.
 			supported := manifest.Current()
+			auditLog, auditCleanup, auditErr := requireAuditLogger("run")
+			if auditErr != nil {
+				return auditErr
+			}
+			defer auditCleanup()
 			dr := runner.DispatchRunner{
-				Guard: guardFn,
+				Guard:   guardFn,
+				Enforce: ciScopedEnforce(enforce.Decide),
+				Audit:   audit.AsEmitter(auditLog),
 				Drivers: map[string]runner.Driver{
 					// v1.0.0 mode set.
 					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
 					string(runtime.RuntimeGatewaySDK):   runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeDirectBrokered): runner.WithManifestGuard(
-						runner.NewBrokeredDriver(b, newCLIBroker(ctx), nil), supported, "direct_brokered"),
+					string(runtime.RuntimeMinted): runner.WithManifestGuard(
+						runner.NewMintedDriver(mintedOpener(loadCLIConfig(c), audit.AsEmitter(auditLog))), supported, "minted"),
 					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
 						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
 						supported, "gateway_proxy"),
-					// direct_classic_sandboxed reinstated.
-					string(runtime.RuntimeDirectClassicSandboxed): runner.WithManifestGuard(
-						runner.NewClassicSandboxedDriver(nil), supported, "direct_classic_sandboxed"),
 				},
 			}
 
@@ -828,6 +823,7 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			callerInfo := callerkind.Local(env, interactiveStdin())
 			req := runner.ExecRequest{
 				ConnectionSlug:       connectionName,
 				Command:              command,
@@ -837,17 +833,19 @@ func newRunCmd() *cobra.Command {
 				TTL:                  0,
 				Runtime:              string(mode),
 				ApprovalJWT:          approvalJWT,
+				Caller:               callerInfo.Kind,
+				CallerUnit:           callerInfo.Unit,
 				Stdin:                c.InOrStdin(),
 				Stdout:               c.OutOrStdout(),
 				Stderr:               c.ErrOrStderr(),
 				ExtraAllowedPrefixes: extraAllowed,
 				CleanEnv:             cleanEnv,
 				ExtraEnvVars:         extraEnvVars,
+				LocalOnly:            localCfg,
+				LocalSession:         localonly.NewSession(),
 			}
 			receipt, runErr := dr.Run(ctx, req)
 			elapsed := time.Since(start)
-			// Best-effort push to keylatchd dashboard (ignored if not running).
-			pushReceiptToUI(ctx, receipt)
 
 			_ = storagePath
 			if runErr != nil {
@@ -865,6 +863,28 @@ func newRunCmd() *cobra.Command {
 						exitCode = exitcode.OperationFailed
 					}
 					os.Exit(exitCode)
+				}
+				if errors.Is(runErr, localonly.ErrNotAvailable) {
+					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
+					_ = closeAndZeroBackend(b)
+					os.Exit(exitcode.RuntimeNotAvailable)
+				}
+				if errors.Is(runErr, localonly.ErrEphemeralClass) {
+					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", runErr)
+					_ = closeAndZeroBackend(b)
+					os.Exit(exitcode.PolicyDeny)
+				}
+				var denied *runner.PolicyDeniedError
+				if errors.As(runErr, &denied) {
+					fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", denied)
+					if denied.Decision.SafeFix != "" {
+						fmt.Fprintf(c.ErrOrStderr(), "  fix: %s\n", denied.Decision.SafeFix)
+					}
+					_ = closeAndZeroBackend(b)
+					if denied.Decision.ApprovalRequired {
+						os.Exit(exitcode.ApprovalRequired)
+					}
+					os.Exit(exitcode.PolicyDeny)
 				}
 				if errors.Is(runErr, runner.ErrCommandNotAllowed) {
 					// Actionable allowlist error.
@@ -952,12 +972,16 @@ func newRunCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped),
-		"runtime mode (default: gateway_typed — run 'keylatch modes' to see all options)")
-	cmd.Flags().String("mode", "", "operating mode (standard, telemetry, canary, custom); overrides config file and KEYLATCH_MODE env var")
-	cmd.Flags().String("approval-jwt", "", "approval JWT for direct_classic_sandboxed mode")
+	cmd.Flags().String("runtime", "",
+		"runtime mode (default: the connection template's preferred mode — run 'keylatch modes' to see all options)")
+	cmd.Flags().String("mode", "", "operating mode (standard, canary, custom); overrides config file and KEYLATCH_MODE env var")
+	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	cmd.Flags().StringArray("allow", nil, "allow this command prefix for this run only; repeat or comma-separate (blocked in LLM sessions)")
 	cmd.Flags().Bool("no-daemon-start", false, "do not auto-start keylatchd if it is not running")
+	cmd.Flags().String("tier", "", "delivery tier D2 to D5; served through a running keylatchd (D5 runs the command in the Keylatch sandbox with the real value)")
+	cmd.Flags().String("target", "", "D4: database host:port the connection's adapter hosts cover")
+	cmd.Flags().String("db-user", "", "D4: database role the adapter authenticates as (default postgres)")
+	cmd.Flags().String("database", "", "D4: database used when the client names none (default postgres)")
 	cmd.Flags().Bool("dry-run", false, "show what would be injected and executed without running the command")
 	cmd.Flags().Bool("json", false, "output dry-run plan as JSON (requires --dry-run)")
 	cmd.Flags().Bool("clean-env", false, "exec the child with a minimal env (PATH, HOME, USER, SHELL, TERM, LANG + injected vars)")
@@ -1078,9 +1102,9 @@ func runDryRun(c *cobra.Command, connectionName string, command []string, mode r
 			"KEYLATCH_GATEWAY_TOKEN=<would-be-issued scope:"+tmpl.Provider+".*, ttl:1h>",
 			"KEYLATCH_RUNTIME="+string(mode),
 		)
-	case runtime.RuntimeDirectBrokered:
+	case runtime.RuntimeMinted:
 		for _, rule := range tmpl.InjectionRules {
-			plan.EnvAdded = append(plan.EnvAdded, rule.EnvVar+"=<would-be-brokered ephemeral token>")
+			plan.EnvAdded = append(plan.EnvAdded, rule.EnvVar+"=<would-be-minted scoped token>")
 		}
 		plan.EnvAdded = append(plan.EnvAdded, "KEYLATCH_RUNTIME="+string(mode))
 	case runtime.RuntimeGatewayProxy:
@@ -1259,7 +1283,7 @@ func newCallCmdStub() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("runtime", string(runtime.RuntimeGatewayTyped), "runtime mode")
-	cmd.Flags().String("approval-jwt", "", "approval JWT for direct_classic_sandboxed mode")
+	cmd.Flags().String("approval-jwt", "", "approval JWT for runtime modes that require approval")
 	return cmd
 }
 
@@ -1372,6 +1396,25 @@ func proxyRunAddr(env llmcontext.Lookup) (string, error) {
 	return "127.0.0.1:7879", nil
 }
 
+// templateRuntime is the mode the connection's template prefers. An unknown
+// connection or an unresolvable template keeps the gateway default so the
+// usual not-found errors come from the later checks.
+func templateRuntime(ctx context.Context, args []string) runtime.RuntimeMode {
+	conn, _, err := parseRunArgs(args)
+	if err != nil || conn == "" {
+		return runtime.RuntimeGatewayTyped
+	}
+	tmpl, err := registry.Get(conn)
+	if err != nil {
+		return runtime.RuntimeGatewayTyped
+	}
+	d, err := runtime.Resolve(ctx, runtime.ResolveRequest{ConnectionSlug: conn}, tmpl)
+	if err != nil {
+		return runtime.RuntimeGatewayTyped
+	}
+	return d.Mode
+}
+
 // mapCustomConfig converts a config.CustomModeConfig pointer to a
 // runtime.CustomModeConfig pointer for use with EffectiveSettingsForMode.
 // Returns nil if cfg is nil.
@@ -1380,24 +1423,7 @@ func mapCustomConfig(cfg *config.CustomModeConfig) *runtime.CustomModeConfig {
 		return nil
 	}
 	return &runtime.CustomModeConfig{
-		TelemetryEnabled:       cfg.TelemetryEnabled,
 		CanaryInjectionEnabled: cfg.CanaryInjectionEnabled,
 		ExperimentalGated:      cfg.ExperimentalGated,
 	}
-}
-
-// newCLIBroker returns a BrokerExchanger suitable for the CLI direct_brokered
-// path. It has no registered provider strategies, so it returns
-// broker.ErrUnsupportedExchange for any provider that does not have a registered
-// strategy. This is acceptable behaviour for the initial wiring: the error
-// surfaces as a driver error and is reported to the user with an actionable
-// message via the standard error path.
-func newCLIBroker(ctx context.Context) runner.BrokerExchanger {
-	// The hmacKey (3rd nil) is intentionally nil here. When nil, broker.hashID
-	// returns the constant "no-hmac-key" placeholder — actor/session IDs are not
-	// HMAC'd in the CLI direct-brokered path because no signing key is loaded at
-	// broker construction time (the signing key lives in the gateway process, not
-	// the CLI). The audit MAC key is derived inside audit.Open from the audit salt
-	// via DeriveChainMACKey — passing nil here is correct; it is not used externally.
-	return broker.NewBroker(ctx, nil, nil, nil)
 }

@@ -107,6 +107,7 @@ func TestServeTCPWrongTransport(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeTCPInvalidTokenTTL(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
 		ConnectionAuth: AuthBearerLegacy,
@@ -144,6 +145,7 @@ func TestServeBearerLegacyInvalidTokenTTL(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeTCPCancelledImmediately(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	s, err := New(ServerOptions{
 		Transport:      TransportTCP,
 		ConnectionAuth: AuthBearerLegacy,

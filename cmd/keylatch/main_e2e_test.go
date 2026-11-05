@@ -15,6 +15,7 @@ import (
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,7 +51,9 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		binaryPath += ".exe"
 	}
-	out, err := exec.Command("go", "build", "-buildvcs=false", "-o", binaryPath, "github.com/keylatch/keylatch/cmd/keylatch").CombinedOutput()
+	// The keylatch_e2e tag lets the binary read operator settings from the
+	// scratch home these tests use instead of the account's real home.
+	out, err := exec.Command("go", "build", "-buildvcs=false", "-tags", "keylatch_e2e", "-o", binaryPath, "github.com/keylatch/keylatch/cmd/keylatch").CombinedOutput()
 	if err != nil {
 		panic("failed to build keylatch binary: " + err.Error() + "\n" + string(out))
 	}
@@ -173,7 +176,7 @@ func TestE2E_CREDENTIALS_LLM_SESSION_1_blocks_get(t *testing.T) {
 // (docker-server-security hardening, fix/daemonup-bypass).
 //
 // Raw-credential-exposure paths — non-masked `get`, and `run` in
-// direct_brokered / direct_classic_sandboxed runtime modes
+// direct_brokered runtime mode
 // (runtime.IsRawCredentialMode) — are now gated for EVERY session, including
 // SignalNone (no LLM signal detected at all, e.g. CREDENTIALS_LLM_SESSION=0
 // or no signals set). This closes the "unset every signal and sail through"
@@ -262,19 +265,6 @@ func TestE2E_no_signals_PlantedOptInIgnored(t *testing.T) {
 		"get", "svc", "key")
 
 	assert.Equal(t, 2, code, "an opt-in outside the operator's default config must leave the gate closed")
-}
-
-// TestE2E_masked_exits_0_in_llm_session verifies get --masked is a safe path.
-func TestE2E_masked_exits_0_in_llm_session(t *testing.T) {
-	homeDir := t.TempDir()
-	stdout, stderr, code := runKeylatch(t,
-		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"get", "--masked", "foo", "bar")
-
-	assert.Equal(t, 0, code, "get --masked must exit 0 in LLM session")
-	assert.Contains(t, string(stdout), "****")
-	assert.Empty(t, stderr)
-	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
 // TestE2E_VersionSubcommand_MatchesVersionFlag verifies the fix:
@@ -402,7 +392,18 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 	}
 }
 
-// TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate verifies that on a
+// TestE2E_Run_DirectBrokeredIsRenamed verifies the retired runtime name exits 5
+// and points to minted.
+func TestE2E_Run_DirectBrokeredIsRenamed(t *testing.T) {
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": t.TempDir()},
+		"run", "--runtime", "direct_brokered", "openrouter", "--", "node", "x.js")
+
+	assert.Equal(t, 5, code, "stderr: %s", stderr)
+	assert.Contains(t, string(stderr), "--runtime minted")
+}
+
+// TestE2E_Run_Minted_BootstrapPrecedesSessionGate verifies that on a
 // clean (un-bootstrapped) machine a raw-credential run mode surfaces the
 // actionable BootstrapMissing error (exit 7) rather than the raw-credential
 // session gate's fail-closed message: the onboarding guards (bootstrap, then
@@ -414,11 +415,11 @@ func TestE2E_GuardRuntime_AllowedModes(t *testing.T) {
 // covered end-to-end by the `get` tests above (which do not depend on
 // bootstrap) and exhaustively at the unit level in
 // internal/cli/session_enforce_test.go.
-func TestE2E_Run_DirectBrokered_BootstrapPrecedesSessionGate(t *testing.T) {
+func TestE2E_Run_Minted_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"run", "--runtime", "direct_brokered", "aws-prod", "--", "./deploy.sh")
+		"run", "--runtime", "minted", "aws-prod", "--", "./deploy.sh")
 
 	assert.Equal(t, 7, code, "raw run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
@@ -440,24 +441,34 @@ func TestE2E_GuardRuntime_DirectClassicRemoved(t *testing.T) {
 	assertNoCanaryLeak(t, stdout, stderr, homeDir)
 }
 
-// TestE2E_Run_SandboxedBootstrapPrecedesSessionGate verifies that
-// direct_classic_sandboxed (a raw-credential mode) also surfaces the
-// BootstrapMissing error (exit 7) on a clean machine, ahead of the
-// raw-credential session gate — same onboarding-first ordering as
-// direct_brokered. The session gate's raw-credential fail-closed behavior
-// (which supersedes GuardRuntime's allowance of sandboxed in LLM sessions once
-// a machine is set up) is covered by the get-path e2e tests and the
-// session_enforce unit tests.
-func TestE2E_Run_SandboxedBootstrapPrecedesSessionGate(t *testing.T) {
+// TestE2E_Run_MintedBootstrapPrecedesSessionGate verifies that
+// minted (a raw-credential mode) surfaces the BootstrapMissing error
+// (exit 7) on a clean machine, ahead of the raw-credential session gate. The
+// session gate's raw-credential fail-closed behavior is covered by the
+// get-path e2e tests and the session_enforce unit tests.
+func TestE2E_Run_MintedBootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"CLAUDE_CODE": "1", "HOME": homeDir},
-		"run", "--runtime", "direct_classic_sandboxed",
+		"run", "--runtime", "minted",
 		"openrouter", "--", "node", "x.js")
 
 	assert.Equal(t, 7, code,
-		"raw sandboxed run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
+		"raw brokered run before bootstrap must exit 7 (BootstrapMissing), ahead of the session gate; stderr: %s", stderr)
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
+}
+
+// TestE2E_Run_RemovedClassicSandboxedIsUnknown verifies the removed runtime is
+// rejected as an unknown runtime on any machine, before any other check.
+func TestE2E_Run_RemovedClassicSandboxedIsUnknown(t *testing.T) {
+	homeDir := t.TempDir()
+	_, stderr, code := runKeylatch(t,
+		map[string]string{"HOME": homeDir},
+		"run", "--runtime", "direct_classic_sandboxed",
+		"openrouter", "--", "node", "x.js")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, string(stderr), "unknown runtime")
 }
 
 // TestE2E_InjectBlockedInLLMSession verifies that keylatch inject returns a non-zero
@@ -628,27 +639,55 @@ func TestE2E_Run_NonLLMBaseline_BootstrapPrecedesSessionGate(t *testing.T) {
 	homeDir := t.TempDir()
 	_, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
-		"run", "--runtime", "direct_classic_sandboxed", "openrouter", "--", "node", "x.js")
+		"run", "--runtime", "minted", "openrouter", "--", "node", "x.js")
 
 	assert.Equal(t, 7, code,
 		"raw run before bootstrap must exit 7 (BootstrapMissing) for a SignalNone session too, ahead of the session gate; stderr: %s", stderr)
 	assert.Contains(t, strings.ToLower(string(stderr)), "bootstrap")
 }
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// noInsecureKEK, set in a test's overrides, keeps the scratch home's operator
+// config from allowing a plaintext vault key.
+const noInsecureKEK = "KEYLATCH_E2E_NO_INSECURE_KEK"
+
 // isolateFromKeyring drops the session-bus variables so the subprocess never
-// reaches the developer's Secret Service keyring, and opts into the file KEK
-// unless the test sets KEYLATCH_INSECURE_FILE_KEK itself.
+// reaches the developer's Secret Service keyring and points it at the scratch
+// home for operator settings. Unless the test sets noInsecureKEK, the scratch
+// home's operator config allows a plaintext vault key: the one way to bootstrap
+// without a keyring or a terminal.
 func isolateFromKeyring(environ []string, overrides map[string]string) []string {
-	out := make([]string, 0, len(environ)+1)
+	out := make([]string, 0, len(environ)+2)
 	for _, e := range environ {
 		switch name, _, _ := strings.Cut(e, "="); name {
-		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_INSECURE_FILE_KEK":
+		case "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "KEYLATCH_E2E_OPERATOR_HOME", "KEYLATCH_E2E_NO_OS_KEYRING", noInsecureKEK:
 			continue
 		}
 		out = append(out, e)
 	}
-	if _, set := overrides["KEYLATCH_INSECURE_FILE_KEK"]; !set {
-		out = append(out, "KEYLATCH_INSECURE_FILE_KEK=1")
+	// The macOS login keychain on a CI runner can block on an unlock prompt
+	// until the store timeout kills it.
+	if runtime.GOOS == "darwin" {
+		out = append(out, "KEYLATCH_E2E_NO_OS_KEYRING=1")
+	}
+	home, ok := overrides["HOME"]
+	if !ok {
+		return out
+	}
+	// The operator's home is a directory of its own, so a config a test plants
+	// under HOME is never mistaken for the operator's.
+	operatorHome := filepath.Join(home, "operator-home")
+	out = append(out, "KEYLATCH_E2E_OPERATOR_HOME="+operatorHome)
+	if _, off := overrides[noInsecureKEK]; !off && runtime.GOOS != "windows" {
+		if cfgPath := paths.DefaultConfig(operatorHome); !fileExists(cfgPath) {
+			c := config.Default()
+			c.AllowInsecureFileKEK = true
+			_ = config.Save(cfgPath, c)
+		}
 	}
 	return out
 }

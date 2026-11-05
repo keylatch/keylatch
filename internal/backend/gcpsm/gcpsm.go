@@ -2,7 +2,6 @@
 //
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
-//   - runner.OK is checked before returning plaintext.
 package gcpsm
 
 import (
@@ -19,7 +18,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -120,10 +118,6 @@ func (b *GCPSecretManagerBackend) versionName(name string) string {
 
 // Get retrieves the latest version of a secret from GCP Secret Manager.
 func (b *GCPSecretManagerBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	result, err := b.client.AccessSecretVersion(ctx, &secretmanagerpb.AccessSecretVersionRequest{
 		Name: b.versionName(path),
 	})

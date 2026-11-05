@@ -1,0 +1,44 @@
+{
+  "description": "effective policy report",
+  "mode": "policy",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {
+        "id": "r1",
+        "actor": "claude-code",
+        "connections": [
+          "openai"
+        ],
+        "capabilities": [
+          "inject"
+        ]
+      }
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "openai",
+    "hosts": [
+      "api.openai.com"
+    ],
+    "runtimes": [
+      "gateway_typed",
+      "gateway_sdk"
+    ],
+    "typed_actions": true
+  },
+  "unknown_connections": [
+    "nope"
+  ],
+  "enabled_runtimes": [
+    "gateway_typed",
+    "gateway_sdk"
+  ],
+  "request": {
+    "connection": "openai",
+    "actor": "claude-code"
+  }
+}

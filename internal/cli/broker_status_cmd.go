@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/broker"
+	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ type brokerStatusGrantRow struct {
 
 // brokerStatusOutput is the full JSON payload for `broker status --json`.
 type brokerStatusOutput struct {
+	Daemon brokerDaemonStatus     `json:"daemon"`
 	Grants []brokerStatusGrantRow `json:"grants"`
 	Total  int                    `json:"total"`
 }
@@ -46,6 +48,23 @@ Requires the broker to be running in-process. If the broker is owned by a
 separate gateway process, use 'keylatch gateway status' instead.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			jsonOut, _ := c.Root().PersistentFlags().GetBool("json")
+			if asJSON, _ := c.Flags().GetBool("json"); asJSON {
+				jsonOut = true
+			}
+			daemon := brokerDaemonState(llmcontext.DefaultLookup)
+			if daemon.Mode == "broker" {
+				// The system broker holds the grants; a user-level token cache is not where they are.
+				if jsonOut {
+					b, err := json.MarshalIndent(brokerStatusOutput{Daemon: daemon, Grants: []brokerStatusGrantRow{}}, "", "  ")
+					if err != nil {
+						return NewInternalError("marshal broker status: %v", err)
+					}
+					fmt.Fprintln(c.OutOrStdout(), string(b))
+					return nil
+				}
+				renderBrokerDaemon(c.OutOrStdout(), daemon)
+				return nil
+			}
 
 			// Obtain a handle — out-of-process returns ErrBrokerOutOfProcess.
 			handle := brokerHandleFactory()
@@ -74,6 +93,7 @@ separate gateway process, use 'keylatch gateway status' instead.`,
 			}
 
 			output := brokerStatusOutput{
+				Daemon: daemon,
 				Grants: rows,
 				Total:  len(rows),
 			}
@@ -88,6 +108,7 @@ separate gateway process, use 'keylatch gateway status' instead.`,
 			}
 
 			// Table output.
+			renderBrokerDaemon(c.OutOrStdout(), daemon)
 			if len(rows) == 0 {
 				fmt.Fprintln(c.OutOrStdout(), "No active scoped tokens.")
 				return nil

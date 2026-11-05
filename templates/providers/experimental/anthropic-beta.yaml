@@ -27,7 +27,6 @@ runtime_support:
   preferred: gateway_sdk
   supported:
     - gateway_sdk
-    - direct_brokered
 
 capabilities:
   - name: chat.completion

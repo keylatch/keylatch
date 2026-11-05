@@ -56,10 +56,9 @@ func makeInvalidApprovalJWT(t *testing.T, key []byte) string {
 	return tok
 }
 
-// 30-cell matrix test: IsLLMSession(2) × RuntimeMode(5) × ApprovalJWT(3) = 30 cells.
-// RuntimeMode(5) = gateway_typed, gateway_sdk, direct_brokered, gateway_proxy,
-// direct_classic_sandboxed (reinstated). direct_classic permanently removed.
-const expectedCells = 2 * 5 * 3 // 30
+// 24-cell matrix test: IsLLMSession(2) × RuntimeMode(4) × ApprovalJWT(3) = 24 cells.
+// RuntimeMode(4) = gateway_typed, gateway_sdk, minted, gateway_proxy.
+const expectedCells = 2 * 4 * 3 // 24
 
 func TestGuardRuntimeMatrix(t *testing.T) {
 	t.Parallel()
@@ -90,11 +89,8 @@ func TestGuardRuntimeMatrix(t *testing.T) {
 					switch mode {
 					case runtime.RuntimeGatewayTyped,
 						runtime.RuntimeGatewaySDK,
-						runtime.RuntimeDirectBrokered,
-						runtime.RuntimeGatewayProxy,
-						runtime.RuntimeDirectClassicSandboxed:
-						// All v1.0.0 modes (including reinstated direct_classic_sandboxed)
-						// are permitted in LLM sessions. The OS sandbox provides isolation.
+						runtime.RuntimeMinted,
+						runtime.RuntimeGatewayProxy:
 						wantBlock = false
 					default:
 						wantBlock = true
@@ -147,7 +143,7 @@ func TestGuardRuntimeMatrix_NoOutputWhenAllowed(t *testing.T) {
 	for _, mode := range []runtime.RuntimeMode{
 		runtime.RuntimeGatewayTyped,
 		runtime.RuntimeGatewaySDK,
-		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeMinted,
 		runtime.RuntimeGatewayProxy,
 	} {
 		block, code := cli.GuardRuntime(mode, "", llmcontext.Lookup(env), key)

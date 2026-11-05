@@ -21,6 +21,11 @@ const _PATTERNS = [
   'sk-proj-[A-Za-z0-9\\-_]{20,}',
   // Generic sk- key (OpenAI and others)
   'sk-[A-Za-z0-9\\-_]{20,}',
+  // Stripe secret and restricted keys
+  'sk_(?:live|test)_[A-Za-z0-9]{10,}',
+  'rk_(?:live|test)_[A-Za-z0-9]{10,}',
+  // Supabase secret keys
+  'sb_secret_[A-Za-z0-9\\-_]{10,}',
   // GitHub PAT / Actions / OAuth / Refresh tokens
   'gh[psro]_[A-Za-z0-9]{20,}',
   // Slack bot tokens

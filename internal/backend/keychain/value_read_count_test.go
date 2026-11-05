@@ -23,8 +23,7 @@ func TestGet_ExactlyOneValueRead(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("pw\n"),
 			},
-			secBin + "|unlock-keychain|-p|pw|" + kPath: {},
-			secBin + "|lock-keychain|" + kPath:         {},
+			secBin + "|lock-keychain|" + kPath: {},
 			// Manifest.
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + kPath: {
 				Stdout: []byte(`{"version":1,"items":[{"connection":"openrouter","fields":["api_key"]}]}`),

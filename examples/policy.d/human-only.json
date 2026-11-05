@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "description": "Only a human at a terminal may use stripe. Production keys belong here: no agent, host process or service gets them.",
+  "connection": "stripe",
+  "default": "deny",
+  "callers": {
+    "human": { "allow": true },
+    "agent": "deny",
+    "host": "deny",
+    "service": "deny"
+  }
+}

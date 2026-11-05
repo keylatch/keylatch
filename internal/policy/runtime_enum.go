@@ -9,12 +9,22 @@ import "fmt"
 type RuntimeMode string
 
 const (
-	RuntimeGatewayTyped   RuntimeMode = "gateway_typed"
-	RuntimeGatewaySDK     RuntimeMode = "gateway_sdk"
-	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
+	RuntimeGatewayTyped RuntimeMode = "gateway_typed"
+	RuntimeGatewaySDK   RuntimeMode = "gateway_sdk"
 	// RuntimeDirectClassic is the 0.1.0 non-sandboxed direct injection mode.
 	RuntimeDirectClassic RuntimeMode = "direct_classic"
 	RuntimeGatewayProxy  RuntimeMode = "gateway_proxy"
+	// RuntimeMinted is a scoped credential minted for the command and revoked
+	// when it exits; it was called direct_brokered.
+	RuntimeMinted RuntimeMode = "minted"
+	// RuntimePlaceholder is tier D3: the child holds placeholders the daemon's
+	// proxy replaces. RuntimeContained is tier D5: the child holds the real
+	// value inside the Keylatch sandbox.
+	RuntimePlaceholder RuntimeMode = "placeholder"
+	RuntimeContained   RuntimeMode = "contained"
+	// RuntimeAdapter is tier D4: the child talks a database protocol to the
+	// daemon's adapter, which authenticates upstream.
+	RuntimeAdapter RuntimeMode = "adapter"
 )
 
 // removedRuntimes is the set of names that have been removed.
@@ -25,35 +35,25 @@ var removedRuntimes = map[string]bool{
 	"hosted_gateway": true,
 }
 
-// plannedRuntimes is the set of names that are declared but not yet available.
-// They are accepted by the parser (to avoid confusing "unknown" errors) but
-// the driver returns ErrModeNotAvailable at runtime.
-var plannedRuntimes = map[string]bool{
-	"direct_classic_sandboxed": true, // planned for 0.2.0
-}
-
 // ValidateRuntimeMode returns nil for a valid runtime mode.
 // It returns a descriptive error for removed names and unknown strings.
 // See migration table in spec §.
 func ValidateRuntimeMode(s string) error {
 	switch RuntimeMode(s) {
-	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeDirectBrokered, RuntimeDirectClassic, RuntimeGatewayProxy:
+	case RuntimeGatewayTyped, RuntimeGatewaySDK, RuntimeMinted, RuntimeDirectClassic, RuntimeGatewayProxy, RuntimePlaceholder, RuntimeContained, RuntimeAdapter:
 		return nil
+	}
+	if s == "direct_brokered" {
+		return fmt.Errorf("runtime %q was renamed; use minted", s)
 	}
 	if removedRuntimes[s] {
 		return fmt.Errorf(
-			"runtime %q has been removed; see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, direct_brokered, direct_classic, or gateway_proxy",
-			s,
-		)
-	}
-	if plannedRuntimes[s] {
-		return fmt.Errorf(
-			"runtime %q is not available in this release (planned for 0.2.0); use '--runtime direct_classic' instead",
+			"runtime %q has been removed; see migration table at spec §4.2 for replacement: gateway_typed, gateway_sdk, minted, direct_classic, or gateway_proxy",
 			s,
 		)
 	}
 	return fmt.Errorf(
-		"runtime %q is not a valid runtime mode; valid values: gateway_typed, gateway_sdk, direct_brokered, direct_classic, gateway_proxy",
+		"runtime %q is not a valid runtime mode; valid values: gateway_typed, gateway_sdk, minted, direct_classic, gateway_proxy",
 		s,
 	)
 }

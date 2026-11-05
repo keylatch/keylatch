@@ -12,7 +12,6 @@ package op
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -27,7 +26,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // compile-time interface check.
@@ -107,13 +105,7 @@ func (b *OnePasswordBackend) Capabilities() []backend.Capability {
 
 // Get returns the plaintext bytes for a canonical path via `op item get`.
 // Uses single-flight collapse and a 60-second metadata cache.
-//
-// Checks runner.OK before returning plaintext.
 func (b *OnePasswordBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	connection, field, err := parsePath(path)
 	if err != nil {
 		return nil, backend.Meta{}, fmt.Errorf("op Get: %w", err)
@@ -215,13 +207,11 @@ func (b *OnePasswordBackend) verifyField(ctx context.Context, connection, field 
 	if err != nil {
 		return fmt.Errorf("op Set: read back %q: %w", connection, err)
 	}
-	want := sha256.Sum256(value)
 	for _, f := range item.Fields {
 		if f.Label != field {
 			continue
 		}
-		got := sha256.Sum256([]byte(f.Value))
-		if subtle.ConstantTimeCompare(got[:], want[:]) == 1 {
+		if subtle.ConstantTimeCompare([]byte(f.Value), value) == 1 {
 			return nil
 		}
 		break

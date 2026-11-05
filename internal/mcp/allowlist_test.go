@@ -6,61 +6,44 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestAllowlistRejections verifies that the per-template allowlist
-// rejects dangerous commands while permitting safe ones.
-// Uses the specific allowlist from the plan: ["node script.js", "tsx scripts/"]
+// The dangerous commands an agent might ask for are refused by the allowlist
+// whatever form they take; see TestMCPExactAllowlist for the matching rules.
 func TestAllowlistRejections(t *testing.T) {
-	// Specific allowlist per plan spec — more restrictive than just "node ".
-	allowlist := []string{"node script.js", "tsx scripts/"}
+	provider, _ := shellProvider(t, "mcp-allowlist-rejections", "sh script.js", "sh scripts/")
 
-	rejected := []string{
+	rejected := []any{
 		"python3 -c \"import os; os.system('env')\"",
-		"python -c \"import os\"",
 		"node -e \"require('child_process').exec('env')\"",
 		"perl -e \"system('env')\"",
-		"ruby -e \"system('env')\"",
-		"deno run -A -e \"console.log(Deno.env.toObject())\"",
 		"cat /proc/self/environ",
 		"env -0",
 		"bash -c \"env\"",
 		"sh -c \"printenv\"",
+		[]any{"sh", "-c", "printenv"},
+		[]any{"/bin/bash", "-c", "env"},
 	}
-
 	for _, cmd := range rejected {
-		cmd := cmd
-		t.Run("reject:"+cmd[:min(20, len(cmd))], func(t *testing.T) {
-			assert.False(t, commandMatchesAllowlist(cmd, allowlist),
-				"command %q must be rejected by allowlist %v", cmd, allowlist)
-		})
+		d := &stubDispatcher{}
+		_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{"provider": provider, "command": cmd})
+		assert.True(t, isErr, "%v must be rejected", cmd)
+		assert.Zero(t, d.calls, "%v must not reach the dispatcher", cmd)
 	}
 
-	allowed := []string{
-		"node script.js",
-		"tsx scripts/summarise.ts",
-	}
-	for _, cmd := range allowed {
-		cmd := cmd
-		t.Run("allow:"+cmd, func(t *testing.T) {
-			assert.True(t, commandMatchesAllowlist(cmd, allowlist),
-				"command %q must be allowed by allowlist %v", cmd, allowlist)
-		})
+	for _, cmd := range []any{"sh script.js", []any{"sh", "script.js", "--flag"}, "sh scripts/summarise.sh"} {
+		d := &stubDispatcher{}
+		_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{"provider": provider, "command": cmd})
+		assert.False(t, isErr, "%v must be allowed", cmd)
+		assert.Equal(t, 1, d.calls)
 	}
 }
 
-// TestEmptyAllowlistRejectsEverything verifies that an empty allowlist
-// denies every command, including seemingly safe ones.
+// A provider with no allowed commands refuses everything.
 func TestEmptyAllowlistRejectsEverything(t *testing.T) {
-	commands := []string{
-		"node script.js",
-		"tsx main.ts",
-		"echo hello",
-		"ls",
-		"",
-	}
-	for _, cmd := range commands {
-		assert.False(t, commandMatchesAllowlist(cmd, []string{}),
-			"empty allowlist must reject command %q", cmd)
-		assert.False(t, commandMatchesAllowlist(cmd, nil),
-			"nil allowlist must reject command %q", cmd)
+	provider, _ := shellProvider(t, "mcp-allowlist-empty")
+	for _, cmd := range []any{"sh -c true", []any{"sh"}, "echo hello", "ls"} {
+		d := &stubDispatcher{}
+		_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{"provider": provider, "command": cmd})
+		assert.True(t, isErr, "empty allowlist must reject %v", cmd)
+		assert.Zero(t, d.calls)
 	}
 }

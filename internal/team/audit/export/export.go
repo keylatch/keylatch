@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package export implements SIEM audit export.
 //
 // Security invariants:

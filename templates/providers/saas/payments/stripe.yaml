@@ -64,6 +64,37 @@ redaction:
   - pattern: 'whsec_[A-Za-z0-9+/=]{30,}'
     replacement: "****"
 
+hosts:
+  - "api.stripe.com"
+  - "files.stripe.com"
+
+slots:
+  - field: secret_key
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "api.stripe.com"
+      - "files.stripe.com"
+  - field: secret_key
+    in: basic
+    part: user
+    hosts:
+      - "api.stripe.com"
+      - "files.stripe.com"
+
+placeholder_shape:
+  prefix: "sk_"
+  min_length: 32
+
+env_class:
+  default: prod
+  by_prefix:
+    sk_test_: test
+    rk_test_: test
+    sk_live_: prod
+    rk_live_: prod
+
 test_strategy:
   kind: http_get
   endpoint: https://api.stripe.com/v1/balance

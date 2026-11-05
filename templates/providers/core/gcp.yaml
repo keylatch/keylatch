@@ -1,0 +1,58 @@
+provider: gcp
+display_name: Google Cloud
+category: cloud
+description: "Google Cloud access through service-account impersonation and a local metadata endpoint bound to the connection's mint.gcp policy."
+docs_url: https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken
+docs:
+  credentials_url: https://console.cloud.google.com/iam-admin/serviceaccounts
+
+secret_fields:
+  - name: service_account_key
+    label: Service account key (JSON) of the identity that may impersonate the target account
+    description: "Supply with -f service_account_key=@- < key.json ; never on the command line. The identity needs only the Service Account Token Creator role on the target."
+    required: true
+    sensitive: true
+    secret_kind: service_account_json
+
+auth_flow: custom
+
+storage_path_tpl: "{{.Namespace}}/cloud/gcp/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: minted
+  supported:
+    - minted
+  runtime_reason: "The command receives an access token for the impersonated service account, limited to the scopes in the connection's mint.gcp policy and at most an hour long. The source key never reaches the command."
+  gateway_supported: false
+
+minted_fields:
+  - access_token
+  - metadata_host
+
+injection_rules:
+  - env_var: GCE_METADATA_HOST
+    source: metadata_host
+
+allowed_command_prefixes:
+  - "gcloud"
+  - "gsutil"
+  - "bq"
+  - "terraform"
+  - "tofu"
+  - "python3"
+  - "node"
+
+capabilities:
+  - name: tokens.mint
+    description: Mint a scoped access token for an impersonated service account
+
+redaction:
+  - pattern: 'ya29\.[A-Za-z0-9\-_]{50,}'
+    replacement: "****"
+
+deny_routes:
+  - "/v1/projects/*/serviceAccounts/*/keys/**"
+  - "/v1/projects/*/serviceAccounts/*:generateAccessToken"
+  - "/v1/projects/*/serviceAccounts/*:generateIdToken"
+  - "/v1/projects/*/serviceAccounts/*:signJwt"

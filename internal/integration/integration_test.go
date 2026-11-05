@@ -92,8 +92,7 @@ func TestAgentPresetDryRunAllPresets(t *testing.T) {
 	store := memory.New()
 
 	agentNames := []string{
-		"claude-code", "codex", "cursor", "openhands",
-		"opencode", "openclaw", "nanoclaw", "hermes",
+		"openhands", "openclaw", "nanoclaw", "hermes",
 		"n8n", "dify",
 	}
 

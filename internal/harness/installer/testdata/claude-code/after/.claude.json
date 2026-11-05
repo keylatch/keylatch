@@ -1,0 +1,20 @@
+{
+  "numStartups": 12,
+  "mcpServers": {
+    "other-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "other-server"
+      ]
+    },
+    "keylatch": {
+      "command": "/opt/keylatch/bin/keylatch",
+      "args": [
+        "mcp",
+        "--stdio"
+      ]
+    }
+  },
+  "projects": {}
+}

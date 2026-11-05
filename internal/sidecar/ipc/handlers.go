@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
-	"runtime"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/sidecar/events"
@@ -135,17 +134,6 @@ func extractURLParam(params any) (string, bool) {
 	return u, ok
 }
 
-// openBrowser opens the validated URL in the system browser.
-// On Windows, use "cmd /c start" rather than explorer.exe to avoid UNC path risks.
-// The parsed URL is used to ensure only the validated string is passed to the OS.
-func openBrowser(parsed *url.URL) error {
-	cmd, err := browserCommand(runtime.GOOS, parsed)
-	if err != nil {
-		return err
-	}
-	return cmd.Start()
-}
-
 // browserCommand returns the system browser launcher for goos.
 func browserCommand(goos string, parsed *url.URL) (*exec.Cmd, error) {
 	safeURL := parsed.String()
@@ -154,9 +142,6 @@ func browserCommand(goos string, parsed *url.URL) (*exec.Cmd, error) {
 		return exec.Command("open", safeURL), nil //nolint:gosec // G204: "open" is the macOS system binary; not user input
 	case "linux":
 		return exec.Command("xdg-open", safeURL), nil //nolint:gosec // G204: "xdg-open" is the standard Linux browser launcher; not user input
-	case "windows":
-		// Use "cmd /c start" — avoids explorer.exe UNC path injection risk.
-		return exec.Command("cmd", "/c", "start", "", safeURL), nil //nolint:gosec // G204: "cmd" is the Windows shell; args validated by URL parser above
 	default:
 		return nil, fmt.Errorf("unsupported platform: %s", goos)
 	}

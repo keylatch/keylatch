@@ -8,7 +8,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/keylatch/keylatch/internal/connections"
-	"github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // ServeStdio starts the MCP server in stdio transport mode.
@@ -19,7 +19,7 @@ import (
 // Transport note: the official SDK's StdioTransport is hardwired to
 // os.Stdin / os.Stdout. For injecting custom streams in tests, use
 // sdkmcp.IOTransport{Reader: r, Writer: w} instead of StdioTransport.
-func (s *Server) ServeStdio(ctx context.Context, store connections.Store, runner exec.CommandRunner) error {
+func (s *Server) ServeStdio(ctx context.Context, store connections.Store, dispatch runner.Dispatcher) error {
 	if s.opts.Transport != TransportStdio {
 		return fmt.Errorf("mcp: ServeStdio called with transport %q", s.opts.Transport)
 	}
@@ -32,12 +32,11 @@ func (s *Server) ServeStdio(ctx context.Context, store connections.Store, runner
 		nil,
 	)
 
-	RegisterTools(srv, store, runner)
+	RegisterTools(srv, store, dispatch, s.opts.Explain)
 
-	// Assert exactly five tools are registered.
 	s.registeredTools = len(registeredTools)
-	if s.registeredTools != 5 {
-		return fmt.Errorf("mcp: tool registration invariant violated: expected 5 tools, got %d", s.registeredTools)
+	if s.registeredTools != toolCount {
+		return fmt.Errorf("mcp: tool registration invariant violated: expected %d tools, got %d", toolCount, s.registeredTools)
 	}
 
 	// No token printed to stderr.
@@ -60,12 +59,12 @@ func (s *Server) ServeStdio(ctx context.Context, store connections.Store, runner
 }
 
 // Serve dispatches to the appropriate transport handler based on ServerOptions.Transport.
-func (s *Server) Serve(ctx context.Context, store connections.Store, runner exec.CommandRunner) error {
+func (s *Server) Serve(ctx context.Context, store connections.Store, dispatch runner.Dispatcher) error {
 	switch s.opts.Transport {
 	case TransportStdio:
-		return s.ServeStdio(ctx, store, runner)
+		return s.ServeStdio(ctx, store, dispatch)
 	case TransportTCP:
-		return s.ServeTCP(ctx, store, runner)
+		return s.ServeTCP(ctx, store, dispatch)
 	default:
 		return fmt.Errorf("mcp: unknown transport %q", s.opts.Transport)
 	}

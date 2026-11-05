@@ -2,13 +2,10 @@
 
 package llmcontext
 
-import "os"
-
-// processChain returns the calling process followed by its ancestors, up to
-// the first one that cannot be read.
-func processChain() []Process {
+// chainFrom returns pid followed by its ancestors, up to the first one that
+// cannot be read.
+func chainFrom(pid int) []Process {
 	var chain []Process
-	pid := os.Getpid()
 	for i := 0; i < maxAncestry && pid > 0; i++ {
 		p, err := readProcessInfo(pid)
 		if err != nil {

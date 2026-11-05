@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://keylatch.io/schemas/provider-template/v1",
+  "$id": "https://keylatch.dev/schemas/provider-template/v1",
   "title": "ProviderConnectionTemplate",
   "description": "Schema for a Keylatch provider connection template.",
   "type": "object",
@@ -138,13 +138,13 @@
       "properties": {
         "preferred": {
           "type": "string",
-          "enum": ["gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy"]
+          "enum": ["gateway_typed", "gateway_sdk", "minted", "gateway_proxy"]
         },
         "supported": {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["gateway_typed", "gateway_sdk", "direct_brokered", "gateway_proxy"]
+            "enum": ["gateway_typed", "gateway_sdk", "minted", "gateway_proxy"]
           }
         },
         "default_runtime":  { "type": "string" },
@@ -263,6 +263,70 @@
       "properties": {
         "requests_per_minute": { "type": "integer" },
         "burst_size":          { "type": "integer" }
+      }
+    },
+    "hosts": {
+      "type": "array",
+      "description": "Authorities (host[:port], default port 443) a secret may be substituted toward. A leading *. matches one or more labels.",
+      "items": { "type": "string" }
+    },
+    "slots": {
+      "type": "array",
+      "description": "Request positions where a secret field may be substituted.",
+      "items": {
+        "type": "object",
+        "required": ["field", "in", "hosts"],
+        "additionalProperties": false,
+        "properties": {
+          "field":  { "type": "string" },
+          "in":     { "type": "string", "enum": ["header", "query", "basic"] },
+          "name":   { "type": "string" },
+          "scheme": { "type": "string" },
+          "part":   { "type": "string", "enum": ["user", "password"] },
+          "hosts":  { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "placeholder_shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix":     { "type": "string" },
+        "min_length": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "required": ["kind", "field", "hosts"],
+      "additionalProperties": false,
+      "properties": {
+        "kind":  { "type": "string", "enum": ["postgres", "mysql", "redis", "ssh_agent", "git_credential", "docker_credential"] },
+        "field": { "type": "string" },
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "username": { "type": "string" }
+      }
+    },
+    "minted_fields": {
+      "type": "array",
+      "description": "Credential fields Keylatch produces at use time; slots and adapters may bind them, and they are never stored or supplied.",
+      "items": { "type": "string" }
+    },
+    "deny_routes": {
+      "type": "array",
+      "description": "Provider routes that create, read or list credentials or keys. The gateway refuses them, and a template that exposes such a route in an action without listing it here fails validation. Each entry is a path, optionally prefixed by an HTTP method and a space; * matches one path segment and a final ** matches the rest.",
+      "items": { "type": "string", "pattern": "^([A-Z]+ )?/" }
+    },
+    "forward_headers": {
+      "type": "array",
+      "description": "Extra inbound header names the gateway forwards to the provider. Names that look like credentials are never forwarded.",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9-]+$" }
+    },
+    "env_class": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default":   { "type": "string", "enum": ["test", "dev", "prod"] },
+        "by_prefix": { "type": "object", "additionalProperties": { "type": "string", "enum": ["test", "dev", "prod"] } }
       }
     },
     "test_strategy": {

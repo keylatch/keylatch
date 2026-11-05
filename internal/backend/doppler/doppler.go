@@ -3,7 +3,6 @@
 //
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
-//   - runner.OK is checked before returning plaintext.
 package doppler
 
 import (
@@ -18,7 +17,6 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -86,10 +84,6 @@ func (b *DopplerBackend) ID() string {
 // Get retrieves a secret value from Doppler.
 // GET /v3/configs/config/secret?project=<p>&config=<c>&name=<n>
 func (b *DopplerBackend) Get(ctx context.Context, name string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	endpoint := fmt.Sprintf("%s/v3/configs/config/secret?project=%s&config=%s&name=%s",
 		b.opts.BaseURL,
 		url.QueryEscape(b.opts.Project),

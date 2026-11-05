@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -13,13 +12,14 @@ import (
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/budget"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/gateway/redact"
 	"github.com/keylatch/keylatch/internal/gateway/staticbroker"
 	"github.com/keylatch/keylatch/internal/gateway/substitution"
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/registry"
-	"github.com/keylatch/keylatch/internal/telemetry"
 )
 
 // errorResponse is the machine-readable gateway error format.
@@ -46,8 +46,8 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 //  4. router.Match(method, path) → rt | 404
 //  5. Check t.Capabilities ⊇ {rt.Capability} | 403
 //     5b. LLM-session gate (from JWT claim, NOT from server env)
-//  6. policy check — evaluate s.policy (if configured) against actor/
-//     provider/capability/runtime | 403 on deny or unsatisfiable approval
+//  6. policy check — enforce.Decide on caller kind/provider/capability/
+//     runtime; no policy denies | 403 on deny or unsatisfiable approval
 //     6-budget. per-actor budget CheckAndRecord | 429 with value-free denial receipt
 //     6a. substitution.CheckRequest | 400
 //  7. vault.Get (canonical path for provider) → rootCredential
@@ -125,6 +125,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Step 4b: routes that create, read or list provider credentials are
+	// never forwarded, whatever the token allows.
+	if registry.RouteDenied(rt.DenyRoutes, rt.Method, rt.UpstreamPath) {
+		writeError(w, http.StatusForbidden, "route_denied", "this provider route is denied by its template")
+		s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
+			"error":    "route_denied",
+			"provider": rt.Provider,
+		})
+		outcome = audit.OutcomeDenied
+		return
+	}
+
 	// Step 5: Capability check.
 	if !token.HasCapability(t, rt.Capability) {
 		writeError(w, http.StatusForbidden, "capability_mismatch", "token does not have required capability")
@@ -156,14 +168,13 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			outcome = audit.OutcomeDenied
 			return
 		}
-		// direct_classic_sandboxed in LLM sessions requires two-person approval.
-		// If the token was minted with ApprovalRootHMAC set (sandboxed approval path)
-		// but TwoPerson is false, block the request. token.Mint now rejects any
-		// hardware approval claim outright, so ApprovalRootHMAC is never
-		// set on a minted token; this check is retained as defense in depth.
+		// A token carrying an approval root in an LLM session requires
+		// two-person approval. token.Mint now rejects any hardware approval
+		// claim outright, so ApprovalRootHMAC is never set on a minted token;
+		// this check is retained as defense in depth.
 		if t.ApprovalRootHMAC != "" && !t.TwoPerson {
 			writeError(w, http.StatusForbidden, "llm_session_requires_two_person_approval",
-				"direct_classic_sandboxed in an LLM session requires two-person approval")
+				"an approval root in an LLM session requires two-person approval")
 			s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
 				"error": "llm_session_requires_two_person_approval",
 			})
@@ -174,14 +185,9 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 6: Policy check.
 	//
-	// s.policy is nil when no ServerOptions.PolicyPath was configured (or
-	// the configured file does not exist yet) — this is pass-through allow,
-	// preserving the gateway's pre-wiring behavior (is wiring, not a new
-	// default-deny for operators who have never touched policy). When a
-	// policy is configured, evaluate the same Actor/Connection/Capability/
-	// Runtime/LLMSession model the CLI-side engine uses
-	// (internal/runner.CheckPolicy), sourced only from the JWT-verified
-	// token and the route — never from client-supplied headers.
+	// The same enforce.Decide the CLI asks decides here, sourced only from
+	// the JWT-verified token and the route — never from client-supplied
+	// headers. With no policy at all the request is denied.
 	//
 	// ApprovalRequired decisions (rule.Approval or rule.ApprovalRootReq) are
 	// treated as denied here: the gateway request path is a single
@@ -189,17 +195,17 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// out-of-band approval mid-request. Denying with a distinct error code
 	// is the honest behavior for this call site — silently allowing would
 	// defeat the rule, and blocking the request would just be a hang.
-	if s.policy != nil {
+	{
 		policyRuntime := string(policy.RuntimeGatewayTyped)
 		if strings.HasPrefix(r.URL.Path, "/sdk/") {
 			policyRuntime = string(policy.RuntimeGatewaySDK)
 		}
-		decision := checkPolicySafe(*s.policy, policy.Request{
+		decision := s.decider().Decide(ctx, enforce.Request{
 			Actor:      t.Actor,
 			Connection: rt.Provider,
-			Capability: rt.Capability,
-			LLMSession: t.LLMSession,
+			Action:     rt.Capability,
 			Runtime:    policyRuntime,
+			Caller:     tokenCaller(t),
 		})
 		policyResult := "allow"
 		if !decision.Allow {
@@ -207,28 +213,29 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		} else if decision.ApprovalRequired {
 			policyResult = "approval_required"
 		}
-		policyID := ""
-		if decision.MatchedRule != nil {
-			policyID = decision.MatchedRule.ID
-			policyResult += ":rule:" + policyID
+		if decision.RuleID != "" {
+			policyResult += ":rule:" + decision.RuleID
 		}
 		if !decision.Allow || decision.ApprovalRequired {
 			code := "policy_denied"
 			msg := "request denied by policy"
+			if decision.Reason != "" {
+				msg += ": " + decision.Reason
+			}
 			if decision.ApprovalRequired {
 				code = "policy_approval_required"
 				msg = "policy requires approval that cannot be satisfied at the gateway"
 			}
 			writeError(w, http.StatusForbidden, code, msg)
 			s.logAudit(ctx, audit.ActionPolicyCheck, audit.OutcomeDenied, map[string]any{
-				"policy_id": policyID,
+				"policy_id": decision.RuleID,
 				"result":    policyResult,
 			})
 			outcome = audit.OutcomeDenied
 			return
 		}
 		s.logAudit(ctx, audit.ActionPolicyCheck, audit.OutcomeOK, map[string]any{
-			"policy_id": policyID,
+			"policy_id": decision.RuleID,
 			"result":    policyResult,
 		})
 	}
@@ -262,7 +269,8 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// outbound request. Pure HTTP middleware cannot do this because the
 	// provider ID and upstream host are only known after router.Match() above.
 	if s.ssrfGate != nil {
-		if err := s.ssrfGate.Validate(rt.Provider, rt.UpstreamHost); err != nil {
+		ips, err := s.ssrfGate.Resolve(rt.Provider, rt.UpstreamHost)
+		if err != nil {
 			writeError(w, http.StatusForbidden, "ssrf_blocked", "upstream host rejected by SSRF gate")
 			s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeDenied, map[string]any{
 				"error":    "ssrf_blocked",
@@ -271,6 +279,9 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 			outcome = audit.OutcomeDenied
 			return
 		}
+		// The upstream connection goes to the addresses just checked, not to
+		// whatever the name resolves to at dial time.
+		ctx = withPinnedIPs(ctx, rt.UpstreamHost, ips)
 	}
 
 	// T02: Remove the Keylatch Authorization header before substitution checks run
@@ -290,12 +301,16 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 7: Read body (size-limited to default max).
-	body, err := io.ReadAll(io.LimitReader(r.Body, rt.MaxBodyBytes+1))
+	bodyLimit := rt.MaxBodyBytes
+	if s.opts.MaxBody > 0 {
+		bodyLimit = s.opts.MaxBody
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, bodyLimit+1))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "body_read_error", "failed to read request body")
 		return
 	}
-	if int64(len(body)) > rt.MaxBodyBytes {
+	if int64(len(body)) > bodyLimit {
 		writeError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body exceeds maximum size")
 		return
 	}
@@ -317,8 +332,11 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	// restrictions. No additional guard is required here.
 	//
 	// Inject audit emitter so vault.Get can emit ActionRead events.
-	if s.opts.AuditLogger != nil {
+	switch {
+	case s.opts.AuditLogger != nil:
 		ctx = audit.WithEmitter(ctx, audit.AsEmitter(s.opts.AuditLogger))
+	case s.opts.NoAudit:
+		ctx = audit.WithEmitter(ctx, audit.Discard{})
 	}
 	var rootCredential []byte
 	if rt.SecretRef != "" && s.vault == nil {
@@ -388,7 +406,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	copyForwardedHeaders(upstreamReq.Header, r.Header)
+	copyForwardedHeaders(upstreamReq.Header, r.Header, rt.ForwardHeaders)
 
 	// Inject auth per AuthPlacement.
 	injectAuth(upstreamReq, rt.AuthPlacement, accessToken.Value)
@@ -439,7 +457,7 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		redactedBody = redact.LabelUntrustedContent(redactedBody, rt.UntrustedContentSource)
 	}
 
-	// Step 12: Audit log and telemetry.
+	// Step 12: Audit log.
 	durationMS := time.Since(start).Milliseconds()
 	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, map[string]any{
 		"provider":    rt.Provider,
@@ -447,11 +465,6 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		"status_code": resp.StatusCode,
 		"duration_ms": durationMS,
 	})
-	sink := s.telemetrySink
-	if sink == nil {
-		sink = telemetry.NoopSink{}
-	}
-	telemetry.GatewayRequestCompleted(ctx, sink, rt.Provider, "allowed", durationMS)
 	outcome = audit.OutcomeOK
 
 	// Step 13: Write redacted response to client.
@@ -496,29 +509,17 @@ func isErr(err, target error) bool {
 	return errors.Is(err, target)
 }
 
-// checkPolicySafe evaluates p.Check(req) with a recover() guard, mirroring
-// internal/cli/policy_cmd.go's identical wrapping of the same call.
-//
-// Review finding (2026-08-06, blocking, belt-and-braces layer): policy.Check
-// panics whenever req.LLMSession && p.Mode == ModePermissive. gateway.New
-// already rejects ModePermissive policies at load time so this should be
-// unreachable in practice, but Step 6 is a network-reachable call site —
-// an unguarded panic here would surface as a bare connection reset with no
-// 403 body and no audit event (Go's net/http recovers per-connection, so
-// the process survives, but the request does not get a proper response).
-// If p.Check ever panics for any reason — including future policy-engine
-// changes this call site doesn't know about — convert it to an explicit
-// deny instead of letting it propagate.
-func checkPolicySafe(p policy.Policy, req policy.Request) (d policy.Decision) {
-	defer func() {
-		if r := recover(); r != nil {
-			d = policy.Decision{
-				Allow:  false,
-				Reason: fmt.Sprintf("policy evaluation panicked: %v", r),
-			}
-		}
-	}()
-	return p.Check(req)
+// tokenCaller is the caller kind a token was issued for. A token minted
+// before tokens carried the kind is an agent token when it is marked as an LLM
+// session and host otherwise, so an old token never becomes a human.
+func tokenCaller(t *token.Token) callerkind.Kind {
+	switch {
+	case t.CallerKind != "":
+		return t.CallerKind
+	case t.LLMSession:
+		return callerkind.Agent
+	}
+	return callerkind.Host
 }
 
 // logAudit writes an audit event; safe when AuditLogger is nil.

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/presence/presencetest"
 	"github.com/keylatch/keylatch/internal/testutil"
 )
 
@@ -53,7 +54,7 @@ func TestGrantCreateRefusedInAgentSession(t *testing.T) {
 
 func TestGrantCreateNeedsTerminal(t *testing.T) {
 	grants := grantTestEnv(t)
-	withInteractiveStdin(t, false)
+	presencetest.NoTerminal(t)
 
 	requireExitCode(t, runGrantCreate(t, "prod", "--actor", "claude-code"), exitcode.SecurityBlock)
 	if _, err := os.Stat(grants); !os.IsNotExist(err) {

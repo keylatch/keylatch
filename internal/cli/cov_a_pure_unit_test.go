@@ -223,10 +223,10 @@ func TestPrettyEvent_EmptyFields(t *testing.T) {
 
 func TestLoadRetentionDays_NonExistentConfig(t *testing.T) {
 	t.Parallel()
-	// Non-existent path: should return default of 30.
+	// Non-existent path: should return the default of 365.
 	got := loadRetentionDays("/nonexistent/path/to/config.json")
-	if got != 30 {
-		t.Errorf("loadRetentionDays(nonexistent) = %d, want 30", got)
+	if got != 365 {
+		t.Errorf("loadRetentionDays(nonexistent) = %d, want 365", got)
 	}
 }
 
@@ -256,8 +256,8 @@ func TestLoadRetentionDays_ZeroRetentionDays(t *testing.T) {
 		t.Fatalf("save config: %v", err)
 	}
 	got := loadRetentionDays(cfgPath)
-	if got != 30 {
-		t.Errorf("loadRetentionDays(0 days) = %d, want default 30", got)
+	if got != 365 {
+		t.Errorf("loadRetentionDays(0 days) = %d, want default 365", got)
 	}
 }
 

@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package breakglass implements break-glass emergency access.
 //
 // Security invariants:

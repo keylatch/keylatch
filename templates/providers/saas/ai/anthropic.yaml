@@ -54,6 +54,24 @@ redaction:
   - pattern: 'sk-ant-[A-Za-z0-9\-_]{40,}'
     replacement: "****"
 
+hosts:
+  - "api.anthropic.com"
+
+slots:
+  - field: api_key
+    in: header
+    name: x-api-key
+    hosts:
+      - "api.anthropic.com"
+
+placeholder_shape:
+  # escaped so secret scanners do not flag the prefix literal
+  prefix: "sk\x2dant-api03-"
+  min_length: 56
+
+env_class:
+  default: prod
+
 test_strategy:
   kind: http_get
   endpoint: https://api.anthropic.com/v1/models

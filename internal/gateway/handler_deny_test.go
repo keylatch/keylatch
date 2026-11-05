@@ -153,7 +153,7 @@ func TestHandler_Deny_RevokedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := token.Revoke(tok.ID, storePath); err != nil {
+	if err := token.Revoke(tok.ID, storePath, key); err != nil {
 		t.Fatal(err)
 	}
 
@@ -478,7 +478,7 @@ func TestGatewayToken_RejectsAfterSessionEnd(t *testing.T) {
 	}
 
 	// Revoke the token (session end).
-	if err := token.Revoke(tok.ID, storePath); err != nil {
+	if err := token.Revoke(tok.ID, storePath, key); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
 

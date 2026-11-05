@@ -25,8 +25,6 @@ func setupMockRunner(keychainPath string) *kexec.MockRunner {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("test-unlock-password\n"),
 			},
-			// Unlock keychain.
-			secBin + "|unlock-keychain|-p|test-unlock-password|" + keychainPath: {},
 			// Lock keychain.
 			secBin + "|lock-keychain|" + keychainPath: {},
 			// Load manifest — returns a manifest with openrouter item.
@@ -83,7 +81,6 @@ func TestGet_ErrorPath_LockAlways(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("test-pw\n"),
 			},
-			secBin + "|unlock-keychain|-p|test-pw|" + testKeychainPath: {},
 			// Manifest fails with non-44 exit.
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + testKeychainPath: {
 				ExitCode: 1,
@@ -146,8 +143,6 @@ func TestManifest_RoundTrip(t *testing.T) {
 		secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 			Stdout: []byte("pw\n"),
 		},
-		// Unlock.
-		secBin + "|unlock-keychain|-p|pw|" + testKeychainPath: {},
 		// Lock.
 		secBin + "|lock-keychain|" + testKeychainPath: {},
 		// Manifest not found initially.
@@ -174,13 +169,8 @@ func TestManifest_RoundTrip(t *testing.T) {
 	// Verify Set called add-generic-password.
 	found := false
 	for _, call := range runner.CallsCopy() {
-		if len(call.Args) > 0 && call.Args[0] == "add-generic-password" {
-			for _, arg := range call.Args {
-				if arg == "keylatch-test" {
-					found = true
-					break
-				}
-			}
+		if call.Subcommand() == "add-generic-password" && strings.Contains(securityLine(call), `"keylatch-test"`) {
+			found = true
 		}
 	}
 	_ = found // Conditional on Set not erroring

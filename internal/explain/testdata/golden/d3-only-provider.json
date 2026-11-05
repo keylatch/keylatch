@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "allow",
+  "tier": "D3",
+  "tier_name": "placeholder_substitution",
+  "runtime": "placeholder",
+  "child_location": "caller",
+  "containment": {
+    "verdict": "no_secret_in_child",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "openai",
+    "executable": "pnpm",
+    "argc": 2,
+    "argv_sha256": "14be65cb19b07e66fb156242a8d423368865d03c65598f8a9a6fd5ae8839f731",
+    "cwd": "/work/app"
+  },
+  "hosts": [
+    "api.stripe.com",
+    "files.stripe.com"
+  ],
+  "binding": {
+    "source": "template",
+    "hosts": [
+      "api.stripe.com",
+      "files.stripe.com"
+    ],
+    "slots": [
+      {
+        "field": "api_key",
+        "in": "header",
+        "name": "Authorization",
+        "hosts": [
+          "api.stripe.com",
+          "files.stripe.com"
+        ]
+      }
+    ]
+  },
+  "scope": {
+    "rule_id": "r1",
+    "capabilities": [
+      "inject"
+    ],
+    "connections": [
+      "openai"
+    ],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "allowed by policy rule r1",
+    "strongest eligible tier D3 (placeholder_substitution) via runtime placeholder"
+  ],
+  "rejected_tiers": [
+    {
+      "tier": "D1",
+      "tier_name": "typed_action",
+      "why": "typed actions run without a child process; use keylatch call"
+    },
+    {
+      "tier": "D2",
+      "tier_name": "gateway_session",
+      "why": "runtime gateway_typed is not supported in this build; runtime gateway_sdk is not supported in this build"
+    },
+    {
+      "tier": "D4",
+      "tier_name": "protocol_adapter",
+      "why": "runtime adapter is not supported in this build"
+    },
+    {
+      "tier": "D5",
+      "tier_name": "contained_raw",
+      "why": "runtime contained is not supported in this build"
+    },
+    {
+      "tier": "D6",
+      "tier_name": "uncontained_raw",
+      "why": "uncontained raw delivery is human-only"
+    }
+  ],
+  "residual_risk": "The child holds a placeholder that Keylatch swaps for the real value only toward the connection's own hosts. A misused capability on those hosts is bounded by scope and audit, not prevented.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true
+  }
+}

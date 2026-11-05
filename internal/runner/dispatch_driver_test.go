@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/broker"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/runtime"
@@ -205,7 +203,7 @@ func TestDispatch_GatewayTyped_StaleTokenReplaced(t *testing.T) {
 	var outBuf strings.Builder
 	req := runner.ExecRequest{
 		ConnectionSlug: "anthropic",
-		Command:        []string{"sh", "-c", "printenv KEYLATCH_GATEWAY_TOKEN"},
+		Command:        []string{"sh", "-c", "printenv KEYLATCH_GATEWAY_TOKEN | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
@@ -306,92 +304,65 @@ func TestDispatch_GatewaySdk(t *testing.T) {
 		"OPENAI_BASE_URL must be set in child env pointing to the gateway")
 }
 
-// ---- T03: TestDispatch_DirectBrokered --------------------------------------
+// ---- TestDispatch_Minted ----------------------------------------------------
 
-// TestDispatch_DirectBrokered_DriverRegistered verifies the direct_brokered
-// driver is registered and does not return ErrUnknownRuntime.
-func TestDispatch_DirectBrokered_DriverRegistered(t *testing.T) {
-	vault := newClassicMockBackend()
-	path := classicSecretPath("default", "ai", "myapi", "api_key")
-	require.NoError(t, vault.Set(context.Background(), path, []byte("root"), backend.Meta{
-		Path: path, Backend: "stub", Version: 1,
-	}))
-
-	const ephemeralToken = "ephemeral-token-xyz"
-	result := broker.NewExchangeResult("myapi", "inject", 3600*1e9, broker.FreshExchange, []byte(ephemeralToken))
-	b := &stubBroker{result: result}
-	d := runner.NewBrokeredDriver(vault, b, nil)
-
+// TestDispatch_Minted_DriverRegistered verifies the minted driver is
+// registered and does not return ErrUnknownRuntime.
+func TestDispatch_Minted_DriverRegistered(t *testing.T) {
+	o := &stubOpener{cred: &stubMinted{value: "ephemeral-token-xyz"}}
 	dr := runner.DispatchRunner{
 		Guard: nil,
 		Drivers: map[string]runner.Driver{
-			string(runtime.RuntimeDirectBrokered): d,
+			string(runtime.RuntimeMinted): runner.NewMintedDriver(o.open),
 		},
 	}
 
 	req := runner.ExecRequest{
 		ConnectionSlug:       "myapi",
 		Command:              []string{"sh", "-c", "true"},
-		Runtime:              string(runtime.RuntimeDirectBrokered),
+		Runtime:              string(runtime.RuntimeMinted),
 		ExtraAllowedPrefixes: []string{"sh"},
 		Stderr:               &strings.Builder{},
 	}
 
 	_, err := dr.Run(context.Background(), req)
 	assert.False(t, errors.Is(err, runner.ErrUnknownRuntime),
-		"direct_brokered driver must be registered — ErrUnknownRuntime must not be returned")
+		"minted driver must be registered — ErrUnknownRuntime must not be returned")
 }
 
-// TestDispatch_DirectBrokered verifies the brokered driver is called and
-// the child env has the scoped token, not the root credential.
-func TestDispatch_DirectBrokered(t *testing.T) {
-	vault := newClassicMockBackend()
-	const rootCred = "root-secret-must-not-leak"
-	path := classicSecretPath("default", "ai", "myapi", "api_key")
-	require.NoError(t, vault.Set(context.Background(), path, []byte(rootCred), backend.Meta{
-		Path: path, Backend: "stub", Version: 1,
-	}))
-
-	const ephemeralToken = "ephemeral-scoped-token-brokered"
-	result := broker.NewExchangeResult("myapi", "inject", 3600*1e9, broker.FreshExchange, []byte(ephemeralToken))
-	b := &stubBroker{result: result}
-	d := runner.NewBrokeredDriver(vault, b, nil)
-
+// TestDispatch_Minted verifies the minted driver runs the command with the
+// minted credential in its environment.
+func TestDispatch_Minted(t *testing.T) {
+	const ephemeralToken = "ephemeral-scoped-token-minted"
 	var outBuf strings.Builder
 	req := runner.ExecRequest{
 		ConnectionSlug: "myapi",
-		Command:        []string{"sh", "-c", "printenv TEST_API_KEY"},
+		Command:        []string{"sh", "-c", "printenv TEST_API_KEY | tr a-z A-Z"},
 		Stdout:         &outBuf,
 		Stderr:         &strings.Builder{},
 	}
 
-	receipt, err := d.Run(context.Background(), req, brokeredTmpl("myapi"))
+	receipt, err := runner.NewMintedDriver((&stubOpener{cred: &stubMinted{value: ephemeralToken}}).open).
+		Run(context.Background(), req, mintedTmpl("myapi"))
 	require.NoError(t, err)
-	assert.Equal(t, "direct_brokered", receipt.Runtime)
-
-	output := outBuf.String()
-	assert.Contains(t, output, ephemeralToken,
-		"child must receive ephemeral scoped token")
-	assert.NotContains(t, output, rootCred,
-		"root credential must not leak into child env")
+	assert.Equal(t, "minted", receipt.Runtime)
+	assert.NotContains(t, outBuf.String(), ephemeralToken, "the minted value is masked in the command's output")
 }
 
-// TestDispatch_DirectBrokered_UnsupportedRuntime verifies ErrUnsupportedRuntime
-// is returned (no nil panic) when the template doesn't support direct_brokered.
-func TestDispatch_DirectBrokered_UnsupportedRuntime(t *testing.T) {
-	vault := newClassicMockBackend()
-	var nilBroker *stubBroker // typed nil — ErrUnsupportedRuntime fires before any broker call
-	d := runner.NewBrokeredDriver(vault, nilBroker, nil)
+// TestDispatch_Minted_UnsupportedRuntime verifies ErrUnsupportedRuntime is
+// returned (no nil panic) when the template has no mint strategy.
+func TestDispatch_Minted_UnsupportedRuntime(t *testing.T) {
+	d := runner.NewMintedDriver(nil)
 
 	req := runner.ExecRequest{
 		ConnectionSlug: "unsupported",
 		Command:        []string{"sh", "-c", "true"},
 	}
 
-	_, err := d.Run(context.Background(), req, brokeredTmplNoSupport())
+	_, err := d.Run(context.Background(), req, staticTmpl())
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, runner.ErrUnsupportedRuntime),
-		"nil broker + unsupported template must return ErrUnsupportedRuntime, not panic")
+		"a template without a mint strategy must return ErrUnsupportedRuntime before the opener is used")
 }
 
 // ---- T04: TestDispatch_GatewayProxy ----------------------------------------

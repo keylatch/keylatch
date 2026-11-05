@@ -16,7 +16,6 @@
 export type RuntimeMode =
   | 'gateway_typed'
   | 'gateway_classic'
-  | 'direct_classic_sandboxed'
   | 'absent'
 
 // @ts-expect-error -- compile-time guard: 'direct_run' must NOT be assignable to RuntimeMode
@@ -57,14 +56,16 @@ export interface Approval {
   token: string
   /** Connection name the approval is for. */
   connection: string
-  /** Command HMAC (not the raw command). */
-  commandHmac: string
-  /** Actor HMAC. */
-  actorHmac: string
+  actor: string
+  capability: string
+  summary: string
+  request_hash: string
+  digest: string
+  status: string
   /** ISO-8601 expiry timestamp. */
-  expiresAt: string
+  expires_at: string
   /** ISO-8601 creation timestamp. */
-  createdAt: string
+  created_at: string
 }
 
 // ── Gateway ──────────────────────────────────────────────────────────────────

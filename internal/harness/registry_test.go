@@ -24,6 +24,9 @@ func TestSignalsMatchProfiles(t *testing.T) {
 		"opencode":    {[]string{"OPENCODE"}, []string{"opencode"}},
 		"aider":       {nil, []string{"aider"}},
 		"copilot-cli": {nil, []string{"copilot"}},
+		"antigravity": {nil, nil},
+		"windsurf":    {nil, []string{"windsurf"}},
+		"goose":       {nil, []string{"goose"}},
 	}
 	all := All()
 	if len(all) != len(want) {
@@ -48,8 +51,8 @@ func TestLookupAndByExecutable(t *testing.T) {
 	if d, ok := Lookup("codex"); !ok || d.Name != "Codex CLI" {
 		t.Fatalf("Lookup(codex) = %+v, %v", d, ok)
 	}
-	if _, ok := Lookup("windsurf"); ok {
-		t.Fatal("Windsurf is not a detected harness")
+	if _, ok := Lookup("roo-code"); ok {
+		t.Fatal("Roo Code is not a recognized harness")
 	}
 	for name, id := range map[string]string{
 		"claude": "claude-code", "/usr/local/bin/claude": "claude-code", `C:\Tools\Claude.EXE`: "claude-code",

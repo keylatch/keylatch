@@ -6,7 +6,7 @@ The Keylatch CONNECT proxy is an HTTP CONNECT-based interception proxy that sits
 
 When an LLM tool (or any HTTP client) makes a CONNECT request through the proxy, Keylatch intercepts the TLS tunnel and injects the appropriate API credentials before forwarding the request to the upstream provider. The proxy operates transparently from the tool's perspective.
 
-Because the proxy terminates TLS, it must present a locally-trusted CA certificate to the client. **You must install the Keylatch CA into your system trust store before using the proxy.** Run `keylatch trust install` to do this.
+Because the proxy terminates TLS, it must present a locally-trusted CA certificate to the client. **The client must trust the Keylatch CA before using the proxy.** `keylatch run` hands the CA to the child through the CA bundle variables; trust it system-wide only for tools that ignore them.
 
 ## Choosing between proxy and gateway modes
 
@@ -74,26 +74,13 @@ JSON output shape:
 
 When not running, `pid` and `uptimeSeconds` are `null` and `address` is omitted.
 
-## Start proxy alongside gateway
+## Gateway and proxy lifecycles
 
-```
-keylatch gateway up --with-proxy [--proxy-port N]
-```
-
-- Starts the gateway first, then starts the proxy.
-- If the proxy start fails, the gateway is rolled back (stopped).
-- If the proxy is already running on the same port, the `--with-proxy` flag is a no-op. If the proxy is running on a different port, a new proxy is started on the requested port.
-- `keylatch gateway down` does **not** auto-stop the proxy even when started with `--with-proxy`. Stop the proxy explicitly with `keylatch proxy down`.
+The gateway and the proxy start and stop independently. `keylatch gateway down` does **not** stop the proxy; stop it with `keylatch proxy down`.
 
 ## CA trust requirement
 
-The proxy must present a trusted CA certificate to intercept TLS connections. Install the CA with:
-
-```
-keylatch trust install
-```
-
-Without this step, clients will receive a certificate error when connecting through the proxy.
+The proxy must present a CA certificate the client trusts to intercept TLS connections. Without it, clients receive a certificate error when connecting through the proxy.
 
 ## PID file location
 

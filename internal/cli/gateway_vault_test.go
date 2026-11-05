@@ -152,6 +152,12 @@ func TestNewGatewayVaultReader_UnknownBackendFails(t *testing.T) {
 
 func TestGatewayUp_UnusableVaultReportsBackendUnavailable(t *testing.T) {
 	cfgDir := testutil.SetupHermeticConfig(t)
+	testutil.SetupTestKeyring(t)
+	notADir := filepath.Join(cfgDir, "data-is-a-file")
+	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KEYLATCH_DATA_DIR", notADir)
 	t.Setenv("KEYLATCH_BACKEND", "no-such-backend")
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)

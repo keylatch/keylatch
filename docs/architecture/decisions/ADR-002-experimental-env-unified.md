@@ -9,7 +9,7 @@ subcommand tree and the UI `/experimental` endpoint; `KEYLATCH_EXPERIMENTAL_BACK
 NordPass backend stub. The 1.0.0 spec requires a single opt-in contract — shipping two separate
 knobs confuses users and makes the feature surface harder to document.
 
-EPIC-17 added `EffectiveSettings.ExperimentalGated bool` to `internal/runtime/mode.go`, allowing
+The runtime gained `EffectiveSettings.ExperimentalGated bool` to `internal/runtime/mode.go`, allowing
 custom mode config to persist the preference so users do not need the env var every session.
 
 ## Decision

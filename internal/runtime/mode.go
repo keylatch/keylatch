@@ -7,18 +7,17 @@ import (
 )
 
 // OperatingMode identifies the first-class operating posture for a keylatch session.
-// It controls which subsystems (telemetry, canary injection, experimental gates) are active.
+// It controls which subsystems (canary injection, experimental gates) are active.
 type OperatingMode string
 
 const (
-	ModeStandard  OperatingMode = "standard"
-	ModeTelemetry OperatingMode = "telemetry"
-	ModeCanary    OperatingMode = "canary"
-	ModeCustom    OperatingMode = "custom"
+	ModeStandard OperatingMode = "standard"
+	ModeCanary   OperatingMode = "canary"
+	ModeCustom   OperatingMode = "custom"
 )
 
 // AllOperatingModes is the closed set of valid OperatingMode values.
-var AllOperatingModes = []OperatingMode{ModeStandard, ModeTelemetry, ModeCanary, ModeCustom}
+var AllOperatingModes = []OperatingMode{ModeStandard, ModeCanary, ModeCustom}
 
 // String returns the string representation of the mode.
 func (m OperatingMode) String() string { return string(m) }
@@ -27,10 +26,10 @@ func (m OperatingMode) String() string { return string(m) }
 // The comparison is case-insensitive.
 func ParseMode(s string) (OperatingMode, error) {
 	switch OperatingMode(strings.ToLower(s)) {
-	case ModeStandard, ModeTelemetry, ModeCanary, ModeCustom:
+	case ModeStandard, ModeCanary, ModeCustom:
 		return OperatingMode(strings.ToLower(s)), nil
 	default:
-		return "", fmt.Errorf("unknown operating mode %q — valid modes: standard, telemetry, canary, custom", s)
+		return "", fmt.Errorf("unknown operating mode %q — valid modes: standard, canary, custom", s)
 	}
 }
 
@@ -52,7 +51,6 @@ func ResolveMode(flagVal string, cfg OperatingMode) (OperatingMode, error) {
 
 // EffectiveSettings is the resolved set of feature flags for an OperatingMode.
 type EffectiveSettings struct {
-	TelemetryEnabled       bool
 	CanaryInjectionEnabled bool
 	ExperimentalGated      bool
 }
@@ -61,14 +59,11 @@ type EffectiveSettings struct {
 // For ModeCustom, customCfg overrides individual flags; a nil customCfg yields all-false.
 func EffectiveSettingsForMode(m OperatingMode, customCfg *CustomModeConfig) EffectiveSettings {
 	switch m {
-	case ModeTelemetry:
-		return EffectiveSettings{TelemetryEnabled: true}
 	case ModeCanary:
 		return EffectiveSettings{CanaryInjectionEnabled: true}
 	case ModeCustom:
 		if customCfg != nil {
 			return EffectiveSettings{
-				TelemetryEnabled:       customCfg.TelemetryEnabled,
 				CanaryInjectionEnabled: customCfg.CanaryInjectionEnabled,
 				ExperimentalGated:      customCfg.ExperimentalGated,
 			}
@@ -82,7 +77,6 @@ func EffectiveSettingsForMode(m OperatingMode, customCfg *CustomModeConfig) Effe
 // CustomModeConfig holds the per-feature flags used when OperatingMode is "custom".
 // Fields map directly to config yaml keys under the "custom" block.
 type CustomModeConfig struct {
-	TelemetryEnabled       bool `yaml:"telemetry_enabled"`
 	CanaryInjectionEnabled bool `yaml:"canary_injection_enabled"`
 	ExperimentalGated      bool `yaml:"experimental_gated"`
 }

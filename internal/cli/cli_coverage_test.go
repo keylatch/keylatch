@@ -21,63 +21,6 @@ import (
 // parseRunArgs (exported for test via a wrapper — test through GetCmd behaviour)
 // ---------------------------------------------------------------------------
 
-// TestGetMaskedCmd_TwoArgs verifies that `get-masked` with two args prints
-// a masked placeholder to stdout.
-func TestGetMaskedCmd_TwoArgs(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get-masked", "svc", "key"})
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****", "get-masked must output masked placeholder")
-}
-
-// TestGetMaskedCmd_NoArgs verifies get-masked without args prints a generic
-// masked output.
-func TestGetMaskedCmd_NoArgs(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get-masked"})
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****")
-}
-
-// TestGetCmd_MaskedFlag verifies `get --masked svc key` outputs **** and never
-// calls the guarded handler.
-func TestGetCmd_MaskedFlag(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get", "--masked", "svc", "key"})
-	// get --masked must NOT call os.Exit — it returns nil.
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****")
-}
-
-// TestGetCmd_MaskedFlag_NoArgs verifies `get --masked` with no positional args
-// still returns masked output.
-func TestGetCmd_MaskedFlag_NoArgs(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"get", "--masked"})
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Contains(t, out.String(), "****")
-}
-
 // TestProxyCmd_Error verifies the proxy subcommand prints a helpful error.
 func TestProxyCmd_Error(t *testing.T) {
 	t.Parallel()
@@ -89,15 +32,6 @@ func TestProxyCmd_Error(t *testing.T) {
 	// verify the command is registered by looking it up.
 	_, _, err := root.Find([]string{"proxy"})
 	require.NoError(t, err)
-}
-
-// TestSandboxCmd_Registered verifies the sandbox subcommand is registered.
-func TestSandboxCmd_Registered(t *testing.T) {
-	t.Parallel()
-	root := cli.NewRootCommand()
-	cmd, _, err := root.Find([]string{"sandbox"})
-	require.NoError(t, err)
-	assert.Equal(t, "sandbox", cmd.Name())
 }
 
 // TestConnectionsCmd_Registered verifies the connections subcommand is registered.
@@ -424,11 +358,11 @@ func TestWriteGuardRuntimeError_DirectClassic(t *testing.T) {
 	assert.Contains(t, buf.String(), "direct_classic")
 }
 
-func TestWriteGuardRuntimeError_DirectClassicSandboxed(t *testing.T) {
+func TestWriteGuardRuntimeError_RemovedRuntimeIsUnsupported(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	cli.WriteGuardRuntimeError(&buf, "direct_classic_sandboxed")
-	assert.Contains(t, buf.String(), "direct_classic_sandboxed")
+	assert.Contains(t, buf.String(), "not a supported runtime mode")
 }
 
 func TestWriteGuardRuntimeError_Unrestricted(t *testing.T) {
@@ -461,7 +395,6 @@ func TestRegister_AllGroups(t *testing.T) {
 	assert.True(t, groupIDs["start"], "start group must be registered")
 	assert.True(t, groupIDs["daily"], "daily group must be registered")
 	assert.True(t, groupIDs["gateway"], "gateway group must be registered")
-	assert.True(t, groupIDs["team"], "team group must be registered")
 	assert.True(t, groupIDs["advanced"], "advanced group must be registered")
 }
 
@@ -471,9 +404,9 @@ func TestRegister_KeyCommands(t *testing.T) {
 	expectedCmds := []string{
 		// v1.0.0: "inject" removed; direct_classic removed.
 		"setup", "connect", "agent", "doctor", "ui", "bootstrap",
-		"get", "get-masked", "list", "status", "run",
-		"gateway", "team", "policy", "grant", "actors", "audit",
-		"registry", "rollback", "set", "shared-secret", "trust",
+		"get", "list", "status", "run",
+		"gateway", "policy", "grant", "actors", "audit",
+		"registry", "rollback", "set",
 		"versions", "mcp", "token",
 	}
 	for _, name := range expectedCmds {

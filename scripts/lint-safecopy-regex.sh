@@ -28,21 +28,19 @@ REGEX_CONTENT=$(grep -Eo "'[^']+'" "$SAFECOPY" | sed "s/'//g" || true)
 
 fail=0
 
-# Walk all YAML provider templates and check each sensitive field's known prefix.
+# Collect each sensitive field's known prefix from the YAML provider templates.
+# Templates may write "_" as "\x5f" so secret scanners skip the literal; decode it.
+TEMPLATE_PREFIXES=()
 while IFS= read -r tmpl_file; do
+  tmpl_name=$(basename "$tmpl_file")
   while IFS= read -r line; do
-    if echo "$line" | grep -qE '(key_prefix|value_prefix|prefix)\s*:\s*"?[a-zA-Z0-9_./-]+'; then
-      prefix=$(echo "$line" | sed -E 's/.*:\s*"?([a-zA-Z0-9_./-]+)"?.*/\1/')
-      prefix=$(echo "$prefix" | tr -d '"' | tr -d "'")
-      if [[ -z "$prefix" ]]; then
+    if echo "$line" | grep -qE '^\s*(key_prefix|value_prefix|prefix)\s*:\s*"?[a-zA-Z0-9_./\\-]+'; then
+      prefix=$(echo "$line" | sed -E 's/.*:\s*"?([a-zA-Z0-9_./\\-]+)"?.*/\1/')
+      prefix=$(printf '%b' "$(echo "$prefix" | tr -d '"' | tr -d "'")")
+      if [[ -z "$prefix" || "$prefix" == "true" || "$prefix" == "false" ]]; then
         continue
       fi
-      escaped_prefix=$(echo "$prefix" | sed 's/\./\\./g')
-      if ! echo "$REGEX_CONTENT" | grep -qF "$prefix" && \
-         ! grep -qF "$prefix" "$SAFECOPY"; then
-        echo "MISSING: prefix '$prefix' (from $(basename "$tmpl_file")) not found in SafeCopyButton TOKEN_REGEX" >&2
-        fail=1
-      fi
+      TEMPLATE_PREFIXES+=("$prefix|$tmpl_name")
     fi
   done < "$tmpl_file"
 done < <(find "$TEMPLATES_DIR" \( -name "*.yaml" -o -name "*.yml" \) | sort)
@@ -94,6 +92,27 @@ prefix_covered() {
   fi
   return 1
 }
+
+# prefix_shadowed reports whether a pattern starts with a leading part of the
+# prefix (at least 3 chars), so a broader rule such as "sk-" already catches it.
+prefix_shadowed() {
+  local p="$1" i lead
+  for ((i = ${#p}; i >= 3; i--)); do
+    lead=$(printf '%s' "${p:0:i}" | sed 's/[].[*^$\\]/\\&/g')
+    if echo "$REGEX_CONTENT" | grep -q "^${lead}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+for entry in "${TEMPLATE_PREFIXES[@]}"; do
+  prefix="${entry%|*}"
+  if ! prefix_shadowed "$prefix" && ! prefix_covered "$prefix"; then
+    echo "MISSING: prefix '$prefix' (from ${entry##*|}) not found in SafeCopyButton TOKEN_REGEX" >&2
+    fail=1
+  fi
+done
 
 for prefix in "${REQUIRED_PREFIXES[@]}"; do
   if ! prefix_covered "$prefix"; then

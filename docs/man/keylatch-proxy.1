@@ -1,27 +1,29 @@
-.TH KEYLATCH\-PROXY 1 "2026-05-13" "keylatch" "Keylatch Manual"
+.TH KEYLATCH\-PROXY 1 "2026-10-16" "keylatch" "Keylatch Manual"
 .SH NAME
-keylatch\-proxy \- start or configure the local credential proxy
+keylatch\-proxy \- manage the local CONNECT proxy
 .SH SYNOPSIS
 .B keylatch proxy
+.RB { up | down | status }
 .RI [ flags ]
 .SH DESCRIPTION
-\fBkeylatch proxy\fR starts a local credential proxy that mediates credential
-access between AI agents and external services. The proxy implements the
-\fIgateway_proxy\fR runtime mode, providing an additional layer of audit and
-access control for multi-agent workflows.
-.PP
-Full implementation is planned for Phase 8+. The command is currently
-registered to support shell completion and future flags.
-.SH OPTIONS
-No stable flags defined yet. Pass \fB\-\-help\fR to see available options.
+\fBkeylatch proxy\fR manages a local HTTP CONNECT interception proxy that
+injects credentials into outbound provider calls. The gateway and the proxy
+start and stop independently. The proxy is experimental.
+.SH COMMANDS
+.TP
+.B up
+Start the proxy. \fB\-\-port\fR sets the listener port (default 8888);
+\fB\-\-detach\fR runs it in the background.
+.TP
+.B down
+Stop the proxy.
+.TP
+.B status
+Print whether the proxy is running.
 .SH EXIT STATUS
 .TP
 .B 0
 Success.
-.TP
-.B 5
-Not yet implemented.
 .SH SEE ALSO
 .BR keylatch (1),
-.BR keylatch\-run (1),
-.BR keylatch\-sandbox (1)
+.BR keylatch\-run (1)

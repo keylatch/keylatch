@@ -75,7 +75,7 @@ ARG BUILD_DATE=unknown
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux \
-    go build -trimpath -tags embedded_ui -ldflags " \
+    go build -trimpath -tags embedded_ui,production,release -ldflags " \
         -s -w \
         -X 'github.com/keylatch/keylatch/internal/version.Version=${VERSION}' \
         -X 'github.com/keylatch/keylatch/internal/version.Commit=${COMMIT}' \

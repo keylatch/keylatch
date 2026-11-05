@@ -111,6 +111,16 @@ func AuditSalt(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "audit-salt")
 }
 
+// AuditKeyWrapped returns the path of the KEK-wrapped secret the audit chain
+// MAC key is derived from.
+// Override: KEYLATCH_AUDIT_KEY_PATH
+func AuditKeyWrapped(env Lookup) string {
+	if v := env("KEYLATCH_AUDIT_KEY_PATH"); v != "" {
+		return v
+	}
+	return filepath.Join(ConfigDir(env), "audit-key.enc")
+}
+
 // Policy returns the path to the policy file.
 // Override: KEYLATCH_POLICY_PATH
 func Policy(env Lookup) string {
@@ -118,6 +128,14 @@ func Policy(env Lookup) string {
 		return v
 	}
 	return filepath.Join(ConfigDir(env), "policy.json")
+}
+
+// PolicyDir returns the directory of per-connection policy documents. It sits
+// beside the policy file and has no override of its own: one more variable a
+// caller controls would be one more way to point the check at a permissive
+// directory.
+func PolicyDir(env Lookup) string {
+	return filepath.Join(filepath.Dir(Policy(env)), "policy.d")
 }
 
 // Grants returns the path to the grants JSON file.
@@ -223,7 +241,8 @@ func fileExists(path string) bool {
 }
 
 // KeyringIdentityPath returns the path of the plaintext vault identity file.
-// Bootstrap writes it only with --insecure-file-kek; otherwise the identity
+// Bootstrap writes it only when the operator config sets
+// allow_insecure_file_kek; otherwise the identity
 // lives in the OS keyring and this path plus ".keyring" holds the reference.
 // At runtime the factory uses KEYLATCH_AGE_IDENTITY if set.
 //
@@ -253,13 +272,20 @@ func GatewayConfig(env Lookup) string {
 	return filepath.Join(GatewayDir(env), "config.json")
 }
 
-// GatewaySigningKey returns the path to the gateway signing key file.
+// GatewaySigningKey returns the path of the raw signing key file older
+// installs created. It is read only to migrate it.
 // Override: KEYLATCH_GATEWAY_SIGNING_KEY
 func GatewaySigningKey(env Lookup) string {
 	if v := env("KEYLATCH_GATEWAY_SIGNING_KEY"); v != "" {
 		return v
 	}
 	return filepath.Join(GatewayDir(env), "signing.key")
+}
+
+// GatewaySigningKeyWrapped returns the path of the gateway signing key
+// wrapped by the KEK.
+func GatewaySigningKeyWrapped(env Lookup) string {
+	return GatewaySigningKey(env) + ".enc"
 }
 
 // GatewayPID returns the path to the gateway PID file.
@@ -333,6 +359,54 @@ func DaemonState(env Lookup) string {
 		return v
 	}
 	return filepath.Join(ConfigDir(env), "daemon-state.json")
+}
+
+// ControlSocket returns the path of the keylatchd control socket.
+// Override: KEYLATCH_SOCKET
+// Default: $XDG_RUNTIME_DIR/keylatch/keylatchd.sock, else
+// <tmp>/keylatch-<uid>/keylatchd.sock.
+func ControlSocket(env Lookup) string {
+	if v := env("KEYLATCH_SOCKET"); v != "" {
+		return v
+	}
+	if xdg := env("XDG_RUNTIME_DIR"); xdg != "" {
+		return filepath.Join(xdg, "keylatch", "keylatchd.sock")
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("keylatch-%d", os.Getuid()), "keylatchd.sock")
+}
+
+// BrokerSocket returns the socket of the system broker daemon.
+// Override: KEYLATCH_BROKER_SOCKET
+// Default: /run/keylatch/broker.sock on Linux, /var/db/keylatch/run/broker.sock
+// on macOS, the named pipe \\.\pipe\keylatch-broker on Windows.
+func BrokerSocket(env Lookup) string {
+	if v := env("KEYLATCH_BROKER_SOCKET"); v != "" {
+		return v
+	}
+	return defaultBrokerSocket
+}
+
+// BrokerAdopted returns the marker recording that this user's secrets were
+// moved into the system broker.
+func BrokerAdopted(env Lookup) string {
+	return filepath.Join(ConfigDir(env), "broker-adopted.json")
+}
+
+// KeyOperations returns the path of the key operation allowlist. It lives in
+// Keylatch state, which host sandboxes deny, and is changed only through the
+// daemon.
+func KeyOperations(env Lookup) string {
+	return filepath.Join(ConfigDir(env), "key-operations.json")
+}
+
+// SSHAgentSocket returns the path of the ssh-agent endpoint served by keylatchd.
+// Override: KEYLATCH_SSH_AGENT_SOCKET
+// Default: ssh-agent.sock next to the control socket.
+func SSHAgentSocket(env Lookup) string {
+	if v := env("KEYLATCH_SSH_AGENT_SOCKET"); v != "" {
+		return v
+	}
+	return filepath.Join(filepath.Dir(ControlSocket(env)), "ssh-agent.sock")
 }
 
 // UnsafeMode is returned by AssertSafeModes when the file or directory has

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/localonly"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -23,6 +24,10 @@ type ConnectOptions struct {
 	NonInteractive bool
 	// Fields are pre-supplied field values (field_name -> value).
 	Fields map[string][]byte
+	// Class is the connection class (dev, test or prod); empty is unclassified.
+	Class localonly.Class
+	// LocalOnly maps secret field names to their delivery mode.
+	LocalOnly map[string]localonly.Mode
 }
 
 // Connection represents a stored provider connection.
@@ -36,6 +41,10 @@ type Connection struct {
 	Fields     []string             `json:"fields"` // field names only — no values
 	Status     string               `json:"status"` // "untested" | "connected" | "missing" | "invalid" | ...
 	LastTested *time.Time           `json:"last_tested,omitempty"`
+	// Class is the connection class: dev, test or prod.
+	Class localonly.Class `json:"class,omitempty"`
+	// LocalOnly maps secret field names to their delivery mode.
+	LocalOnly map[string]localonly.Mode `json:"local_only,omitempty"`
 }
 
 // TestResult carries the outcome of a connection health test.

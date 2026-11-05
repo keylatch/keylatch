@@ -7,11 +7,10 @@
 //
 // Usage:
 //
-//	make test-e2e-bw
+//	go test -tags=e2e_bw ./cmd/keylatch -run TestE2E_BW
 //
-// Prerequisites:
-// - Docker and docker-compose installed
-// - docker-compose.vaultwarden.yml in the repo root
+// Requires an explicitly configured test account and BW_SESSION.
+// The disposable account and restore tests run through make test-e2e-bw instead.
 package main
 
 import (

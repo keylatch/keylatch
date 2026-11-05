@@ -193,8 +193,7 @@ func TestProfileFilesForPresets(t *testing.T) {
 	store := newMockStore()
 
 	agents := []string{
-		"claude-code", "codex", "cursor", "openhands",
-		"opencode", "openclaw", "nanoclaw", "hermes",
+		"openhands", "openclaw", "nanoclaw", "hermes",
 		"n8n", "dify",
 	}
 
@@ -218,7 +217,7 @@ func TestProfileFilesContainNoSecretValues(t *testing.T) {
 	ctx := context.Background()
 	store := newMockStore()
 
-	profile, err := GenerateProfile(ctx, "claude-code", ProfileModeMCP, store)
+	profile, err := GenerateProfile(ctx, "openclaw", ProfileModeMCP, store)
 	require.NoError(t, err)
 
 	for _, f := range profile.Files {

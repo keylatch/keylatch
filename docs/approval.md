@@ -10,6 +10,7 @@ Approval decisions are made only by a human on a terminal:
 
 - `keylatch approve` and `keylatch deny` are **always blocked inside LLM sessions** (exit 2, SecurityBlock).
 - They require an interactive terminal on stdin; piped, scripted and agent tool-call invocations are refused.
+- They ask for human presence first, showing the request: a typed confirmation on the terminal, plus Touch ID, polkit or Windows Hello where the platform has one. `deny --all` asks once for the whole batch. The proof is stored in the record and covered by the signature.
 - They ask for the **approver passphrase**, set once with `keylatch approve init`. The passphrase is read only from the terminal, never from a flag, file or environment variable.
 - Every decision is signed with an Ed25519 key derived from that passphrase. An approval that is unsigned, signed with another key, or edited after signing is rejected.
 - The signature covers exactly the request shown to the approver. If the request file changes between display and the passphrase prompt, nothing is signed and the command exits 2. Requester-written fields are shown with control characters removed.
@@ -143,14 +144,14 @@ Each connection can be configured with an `approval_mode` that determines when h
 | Runtime path | Default mode |
 |---|---|
 | `gateway_typed`, `gateway_sdk`, `gateway_proxy` | `trust` |
-| `direct_brokered` and value-bearing paths | `first-run` |
+| `minted` and value-bearing paths | `first-run` |
 
 ### Configuration
 
 Set `approval_mode` in your connection YAML:
 
 ```yaml
-# ~/.keylatch/config.yaml (per-connection override)
+# per-connection override
 connections:
   openrouter:
     approval_mode: prompt   # require approval every time

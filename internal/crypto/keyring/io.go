@@ -85,8 +85,8 @@ func loadFile(path string) (KeyringFile, error) {
 		return KeyringFile{}, fmt.Errorf("%w: stat %q: %v", ErrKeyringCorrupt, path, err)
 	}
 
-	if enforcePrivateFileMode && info.Mode().Perm() != 0o600 {
-		return KeyringFile{}, fmt.Errorf("%w: %q has mode %04o, want 0600", ErrKeyringCorrupt, path, info.Mode().Perm())
+	if err := checkPrivateFile(path, info); err != nil {
+		return KeyringFile{}, fmt.Errorf("%w: %q %v", ErrKeyringCorrupt, path, err)
 	}
 
 	data, err := os.ReadFile(path)

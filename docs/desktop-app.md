@@ -1,8 +1,24 @@
 # Desktop App
 
-The KeyLatch desktop app (Tauri) bundles the Go backend and a React SPA into a single native window. All API routes are served locally on `127.0.0.1:7890`.
+The Keylatch desktop app (Tauri) bundles the Go backend and a React SPA into a single native window. All API routes are served locally on `127.0.0.1:7890`.
 
-> **Availability:** Currently shipped for **Linux** (AppImage/.deb). macOS and Windows desktop builds are deferred to a post-MVP release — on those platforms, use the CLI; `keylatch ui` serves the same UI in your browser.
+> **Availability:** No desktop installer is shipped in a release. The desktop shell can be built from the `src-tauri` directory. Everywhere else use the CLI; `keylatch ui` serves the same UI in your browser.
+
+## Desktop sign-in
+
+The shell first loads a credential-free `/__bootstrap` page from the sidecar's exact HTTP loopback origin. After that page finishes loading, it requests a single-use token over authenticated local IPC and posts the token in a JSON body. The server sets the HttpOnly session cookie and returns HTTP 204; the WebView then opens `/`. Tokens are absent from the navigation URL and sidecar ready message.
+
+Both platforms use an AF_UNIX socket for IPC. The shell sends the IPC authentication key through an inherited pipe: a dedicated file descriptor on Unix and child stdin on Windows. The Windows key is never passed through an environment variable. Native installed-host verification remains required before shipping an installer.
+
+The sidecar announces readiness after both IPC and HTTP listeners bind. Native approval notifications use a separate IPC-issued bootstrap token and an in-memory session cookie. Polling follows no redirects, bypasses environment proxies, and limits response size and request duration. Only pending, unexpired requests produce notifications; polling errors set the tray error state. Shutdown stops polling and joins its worker before stopping the sidecar.
+
+Before opening the WebView, the shell checks the bootstrap response's enforced Content-Security-Policy and stops the sidecar if the policy is missing or unsafe. After the eight-hour UI session expires, authenticated native IPC can create a replacement session. Old cookies and pending bootstrap tokens stay invalid. Native polling reconnects and the WebView reloads through the one-time bootstrap flow; unsaved form edits can be lost. No approval decision or other mutation is replayed. Ordinary HTTP requests cannot renew an expired session.
+
+The shell launches the bundled `keylatchd` executable beside the application (`keylatchd.exe` on Windows), without searching the working directory or PATH. A missing, linked, or non-executable sidecar is an error. The sidecar binds an available loopback port and reports it after both listeners are ready. Native CI exercises the actual Go/Rust bootstrap exchange, one-use token rejection, IPC key rotation on restart, and shutdown.
+
+The desktop checks its owned sidecar every five seconds. After three failed checks, it stops approval polling, blocks the previous origin and shows the bundled error page while recovering. Recovery permits five attempts with increasing delays; sixty seconds of healthy operation resets that budget. Each replacement gets fresh IPC keys, a newly validated CSP and a new bootstrap exchange before the WebView reconnects. Requests and unsaved edits are not replayed. Quitting interrupts retry delays, joins the workers and stops the owned process.
+
+Each sidecar startup attempt allows 15 seconds and at most 64 KiB of output before a valid ready message. Silence and incomplete lines cannot extend that deadline. Failed startup kills and reaps the child. Shutdown requests the authenticated IPC shutdown method, waits for exit, and escalates only while the child remains unobserved as exited.
 
 ## Connections page
 
@@ -88,35 +104,27 @@ Settings gated behind Advanced mode:
 |---------|-------------|----------------|
 | Canary operating mode | Advanced off | `keylatch modes` |
 | Custom operating mode | Advanced off | `keylatch modes` |
-| Telemetry kill-switch | Advanced off | `KEYLATCH_TELEMETRY_DISABLE=1` |
 | Experimental opt-in | Advanced off | `KEYLATCH_EXPERIMENTAL=1` |
 
 Settings always visible:
 
 | Setting | Section | CLI equivalent |
 |---------|---------|----------------|
-| Operating mode (standard / telemetry) | Settings | `keylatch modes` |
+| Operating mode (standard) | Settings | `keylatch modes` |
 | Approval policy default | Settings | `keylatch policy` |
 | Approval TTL | Settings | `keylatch config set approval_ttl` |
 
 ### Operating mode
 
-Four operating modes are available:
+Three operating modes are available:
 
 | Mode | Advanced only | Description |
 |------|:---:|-------------|
 | `standard` | | Stable production mode |
-| `telemetry` | | Standard plus anonymous usage telemetry |
 | `canary` | yes | Pre-release features; may be unstable |
 | `custom` | yes | Fully custom configuration |
 
 Mode changes are persisted via `PUT /api/settings` with `{"operating_mode": "<mode>"}`.
-
-### Telemetry kill-switch
-
-The **Telemetry** toggle disables all usage telemetry collection. Equivalent to exporting `KEYLATCH_TELEMETRY_DISABLE=1`. Only visible when Advanced mode is on.
-
-Changes take effect immediately for the current process. Set `KEYLATCH_TELEMETRY_DISABLE=1` in your shell environment for persistence across restarts.
 
 ### Experimental features
 
@@ -146,6 +154,6 @@ The **Approval policy** radio sets the default action when an agent requests cre
 | `GET` | `/api/password-managers` | Detect available PM CLIs (cached per session) |
 | `GET` | `/api/pm-browse?pm=op\|aws_sm\|hashivault` | List items from a PM CLI |
 | `GET` | `/api/settings` | Load current settings |
-| `PUT` | `/api/settings` | Update settings (`approval_ttl_seconds`, `advanced_mode`, `operating_mode`, `telemetry_disable`, `experimental`, `approval_policy`) |
+| `PUT` | `/api/settings` | Update settings (`approval_ttl_seconds`, `advanced_mode`, `operating_mode`, `experimental`, `approval_policy`) |
 | `GET` | `/api/doctor` | Run health checks (optionally filtered by `connection=` and `verbose=true`) |
 | `GET` | `/diagnostics` | Diagnostics page — full doctor report with section grouping and quiet-mode toggle |

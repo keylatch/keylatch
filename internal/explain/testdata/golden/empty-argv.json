@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "deny",
+  "tier": null,
+  "tier_name": null,
+  "runtime": null,
+  "child_location": "none",
+  "containment": {
+    "verdict": "not_applicable",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "openai",
+    "executable": "",
+    "argc": 0,
+    "argv_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "cwd": "/work/app"
+  },
+  "hosts": [],
+  "scope": {
+    "rule_id": null,
+    "capabilities": [],
+    "connections": [],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "a connection and a command are required"
+  ],
+  "rejected_tiers": [],
+  "residual_risk": "No secret is delivered and no child process is started.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": false
+  },
+  "error": {
+    "code": "invalid_request",
+    "message": "a connection and a command are required"
+  }
+}

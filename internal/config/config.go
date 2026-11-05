@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 )
 
 // currentVersion is the schema version this code understands.
@@ -23,16 +25,15 @@ type Config struct {
 	DataDir          string `json:"data_dir,omitempty"` // file backend root; default ~/.keylatch/vault
 	DefaultNamespace string `json:"default_namespace"`  // e.g. "default" or "personal"
 	// NOTE: DefaultProviderRef is written here; keylatch run will read it to auto-populate --provider-ref.
-	DefaultProviderRef string          `json:"default_provider_ref,omitempty"` // provider-ref URI stored by setup reference branch
-	Gateway            *GatewayConfig  `json:"gateway,omitempty"`              // absent in 0.5
-	OP                 *OPConfig       `json:"op,omitempty"`                   // absent in 0.5
-	BW                 *BWConfig       `json:"bw,omitempty"`
-	Audit              AuditConfig     `json:"audit"`
-	UI                 UIConfig        `json:"ui"`
-	Telemetry          TelemetryConfig `json:"telemetry"`
+	DefaultProviderRef string         `json:"default_provider_ref,omitempty"` // provider-ref URI stored by setup reference branch
+	Gateway            *GatewayConfig `json:"gateway,omitempty"`              // absent in 0.5
+	OP                 *OPConfig      `json:"op,omitempty"`                   // absent in 0.5
+	BW                 *BWConfig      `json:"bw,omitempty"`
+	Audit              AuditConfig    `json:"audit"`
+	UI                 UIConfig       `json:"ui"`
 	// Operating mode selection.
-	// Valid values: "standard" | "telemetry" | "canary" | "custom". Default: "standard".
-	Mode   string            `json:"mode,omitempty"`   // operating mode (standard/telemetry/canary/custom)
+	// Valid values: "standard" | "canary" | "custom". Default: "standard".
+	Mode   string            `json:"mode,omitempty"`   // operating mode (standard/canary/custom)
 	Custom *CustomModeConfig `json:"custom,omitempty"` // custom mode feature overrides
 
 	// AllowUnverifiedSession lets `keylatch get` and `keylatch run` in
@@ -40,9 +41,78 @@ type Config struct {
 	// and proxy modes never do. Default: false (fail closed).
 	AllowUnverifiedSession bool `json:"allow_unverified_session,omitempty"`
 
+	// AllowInsecureFileKEK lets bootstrap keep the vault identity in a
+	// plaintext file when no OS keyring and no terminal for a passphrase are
+	// available. Only the operator's default config file is consulted for it:
+	// no flag and no environment variable can switch it on. Default: false.
+	AllowInsecureFileKEK bool `json:"allow_insecure_file_kek,omitempty"`
+
 	// Connections holds per-connection policy keyed by connection name.
 	// Only the operator's default config file is consulted for it.
 	Connections map[string]ConnectionPolicy `json:"connections,omitempty"`
+
+	// Backends holds per-backend credential settings keyed by backend id:
+	// op, opconnect, vault, awssm, gcpsm, azurekv, doppler, infisical, bws, sops.
+	Backends map[string]BackendCredentials `json:"backends,omitempty"`
+
+	// CI holds the workload identities `keylatch ci exchange` accepts. Only
+	// the operator's default config file is consulted for it.
+	CI *CIConfig `json:"ci,omitempty"`
+}
+
+// CIConfig lists the CI workloads trusted to use connections.
+type CIConfig struct {
+	Trust []CITrust `json:"trust,omitempty"`
+}
+
+// CITrust names one CI workload and the connections it may use. A token must
+// match every field that is set; Audience, Repositories and Refs are required.
+type CITrust struct {
+	// Provider is "github-actions" or "gitlab".
+	Provider string `json:"provider"`
+	// Issuer overrides the provider's issuer (self-managed GitLab).
+	Issuer string `json:"issuer,omitempty"`
+	// JWKSURL overrides the key set location, which is otherwise derived from
+	// the issuer. It must be https.
+	JWKSURL string `json:"jwks_url,omitempty"`
+	// Audience is the value the job asks the CI provider to put in the token.
+	Audience string `json:"audience"`
+	// Repositories are owner/name (project path on GitLab); "*" matches one
+	// path segment.
+	Repositories []string `json:"repositories"`
+	// Refs are full refs such as refs/heads/main or refs/tags/v*. A branch
+	// and a tag of the same name are different refs.
+	Refs []string `json:"refs"`
+	// Environments restricts the deployment environment claim when set.
+	Environments []string `json:"environments,omitempty"`
+	// JobWorkflowRefs restricts the job_workflow_ref claim (the
+	// ci_config_ref_uri claim on GitLab) when set.
+	JobWorkflowRefs []string `json:"job_workflow_refs,omitempty"`
+	// Cloud makes the exchange also point the cloud SDKs, and so the
+	// aws-sm, gcp-sm and azure-kv backends, at the job's verified token for
+	// workload identity federation.
+	Cloud *CICloud `json:"cloud,omitempty"`
+	// Connections are the only connections the exchanged session may use.
+	Connections []string `json:"connections"`
+	// MaxTTL is the session lifetime in seconds, 1-3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// CICloud names the cloud identity a CI job's token is federated to.
+type CICloud struct {
+	// Provider is "aws", "gcp" or "azure".
+	Provider string `json:"provider"`
+	// RoleARN and Region are for AWS (AssumeRoleWithWebIdentity).
+	RoleARN string `json:"role_arn,omitempty"`
+	Region  string `json:"region,omitempty"`
+	// WorkloadIdentityProvider is the full resource name of the GCP workload
+	// identity provider (//iam.googleapis.com/projects/…/providers/…);
+	// ServiceAccount, when set, is impersonated through it.
+	WorkloadIdentityProvider string `json:"workload_identity_provider,omitempty"`
+	ServiceAccount           string `json:"service_account,omitempty"`
+	// TenantID and ClientID are for Azure federated credentials.
+	TenantID string `json:"tenant_id,omitempty"`
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // ConnectionPolicy is the policy attached to one connection.
@@ -53,6 +123,84 @@ type ConnectionPolicy struct {
 // MintPolicy governs `keylatch mint` for a connection.
 type MintPolicy struct {
 	GitHubApp *GitHubAppMintPolicy `json:"github_app,omitempty"`
+	AWS       *AWSMintPolicy       `json:"aws,omitempty"`
+	Vault     *VaultMintPolicy     `json:"vault,omitempty"`
+	GCP       *GCPMintPolicy       `json:"gcp,omitempty"`
+	Azure     *AzureMintPolicy     `json:"azure,omitempty"`
+	OAuth     *OAuthMintPolicy     `json:"oauth,omitempty"`
+}
+
+// VaultMintPolicy limits the dynamic secrets a HashiCorp Vault connection may
+// read for a command. Each lease is revoked when the command exits.
+type VaultMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint ("service", "host",
+	// "human"). Empty means service and host. Agent sessions are never allowed.
+	Callers []string `json:"callers,omitempty"`
+	// Path is the dynamic-secret path that is read, for example
+	// database/creds/readonly. It is the only path that can be minted.
+	Path string `json:"path"`
+	// MaxTTL is the longest lease accepted in seconds, 1–3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// GCPMintPolicy limits the access tokens an impersonation connection may mint.
+type GCPMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint; see VaultMintPolicy.
+	Callers []string `json:"callers,omitempty"`
+	// ServiceAccount is the email of the account that is impersonated.
+	ServiceAccount string `json:"service_account"`
+	// Scopes are the OAuth scopes a token may carry; a request may ask for
+	// fewer. A command run with --runtime minted gets all of them.
+	Scopes []string `json:"scopes"`
+	// MaxTTL is the token lifetime in seconds, 1–3600. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// AzureMintPolicy limits the client-credentials tokens an Azure connection may
+// mint.
+type AzureMintPolicy struct {
+	// Authentication chooses client_secret (default) or federated assertion.
+	Authentication string `json:"authentication,omitempty"`
+	// Callers lists the caller kinds allowed to mint; see VaultMintPolicy.
+	Callers []string `json:"callers,omitempty"`
+	// Resource is the application ID URI or client ID the token is for. It is
+	// the only resource that can be minted.
+	Resource string `json:"resource"`
+	// MaxTTL is the longest token lifetime accepted in seconds, 1–5400. Entra
+	// ID picks the lifetime itself, between 60 and 90 minutes by default, so
+	// a token that outlives the limit is refused. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// OAuthMintPolicy limits the access tokens minted from a stored refresh token.
+type OAuthMintPolicy struct {
+	// Callers lists the caller kinds allowed to mint; see VaultMintPolicy.
+	Callers []string `json:"callers,omitempty"`
+	// TokenEndpoint is the https URL of the provider's token endpoint.
+	TokenEndpoint string `json:"token_endpoint"`
+	// Scopes are the scopes a token may carry; a request may ask for fewer.
+	Scopes []string `json:"scopes"`
+	// MaxTTL is the longest token lifetime accepted in seconds, 1–5400. The
+	// provider picks the lifetime, so a longer token is refused. Zero means 3600.
+	MaxTTL int `json:"max_ttl,omitempty"`
+}
+
+// AWSMintPolicy limits the STS sessions an AWS connection may mint for a
+// command. internal/policy/mint validates and applies it.
+type AWSMintPolicy struct {
+	// Callers lists the caller kinds allowed to run with a minted session
+	// ("service", "host", "human"). Empty means service and host. Agent
+	// sessions are never allowed.
+	Callers []string `json:"callers,omitempty"`
+	// RoleARN is the role the base key assumes.
+	RoleARN string `json:"role_arn"`
+	// Region selects the STS endpoint; empty means us-east-1.
+	Region string `json:"region,omitempty"`
+	// SessionPolicy is the inline IAM policy document that narrows the role.
+	// It is required.
+	SessionPolicy json.RawMessage `json:"session_policy"`
+	// MaxTTL is the session lifetime in seconds, 900–3600. Zero means 900.
+	MaxTTL int `json:"max_ttl,omitempty"`
 }
 
 // GitHubAppMintPolicy limits the installation tokens a GitHub App
@@ -60,11 +208,17 @@ type MintPolicy struct {
 type GitHubAppMintPolicy struct {
 	// Callers lists the caller kinds allowed to mint ("service", "host",
 	// "human"). Empty means service and host. Agent sessions are never allowed.
-	Callers           []string          `json:"callers,omitempty"`
-	DenyOwners        []string          `json:"deny_owners,omitempty"`
-	AllowOwners       []string          `json:"allow_owners,omitempty"`
-	AllowRepos        []string          `json:"allow_repos,omitempty"`
-	PermissionCeiling map[string]string `json:"permission_ceiling,omitempty"`
+	Callers []string `json:"callers,omitempty"`
+	// PlaceholderCallers lists the caller kinds ("agent", "host", "human",
+	// "service") that may run commands whose GitHub credential is a
+	// placeholder the daemon's proxy replaces with a minted token. Empty means
+	// none. The owner, repository, permission and lifetime limits below apply
+	// to these sessions too.
+	PlaceholderCallers []string          `json:"placeholder_callers,omitempty"`
+	DenyOwners         []string          `json:"deny_owners,omitempty"`
+	AllowOwners        []string          `json:"allow_owners,omitempty"`
+	AllowRepos         []string          `json:"allow_repos,omitempty"`
+	PermissionCeiling  map[string]string `json:"permission_ceiling,omitempty"`
 	// MaxTTL is the longest token lifetime in seconds, 1–3600. Zero means 3600.
 	MaxTTL int `json:"max_ttl,omitempty"`
 }
@@ -72,15 +226,64 @@ type GitHubAppMintPolicy struct {
 // CustomModeConfig holds per-feature flags for operating mode "custom".
 // It mirrors runtime.CustomModeConfig but uses JSON tags for config persistence.
 type CustomModeConfig struct {
-	TelemetryEnabled       bool `json:"telemetry_enabled"`
 	CanaryInjectionEnabled bool `json:"canary_injection_enabled"`
 	ExperimentalGated      bool `json:"experimental_gated"`
+}
+
+// BackendCredentials says where a remote backend's credential comes from.
+// The credential itself never appears in the config.
+type BackendCredentials struct {
+	// CredentialRef names the credential stored by `keylatch backend login`,
+	// wrapped by the KEK. It is read before anything in the environment.
+	CredentialRef string `json:"credential_ref,omitempty"`
+	// AllowEnvCredentials accepts credentials from environment variables
+	// when no credential_ref is set. doctor warns while it is on.
+	AllowEnvCredentials bool `json:"allow_env_credentials,omitempty"`
+}
+
+// RemoteBackendIDs are the backends that authenticate with a credential and so
+// take BackendCredentials.
+var RemoteBackendIDs = []string{"op", "opconnect", "vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "bws", "sops"}
+
+// BackendID maps a backend name as the registry spells it (aws-sm) to the id
+// used in the config (awssm).
+func BackendID(name string) string { return strings.ReplaceAll(name, "-", "") }
+
+// validateBackends checks the credential settings of every configured backend.
+func validateBackends(m map[string]BackendCredentials) error {
+	for id, b := range m {
+		if !slices.Contains(RemoteBackendIDs, id) {
+			return fmt.Errorf("backends.%s: not a backend that takes credentials (one of %s)", id, strings.Join(RemoteBackendIDs, ", "))
+		}
+		if b.CredentialRef != "" && !ValidCredentialRef(b.CredentialRef) {
+			return fmt.Errorf("backends.%s.credential_ref %q: use 1-64 letters, digits, '.', '_' or '-'", id, b.CredentialRef)
+		}
+	}
+	return nil
+}
+
+// ValidCredentialRef reports whether ref is usable as a credential_ref.
+func ValidCredentialRef(ref string) bool {
+	if ref == "" || len(ref) > 64 || ref == "." || ref == ".." {
+		return false
+	}
+	for _, r := range ref {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // GatewayConfig holds gateway connection settings.
 type GatewayConfig struct {
 	Endpoint string `json:"endpoint"` // e.g. http://127.0.0.1:7878
 	Mode     string `json:"mode"`     // "local" | "docker" | "hosted" | "off"
+	// MaxBody is the largest request body the gateway inspects and forwards,
+	// in bytes (default 10 MiB). Larger bodies are rejected.
+	MaxBody int64 `json:"max_body,omitempty"`
 }
 
 // OPConfig holds 1Password-specific settings.
@@ -110,6 +313,15 @@ type BWConfig struct {
 	Server     string `json:"server,omitempty"` // Vaultwarden URL; empty for Bitwarden Cloud
 	Folder     string `json:"folder,omitempty"`
 	Collection string `json:"collection,omitempty"`
+	// OrganizationID is the Bitwarden organization the vault belongs to.
+	OrganizationID string `json:"organization_id,omitempty"`
+	// Namespaces maps a namespace to the name of an organization collection
+	// (for example "Work/infra"). A namespace that is not listed is refused.
+	// It needs OrganizationID and replaces Folder and Collection.
+	Namespaces map[string]string `json:"namespaces,omitempty"`
+	// SessionTTL is how long `keylatch bw unlock` keeps a session, as a Go
+	// duration (default 1h, at most 8h).
+	SessionTTL string `json:"session_ttl,omitempty"`
 	Bin        string `json:"bin"`
 
 	// Forward-compat team-mode fields. Not interpreted in single-user mode.
@@ -132,22 +344,45 @@ func (c *BWConfig) Validate() error {
 	if c.Folder != "" && c.Collection != "" {
 		return ErrBWMutualExclusion{}
 	}
+	if len(c.Namespaces) > 0 {
+		if c.OrganizationID == "" {
+			return fmt.Errorf("bw.namespaces needs bw.organization_id")
+		}
+		if c.Folder != "" || c.Collection != "" {
+			return fmt.Errorf("bw.namespaces replaces bw.folder and bw.collection; set only one way to place items")
+		}
+		for ns, coll := range c.Namespaces {
+			if strings.TrimSpace(ns) == "" || strings.TrimSpace(coll) == "" {
+				return fmt.Errorf("bw.namespaces: a namespace and its collection must both be non-empty")
+			}
+		}
+	}
+	if c.SessionTTL != "" {
+		d, err := time.ParseDuration(c.SessionTTL)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("bw.session_ttl %q: use a positive duration such as 1h", c.SessionTTL)
+		}
+		if d > maxBWSessionTTL {
+			return fmt.Errorf("bw.session_ttl %q is above the maximum of %s", c.SessionTTL, maxBWSessionTTL)
+		}
+	}
 	return nil
 }
 
-// TelemetryConfig controls anonymous usage telemetry. Default: disabled.
-// All emitted events are non-sensitive — no secret values, no file paths.
-type TelemetryConfig struct {
-	Enabled bool   `json:"enabled"`
-	Sink    string `json:"sink,omitempty"` // "local" or "remote"
-}
+// maxBWSessionTTL is the longest a cached Bitwarden session may live.
+const maxBWSessionTTL = 8 * time.Hour
 
 // AuditConfig controls audit logging.
 type AuditConfig struct {
 	Enabled            bool  `json:"enabled"`
 	MaxSize            int64 `json:"max_size_bytes"`       // default 5 MiB
-	RetentionDays      int   `json:"retention_days"`       // default: 30; valid range 1–3650
+	RetentionDays      int   `json:"retention_days"`       // default: 365; valid range 1–3650
 	SweepIntervalHours int   `json:"sweep_interval_hours"` // default: 24; 0 means use default, negative is invalid
+	// RetainDays is the preferred name for RetentionDays and wins when both
+	// are set.
+	RetainDays int `json:"retain_days,omitempty"`
+	// RetainFiles is how many rotated log files are kept (default 20).
+	RetainFiles int `json:"retain_files,omitempty"`
 }
 
 // Validate checks AuditConfig field ranges and returns an actionable error for
@@ -155,9 +390,18 @@ type AuditConfig struct {
 func (a *AuditConfig) Validate() error {
 	if a.RetentionDays != 0 && (a.RetentionDays < 1 || a.RetentionDays > 3650) {
 		return fmt.Errorf(
-			"audit.retention_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 30",
+			"audit.retention_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 365",
 			a.RetentionDays,
 		)
+	}
+	if a.RetainDays != 0 && (a.RetainDays < 1 || a.RetainDays > 3650) {
+		return fmt.Errorf(
+			"audit.retain_days=%d is out of range; set a value between 1 and 3650 (days), or remove the field to use the default of 365",
+			a.RetainDays,
+		)
+	}
+	if a.RetainFiles < 0 {
+		return fmt.Errorf("audit.retain_files must be ≥ 0 (0 means use default of 20), got %d", a.RetainFiles)
 	}
 	// Zero means "use the default" (24 h); only negative values are errors.
 	if a.SweepIntervalHours < 0 {
@@ -221,7 +465,7 @@ func Default() Config {
 		Audit: AuditConfig{
 			Enabled:            true,
 			MaxSize:            5 * 1024 * 1024, // 5 MiB
-			RetentionDays:      30,
+			RetentionDays:      365,
 			SweepIntervalHours: 24,
 		},
 		UI: UIConfig{
@@ -263,6 +507,9 @@ func LoadBytes(path string, data []byte) (Config, error) {
 	}
 
 	if err := c.Audit.Validate(); err != nil {
+		return Config{}, fmt.Errorf("config %q: %w", path, err)
+	}
+	if err := validateBackends(c.Backends); err != nil {
 		return Config{}, fmt.Errorf("config %q: %w", path, err)
 	}
 
