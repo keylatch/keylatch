@@ -5,9 +5,11 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/keyops"
+	"github.com/keylatch/keylatch/internal/presence"
 	"golang.org/x/crypto/ssh/agent"
 )
 
@@ -29,7 +31,7 @@ func keyErrorResponse(resp Response, err error) Response {
 }
 
 // keyPolicy lists or edits the allowlist. Only a human may add or widen.
-func (s *Server) keyPolicy(_ context.Context, kind Kind, kp *KeyPolicyRequest) Response {
+func (s *Server) keyPolicyPeer(ctx context.Context, kind Kind, kp *KeyPolicyRequest, peer Peer) Response {
 	resp := Response{Kind: kind, Code: CodeBadRequest, ExitCode: exitcode.UserError}
 	if kp == nil {
 		resp.Error = "a key policy request is required"
@@ -43,14 +45,41 @@ func (s *Server) keyPolicy(_ context.Context, kind Kind, kp *KeyPolicyRequest) R
 	ch := keyops.Change{
 		Connection: kp.Connection, Field: kp.Field, Secret: kp.Secret,
 		Operations: kp.Operations, Algorithms: kp.Algorithms, HostKeys: kp.HostKeys,
-		AgentDecrypt: kp.AgentDecrypt, SSHAgent: kp.SSHAgent,
+		AgentDecrypt: kp.AgentDecrypt, SSHAgent: kp.SSHAgent, PresenceDigest: kp.PresenceDigest,
 	}
 	var err error
-	ctx := context.Background()
 	caller := callerOf(kind)
 	switch kp.Action {
 	case "allow":
-		err = s.cfg.KeyAdmin.Allow(ctx, caller, ch)
+		// Broker hosts become authorized only if the peer-specific OS check succeeds.
+		if kind == KindHost && s.cfg.KeyPeerPresence != nil {
+			caller.Constrained = false
+		}
+		err = s.cfg.KeyAdmin.AllowVerified(ctx, caller, ch, func(ctx context.Context, summary string) (string, error) {
+			ctx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			var err error
+			switch {
+			case s.cfg.KeyPeerPresence != nil:
+				err = s.cfg.KeyPeerPresence(ctx, peer, presence.ActionKeyAllow, summary)
+			case s.cfg.KeyPresence != nil:
+				err = s.cfg.KeyPresence.Confirm(ctx, presence.ActionKeyAllow, summary)
+			default:
+				err = presence.ErrUnavailable
+			}
+			if err != nil {
+				return "", err
+			}
+			if peer.Verify != nil {
+				if err := peer.Verify(); err != nil {
+					return "", err
+				}
+			}
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			return presence.Digest(presence.ActionKeyAllow, summary), nil
+		})
 	case "revoke":
 		err = s.cfg.KeyAdmin.Revoke(ctx, caller, ch)
 	case "list":
@@ -106,6 +135,15 @@ func (s *Server) key(ctx context.Context, kind Kind, kr *KeyRequest) Response {
 // endpoint lists public keys and signs; the daemon's user is the only peer
 // accepted.
 func (s *Server) ServeSSHAgent(ctx context.Context, ln *net.UnixListener) error {
+	return s.serveKeyAgent(ctx, ln, s.serveAgentConn)
+}
+
+// ServeGPGAgent answers the Assuan signing protocol for the daemon's own user.
+func (s *Server) ServeGPGAgent(ctx context.Context, ln *net.UnixListener) error {
+	return s.serveKeyAgent(ctx, ln, s.serveGPGConn)
+}
+
+func (s *Server) serveKeyAgent(ctx context.Context, ln *net.UnixListener, serve func(context.Context, *net.UnixConn)) error {
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -123,13 +161,26 @@ func (s *Server) ServeSSHAgent(ctx context.Context, ln *net.UnixListener) error 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.serveAgentConn(conn)
+			serve(ctx, conn)
 		}()
 	}
 }
 
-func (s *Server) serveAgentConn(conn *net.UnixConn) {
+func (s *Server) serveGPGConn(ctx context.Context, conn *net.UnixConn) {
 	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	peer, err := peerOf(conn)
+	if err != nil || peer.UID != s.uid || s.cfg.Keys == nil {
+		return
+	}
+	_ = s.cfg.Keys.ServeGPGAgent(ctx, conn, callerOf(s.classify(peer, Request{}).Kind))
+}
+
+func (s *Server) serveAgentConn(ctx context.Context, conn *net.UnixConn) {
+	defer func() { _ = conn.Close() }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	peer, err := peerOf(conn)
 	if err != nil || peer.UID != s.uid || s.cfg.Keys == nil {
 		return

@@ -12,6 +12,8 @@ builds:
   - id: keylatch
     main: ./cmd/keylatch
     binary: keylatch
+    # darwin binaries come from the macOS runner (cgo, for Touch ID presence).
+    gobinary: scripts/release-go.sh
     # Never add `experimental`: it compiles unfinished team and trust features.
     tags:
       - embedded_ui
@@ -36,6 +38,7 @@ builds:
   - id: keylatchd
     main: ./cmd/keylatchd
     binary: keylatchd
+    gobinary: scripts/release-go.sh
     # Never add `experimental`: it compiles unfinished team and trust features.
     tags:
       - embedded_ui

@@ -52,12 +52,12 @@ func (*polkit) Name() string { return "polkit" }
 
 // Confirm asks polkit to authenticate the user for this process. The start
 // time pins the check to this process even if its PID is reused.
-func (p *polkit) Confirm(ctx context.Context, _ Action, _ string) error {
+func (p *polkit) Confirm(ctx context.Context, action Action, summary string) error {
 	start, err := p.start(p.pid)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	cmd := exec.CommandContext(ctx, p.pkcheck, "--action-id", polkitAction, "--process", fmt.Sprintf("%d,%s", p.pid, start), "--allow-user-interaction") //nolint:gosec // fixed binary path, numeric arguments
+	cmd := exec.CommandContext(ctx, p.pkcheck, "--action-id", polkitAction, "--process", fmt.Sprintf("%d,%s,%d", p.pid, start, os.Getuid()), "--allow-user-interaction", "--detail", "polkit.message", string(action)+"\n"+summary) //nolint:gosec // fixed binary path, separate arguments
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError

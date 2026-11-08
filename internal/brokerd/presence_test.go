@@ -245,6 +245,7 @@ func TestPolkitSubjectIsPeer(t *testing.T) {
 		"--process 31337,777,1234",
 		"--allow-user-interaction",
 		"--detail keylatch.summary Store a secret",
+		"--detail polkit.message",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("pkcheck args %q lack %q", joined, want)

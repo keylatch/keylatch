@@ -9,6 +9,7 @@
   <action id="dev.keylatch.privileged">
     <description>Approve a privileged Keylatch action</description>
     <message>Authentication is required to approve a privileged Keylatch action</message>
+    <annotate key="org.freedesktop.policykit.owner">unix-user:keylatch</annotate>
     <defaults>
       <allow_any>auth_self</allow_any>
       <allow_inactive>auth_self</allow_inactive>

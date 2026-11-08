@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// shortTempDir returns a temp dir with a short path: macOS's default TMPDIR is
-// long enough to push socket paths past the sun_path limit.
+// Socket paths must fit sun_path even when test names or macOS TMPDIR are long.
 func shortTempDir(t *testing.T) string {
 	t.Helper()
+	base := "/tmp"
 	if runtime.GOOS == "windows" {
-		return t.TempDir()
+		base = os.TempDir()
 	}
-	dir, err := os.MkdirTemp("/tmp", "kl")
+	dir, err := os.MkdirTemp(base, "kl")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)
 	}

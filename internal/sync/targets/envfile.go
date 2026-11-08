@@ -3,6 +3,7 @@ package targets
 import (
 	"bytes"
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 
@@ -18,6 +19,7 @@ type EnvFile struct {
 	id      string
 	lines   []string
 	flush   func([]byte) error
+	read    func() ([]byte, error)
 	dirty   bool
 	trailNL bool
 }
@@ -60,19 +62,29 @@ func quote(v string) string {
 	return `"` + r.Replace(v) + `"`
 }
 
-// Write sets name to value, replacing the first line that defines it or
-// appending one.
+// Write sets name to value and removes duplicate definitions that could override it.
 func (f *EnvFile) Write(_ context.Context, name string, value []byte, _ []string, _ bool) error {
 	line := name + "=" + quote(string(value))
-	for i, l := range f.lines {
+	kept := f.lines[:0]
+	found := false
+	for _, l := range f.lines {
 		if m := envLine.FindStringSubmatch(l); m != nil && m[1] == name {
-			if f.lines[i] != line {
-				f.lines[i], f.dirty = line, true
+			if found {
+				f.dirty = true
+				continue
 			}
-			return nil
+			found = true
+			if l != line {
+				f.dirty = true
+			}
+			l = line
 		}
+		kept = append(kept, l)
 	}
-	f.lines, f.dirty = append(f.lines, line), true
+	f.lines = kept
+	if !found {
+		f.lines, f.dirty = append(f.lines, line), true
+	}
 	return nil
 }
 
@@ -93,6 +105,35 @@ func (f *EnvFile) Delete(_ context.Context, r keysync.Remote) error {
 // Readback reports false: the daemon does not read the file back to compare.
 func (f *EnvFile) Readback(context.Context, keysync.Remote) ([]byte, bool, error) {
 	return nil, false, nil
+}
+
+// VerifyValue checks the flushed bytes as well as the exact assignment produced by Write.
+func (f *EnvFile) VerifyValue(ctx context.Context, r keysync.Remote, value []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if f.read == nil || f.dirty {
+		return errors.New("the env file cannot be verified before a readable flush")
+	}
+	actual, err := f.read()
+	defer clear(actual)
+	if err != nil {
+		return err
+	}
+	expected := f.Content()
+	defer clear(expected)
+	if !bytes.Equal(actual, expected) {
+		return errors.New("the env file differs from the flushed content")
+	}
+	for _, line := range f.lines {
+		if m := envLine.FindStringSubmatch(line); m != nil && m[1] == r.Name {
+			if line == r.Name+"="+quote(string(value)) {
+				return nil
+			}
+			break
+		}
+	}
+	return errors.New("the env file does not contain the expected assignment")
 }
 
 // Content is the merged file.

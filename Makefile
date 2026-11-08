@@ -25,9 +25,9 @@ check: build lint test security-grep
 test-e2e-op:
 	KEYLATCH_E2E_OP=1 go test -v -tags=e2e_op ./cmd/keylatch/ -run TestE2E_OP
 
-## test-e2e-bw: run Vaultwarden E2E tests (requires docker-compose)
+## test-e2e-bw: run disposable Vaultwarden collections and restore tests
 test-e2e-bw:
-	go test -v -tags=e2e_bw ./cmd/keylatch/ -run TestE2E_BW
+	KEYLATCH_E2E_BW_REQUIRED=1 go test -race -count=1 -timeout 12m -tags=e2e ./tests/e2e/... -run '^Test(VaultwardenCollections|RestoreDrill)' -v
 
 ## test-core-packages: run core package tests with race detection
 test-core-packages:

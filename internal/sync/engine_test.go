@@ -122,17 +122,16 @@ func (s *memSecrets) Value(_ context.Context, c, f string) ([]byte, error) {
 	return []byte(v), nil
 }
 
-func (s *memSecrets) Previous(_ context.Context, c, f string) ([]byte, error) {
-	v, ok := s.prev[s.key(c, f)]
-	if !ok {
-		return nil, ErrNoPrevious
+func (s *memSecrets) Snapshot(ctx context.Context, c, f string) (SourceSnapshot, error) {
+	current, err := s.Value(ctx, c, f)
+	if err != nil {
+		return SourceSnapshot{}, err
 	}
-	return []byte(v), nil
-}
-
-func (s *memSecrets) Remember(_ context.Context, c, f string, v []byte) error {
-	s.prev[s.key(c, f)] = string(v)
-	return nil
+	var previous []byte
+	if value, ok := s.prev[s.key(c, f)]; ok {
+		previous = []byte(value)
+	}
+	return SourceSnapshot{Path: s.key(c, f), Version: 2, PreviousVersion: 1, Current: current, Previous: previous}, err
 }
 
 type memState struct {
@@ -513,10 +512,12 @@ func rotateRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	r.sec.values["app-db/url"] = canaryValue + "-v2"
+	r.sec.prev["app-db/url"] = canaryValue + "-db"
+	r.sec.prev["api/"] = canaryValue + "-api"
 	return r
 }
 
-func TestSyncRotateRemovesOldAfterVerify(t *testing.T) {
+func TestSyncRotateVerifiesBeforeCompletion(t *testing.T) {
 	r := rotateRig(t)
 	var probed []string
 	r.e.Probe = func(_ context.Context, url string, _ []byte) error { probed = append(probed, url); return nil }
@@ -529,8 +530,8 @@ func TestSyncRotateRemovesOldAfterVerify(t *testing.T) {
 	if r.web.value("DATABASE_URL", "production") != canaryValue+"-v2" || r.ci.value("DATABASE_URL", "repository") != canaryValue+"-v2" {
 		t.Fatal("not every target holds the new value")
 	}
-	if got := r.sec.prev["app-db/url"]; got != canaryValue+"-v2" {
-		t.Fatalf("the old value is still recorded: %q", got)
+	if got := r.sec.prev["app-db/url"]; got != canaryValue+"-db" {
+		t.Fatal("rotation changed the source's version history")
 	}
 	if slept != time.Minute {
 		t.Fatalf("keep-old wait = %v", slept)
@@ -644,6 +645,7 @@ func TestSyncRotateRefusals(t *testing.T) {
 		t.Fatalf("--no-rollback must allow it: %v", err)
 	}
 	r.sec.values["app-db/url"] = canaryValue + "-v4"
+	r.sec.prev["app-db/url"] = canaryValue + "-v3"
 	r.web.failWrite = canaryValue + "-v4"
 	if _, err := r.e.Rotate(ctx, "DATABASE_URL", RotateOptions{}); !errors.Is(err, ErrRotateFailed) {
 		t.Fatalf("a refused write: %v", err)

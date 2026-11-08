@@ -26,6 +26,7 @@ import (
 	"github.com/keylatch/keylatch/internal/audit/fields"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/presence/presencetest"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -493,8 +494,9 @@ func TestHarnessAncestryConstrainsSSHAgentAndKeyOperations(t *testing.T) {
 	if code == 0 || !strings.Contains(errOut, "not available to agent callers") {
 		t.Fatalf("decrypt for a caller with a harness ancestor: exit %d %q", code, errOut)
 	}
+	presencetest.Approve(t)
 	code, _, errOut = runKeyCLI(t, d.env, "", "key", "allow", "app-local", "--field", "DATA_KEY", "--op", "decrypt", "--alg", "A256GCM")
-	if code == 0 {
+	if code == 0 || !strings.Contains(errOut, "not available to agent callers") {
 		t.Fatalf("a caller with a harness ancestor widened the allowlist: %q", errOut)
 	}
 }

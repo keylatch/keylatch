@@ -6,10 +6,14 @@ function makeApproval(expiresInSeconds = 300): Approval {
   return {
     token: 'test-token-abc',
     connection: 'my-openrouter',
-    commandHmac: 'deadbeef01234567',
-    actorHmac: 'actor12345678',
-    expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
-    createdAt: new Date().toISOString(),
+    actor: 'agent',
+    capability: 'run:D5',
+    summary: 'Command: ["deploy"]\nHosts: ["example.test"]',
+    request_hash: 'request-hash',
+    digest: 'b'.repeat(64),
+    status: 'pending',
+    expires_at: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+    created_at: new Date().toISOString(),
   }
 }
 

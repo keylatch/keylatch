@@ -86,6 +86,11 @@ func Import(ctx context.Context, plan Plan, env Env, store Store, opt ImportOpti
 	return res
 }
 
+// PlannedStore preserves source references for a destination's approval prompt.
+type PlannedStore interface {
+	PutPlanned(context.Context, PlanItem, []byte) error
+}
+
 func importOne(ctx context.Context, it PlanItem, val []byte, store Store, opt ImportOptions, out *ItemResult) error {
 	if len(val) == 0 {
 		return errors.New("the source holds an empty value")
@@ -109,7 +114,12 @@ func importOne(ctx context.Context, it PlanItem, val []byte, store Store, opt Im
 		out.Outcome = OutcomeWouldWrite
 		return nil
 	}
-	if err := store.Put(ctx, it.Path, val); err != nil {
+	if planned, ok := store.(PlannedStore); ok {
+		err = planned.PutPlanned(ctx, it, val)
+	} else {
+		err = store.Put(ctx, it.Path, val)
+	}
+	if err != nil {
 		return fmt.Errorf("write the target: %w", err)
 	}
 	out.Outcome = OutcomeWritten

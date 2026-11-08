@@ -183,7 +183,7 @@ func (r Request) validateSync() error {
 	if len(s.Target) > 64 || len(s.Root) > 4096 || strings.ContainsRune(s.Root, 0) {
 		return errors.New("malformed target or root")
 	}
-	if r.Op != OpSyncApply && len(s.EnvFiles) > 0 {
+	if r.Op != OpSyncApply && r.Op != OpSyncRotate && len(s.EnvFiles) > 0 {
 		return errors.New("only sync.apply and sync.rotate take file descriptors")
 	}
 	return nil

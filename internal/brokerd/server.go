@@ -97,20 +97,23 @@ type Server struct {
 	svcOnce sync.Once
 	svc     *serviceStore
 
-	machOnce sync.Once
-	mach     *machineStore
-	machines machineManager
+	machOnce       sync.Once
+	mach           *machineStore
+	machines       machineManager
+	retirementWake chan struct{}
 }
 
 type partition struct {
-	uid    uint32
-	dir    string
-	env    func(string) string
-	store  *brokerstore.Store
-	policy *PolicyStore
-	ctl    *control.Server
+	uid        uint32
+	dir        string
+	env        func(string) string
+	store      *brokerstore.Store
+	policy     *PolicyStore
+	ctl        *control.Server
+	approvalMu sync.Mutex
 
 	syncOnce sync.Once
+	syncMu   sync.Mutex
 	sync     *syncState
 	// syncStore stands in for store in the sync operations; tests use it to
 	// count reads.
@@ -146,12 +149,13 @@ func New(cfg Config) (*Server, error) {
 	proofs := NewProofs(cfg.Now)
 	sessions := NewSessions(ticketKey, cfg.Now)
 	s := &Server{
-		cfg:      cfg,
-		proofs:   proofs,
-		sessions: sessions,
-		presence: &Presence{Method: cfg.Presence, Proofs: proofs, Audit: cfg.Audit},
-		callers:  &callerkind.Classifier{NoHuman: true, AgentScope: sessions.InAgentScope},
-		parts:    map[uint32]*partition{},
+		cfg:            cfg,
+		proofs:         proofs,
+		sessions:       sessions,
+		presence:       &Presence{Method: cfg.Presence, Proofs: proofs, Audit: cfg.Audit},
+		callers:        &callerkind.Classifier{NoHuman: true, AgentScope: sessions.InAgentScope},
+		parts:          map[uint32]*partition{},
+		retirementWake: make(chan struct{}, 1),
 	}
 	if cfg.Presence == nil {
 		s.presence.Method = nil
@@ -178,13 +182,16 @@ func UnixListener(l *net.UnixListener) Listener { return unixListener{l} }
 
 // Serve accepts connections until ctx is done.
 func (s *Server) Serve(ctx context.Context, ln Listener) error {
+	ctx, cancel := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); s.runRetirements(ctx) }()
 	s.StartMachineListener(ctx)
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
 	}()
 	var wg sync.WaitGroup
-	defer wg.Wait()
+	defer func() { cancel(); wg.Wait(); <-workerDone }()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -282,18 +289,26 @@ func (s *Server) partition(ctx context.Context, uid uint32) (*partition, error) 
 	}
 	pol := &PolicyStore{Dir: cfgDir, Keys: s.cfg.Keys, Audit: s.cfg.Audit, Now: s.cfg.Now}
 	p := &partition{uid: uid, dir: dir, env: env.lookup, store: store, policy: pol}
+	keyService, keyAdmin, err := s.keyService(p)
+	if err != nil {
+		return nil, err
+	}
 	p.ctl = control.NewServer(control.Config{
-		Env:        env.lookup,
-		Binary:     s.cfg.Binary,
-		Audit:      s.cfg.Audit,
-		Callers:    s.callers,
-		SigningKey: tokenKey,
-		ChildEnv:   childEnv,
-		ChildStore: store,
-		Decide:     enforce.New(env.lookup).Decide,
-		Gate:       pol.Gate,
-		Ticket:     s.sessions.VerifyTicket,
-		Extension:  &admin{s: s, p: p},
+		Env:             env.lookup,
+		Binary:          s.cfg.Binary,
+		Audit:           s.cfg.Audit,
+		Callers:         s.callers,
+		SigningKey:      tokenKey,
+		ChildEnv:        childEnv,
+		ChildStore:      store,
+		Decide:          enforce.New(env.lookup).Decide,
+		Gate:            pol.Gate,
+		Ticket:          s.sessions.VerifyTicket,
+		Extension:       &admin{s: s, p: p},
+		Keys:            keyService,
+		KeyAdmin:        keyAdmin,
+		KeyPeerPresence: s.keyPresence(uid),
+		Approve:         s.approver(p),
 	})
 	s.parts[uid] = p
 	return p, nil
