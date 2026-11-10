@@ -91,6 +91,16 @@ jobs:
         if: github.event_name == 'pull_request'
         run: bash release-checks/naming-scan.sh --range "origin/${{ github.base_ref }}..HEAD"
 
+  install-script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck installers/install.sh installers/install.test.sh
+      - name: install script test
+        run: bash installers/install.test.sh
+
   go-test:
     needs: lint
     strategy:

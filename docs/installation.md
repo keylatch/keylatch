@@ -18,21 +18,38 @@ scoop bucket add keylatch https://github.com/keylatch/scoop
 scoop install keylatch
 ```
 
-## Linux — Manual tarball
+## Linux — install from a release
 
-Download the latest release tarball from [GitHub Releases](https://github.com/keylatch/keylatch/releases):
+`installers/install.sh` downloads the archive for your architecture from a published
+release, checks its SHA-256 against the release checksums file, verifies that file with
+cosign (keyless, GitHub OIDC), and installs `keylatch` and `keylatchd` into a directory you
+choose. It needs `curl`, `tar`, `sha256sum` and `cosign`.
 
 ```bash
-# Replace X.Y.Z with the latest version.
-curl -Lo keylatch.tar.gz \
-  https://github.com/keylatch/keylatch/releases/latest/download/keylatch_linux_amd64.tar.gz
-
-tar -xzf keylatch.tar.gz
-sudo mv keylatch /usr/local/bin/keylatch
-sudo chmod +x /usr/local/bin/keylatch
+VERSION=X.Y.Z   # a published release, without the leading v
+curl -fsSLO "https://raw.githubusercontent.com/keylatch/keylatch/v${VERSION}/installers/install.sh"
+bash install.sh --version "${VERSION}" --prefix "$HOME/.local/bin"
 ```
 
-Verify the checksum against the `.sha256` file published alongside each release.
+Fetch the installer from the same tag it installs. Pass `--skip-signature` only if you
+cannot install cosign: the checksum then proves integrity but not that the release
+pipeline built the archive. Releases are published as drafts and only become visible once
+every signature and the provenance are attached, so there is no `latest` shortcut; pin a
+version.
+
+### Manual tarball
+
+```bash
+VERSION=X.Y.Z
+curl -fsSLO "https://github.com/keylatch/keylatch/releases/download/v${VERSION}/keylatch_${VERSION}_linux_amd64.tar.gz"
+curl -fsSLO "https://github.com/keylatch/keylatch/releases/download/v${VERSION}/keylatch-${VERSION}_checksums.txt"
+sha256sum --check --ignore-missing "keylatch-${VERSION}_checksums.txt"
+tar -xzf "keylatch_${VERSION}_linux_amd64.tar.gz"
+install -m 0755 keylatch keylatchd "$HOME/.local/bin/"
+```
+
+Use `arm64` for ARM hosts. [Verifying releases](verifying-releases.md) covers the cosign
+and provenance checks.
 
 ## Docker
 
