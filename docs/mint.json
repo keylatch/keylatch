@@ -53,6 +53,7 @@
         "providers/index",
         "faq",
         "troubleshooting",
+        "gateway-service",
         "default-state-recommendations"
       ]
     },
