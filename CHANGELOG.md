@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keylatch mint <connection> --repo <owner/name> --permission <name>=<level> … --format json` mints a GitHub App installation token for exactly one repository and the listed permissions, and prints `{"token","expires_at","repository","permissions"}`. The App JWT is signed inside Keylatch; the private key never leaves it. Exit codes: 1 usage, 2 agent session or no audit log, 3 policy, 4 store unavailable, 5 GitHub refused or the token was revoked, 6 connection field missing.
 - `github-app` provider template: `private_key` (secret), `app_id` and one `installation_<owner>` field per account the App is installed on. `keylatch connect github-app` tests the connection with a signed App JWT against `GET /app`.
 - Per-connection policy `connections.<name>.mint.github_app` in `config.json`: `callers` (default `service` and `host`), `deny_owners`, `allow_owners`, `allow_repos`, `permission_ceiling` and `max_ttl` (1–3600 seconds, default 3600). A connection without the policy cannot mint.
+- `keylatch gateway up --allow-source <CIDR>` (repeatable) refuses callers whose TCP peer address is outside the CIDRs, before authentication; `X-Forwarded-For` is never trusted.
+- `keylatch gateway up --github-mint <connection>` serves `POST /mint/github`: a session token with the `github.mint` capability gets a one-repository installation token, never with `administration`, under the connection's `mint.github_app` policy.
 - Audit action `mint` with connection, namespace, repository, permissions, `expires_at`, caller kind and, on failure, the reason. The token is never recorded.
 
 ### Security
