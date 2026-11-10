@@ -183,10 +183,16 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 		if err := planMkdir(&plan, krDir, opts.DryRun); err != nil {
 			return plan, fmt.Errorf("keyring dir: %w", err)
 		}
-		if err := planIdentity(&plan, vi, insecure, opts.DryRun, opts.Force); err != nil {
+		deriveKEK := vi.KEK
+		if suppliedPath := env("KEYLATCH_AGE_IDENTITY"); suppliedPath != "" {
+			// The operator delivers the identity (for example as a systemd
+			// credential), so nothing is stored in a keyring or plaintext file.
+			deriveKEK = func(salt []byte) (kek.KEK, error) { return kek.AgeIdentityKEKFromPath(suppliedPath, salt) }
+			plan.Steps = append(plan.Steps, PlanStep{Action: "noop", Path: suppliedPath, Reason: "vault identity supplied through KEYLATCH_AGE_IDENTITY", Done: true})
+		} else if err := planIdentity(&plan, vi, insecure, opts.DryRun, opts.Force); err != nil {
 			return plan, fmt.Errorf("vault identity: %w", err)
 		}
-		if err := planWriteKeyring(&plan, krPath, vi, opts.DryRun, opts.Force); err != nil {
+		if err := planWriteKeyring(&plan, krPath, deriveKEK, opts.DryRun, opts.Force); err != nil {
 			return plan, fmt.Errorf("keyring: %w", err)
 		}
 	}
@@ -309,7 +315,7 @@ func planMigrateIdentity(plan *Plan, vi kek.VaultIdentity, dryRun bool) error {
 // planWriteKeyring creates keyring.json at krPath, wrapped by the KEK derived
 // from the vault identity. When force is true, an existing keyring is removed
 // and recreated.
-func planWriteKeyring(plan *Plan, krPath string, vi kek.VaultIdentity, dryRun, force bool) error {
+func planWriteKeyring(plan *Plan, krPath string, deriveKEK func(salt []byte) (kek.KEK, error), dryRun, force bool) error {
 	exists, err := fileExists(krPath)
 	if err != nil {
 		return err
@@ -339,7 +345,7 @@ func planWriteKeyring(plan *Plan, krPath string, vi kek.VaultIdentity, dryRun, f
 			return fmt.Errorf("generate keyring salt: %w", err)
 		}
 
-		k, err := vi.KEK(salt)
+		k, err := deriveKEK(salt)
 		if err != nil {
 			return fmt.Errorf("derive KEK: %w", err)
 		}

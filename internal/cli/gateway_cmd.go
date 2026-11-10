@@ -45,6 +45,7 @@ func newGatewayCmd() *cobra.Command {
 	cmd.AddCommand(newGatewayTokenCmd())
 	cmd.AddCommand(newGatewayLogsCmd())
 	cmd.AddCommand(newGatewayInstallCmd())
+	cmd.AddCommand(newGatewaySystemdCmd())
 	return cmd
 }
 
