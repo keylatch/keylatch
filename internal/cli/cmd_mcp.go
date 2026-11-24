@@ -11,6 +11,7 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	keylatchmcp "github.com/keylatch/keylatch/internal/mcp"
+	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -57,7 +58,14 @@ func newMCPCmd() *cobra.Command {
 				syscall.SIGTERM, os.Interrupt)
 			defer cancel()
 
-			if err := s.Serve(ctx, store, nil); err != nil {
+			drivers, err := newGatewayDrivers(llmcontext.DefaultLookup, "")
+			if err != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
+				os.Exit(exitcode.UserError)
+			}
+			dispatcher := runner.DispatchRunner{Guard: runtimeGuard(), Drivers: drivers}
+
+			if err := s.Serve(ctx, store, dispatcher); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
 				os.Exit(exitcode.OperationFailed)
 			}
