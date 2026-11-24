@@ -118,7 +118,8 @@ func TestProvidersHandler_MethodNotAllowed(t *testing.T) {
 
 func TestConnectHandler_POST_Success(t *testing.T) {
 	t.Parallel()
-	h := &api.WizardHandlers{}
+	initAPIRegistry(t)
+	h := &api.WizardHandlers{Store: newAPIMemoryStore()}
 	body := `{"provider":"openai","api_key":"sk-test","backend":"keychain"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/connect", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
@@ -128,6 +129,39 @@ func TestConnectHandler_POST_Success(t *testing.T) {
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	assert.Equal(t, true, resp["ok"])
+	assert.Equal(t, "stored", resp["status"])
+}
+
+func TestConnectHandler_POST_NilStoreReportsUnavailable(t *testing.T) {
+	t.Parallel()
+	h := &api.WizardHandlers{}
+	body := `{"provider":"openai","api_key":"sk-test","backend":"keychain"}`
+	rec := httptest.NewRecorder()
+	h.ConnectHandler(rec, httptest.NewRequest(http.MethodPost, "/v1/connect", bytes.NewBufferString(body)))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	assert.Equal(t, false, resp["ok"])
+	assert.Equal(t, "credential store unavailable", resp["error"])
+}
+
+func TestConnectHandler_POST_SecondConnectAlreadyConnected(t *testing.T) {
+	t.Parallel()
+	initAPIRegistry(t)
+	h := &api.WizardHandlers{Store: newAPIMemoryStore()}
+	body := `{"provider":"openai","api_key":"sk-test","backend":"keychain"}`
+
+	var resp map[string]interface{}
+	for _, want := range []string{"stored", "already_connected"} {
+		rec := httptest.NewRecorder()
+		h.ConnectHandler(rec, httptest.NewRequest(http.MethodPost, "/v1/connect", bytes.NewBufferString(body)))
+		require.Equal(t, http.StatusOK, rec.Code)
+		resp = nil
+		require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+		assert.Equal(t, true, resp["ok"])
+		assert.Equal(t, want, resp["status"])
+	}
 }
 
 func TestConnectHandler_POST_MissingFields(t *testing.T) {
@@ -147,7 +181,8 @@ func TestConnectHandler_POST_MissingFields(t *testing.T) {
 
 func TestConnectHandler_POST_APIKeyNotEchoedBack(t *testing.T) {
 	t.Parallel()
-	h := &api.WizardHandlers{}
+	initAPIRegistry(t)
+	h := &api.WizardHandlers{Store: newAPIMemoryStore()}
 	sentinel := "sk-CANARY_CONNECT_KEY_0xDEAD"
 	body := `{"provider":"openai","api_key":"` + sentinel + `","backend":"keychain"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/connect", bytes.NewBufferString(body))
@@ -157,6 +192,9 @@ func TestConnectHandler_POST_APIKeyNotEchoedBack(t *testing.T) {
 	// The API key sentinel must never appear in the response body.
 	assert.NotContains(t, rec.Body.String(), sentinel,
 		"api_key value must not be echoed back in the response (S10-V)")
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "stored", resp["status"])
 }
 
 func TestConnectHandler_MethodNotAllowed(t *testing.T) {

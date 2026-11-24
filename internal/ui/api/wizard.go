@@ -386,10 +386,8 @@ func (h *WizardHandlers) ConnectHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// When no store is wired (e.g. during unit tests or demo mode), return success
-	// so validation still passes but skip the actual write.
 	if h.Store == nil {
-		writeJSON(w, map[string]interface{}{"ok": true})
+		writeJSON(w, map[string]interface{}{"ok": false, "error": "credential store unavailable"})
 		return
 	}
 
@@ -403,10 +401,9 @@ func (h *WizardHandlers) ConnectHandler(w http.ResponseWriter, r *http.Request) 
 	}, h.Store)
 
 	if err != nil {
-		// ErrConnectionExists is not fatal during onboarding — treat as success so
-		// re-running the wizard does not block users who already configured a key.
+		// Re-running the wizard must not block users who already configured a key.
 		if errors.Is(err, connections.ErrConnectionExists) {
-			writeJSON(w, map[string]interface{}{"ok": true})
+			writeJSON(w, map[string]interface{}{"ok": true, "status": "already_connected"})
 			return
 		}
 		// ErrProviderNotFound means the slug is not in the registry — client error.
@@ -425,7 +422,7 @@ func (h *WizardHandlers) ConnectHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	writeJSON(w, map[string]interface{}{"ok": true})
+	writeJSON(w, map[string]interface{}{"ok": true, "status": "stored"})
 }
 
 // AgentSetupHandler handles POST /v1/agent/setup.

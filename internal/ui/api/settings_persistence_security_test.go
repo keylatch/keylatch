@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// KNOWN-FAILING: SettingsHandler falls back to a fresh SettingsStore
-// per request when none is injected, so a successful PUT is invisible to
-// the next GET.
 func TestSecurityRegression_SettingsPersistAcrossRequests(t *testing.T) {
 	h := &SettingsHandler{}
 
@@ -27,9 +24,6 @@ func TestSecurityRegression_SettingsPersistAcrossRequests(t *testing.T) {
 	}
 }
 
-// KNOWN-FAILING: SettingsHandler applies each PUT field as it parses
-// instead of validating the whole request first, so a request with one
-// valid and one invalid field is rejected but still mutates the store.
 func TestSecurityRegression_RejectedSettingsPUTDoesNotMutate(t *testing.T) {
 	s := NewSettingsStore()
 	before, _ := s.GetTTL()

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,6 +192,54 @@ func TestServer_LLMScope_WritesReturn404(t *testing.T) {
 	rec2 := httptest.NewRecorder()
 	srv.TestServeHTTP(rec2, req2)
 	assert.Equal(t, http.StatusNotFound, rec2.Code)
+}
+
+func bootstrapSession(t *testing.T, srv *ui.Server) *http.Cookie {
+	t.Helper()
+	path := srv.BootstrapURL()[len("http://127.0.0.1:0"):]
+	rec := httptest.NewRecorder()
+	srv.TestServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	c := findCookie(rec, "kl_session")
+	require.NotNil(t, c)
+	return c
+}
+
+func TestServer_Settings_PersistWithoutInjectedStore(t *testing.T) {
+	t.Parallel()
+	srv, err := ui.New(defaultOpts(t))
+	require.NoError(t, err)
+	session := bootstrapSession(t, srv)
+
+	put := httptest.NewRequest(http.MethodPut, "/api/settings", strings.NewReader(`{"approval_ttl_seconds":120}`))
+	put.AddCookie(session)
+	put.AddCookie(&http.Cookie{Name: "kl_csrf", Value: "synthetic-csrf"})
+	put.Header.Set("X-CSRF-Token", "synthetic-csrf")
+	putRec := httptest.NewRecorder()
+	srv.TestServeHTTP(putRec, put)
+	require.Equal(t, http.StatusOK, putRec.Code)
+
+	get := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	get.AddCookie(session)
+	getRec := httptest.NewRecorder()
+	srv.TestServeHTTP(getRec, get)
+	require.Equal(t, http.StatusOK, getRec.Code)
+	assert.Contains(t, getRec.Body.String(), `"approval_ttl_seconds":120`)
+}
+
+func TestServer_StatusOnlyScope_SettingsReturn404(t *testing.T) {
+	t.Parallel()
+	opts := defaultOpts(t)
+	opts.Scope = ui.ScopeStatusOnly
+	srv, err := ui.New(opts)
+	require.NoError(t, err)
+	session := bootstrapSession(t, srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.AddCookie(session)
+	rec := httptest.NewRecorder()
+	srv.TestServeHTTP(rec, req)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestServer_SecurityHeaders(t *testing.T) {
