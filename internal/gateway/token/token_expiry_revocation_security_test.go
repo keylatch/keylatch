@@ -97,7 +97,17 @@ func TestSecurityRegression_RevokeReachesPastRevokedMiddle(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = Revoke(middle.ID, d); e != nil {
+	// Only the middle record is marked, as a store written before cascading revocation would hold it.
+	tokens, e := readTokens(d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := range tokens {
+		if tokens[i].ID == middle.ID {
+			tokens[i].Revoked = true
+		}
+	}
+	if e = writeTokens(d, tokens); e != nil {
 		t.Fatal(e)
 	}
 	if e = Revoke(root.ID, d); e != nil {
