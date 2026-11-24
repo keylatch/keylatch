@@ -39,19 +39,15 @@ func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) 
 	}
 }
 
-// KNOWN-FAILING: gatewayTypedDriver.Run hardcodes
-// token.TokenSpec.LLMSession = false and never sets MaxUses or revokes on
-// child exit, so gateway tokens misclassify agent runs as human runs with
-// unbounded, unrevoked leases.
 func TestSecurityRegression_GatewayTokenMustPreserveLLMClassification(t *testing.T) {
-	t.Setenv("CREDENTIALS_LLM_SESSION", "audit")
+	t.Setenv("CREDENTIALS_LLM_SESSION", "1")
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	d := NewGatewayTypedDriver(auditGateway{}, make([]byte, 32), path)
-	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "audit"})
+	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "child-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	records, err := token.List(token.ListOpts{}, path)
+	records, err := token.List(token.ListOpts{IncludeRevoked: true}, path)
 	if err != nil || len(records) != 1 {
 		t.Fatalf("token list: %v, count %d", err, len(records))
 	}
