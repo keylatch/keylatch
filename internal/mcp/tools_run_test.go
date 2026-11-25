@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -49,6 +50,14 @@ func (f *fakeDispatcher) Run(_ context.Context, req runner.ExecRequest) (runner.
 // runTestProvider is a registered template whose allowlist accepts absolute paths.
 const runTestProvider = "mcp-run-test"
 
+// runTestTool is absolute on the host OS; "/opt/tool" is not absolute on Windows.
+var runTestTool = func() string {
+	if goruntime.GOOS == "windows" {
+		return `C:\opt\tool`
+	}
+	return "/opt/tool"
+}()
+
 func registerRunTestTemplate(t *testing.T) {
 	t.Helper()
 	// Duplicate registration across tests is expected and harmless.
@@ -60,7 +69,7 @@ func registerRunTestTemplate(t *testing.T) {
 		StoragePathTpl:         "default/test/" + runTestProvider + "/default",
 		TrustLevel:             registry.TrustLocalOnly,
 		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
-		AllowedCommandPrefixes: []string{"/opt/tool "},
+		AllowedCommandPrefixes: []string{runTestTool + " "},
 		RuntimeSupport: registry.RuntimeSupport{
 			Preferred: registry.RuntimeGatewayTyped,
 			Supported: []registry.RuntimeMode{registry.RuntimeGatewayTyped},
@@ -201,7 +210,7 @@ func TestRunHandlerNilDispatcher(t *testing.T) {
 	registerRunTestTemplate(t)
 	text, isErr := callRunHandler(t, newMockStore(), nil, map[string]any{
 		"provider": runTestProvider,
-		"command":  "/opt/tool script.js",
+		"command":  runTestTool + " script.js",
 	})
 	assert.True(t, isErr, "nil dispatcher must produce an error result")
 	assert.Contains(t, text, "runtime dispatch unavailable")
@@ -220,13 +229,13 @@ func TestRunHandlerProviderWithoutRuntimeSupport(t *testing.T) {
 		StoragePathTpl:         "default/test/mcp-run-no-runtime/default",
 		TrustLevel:             registry.TrustLocalOnly,
 		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
-		AllowedCommandPrefixes: []string{"/opt/tool "},
+		AllowedCommandPrefixes: []string{runTestTool + " "},
 		TestStrategy:           registry.TestStrategy{Kind: "http_get", Endpoint: "https://example.com/health", Expect: registry.TestExpectation{StatusCode: 200}},
 	})
 	d := &fakeDispatcher{}
 	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": "mcp-run-no-runtime",
-		"command":  "/opt/tool script.js",
+		"command":  runTestTool + " script.js",
 	})
 	assert.True(t, isErr)
 	assert.Contains(t, text, "no supported runtime")
@@ -242,7 +251,7 @@ func TestRunHandlerDispatchError(t *testing.T) {
 	d := &fakeDispatcher{stdout: "must not appear", err: errors.New("gateway is not running")}
 	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": runTestProvider,
-		"command":  "/opt/tool script.js",
+		"command":  runTestTool + " script.js",
 	})
 	assert.True(t, isErr, "dispatch error must produce an error result")
 	assert.Contains(t, text, "gateway is not running")
@@ -259,7 +268,7 @@ func TestRunHandlerSuccessStringCommand(t *testing.T) {
 	d := &fakeDispatcher{stdout: "hello output"}
 	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": runTestProvider,
-		"command":  "/opt/tool script.js",
+		"command":  runTestTool + " script.js",
 	})
 	assert.False(t, isErr, "valid command must not be an error result")
 	var result map[string]interface{}
@@ -267,7 +276,7 @@ func TestRunHandlerSuccessStringCommand(t *testing.T) {
 	assert.Contains(t, result, "receipt")
 	assert.Equal(t, "hello output", result["stdout"])
 
-	assert.Equal(t, []string{"/opt/tool", "script.js"}, d.got.Command)
+	assert.Equal(t, []string{runTestTool, "script.js"}, d.got.Command)
 	assert.Equal(t, runTestProvider, d.got.ConnectionSlug)
 	assert.Equal(t, "mcp", d.got.Actor)
 	assert.Equal(t, string(registry.RuntimeGatewayTyped), d.got.Runtime)
@@ -285,7 +294,7 @@ func TestRunHandlerSuccessSliceCommand(t *testing.T) {
 	d := &fakeDispatcher{stdout: "slice output"}
 	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": runTestProvider,
-		"command":  []interface{}{"/opt/tool", "script.js"},
+		"command":  []interface{}{runTestTool, "script.js"},
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
@@ -304,7 +313,7 @@ func TestRunHandlerReceiptFields(t *testing.T) {
 		"provider":  runTestProvider,
 		"account":   "myaccount",
 		"namespace": "prod",
-		"command":   "/opt/tool script.js",
+		"command":   runTestTool + " script.js",
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
@@ -325,7 +334,7 @@ func TestRunHandlerNonZeroExitCode(t *testing.T) {
 	d := &fakeDispatcher{stderr: "error output", exitCode: 1}
 	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": runTestProvider,
-		"command":  "/opt/tool script.js",
+		"command":  runTestTool + " script.js",
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
@@ -360,7 +369,7 @@ func TestRunHandlerDefaultsAccountNamespace(t *testing.T) {
 	d := &fakeDispatcher{stdout: "ok"}
 	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": runTestProvider,
-		"command":  "/opt/tool script.js",
+		"command":  runTestTool + " script.js",
 		// no account, no namespace — defaults to "default"
 	})
 	assert.False(t, isErr)
