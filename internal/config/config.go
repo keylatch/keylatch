@@ -59,21 +59,33 @@ type ProxyPolicy struct {
 	GitHub []GitHubProxyPolicy `json:"github,omitempty"`
 }
 
-// GitHubProxyPolicy limits the one installation token a proxy listener mints
-// from a github-app connection. The connection's mint.github_app policy
-// (permission ceiling, deny list, lifetime) still applies; the listed
-// repositories are added to its allowed repositories for the proxy only.
+// GitHubProxyPolicy is one proxy listener. It serves one GitHub host and one
+// or more installations of the connection's App; the caller picks the
+// installation with the Proxy-Authorization user name (the account login).
 type GitHubProxyPolicy struct {
-	// Listen is the address:port of this listener; it must match a
-	// --proxy-listen <addr>=<connection> flag.
+	// Listen is the address:port of this listener, an IP literal.
 	Listen string `json:"listen"`
-	// Repositories is the exact list of owner/name the proxy reaches; all
-	// must share one owner (one installation).
+	// Host is the GitHub flavour: github.com (default), SUBDOMAIN.ghe.com, or
+	// a GitHub Enterprise Server hostname.
+	Host          string                     `json:"host,omitempty"`
+	Installations []GitHubInstallationPolicy `json:"installations"`
+}
+
+// GitHubInstallationPolicy limits the one installation token minted for an
+// account. The connection's mint.github_app policy still supplies the deny
+// list, caller kinds and token lifetime.
+type GitHubInstallationPolicy struct {
+	// Owner is the account login the installation belongs to.
+	Owner string `json:"owner"`
+	// Repositories is the exact owner/name list the proxy reaches for it.
 	Repositories []string `json:"repositories"`
-	// Permissions defaults to contents:write, pull_requests:write,
-	// metadata:read. Only contents, pull_requests, metadata, actions, checks
-	// and issues are accepted, never administration.
+	// Permissions maps GitHub App permission names to read, write or admin;
+	// the installation is the real ceiling. Defaults to contents:write,
+	// pull_requests:write, metadata:read.
 	Permissions map[string]string `json:"permissions,omitempty"`
+	// AllowAdminPermissions must be true to request administration, other
+	// organization-level administrative permissions or any admin level.
+	AllowAdminPermissions bool `json:"allow_admin_permissions,omitempty"`
 }
 
 // MintPolicy governs `keylatch mint` for a connection.
@@ -107,6 +119,21 @@ type CustomModeConfig struct {
 type GatewayConfig struct {
 	Endpoint string `json:"endpoint"` // e.g. http://127.0.0.1:7878
 	Mode     string `json:"mode"`     // "local" | "docker" | "hosted" | "off"
+	// Service is what `keylatch gateway up` serves; command-line flags override it.
+	Service *GatewayServiceConfig `json:"service,omitempty"`
+}
+
+// GatewayServiceConfig holds the settings of the running gateway. Proxy
+// listeners live with their connection (connections.<name>.proxy.github).
+type GatewayServiceConfig struct {
+	// Listen is the address:port to bind, an IP literal. Empty binds loopback.
+	Listen string `json:"listen,omitempty"`
+	// AllowSource lists the CIDRs callers must come from. A non-loopback
+	// Listen needs it unless AllowAnySource is set.
+	AllowSource    []string `json:"allow_source,omitempty"`
+	AllowAnySource bool     `json:"allow_any_source,omitempty"`
+	// GitHubMint is the github-app connection POST /mint/github is served from.
+	GitHubMint string `json:"github_mint,omitempty"`
 }
 
 // OPConfig holds 1Password-specific settings.

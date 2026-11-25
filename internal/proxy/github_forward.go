@@ -44,15 +44,15 @@ func jsonError(w http.ResponseWriter, status int, code string) {
 
 // githubForward serves one request for a GitHub host. The caller's
 // Authorization was already stripped by routeHandler.
-func (s *Server) githubForward(w http.ResponseWriter, r *http.Request, host string) {
-	scheme, refusal := s.GitHub.Authorize(host, r.Method, r.URL)
+func (s *Server) githubForward(w http.ResponseWriter, r *http.Request, host string, inj *GitHubInjector) {
+	scheme, refusal := inj.Authorize(host, r.Method, r.URL)
 	if refusal != "" {
 		s.auditDeny(r.Context(), refusal, host+r.URL.Path)
 		jsonError(w, http.StatusForbidden, refusal)
 		return
 	}
 	ctx := r.Context()
-	tok, err := s.GitHub.Token(ctx)
+	tok, err := inj.Token(ctx)
 	if err != nil {
 		s.auditDeny(ctx, "credential_unavailable", host)
 		jsonError(w, http.StatusServiceUnavailable, "credential_unavailable")
@@ -100,7 +100,7 @@ func (s *Server) githubForward(w http.ResponseWriter, r *http.Request, host stri
 
 	resp, err := do(tok)
 	if err == nil && resp.StatusCode == http.StatusUnauthorized && canReplay {
-		if fresh, rerr := s.GitHub.Refresh(ctx, tok); rerr == nil {
+		if fresh, rerr := inj.Refresh(ctx, tok); rerr == nil {
 			resp.Body.Close() //nolint:errcheck,gosec // replaced by the retry
 			resp, err = do(fresh)
 		}

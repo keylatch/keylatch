@@ -67,7 +67,7 @@ type Server struct {
 	// the route and repository, strips the caller's credentials and injects
 	// the minted installation token. Profile.Hosts must list its hosts, and
 	// CA must be set so HTTPS tunnels can be inspected.
-	GitHub *GitHubInjector
+	GitHub *GitHubSet
 	// SourceAllowed, when set, is asked about every request's TCP peer
 	// address before authentication; false answers 403.
 	SourceAllowed func(remoteAddr string) bool
@@ -112,6 +112,21 @@ func (s *Server) EnsureToken() (string, error) {
 		s.Token = hex.EncodeToString(b)
 	})
 	return s.Token, s.tokenErr
+}
+
+// callerUser returns the Basic user name of the proxy credentials, empty for
+// Bearer. It does not validate anything; checkCallerAuth does.
+func callerUser(r *http.Request) string {
+	enc, ok := strings.CutPrefix(r.Header.Get(proxyAuthHeader), "Basic ")
+	if !ok {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil {
+		return ""
+	}
+	user, _, _ := strings.Cut(string(raw), ":")
+	return user
 }
 
 // checkCallerAuth validates the per-session bearer token (the proxy caller-auth
@@ -243,6 +258,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
+	if s.GitHub != nil {
+		in, refusal := s.GitHub.Select(callerUser(r))
+		if in == nil {
+			s.auditDeny(r.Context(), refusal, r.Host)
+			w.Header().Set("Proxy-Authenticate", `Basic realm="keylatch"`)
+			http.Error(w, `{"error":"`+refusal+`"}`, http.StatusProxyAuthRequired)
+			return
+		}
+		r = r.WithContext(withInstallation(r.Context(), in))
+	}
 	if r.Method == http.MethodConnect {
 		s.handleCONNECT(w, r)
 		return
@@ -282,7 +307,12 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 	r.Header.Del("Authorization")
 
 	if s.GitHub != nil && s.GitHub.IsGitHubHost(host) {
-		s.githubForward(w, r, host)
+		in := installationFrom(r.Context())
+		if in == nil {
+			jsonError(w, http.StatusProxyAuthRequired, RefusalInstallationRequired)
+			return
+		}
+		s.githubForward(w, r, host, in)
 		return
 	}
 
@@ -463,11 +493,14 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	// Serve every request on the tunnel (git makes several per operation,
 	// keep-alive, streamed bodies) through routeHandler.
 	target := r.Host
+	selected := installationFrom(r.Context())
 	tunnel := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			req.URL.Scheme = "https"
 			req.URL.Host = target
-			s.routeHandler(w, req)
+			// The installation was chosen from the CONNECT's credentials;
+			// requests inside the tunnel carry none of their own.
+			s.routeHandler(w, req.WithContext(withInstallation(req.Context(), selected)))
 		}),
 		ReadHeaderTimeout: 30 * time.Second,
 		IdleTimeout:       60 * time.Second,

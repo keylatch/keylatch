@@ -37,11 +37,15 @@ var defaultProxyGitHubPermissions = map[string]string{
 	"metadata":      "read",
 }
 
-// proxyGitHubPermissionCeiling is every permission the proxy may be configured
-// with and its highest level. administration is not on the list on purpose.
-var proxyGitHubPermissionCeiling = map[string]string{
-	"contents": "write", "pull_requests": "write", "metadata": "read",
-	"actions": "read", "checks": "read", "issues": "write",
+// adminPermissions are the GitHub App permissions that can change access or
+// settings; a listener must opt in with allow_admin_permissions to request
+// them. Any permission at the admin level needs the opt-in too.
+var adminPermissions = []string{
+	"administration", "organization_administration", "members",
+	"organization_custom_org_roles", "organization_custom_roles", "organization_custom_properties",
+	"organization_secrets", "organization_self_hosted_runners",
+	"organization_personal_access_tokens", "organization_personal_access_token_requests",
+	"organization_copilot_seat_management",
 }
 
 func proxyCACertPath(lookup llmcontext.Lookup) string {
@@ -56,11 +60,37 @@ func proxyCallerTokenPath(lookup llmcontext.Lookup) string {
 	return filepath.Join(paths.GatewayDir(lookup), "proxy-token")
 }
 
-func loadProxyCA(lookup llmcontext.Lookup) (*proxy.CA, error) {
+// loadProxyCA loads or creates the proxy CA, name-constrained to the union of
+// hosts. A proxy CA is never created without constraints.
+func loadProxyCA(lookup llmcontext.Lookup, hosts []string) (*proxy.CA, error) {
+	permitted, err := proxy.PermittedDNS(hosts)
+	if err != nil {
+		return nil, err
+	}
+	if len(permitted) == 0 {
+		return nil, NewPolicyDeny("proxy: no proxy.github host is configured in the operator config, so there is nothing to constrain the CA to")
+	}
 	if err := os.MkdirAll(paths.GatewayDir(lookup), 0o700); err != nil {
 		return nil, fmt.Errorf("proxy: gateway dir: %w", err)
 	}
-	return proxy.LoadOrCreateFileCA(proxyCACertPath(lookup), proxyCAKeyPath(lookup), []string{proxy.GitHubHost})
+	return proxy.LoadOrCreateFileCA(proxyCACertPath(lookup), proxyCAKeyPath(lookup), permitted)
+}
+
+// configuredProxyHosts lists the hosts of every proxy.github entry.
+func configuredProxyHosts(cfg config.Config) []string {
+	var hosts []string
+	for _, name := range slices.Sorted(maps.Keys(cfg.Connections)) {
+		if cp := cfg.Connections[name]; cp.Proxy != nil {
+			for _, e := range cp.Proxy.GitHub {
+				h := e.Host
+				if h == "" {
+					h = proxy.DefaultGitHubHost
+				}
+				hosts = append(hosts, strings.ToLower(h))
+			}
+		}
+	}
+	return hosts
 }
 
 // ensureProxyCallerToken returns the token callers present in
@@ -107,9 +137,24 @@ func ensureProxyCallerToken(path string) (string, error) {
 	return tok, nil
 }
 
-// proxyGitHubSettings validates the connection's proxy.github policy against
-// the operator's mint.github_app policy and returns what to mint.
-func proxyGitHubSettings(cfg config.Config, connection, listen string) (repos []string, perms map[string]string, mintPolicy *config.GitHubAppMintPolicy, err error) {
+type installationResolved struct {
+	Owner  string
+	Repos  []string
+	Perms  map[string]string
+	Admin  bool
+	Policy *config.GitHubAppMintPolicy
+}
+
+type proxyGitHubResolved struct {
+	Host          string
+	Installations []installationResolved
+}
+
+// proxyGitHubSettings validates a proxy listener and returns what to mint for
+// each installation. An installation's repositories and permissions are its
+// allowlist and ceiling; the connection's mint.github_app policy still
+// supplies the deny list, caller kinds and token lifetime.
+func proxyGitHubSettings(cfg config.Config, connection, listen string) (proxyGitHubResolved, error) {
 	var entry *config.GitHubProxyPolicy
 	if cp, ok := cfg.Connections[connection]; ok && cp.Proxy != nil {
 		for i := range cp.Proxy.GitHub {
@@ -118,47 +163,73 @@ func proxyGitHubSettings(cfg config.Config, connection, listen string) (repos []
 			}
 		}
 	}
-	if entry == nil || len(entry.Repositories) == 0 {
-		return nil, nil, nil, NewPolicyDeny("gateway up: connection %q has no proxy.github entry with listen %q and repositories in the operator config", connection, listen)
+	if entry == nil || len(entry.Installations) == 0 {
+		return proxyGitHubResolved{}, NewPolicyDeny("gateway up: connection %q has no proxy.github listener %q with installations in the operator config", connection, listen)
 	}
-	mintPolicy = githubAppMintPolicy(cfg, connection)
+	mintPolicy := githubAppMintPolicy(cfg, connection)
 	if mintPolicy == nil {
-		return nil, nil, nil, NewPolicyDeny("gateway up: connection %q has no mint.github_app policy in the operator config; the proxy mints under the same limits", connection)
+		return proxyGitHubResolved{}, NewPolicyDeny("gateway up: connection %q has no mint.github_app policy in the operator config; the proxy mints under its deny list and lifetime", connection)
 	}
-	perms = maps.Clone(entry.Permissions)
+	host := strings.ToLower(entry.Host)
+	if host == "" {
+		host = proxy.DefaultGitHubHost
+	}
+	out := proxyGitHubResolved{Host: host}
+	seen := map[string]bool{}
+	for _, inst := range entry.Installations {
+		r, err := resolveInstallation(inst, mintPolicy)
+		if err != nil {
+			return proxyGitHubResolved{}, err
+		}
+		if seen[r.Owner] {
+			return proxyGitHubResolved{}, NewPolicyDeny("gateway up: proxy.github %s: owner %q is configured twice", listen, inst.Owner)
+		}
+		seen[r.Owner] = true
+		out.Installations = append(out.Installations, r)
+	}
+	return out, nil
+}
+
+func resolveInstallation(inst config.GitHubInstallationPolicy, mintPolicy *config.GitHubAppMintPolicy) (installationResolved, error) {
+	owner := strings.ToLower(inst.Owner)
+	if _, _, err := mint.ParseRepository(owner + "/x"); err != nil {
+		return installationResolved{}, NewPolicyDeny("gateway up: proxy.github installation owner %q is not an account login", inst.Owner)
+	}
+	if len(inst.Repositories) == 0 {
+		return installationResolved{}, NewPolicyDeny("gateway up: proxy.github installation %q lists no repositories", inst.Owner)
+	}
+	perms := maps.Clone(inst.Permissions)
 	if len(perms) == 0 {
 		perms = maps.Clone(defaultProxyGitHubPermissions)
 	}
 	for k, v := range perms {
-		top, known := proxyGitHubPermissionCeiling[k]
-		if !known {
-			return nil, nil, nil, NewPolicyDeny("gateway up: proxy.github.permissions: %q is not allowed (allowed: %s)", k, strings.Join(slices.Sorted(maps.Keys(proxyGitHubPermissionCeiling)), ", "))
+		if _, _, perr := mint.ParsePermission(k + "=" + v); perr != nil {
+			return installationResolved{}, NewPolicyDeny("gateway up: proxy.github %s permissions: %v", inst.Owner, perr)
 		}
-		if (v != "read" && v != "write") || (top == "read" && v != "read") {
-			return nil, nil, nil, NewPolicyDeny("gateway up: proxy.github.permissions: %s may be at most %q", k, top)
+		if (slices.Contains(adminPermissions, k) || v == "admin") && !inst.AllowAdminPermissions {
+			return installationResolved{}, NewPolicyDeny("gateway up: proxy.github %s permissions: %s=%s needs \"allow_admin_permissions\": true on this installation", inst.Owner, k, v)
 		}
 	}
-	// The proxy's own repository list is the allowlist for this listener, so
-	// it is not repeated in mint.github_app.allow_repos; the ceiling, deny
-	// list, callers and lifetime still come from the mint policy.
 	derived := *mintPolicy
-	derived.AllowRepos = append(slices.Clone(mintPolicy.AllowRepos), entry.Repositories...)
-	mintPolicy = &derived
-	owner := ""
-	for _, r := range entry.Repositories {
+	derived.AllowRepos = append(slices.Clone(mintPolicy.AllowRepos), inst.Repositories...)
+	derived.PermissionCeiling = maps.Clone(mintPolicy.PermissionCeiling)
+	if derived.PermissionCeiling == nil {
+		derived.PermissionCeiling = map[string]string{}
+	}
+	maps.Copy(derived.PermissionCeiling, perms)
+	for _, r := range inst.Repositories {
 		o, _, perr := mint.ParseRepository(r)
 		if perr != nil {
-			return nil, nil, nil, NewPolicyDeny("gateway up: proxy.github.repositories: %v", perr)
+			return installationResolved{}, NewPolicyDeny("gateway up: proxy.github %s repositories: %v", inst.Owner, perr)
 		}
-		if owner != "" && !strings.EqualFold(owner, o) {
-			return nil, nil, nil, NewPolicyDeny("gateway up: proxy.github.repositories must share one owner (one installation); got %q and %q", owner, o)
+		if !strings.EqualFold(o, owner) {
+			return installationResolved{}, NewPolicyDeny("gateway up: proxy.github installation %q lists %q, which belongs to another owner", inst.Owner, r)
 		}
-		owner = o
-		if cerr := mint.CheckGitHubApp(mintPolicy, mint.CallerService, mint.Request{Repository: r, Permissions: perms}); cerr != nil {
-			return nil, nil, nil, NewPolicyDeny("gateway up: mint policy refuses %s for the proxy: %v", r, cerr)
+		if cerr := mint.CheckGitHubApp(&derived, mint.CallerService, mint.Request{Repository: r, Permissions: perms}); cerr != nil {
+			return installationResolved{}, NewPolicyDeny("gateway up: mint policy refuses %s for the proxy: %v", r, cerr)
 		}
 	}
-	return slices.Clone(entry.Repositories), perms, mintPolicy, nil
+	return installationResolved{Owner: owner, Repos: slices.Clone(inst.Repositories), Perms: perms, Admin: inst.AllowAdminPermissions, Policy: &derived}, nil
 }
 
 type gitHubProxyParams struct {
@@ -175,8 +246,8 @@ type gitHubProxyParams struct {
 	Upstream   http.RoundTripper
 }
 
-// newGitHubProxy builds the intercepting proxy that injects one minted
-// installation token into git and API requests for the configured repositories.
+// newGitHubProxy builds the intercepting proxy for one listener: one injector
+// per installation, each with its own repositories, permissions and token.
 func newGitHubProxy(p gitHubProxyParams) (*proxy.Server, error) {
 	if err := validateGatewayListen(p.Listen); err != nil {
 		return nil, NewUsageError("gateway up: --proxy-listen: %v", err)
@@ -191,12 +262,18 @@ func newGitHubProxy(p gitHubProxyParams) (*proxy.Server, error) {
 	if !isLoopbackListen(p.Listen) && len(p.AllowSources) == 0 {
 		return nil, NewUsageError("gateway up: --proxy-listen %s is not loopback: --allow-source is required so the proxy is not reachable from other networks", p.Listen)
 	}
-	repos, perms, mintPolicy, err := proxyGitHubSettings(p.Config, p.Connection, p.Listen)
+	res, err := proxyGitHubSettings(p.Config, p.Connection, p.Listen)
 	if err != nil {
 		return nil, err
 	}
-	opts := &gateway.GitHubMintOptions{Connection: p.Connection, Namespace: "default", Category: tmpl.Category, Policy: mintPolicy, APIBase: p.APIBase, HTTPClient: p.HTTPClient}
-	ca, err := loadProxyCA(p.Lookup)
+	apiBase, err := proxy.GitHubAPIBase(res.Host)
+	if err != nil {
+		return nil, NewPolicyDeny("gateway up: proxy.github: %v", err)
+	}
+	if p.APIBase != "" {
+		apiBase = p.APIBase
+	}
+	ca, err := loadProxyCA(p.Lookup, configuredProxyHosts(p.Config))
 	if err != nil {
 		return nil, err
 	}
@@ -205,32 +282,61 @@ func newGitHubProxy(p gitHubProxyParams) (*proxy.Server, error) {
 		return nil, err
 	}
 
-	maxLife := mint.MaxLifetime(mintPolicy)
+	var injectors []*proxy.GitHubInjector
+	for _, inst := range res.Installations {
+		inj, err := newInstallationInjector(p, res.Host, apiBase, tmpl.Category, inst)
+		if err != nil {
+			return nil, err
+		}
+		injectors = append(injectors, inj)
+	}
+	set, err := proxy.NewGitHubSet(injectors...)
+	if err != nil {
+		return nil, err
+	}
+	return &proxy.Server{
+		Addr:              p.Listen,
+		Profile:           proxy.ProxyProfile{Mode: "gateway_proxy", Hosts: set.Hosts()},
+		CA:                ca,
+		GitHub:            set,
+		Token:             callerToken,
+		AuditEmitter:      p.Audit,
+		AllowNonLoopback:  len(p.AllowSources) > 0,
+		SourceAllowed:     sourceAllowedFunc(p.AllowSources),
+		UpstreamTransport: p.Upstream,
+	}, nil
+}
+
+func newInstallationInjector(p gitHubProxyParams, host, apiBase, category string, inst installationResolved) (*proxy.GitHubInjector, error) {
+	opts := &gateway.GitHubMintOptions{Connection: p.Connection, Namespace: "default", Category: category, Policy: inst.Policy, APIBase: apiBase, HTTPClient: p.HTTPClient}
+	maxLife := mint.MaxLifetime(inst.Policy)
 	minter := func(ctx context.Context) (string, time.Time, error) {
 		ctx = audit.WithEmitter(ctx, p.Audit)
-		strategy, err := gateway.NewGitHubAppStrategy(ctx, p.Vault, opts, repos[0])
+		strategy, err := gateway.NewGitHubAppStrategy(ctx, p.Vault, opts, inst.Repos[0])
 		if err != nil {
 			return "", time.Time{}, errors.New("the GitHub App credential is not available")
 		}
-		tok, err := strategy.MintScopedRepos(ctx, strategies.GitHubAppReposScope{Repositories: repos, Permissions: perms}, maxLife)
+		tok, err := strategy.MintScopedRepos(ctx, strategies.GitHubAppReposScope{Repositories: inst.Repos, Permissions: inst.Perms}, maxLife)
 		if err != nil {
 			return "", time.Time{}, errors.New("GitHub did not issue a matching token")
 		}
 		defer tok.Zero()
 		return string(tok.Token), tok.ExpiresAt, nil
 	}
-	inj, err := proxy.NewGitHubInjector(repos, minter)
+	inj, err := proxy.NewGitHubInjector(host, inst.Repos, minter)
 	if err != nil {
 		return nil, err
 	}
-	permList := make([]string, 0, len(perms))
-	for _, k := range slices.Sorted(maps.Keys(perms)) {
-		permList = append(permList, k+"="+perms[k])
+	permList := make([]string, 0, len(inst.Perms))
+	for _, k := range slices.Sorted(maps.Keys(inst.Perms)) {
+		permList = append(permList, k+"="+inst.Perms[k])
 	}
 	inj.OnMint = func(exp time.Time, err error) {
 		extra := map[string]any{
 			"connection":   p.Connection,
-			"repositories": strings.Join(repos, ","),
+			"host":         host,
+			"owner":        inst.Owner,
+			"repositories": strings.Join(inst.Repos, ","),
 			"permissions":  strings.Join(permList, ","),
 			"caller_kind":  string(mint.CallerService),
 			"via":          "proxy",
@@ -243,21 +349,13 @@ func newGitHubProxy(p gitHubProxyParams) (*proxy.Server, error) {
 		}
 		_ = p.Audit.Emit(context.Background(), audit.Event{Timestamp: time.Now().UTC(), Action: audit.ActionMint, Outcome: outcome, RuntimeMode: "gateway_proxy", Extra: extra})
 	}
-
-	return &proxy.Server{
-		Addr:              p.Listen,
-		Profile:           proxy.ProxyProfile{Mode: "gateway_proxy", Hosts: inj.Hosts()},
-		CA:                ca,
-		GitHub:            inj,
-		Token:             callerToken,
-		AuditEmitter:      p.Audit,
-		AllowNonLoopback:  len(p.AllowSources) > 0,
-		SourceAllowed:     sourceAllowedFunc(p.AllowSources),
-		UpstreamTransport: p.Upstream,
-	}, nil
+	return inj, nil
 }
 
-// parseProxyListeners splits repeated --proxy-listen <addr>=<connection> values.
+type proxyListener struct{ Addr, Connection string }
+
+// parseProxyListeners splits repeated --proxy-listen <addr>=<connection>
+// values: an ad-hoc selection of the configured listeners to run.
 func parseProxyListeners(values []string) ([]proxyListener, error) {
 	var out []proxyListener
 	seen := map[string]bool{}
@@ -274,8 +372,6 @@ func parseProxyListeners(values []string) ([]proxyListener, error) {
 	}
 	return out, nil
 }
-
-type proxyListener struct{ Addr, Connection string }
 
 func sourceAllowedFunc(prefixes []netip.Prefix) func(string) bool {
 	if len(prefixes) == 0 {
@@ -295,13 +391,18 @@ func newProxyCACmd() *cobra.Command {
 		Use:   "print",
 		Short: "Print the proxy CA certificate (PEM, no key); creates the CA on first use",
 		Long: `Print the proxy CA certificate as PEM for a guest to trust. The private key stays on the
-host (mode 0600) and is never printed. The certificate is name-constrained to github.com
-and its subdomains, so trusting it does not let the proxy vouch for any other site.
+host (mode 0600) and is never printed. The certificate is name-constrained to the
+hosts of the configured proxy.github entries (and their subdomains), so trusting it does not
+let the proxy vouch for any other site.
 
 In the guest, for example: keylatch proxy ca print > /usr/local/share/ca-certificates/keylatch-proxy.crt && update-ca-certificates`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			ca, err := loadProxyCA(llmcontext.DefaultLookup)
+			cfg, err := mintPolicyConfig()
+			if err != nil {
+				return NewPolicyDeny("proxy ca print: the operator config cannot be read: %v", err)
+			}
+			ca, err := loadProxyCA(llmcontext.DefaultLookup, configuredProxyHosts(cfg))
 			if err != nil {
 				return err
 			}

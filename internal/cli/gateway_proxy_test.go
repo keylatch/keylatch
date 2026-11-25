@@ -26,6 +26,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,51 +66,81 @@ func (r *recordingUpstream) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 // proxyTestListen is the listener every test config entry describes.
-const proxyTestListen = "192.168.150.1:8790"
+const proxyTestListen = "10.0.2.2:7879"
 
 func proxyTestConfig(repos []string, perms map[string]string) config.Config {
 	return config.Config{Connections: map[string]config.ConnectionPolicy{"github-app": {
 		Mint: &config.MintPolicy{GitHubApp: &config.GitHubAppMintPolicy{
 			PermissionCeiling: map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read", "issues": "write", "actions": "read", "checks": "read"},
 		}},
-		Proxy: &config.ProxyPolicy{GitHub: []config.GitHubProxyPolicy{{Listen: proxyTestListen, Repositories: repos, Permissions: perms}}},
+		Proxy: &config.ProxyPolicy{GitHub: []config.GitHubProxyPolicy{{Listen: proxyTestListen, Installations: []config.GitHubInstallationPolicy{{Owner: "octo", Repositories: repos, Permissions: perms}}}}},
 	}}}
 }
 
 func TestProxyGitHubSettings(t *testing.T) {
-	repos, perms, _, err := proxyGitHubSettings(proxyTestConfig([]string{"octo/a", "octo/b"}, nil), "github-app", proxyTestListen)
+	r, err := proxyGitHubSettings(proxyTestConfig([]string{"octo/a", "octo/b"}, nil), "github-app", proxyTestListen)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"octo/a", "octo/b"}, repos)
-	assert.Equal(t, defaultProxyGitHubPermissions, perms)
+	require.Len(t, r.Installations, 1)
+	in := r.Installations[0]
+	assert.Equal(t, "octo", in.Owner)
+	assert.Equal(t, []string{"octo/a", "octo/b"}, in.Repos)
+	assert.Equal(t, defaultProxyGitHubPermissions, in.Perms)
+	assert.Equal(t, "github.com", r.Host)
 
-	_, perms, _, err = proxyGitHubSettings(proxyTestConfig([]string{"octo/a"}, map[string]string{"contents": "read", "actions": "read", "checks": "read", "issues": "write"}), "github-app", proxyTestListen)
+	// Any GitHub App permission name is accepted; the installation is the ceiling.
+	r, err = proxyGitHubSettings(proxyTestConfig([]string{"octo/a"}, map[string]string{"contents": "read", "workflows": "write", "packages": "read", "issues": "write", "pages": "write"}), "github-app", proxyTestListen)
 	require.NoError(t, err)
-	assert.Equal(t, "read", perms["contents"])
+	assert.Equal(t, "write", r.Installations[0].Perms["workflows"])
+	assert.Equal(t, "write", r.Installations[0].Policy.PermissionCeiling["pages"], "the installation's permissions are its ceiling")
+
+	for name, perms := range map[string]map[string]string{
+		"administration":     {"administration": "read"},
+		"org administration": {"organization_administration": "read"},
+		"members":            {"members": "read"},
+		"admin level":        {"contents": "admin"},
+		"bad level":          {"contents": "owner"},
+		"bad name":           {"Contents": "read"},
+		"bad name 2":         {"contents; drop": "read"},
+	} {
+		_, err := proxyGitHubSettings(proxyTestConfig([]string{"octo/a"}, perms), "github-app", proxyTestListen)
+		assert.Error(t, err, name)
+	}
+
+	admin := proxyTestConfig([]string{"octo/a"}, map[string]string{"administration": "write", "contents": "admin"})
+	admin.Connections["github-app"].Proxy.GitHub[0].Installations[0].AllowAdminPermissions = true
+	_, err = proxyGitHubSettings(admin, "github-app", proxyTestListen)
+	assert.NoError(t, err, "explicit opt-in per installation")
 
 	for name, cfg := range map[string]config.Config{
-		"administration": proxyTestConfig([]string{"octo/a"}, map[string]string{"administration": "read"}),
-		"unknown":        proxyTestConfig([]string{"octo/a"}, map[string]string{"workflows": "write"}),
-		"metadata write": proxyTestConfig([]string{"octo/a"}, map[string]string{"metadata": "write"}),
-		"actions write":  proxyTestConfig([]string{"octo/a"}, map[string]string{"actions": "write"}),
-		"mixed owners":   proxyTestConfig([]string{"octo/a", "other/b"}, nil),
-		"bad repo":       proxyTestConfig([]string{"octo"}, nil),
-		"no repos":       proxyTestConfig(nil, nil),
-		"deny owner":     withDenyOwner(proxyTestConfig([]string{"octo/a"}, nil)),
-		"no connection":  {},
+		"repo of another owner": proxyTestConfig([]string{"octo/a", "other/b"}, nil),
+		"bad repo":              proxyTestConfig([]string{"octo"}, nil),
+		"no repos":              proxyTestConfig(nil, nil),
+		"deny owner":            withDenyOwner(proxyTestConfig([]string{"octo/a"}, nil)),
+		"no connection":         {},
 	} {
-		_, _, _, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+		_, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
 		assert.Error(t, err, name)
 	}
 	noMint := proxyTestConfig([]string{"octo/a"}, nil)
 	cp := noMint.Connections["github-app"]
 	cp.Mint = nil
 	noMint.Connections["github-app"] = cp
-	_, _, _, err = proxyGitHubSettings(noMint, "github-app", proxyTestListen)
+	_, err = proxyGitHubSettings(noMint, "github-app", proxyTestListen)
 	assert.Error(t, err, "the proxy mints under the mint policy; without one it is denied")
 }
 
+func TestProxyGitHubSettings_Host(t *testing.T) {
+	cfg := proxyTestConfig([]string{"octo/a"}, nil)
+	cfg.Connections["github-app"].Proxy.GitHub[0].Host = "Octocorp.GHE.com"
+	r, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+	require.NoError(t, err)
+	assert.Equal(t, "octocorp.ghe.com", r.Host)
+	assert.Equal(t, []string{"octocorp.ghe.com"}, configuredProxyHosts(cfg))
+	assert.Equal(t, []string{"github.com"}, configuredProxyHosts(proxyTestConfig([]string{"octo/a"}, nil)))
+}
+
 func loopbackProxyConfig(c config.Config) config.Config {
-	c.Connections["github-app"].Proxy.GitHub[0].Listen = "127.0.0.1:18790"
+	c.Connections["github-app"].Proxy.GitHub[0].Listen = "127.0.0.1:17879"
 	return c
 }
 
@@ -121,35 +152,39 @@ func withDenyOwner(c config.Config) config.Config {
 }
 
 func TestProxyGitHubSettings_RepositoriesFeedTheMintAllowlistNotTheReverse(t *testing.T) {
-	// The mint policy names no repositories; the proxy list is the allowlist
-	// for the proxy only, so another repo is still not minted by /mint/github.
+	// The mint policy names no repositories; the installation's list is the
+	// allowlist for the proxy only, so another repo is still not minted by /mint/github.
 	cfg := proxyTestConfig([]string{"octo/a"}, nil)
-	_, _, derived, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+	r, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"octo/a"}, derived.AllowRepos)
+	assert.Equal(t, []string{"octo/a"}, r.Installations[0].Policy.AllowRepos)
 	assert.Empty(t, cfg.Connections["github-app"].Mint.GitHubApp.AllowRepos, "the operator's mint policy is not modified")
 
-	_, _, _, err = proxyGitHubSettings(cfg, "github-app", "192.168.150.1:9999")
+	_, err = proxyGitHubSettings(cfg, "github-app", "10.0.2.2:9999")
 	assert.Error(t, err, "a listener needs its own config entry")
 }
 
-func TestProxyGitHubSettings_TwoListenersTwoOwners(t *testing.T) {
+func TestProxyGitHubSettings_TwoInstallationsOnOneListener(t *testing.T) {
 	cfg := proxyTestConfig([]string{"octo/a"}, nil)
 	cp := cfg.Connections["github-app"]
-	cp.Proxy.GitHub = append(cp.Proxy.GitHub, config.GitHubProxyPolicy{Listen: "192.168.150.1:8791", Repositories: []string{"other/x", "other/y"}})
+	cp.Proxy.GitHub[0].Installations = append(cp.Proxy.GitHub[0].Installations, config.GitHubInstallationPolicy{Owner: "Other", Repositories: []string{"other/x", "other/y"}, Permissions: map[string]string{"contents": "read"}})
 	cfg.Connections["github-app"] = cp
-	r1, _, _, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+	r, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
 	require.NoError(t, err)
-	r2, _, _, err := proxyGitHubSettings(cfg, "github-app", "192.168.150.1:8791")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"octo/a"}, r1)
-	assert.Equal(t, []string{"other/x", "other/y"}, r2)
+	require.Len(t, r.Installations, 2)
+	assert.Equal(t, []string{"octo/a"}, r.Installations[0].Repos)
+	assert.Equal(t, "other", r.Installations[1].Owner)
+	assert.Equal(t, map[string]string{"contents": "read"}, r.Installations[1].Perms, "each installation has its own permissions")
+
+	cp.Proxy.GitHub[0].Installations = append(cp.Proxy.GitHub[0].Installations, config.GitHubInstallationPolicy{Owner: "OCTO", Repositories: []string{"octo/z"}})
+	_, err = proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+	assert.Error(t, err, "an owner twice on one listener")
 }
 
 func TestParseProxyListeners(t *testing.T) {
-	got, err := parseProxyListeners([]string{"192.168.150.1:8790=a", "192.168.150.1:8791=b"})
+	got, err := parseProxyListeners([]string{"10.0.2.2:7879=a", "10.0.2.2:7880=b"})
 	require.NoError(t, err)
-	assert.Equal(t, []proxyListener{{"192.168.150.1:8790", "a"}, {"192.168.150.1:8791", "b"}}, got)
+	assert.Equal(t, []proxyListener{{"10.0.2.2:7879", "a"}, {"10.0.2.2:7880", "b"}}, got)
 	for _, bad := range [][]string{{"x"}, {"=a"}, {"1.1.1.1:1="}, {"1.1.1.1:1=a", "1.1.1.1:1=b"}} {
 		_, err := parseProxyListeners(bad)
 		assert.Error(t, err, "%v", bad)
@@ -207,7 +242,7 @@ func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
 	em := &proxyAudit{}
 	up := &recordingUpstream{}
 	srv, err := newGitHubProxy(gitHubProxyParams{
-		Connection: "github-app", Listen: "127.0.0.1:18790", Lookup: llmcontext.DefaultLookup,
+		Connection: "github-app", Listen: "127.0.0.1:17879", Lookup: llmcontext.DefaultLookup,
 		Config: loopbackProxyConfig(proxyTestConfig([]string{"octo/a", "octo/b"}, nil)), Vault: vault, Audit: em,
 		APIBase: gh.URL, Upstream: up,
 	})
@@ -220,7 +255,7 @@ func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
 	require.True(t, pool.AppendCertsFromPEM(srv.CA.CertPEM()))
 	tokenFile, _ := os.ReadFile(proxyCallerTokenPath(llmcontext.DefaultLookup))
 	pu, _ := url.Parse(front.URL)
-	pu.User = url.UserPassword("keylatch", strings.TrimSpace(string(tokenFile)))
+	pu.User = url.UserPassword("octo", strings.TrimSpace(string(tokenFile)))
 	c := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu), TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
 
 	resp, err := c.Get("https://github.com/octo/a.git/info/refs?service=git-upload-pack")
@@ -247,21 +282,21 @@ func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
 
 func TestNewGitHubProxy_RefusesOpenBindAndBadInput(t *testing.T) {
 	t.Setenv("KEYLATCH_GATEWAY_DIR", filepath.Join(t.TempDir(), "gw"))
-	base := gitHubProxyParams{Connection: "github-app", Listen: "192.168.150.1:8790", Lookup: llmcontext.DefaultLookup, Config: proxyTestConfig([]string{"octo/a"}, nil), Vault: proxyFakeVault{}, Audit: &proxyAudit{}}
+	base := gitHubProxyParams{Connection: "github-app", Listen: "10.0.2.2:7879", Lookup: llmcontext.DefaultLookup, Config: proxyTestConfig([]string{"octo/a"}, nil), Vault: proxyFakeVault{}, Audit: &proxyAudit{}}
 
 	_, err := newGitHubProxy(base)
 	require.Error(t, err, "bridge address without --allow-source")
 	assert.Contains(t, err.Error(), "allow-source")
 
 	ok := base
-	ok.AllowSources = []netip.Prefix{netip.MustParsePrefix("192.168.150.0/24")}
+	ok.AllowSources = []netip.Prefix{netip.MustParsePrefix("10.0.2.0/24")}
 	srv, err := newGitHubProxy(ok)
 	require.NoError(t, err)
 	assert.True(t, srv.AllowNonLoopback)
 	assert.False(t, srv.SourceAllowed("10.0.0.5:1234"))
-	assert.True(t, srv.SourceAllowed("192.168.150.7:1234"))
+	assert.True(t, srv.SourceAllowed("10.0.2.7:1234"))
 
-	for _, bad := range []string{"0.0.0.0:8790", "host:8790", ":8790"} {
+	for _, bad := range []string{"0.0.0.0:7879", "host:7879", ":7879"} {
 		p := ok
 		p.Listen = bad
 		_, err := newGitHubProxy(p)
@@ -274,7 +309,10 @@ func TestNewGitHubProxy_RefusesOpenBindAndBadInput(t *testing.T) {
 }
 
 func TestProxyCAPrintHasNoKeyAndTokenPrintRefusesInLLMSession(t *testing.T) {
-	t.Setenv("KEYLATCH_GATEWAY_DIR", filepath.Join(t.TempDir(), "gw"))
+	home, _ := systemdTestEnv(t)
+	cfg := proxyTestConfig([]string{"octo/a"}, nil)
+	cfg.Version = 1
+	require.NoError(t, config.Save(paths.DefaultConfig(home), cfg))
 	cmd := newProxyCACmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -292,39 +330,4 @@ func TestProxyCAPrintHasNoKeyAndTokenPrintRefusesInLLMSession(t *testing.T) {
 	tc.SetOut(&out)
 	tc.SetErr(&out)
 	assert.Error(t, tc.Execute())
-}
-
-func TestSystemdInstall_WithProxy(t *testing.T) {
-	_, binary := systemdTestEnv(t)
-	installFakeUserManager(t)
-	args := []string{"print", "--listen", "192.168.150.1:8788", "--allow-source", "192.168.150.0/24", "--binary", binary, "--github-mint", "github-app"}
-
-	out, err := runSystemd(t, append(args, "--with-proxy")...)
-	require.NoError(t, err)
-	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8790=github-app", "default: bridge host, port 8790, the mint connection")
-
-	out, err = runSystemd(t, append(args, "--with-proxy", "--proxy-listen", "192.168.150.1:8790=github-patrik", "--proxy-listen", "192.168.150.1:8791=github-org")...)
-	require.NoError(t, err)
-	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8790=github-patrik --proxy-listen 192.168.150.1:8791=github-org")
-
-	out, err = runSystemd(t, append(args, "--with-proxy", "--proxy-listen", "192.168.150.1:8791")...)
-	require.NoError(t, err)
-	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8791=github-app")
-
-	for name, extra := range map[string][]string{
-		"listen without flag": {"--proxy-listen", "192.168.150.1:8790"},
-		"wildcard":            {"--with-proxy", "--proxy-listen", "0.0.0.0:8790"},
-		"same as gateway":     {"--with-proxy", "--proxy-listen", "192.168.150.1:8788"},
-		"duplicate":           {"--with-proxy", "--proxy-listen", "192.168.150.1:8790", "--proxy-listen", "192.168.150.1:8790=x"},
-		"bad connection":      {"--with-proxy", "--proxy-listen", "192.168.150.1:8790=a b"},
-	} {
-		_, err := runSystemd(t, append(append([]string{}, args...), extra...)...)
-		assert.Error(t, err, name)
-	}
-
-	_, err = runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--allow-source", "192.168.150.0/24", "--binary", binary, "--with-proxy")
-	assert.Error(t, err, "no connection to default to")
-
-	_, err = runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--allow-any-source", "--binary", binary, "--with-proxy", "--proxy-listen", "192.168.150.1:8790=github-app")
-	assert.Error(t, err, "--allow-any-source never opens the proxy")
 }

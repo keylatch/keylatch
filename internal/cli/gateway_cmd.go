@@ -22,6 +22,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
+	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
@@ -48,6 +49,7 @@ func newGatewayCmd() *cobra.Command {
 	cmd.AddCommand(newGatewayLogsCmd())
 	cmd.AddCommand(newGatewayInstallCmd())
 	cmd.AddCommand(newGatewaySystemdCmd())
+	cmd.AddCommand(newGatewayConfigCmd())
 	return cmd
 }
 
@@ -65,10 +67,23 @@ var (
 // On macOS it writes the keylatchd launchd plist and loads it via launchctl.
 // On other platforms it prints an unsupported message.
 func newGatewayInstallCmd() *cobra.Command {
-	return &cobra.Command{
+	var f gatewayServiceFlags
+	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Install keylatchd as a launchd service (macOS only)",
+		Short: "Install keylatchd, or with --listen the gateway itself, as a launchd service (macOS only)",
+		Long: `Without flags, installs keylatchd as a launchd service. With --listen (and optionally
+--allow-source, --github-mint, --with-proxy, --proxy-listen, --backend-credential) installs a
+LaunchAgent that runs 'keylatch gateway up' with the same validated flags as
+'keylatch gateway systemd install'. It starts at login, not at boot.
+
+macOS has no systemd-creds. A --backend-credential <cred-name>=<ENV_VAR> secret is read at start
+from the login Keychain (service "keylatch-backend", account <cred-name>); store it with
+  security add-generic-password -s keylatch-backend -a <cred-name> -w
+(the secret is prompted for, not passed on the command line).`,
 		RunE: func(c *cobra.Command, _ []string) error {
+			if f.used(c) {
+				return installGatewayLaunchd(c, &f)
+			}
 			if runtime.GOOS != "darwin" {
 				fmt.Fprintln(c.OutOrStdout(), "  gateway install is not supported on this platform")
 				return nil
@@ -110,6 +125,8 @@ func newGatewayInstallCmd() *cobra.Command {
 			return nil
 		},
 	}
+	f.bind(cmd)
+	return cmd
 }
 
 // --- gateway init ---
@@ -240,6 +257,29 @@ func newGatewayUpCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
 
+			// The operator config is the source of truth; flags override it for
+			// ad-hoc runs. An unreadable config leaves only the flags: the
+			// gateway then binds loopback and serves no proxy, never more.
+			opCfg, cfgErr := mintPolicyConfig()
+			if cfgErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: the operator config is not used: %v\n", cfgErr)
+				opCfg = config.Config{}
+			}
+			cfgSettings := settingsFromConfig(opCfg)
+			if listenAddr == "" && cfgSettings.Listen != "" {
+				if err := cfgSettings.validate(); err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: config gateway.service: %v\n", err)
+					os.Exit(exitcode.UserError)
+				}
+				listenAddr = cfgSettings.Listen
+			}
+			if len(allowSources) == 0 {
+				allowSources = cfgSettings.AllowSource
+			}
+			if githubMint == "" {
+				githubMint = cfgSettings.GitHubMint
+			}
+
 			// Validate before any detach so a typo fails in the foreground.
 			sourcePrefixes, srcErr := gateway.ParseAllowSources(allowSources)
 			if srcErr != nil {
@@ -251,6 +291,9 @@ func newGatewayUpCmd() *cobra.Command {
 			if plErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", plErr)
 				os.Exit(exitcode.UserError)
+			}
+			if len(proxyLs) == 0 {
+				proxyLs = proxyListenersFromConfig(opCfg)
 			}
 
 			// Check if gateway is already running. With --force, a
@@ -425,7 +468,30 @@ func newGatewayUpCmd() *cobra.Command {
 				}
 			}
 
+			// One listener per configured proxy address; each serves the
+			// installations configured for it behind the same source
+			// allowlist and caller token.
+			servers := make([]*proxy.Server, 0, len(proxyLs))
+			for _, pl := range proxyLs {
+				psrv, perr := newGitHubProxy(gitHubProxyParams{
+					Connection: pl.Connection, Listen: pl.Addr, AllowSources: sourcePrefixes, Lookup: env,
+					Config: opCfg, Vault: vaultReader, Audit: audit.AsEmitter(auditLogger),
+				})
+				if perr != nil {
+					return perr
+				}
+				servers = append(servers, psrv)
+				fmt.Fprintf(c.OutOrStdout(), "gateway: GitHub proxy for %s listening on %s\n", pl.Connection, pl.Addr)
+			}
+			effective := cfgSettings
+			effective.Listen, effective.AllowSource, effective.GitHubMint = listenAddr, allowSources, githubMint
+			if listenAddr == "" {
+				effective.Listen = bind
+			}
+			info := buildGatewayInfo(opCfg, effective, env)
+
 			opts := gateway.ServerOptions{
+				Info:              info,
 				AllowSources:      sourcePrefixes,
 				GitHubMint:        mintOpts,
 				Bind:              bind,
@@ -486,26 +552,8 @@ func newGatewayUpCmd() *cobra.Command {
 				}
 			}
 
-			if len(proxyLs) == 0 {
+			if len(servers) == 0 {
 				return srv.Serve(ctx)
-			}
-			mintCfg, cfgErr := mintPolicyConfig()
-			if cfgErr != nil {
-				return NewPolicyDeny("gateway up: the proxy policy cannot be read: %v", cfgErr)
-			}
-			// One listener per installation, each with its own token cache,
-			// all behind the same source allowlist and caller token.
-			servers := make([]*proxy.Server, 0, len(proxyLs))
-			for _, pl := range proxyLs {
-				psrv, err := newGitHubProxy(gitHubProxyParams{
-					Connection: pl.Connection, Listen: pl.Addr, AllowSources: sourcePrefixes, Lookup: env,
-					Config: mintCfg, Vault: vaultReader, Audit: audit.AsEmitter(auditLogger),
-				})
-				if err != nil {
-					return err
-				}
-				servers = append(servers, psrv)
-				fmt.Fprintf(c.OutOrStdout(), "gateway: GitHub proxy for %s listening on %s\n", pl.Connection, pl.Addr)
 			}
 			done := make(chan error, len(servers)+1)
 			go func() { done <- srv.Serve(ctx) }()
@@ -712,11 +760,20 @@ func newGatewayDownCmd() *cobra.Command {
 // --- gateway status ---
 
 func newGatewayStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show gateway running state and routes (value-free)",
+		Short: "Show gateway running state and effective settings (value-free)",
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
+			if asJSON {
+				cfg, err := mintPolicyConfig()
+				if err != nil {
+					return NewPolicyDeny("gateway status: the operator config cannot be read: %v", err)
+				}
+				_, err = c.OutOrStdout().Write(buildGatewayInfo(cfg, settingsFromConfig(cfg), env).json())
+				return err
+			}
 			pidPath := paths.GatewayPID(env)
 
 			running := false
@@ -750,6 +807,8 @@ func newGatewayStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the effective settings (listen, allow_source, github_mint, proxy listeners, CA fingerprint and certificate) as JSON; no secrets")
+	return cmd
 }
 
 // --- gateway token ---

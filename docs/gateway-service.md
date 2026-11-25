@@ -1,13 +1,18 @@
 ---
 title: Gateway as a systemd user service
-description: Run the keylatch gateway at boot on Linux, bound to a bridge address, with the vault key sealed by systemd.
+description: Run the keylatch gateway as a service, configured from the operator config, with the vault key and backend credentials sealed by the service manager.
 ---
 
-# Gateway as a systemd user service
+# Running the gateway as a service
 
 `keylatch gateway systemd` manages a user unit, `keylatch-gateway.service`, that runs
-`keylatch gateway up`. It is meant for a host that serves a VM bridge: the gateway starts at
-boot, listens on one configured address, and opens the vault without a login session.
+`keylatch gateway up`. It is meant for a host that serves a VM or container network: the gateway
+starts at boot, listens on the configured address, and opens the vault without a login session.
+
+Settings (listen address, allowed sources, mint connection, proxy listeners) live in the operator
+config, not in the unit: the unit only wires the sealed credentials. Changing a setting is a
+config edit plus a service restart, never a reinstall. `gateway up` flags override the config for
+ad-hoc runs.
 
 ## How the vault opens without a login
 
@@ -32,49 +37,73 @@ shred -u "$XDG_RUNTIME_DIR/kek"
   hosts without one: the credential is then bound to `/var/lib/systemd/credential.secret`,
   readable by root. `--user` scopes it to your account and needs systemd 256 or newer.
 - The runtime directory is a tmpfs, so the plaintext exists only until `shred`.
-- The unit's `systemd.env` and `kek.cred` live in the gateway directory
+- `kek.cred` lives in the gateway directory
   (`~/.config/keylatch/gateway` unless `KEYLATCH_GATEWAY_DIR` is set).
 - Keep a copy of the identity somewhere safe if you need to recover the vault on another
   machine: a TPM2-bound credential cannot be decrypted elsewhere.
+
+## Configure
+
+Settings are in `~/.config/keylatch/config.json` (the operator config; nothing else is read for
+them). Edit them with `keylatch gateway config`:
+
+```bash
+keylatch gateway config set --listen 10.0.2.2:7878 --allow-source 10.0.2.0/24 --github-mint github-app
+keylatch gateway config get          # effective settings; --json for machines
+keylatch gateway status --json       # same, plus nothing secret
+```
+
+```json
+{
+  "gateway": { "service": {
+    "listen": "10.0.2.2:7878",
+    "allow_source": ["10.0.2.0/24"],
+    "github_mint": "github-app"
+  } }
+}
+```
+
+- `listen` must be an IP literal and port; a wildcard, an empty host or a hostname is refused.
+  Without it the gateway binds loopback only.
+- A non-loopback `listen` needs `allow_source` (CIDRs, canonicalised, IPv4 or IPv6) unless
+  `"allow_any_source": true` is set explicitly. The gateway compares the TCP peer address before
+  authentication and never reads `X-Forwarded-For`.
+- `github_mint` serves `POST /mint/github` for that `github-app` connection and its
+  `mint.github_app` policy.
+- `gateway up --listen/--allow-source/--github-mint/--proxy-listen` override the config for one run.
 
 ## Install
 
 ```bash
 loginctl enable-linger "$USER"        # start the user manager at boot
-keylatch gateway systemd install --listen 10.0.2.2:7878 \
-  --allow-source 10.0.2.0/24 --github-mint github-app
+keylatch gateway systemd install      # writes the unit; reads settings from the config
 systemctl --user enable --now keylatch-gateway.service
 keylatch gateway systemd status
 ```
 
-`install` writes the unit to `~/.config/systemd/user/` and the environment file, then runs
-`daemon-reload`; `--now` also enables and starts it. `keylatch gateway systemd print`
-shows the unit without writing anything, `status` reports the unit, its state, the
-credential and whether lingering is on, and `uninstall` removes the unit but keeps the
-environment file and the credential.
+`install` may also take `--listen`, `--allow-source`, `--allow-any-source` and `--github-mint`
+once: they are validated and written to the config (a convenience for `gateway config set`),
+never into the unit. The unit's `ExecStart` is `keylatch gateway up` plus the
+`--backend-credential` wiring below. `systemctl --user restart keylatch-gateway.service` applies
+a config change. `keylatch gateway systemd print` shows the unit without writing anything,
+`status` reports the unit, its state, the credentials and whether lingering is on, and
+`uninstall` removes the unit but keeps the config and the credentials.
 
-`--listen` is required and must be an IP address and port. A wildcard (`0.0.0.0`, `::`), an
-empty host or a hostname is refused, so the gateway cannot end up on every interface. The
-address lives in `systemd.env` as `KEYLATCH_GATEWAY_LISTEN`; edit it and restart
-the unit to move the gateway.
+### macOS
 
-## Restricting callers by source address
+`keylatch gateway install` with the same settings flags (`--listen`, `--allow-source`,
+`--allow-any-source`, `--github-mint`) writes the settings to the config and installs a
+LaunchAgent, `io.keylatch.gateway`, that runs `keylatch gateway up`; it starts at login, not at
+boot. macOS has no `systemd-creds`: a `--backend-credential <cred-name>=<ENV_VAR>` secret is read
+at start from the login Keychain (service `keylatch-backend`, account `<cred-name>`), stored with
+`security add-generic-password -s keylatch-backend -a <cred-name> -w` (the secret is prompted for).
+`gateway install` without flags still installs `keylatchd`.
 
-`--allow-source <CIDR>` (repeatable, IPv4 or IPv6) is written into the unit's `ExecStart`
-as `--allow-source <CIDR>`, in canonical form (`10.0.2.7/24` becomes
-`10.0.2.0/24`), for example:
+### Windows
 
-```
-ExecStart=/usr/local/bin/keylatch gateway up --allow-source 10.0.2.0/24 --github-mint github-app
-```
-
-The gateway compares the TCP peer address with the CIDRs before authentication and never
-reads `X-Forwarded-For`. With a non-loopback `--listen`, `install` and `print` refuse to
-continue without `--allow-source`, unless you pass `--allow-any-source` to accept any caller
-that can reach the address (it cannot be combined with `--allow-source`).
-
-`--github-mint <connection>` adds `--github-mint <connection>` so the gateway serves
-`POST /mint/github` for that `github-app` connection and its `mint.github_app` policy.
+No service installer yet. Settings in the config apply to `keylatch gateway up`; run it from a
+scheduled task or a service wrapper of your choice, passing `--backend-credential` only where a
+credential directory is provided (otherwise set the backend variable in the task's environment).
 
 ## Unattended backend access
 
@@ -85,7 +114,7 @@ Seal that secret as a second systemd credential and let `keylatch` export it at 
 # The secret is read from stdin, so it is not in argv or shell history (Ctrl-D twice to end).
 systemd-creds encrypt --user --name=op-sa --with-key=tpm2 - ~/.config/keylatch/gateway/op-sa.cred
 
-keylatch gateway systemd install --listen 10.0.2.2:7878 --allow-source 10.0.2.0/24 \
+keylatch gateway systemd install \
   --backend-credential op-sa=OP_SERVICE_ACCOUNT_TOKEN:$HOME/.config/keylatch/gateway/op-sa.cred
 ```
 
@@ -117,126 +146,165 @@ Backends other than 1Password get a decrypt-only verdict. A failed check at star
 does not stop the gateway, so a boot before the network is up recovers on its own. Boot start
 stays the default with `loginctl enable-linger "$USER"`.
 
-## GitHub through the proxy: the VM holds no GitHub token
+## GitHub through the proxy: the sandbox holds no GitHub token
 
-`--with-proxy` (and `--proxy-listen <ip:port>=<connection>`, repeatable) adds an intercepting CONNECT proxy to the same
-unit. The guest sends git and `gh` traffic for `github.com`, `api.github.com` and
-`uploads.github.com` through it. The proxy terminates TLS with its own CA, checks the route and
-repository, **removes the caller's `Authorization`** and injects a GitHub App installation token
-that never leaves the host.
-
-I chose the same unit over a sibling unit: both listeners need the same vault key, the same
-1Password service account and the same audit log, so a second unit would duplicate the sealed
-credentials and a second process would race on them. The cost is that one crash restarts both;
-`Restart=on-failure` covers that. The default proxy port is **8790** (the gateway uses 8788; 8789 is taken by another service on the bridge).
-
-There is one listener per GitHub installation, because GraphQL requests cannot be routed by repository: a token is minted for one owner, so each owner gets its own address, its own token cache and its own `proxy.github` entry. All listeners share the source allowlist, the CA and the caller token. I chose the repeatable `--proxy-listen <ip:port>=<connection>` flag over deriving listeners from the config so the unit's `ExecStart` shows exactly what listens and `install`/`print` need not read the operator config; the config entry for each listener is matched by its address at start.
+One or more proxy listeners (`connections.<name>.proxy.github[]`) add an intercepting CONNECT
+proxy to the gateway process. The sandbox or VM sends git and `gh` traffic for the GitHub hosts
+through it. The proxy terminates TLS with its own CA, checks the route, owner and repository,
+**removes the caller's `Authorization`** and injects a GitHub App installation token that never
+leaves the host. It shares the gateway's vault key, backend credential and audit log, which is why
+it runs in the same process and unit.
 
 ### How it behaves
 
-- Per listener, one installation token is minted for exactly the `repositories` listed, with the configured
-  permissions (default `contents:write`, `pull_requests:write`, `metadata:read`; `actions:read`,
-  `checks:read` and `issues:write` may be added; `administration` and everything else is refused
-  at startup). It is cached in memory, minted again about 5 minutes before it expires, and again
-  once when GitHub answers 401 (never more often than every 30 seconds).
-- `github.com`: only git smart HTTP (`/<owner>/<repo>[.git]/info/refs`, `/git-upload-pack`,
-  `/git-receive-pack`) with `Authorization: Basic base64("x-access-token:<token>")`.
-- `api.github.com` (REST and `/graphql`) and `uploads.github.com`: `Authorization: Bearer <token>`.
-  `/app`, `/installation` and `/applications` are refused so the cached token cannot be revoked.
-- A repository path outside the list answers `403 {"error":"repository_not_allowed"}` before
-  anything is sent to GitHub; an unsupported route answers `403 {"error":"route_not_allowed"}`.
-  Encoded or non-canonical paths are refused.
+- A listener serves one GitHub host (`github.com` by default, `SUBDOMAIN.ghe.com`, or a GitHub
+  Enterprise Server hostname) and one or more installations (GitHub accounts) of the connection's
+  App. The caller picks the installation with the **Proxy-Authorization user name**, the account
+  login; the password is the proxy token. Bearer auth selects the listener's only installation;
+  with several it is refused with 407 `installation_required`. An unknown user name is refused
+  with 407 `unknown_installation` and audited.
+- Each installation has its own repositories, permissions and in-memory token cache. The token is
+  minted when first needed, again about 5 minutes before it expires, and once when GitHub answers
+  401 (never within 30 seconds of the last mint).
+- Hosts and routes:
+  - github.com: git on `github.com`, REST and `/graphql` on `api.github.com`, uploads on
+    `uploads.github.com`.
+  - GHE.com data residency: `SUBDOMAIN.ghe.com`, `api.SUBDOMAIN.ghe.com`,
+    `uploads.SUBDOMAIN.ghe.com` (the `api.` form is documented by GitHub; `uploads.` follows it).
+  - GitHub Enterprise Server `HOST`: everything on `HOST`; REST under `/api/v3`, GraphQL at
+    `/api/graphql`, uploads under `/api/uploads`. The App token is minted at `https://HOST/api/v3`.
+  - git paths (`/<owner>/<repo>[.git]/info/refs`, `/git-upload-pack`, `/git-receive-pack`) get
+    `Authorization: Basic base64("x-access-token:<token>")`; API hosts get `Bearer <token>`.
+- A path that names another owner than the selected installation answers 403
+  `{"error":"owner_mismatch"}`; a repository outside its list answers 403
+  `repository_not_allowed`; an unsupported route 403 `route_not_allowed`; all before anything is
+  sent upstream. GraphQL and uploads use the selected installation's token. `/app`,
+  `/installation` and `/applications` are refused, as are encoded or non-canonical paths.
 - Redirects from GitHub go back to the caller; the proxy never replays the token elsewhere.
-- Callers must come from `--allow-source` (same check as the gateway, before authentication) and
-  present the proxy token. Without `--allow-source` a non-loopback `--proxy-listen` is refused.
-- Every mint is audited (`mint`, `via: proxy`) and every denial too. The token is never logged.
+- Callers must come from `allow_source` (checked before authentication) and present the proxy
+  token. A non-loopback listener is refused without `allow_source`.
+- Every mint is audited (`mint`, `via: proxy`, owner and host) and every denial too. The token is
+  never logged.
 
-### Owner setup (Fedora, normal shell)
-
-Everything in the sections above applies (sealed vault key, 1Password service account). Then:
-
-```bash
-# 1. GitHub App private key and ids live in the 1Password vault the service account can read;
-#    connect the github-app connection with op:// references (see `keylatch connect github-app`).
-
-# 2. Operator config (~/.config/keylatch/config.json): the mint policy is the ceiling, the proxy
-#    block says which repositories the proxy token covers.
-```
+### Config
 
 ```json
 {
   "backend": "op",
   "connections": {
     "github-app": {
-      "mint": { "github_app": {
-        "permission_ceiling": { "contents": "write", "pull_requests": "write", "metadata": "read" }
-      } },
+      "mint": { "github_app": { "max_ttl": 3600 } },
       "proxy": { "github": [
-        { "listen": "192.168.150.1:8790", "repositories": ["octo/app", "octo/tools"] },
-        { "listen": "192.168.150.1:8791", "repositories": ["otherorg/service"] }
+        { "listen": "10.0.2.2:7879", "host": "github.com", "installations": [
+          { "owner": "octo", "repositories": ["octo/app", "octo/tools"] },
+          { "owner": "otherorg", "repositories": ["otherorg/service"],
+            "permissions": { "contents": "write", "pull_requests": "write", "metadata": "read", "actions": "read" } }
+        ] }
       ] }
     }
   }
 }
 ```
 
-Each entry's repositories must belong to one owner (one installation); mixed owners are refused at
-start. An entry's repositories are added to `allow_repos` for the proxy only, so they are not
-listed twice, and `POST /mint/github` still uses just the policy as written. The ceiling, deny
-list and lifetime still come from `mint.github_app`, which must exist. Optional `permissions`
-per entry replaces the default set; each must be under the mint ceiling. The installation id for
-each owner is the connection's `installation_<owner>` field; one connection can serve several
-owners, one listener each.
+or with the CLI (an empty `mint.github_app` policy is created when missing):
 
 ```bash
-# 3. Install (each --proxy-listen goes to ExecStart; without it, --with-proxy listens on
-#    <bridge host>:8790 for the --github-mint connection) and start.
-keylatch gateway systemd install --listen 192.168.150.1:8788 --allow-source 192.168.150.0/24 \
-  --github-mint github-app --with-proxy \
-  --proxy-listen 192.168.150.1:8790=github-app --proxy-listen 192.168.150.1:8791=github-app \
-  --op-service-account-credential ~/.config/keylatch/gateway/op-sa-token.cred
-systemctl --user enable --now keylatch-gateway.service
-
-# 4. Verify.
-keylatch gateway systemd status --check-op
-ss -ltn | grep -E '8788|8790|8791'
-keylatch proxy ca print | openssl x509 -noout -subject -ext nameConstraints
-keylatch proxy token print > /dev/null && echo token ok      # created on first use, mode 0600
-curl -s -o /dev/null -w '%{http_code}\n' --proxy http://192.168.150.1:8790 \
-  --proxy-header "Proxy-Authorization: Bearer $(keylatch proxy token print)" \
-  --cacert <(keylatch proxy ca print) https://api.github.com/repos/octo/app    # 200
+keylatch gateway config add-proxy --connection github-app --listen 10.0.2.2:7879 \
+  --owner octo --repo app --repo tools
+keylatch gateway config add-proxy --connection github-app --listen 10.0.2.2:7879 \
+  --owner otherorg --repo service --permission actions=read
+keylatch gateway config remove-proxy --listen 10.0.2.2:7879 --owner otherorg   # or the whole listener
 ```
 
-State files live in the gateway directory: `proxy-ca.pem` (public), `proxy-ca.key` (0600),
-`proxy-token` (0600). Delete them (and restart) to rotate; the guest must then trust the new CA.
-The CA key is a plain 0600 file because an unattended unit has no keyring. The certificate is
-name-constrained to `github.com`, so even a stolen key cannot vouch for other sites.
+- `installations[].permissions` is any GitHub App permission name with `read`, `write` or `admin`;
+  the App installation is the real ceiling. The default is `contents:write`, `pull_requests:write`,
+  `metadata:read`. `administration`, organization-level administrative permissions and any
+  `admin` level need `"allow_admin_permissions": true` on that installation.
+- The installation's repositories are its allowlist (added to `allow_repos` for the proxy only,
+  `POST /mint/github` is unchanged) and its permissions are its ceiling. The connection's
+  `mint.github_app` policy must exist and still supplies `deny_owners`, `callers` and `max_ttl`.
+- `host` defaults to `github.com`. Repositories are `owner/name` (a bare name is qualified with
+  the installation's owner by the CLI). The App connection needs an `installation_<owner>` field
+  per account.
+- Listeners must have distinct addresses, different from the gateway's. The default for a new
+  listener is up to you; 7879 sits next to the gateway's 7878.
+- The CA is name-constrained to the union of the configured hosts. Adding a new host later makes
+  `keylatch proxy ca print` refuse until you delete `proxy-ca.pem` and `proxy-ca.key` in the
+  gateway directory and re-trust the new CA in the guests.
 
-### agent-os guest contract
+### Introspection
+
+`keylatch gateway status --json` and `GET /info` on the gateway return the effective settings, with
+no tokens, keys, secret file paths or vault references:
+
+```json
+{
+  "schema": 1,
+  "version": "0.9.0",
+  "listen": "10.0.2.2:7878",
+  "allow_source": ["10.0.2.0/24"],
+  "allow_any_source": false,
+  "github_mint": "github-app",
+  "proxies": [
+    { "listen": "10.0.2.2:7879", "host": "github.com", "connection": "github-app",
+      "installations": [
+        { "owner": "octo", "repositories": ["octo/app"], "permissions": {"contents": "write", "pull_requests": "write", "metadata": "read"}, "allow_admin_permissions": false }
+      ] }
+  ],
+  "ca": { "sha256": "<hex>", "pem": "-----BEGIN CERTIFICATE-----\n..." }
+}
+```
+
+`/info` sits behind the source allowlist like every route and also needs a valid gateway session
+token (any capability): the reply names repositories and permissions, and every legitimate caller
+already holds a token. `ca` is the public certificate only and is absent until the proxy has
+created it.
+
+### Owner setup
+
+```bash
+loginctl enable-linger "$USER"
+# 1. Vault key and backend credential: see the sections above.
+# 2. Settings.
+keylatch gateway config set --listen 10.0.2.2:7878 --allow-source 10.0.2.0/24 --github-mint github-app
+keylatch gateway config add-proxy --connection github-app --listen 10.0.2.2:7879 --owner octo --repo app
+# 3. Install and start.
+keylatch gateway systemd install --backend-credential op-sa=OP_SERVICE_ACCOUNT_TOKEN:$HOME/.config/keylatch/gateway/op-sa.cred
+systemctl --user enable --now keylatch-gateway.service
+# 4. Verify.
+keylatch gateway systemd status --check-backend
+keylatch gateway status --json | head
+ss -ltn | grep -E '7878|7879'
+keylatch proxy ca print | openssl x509 -noout -subject -ext nameConstraints
+```
+
+State files in the gateway directory: `proxy-ca.pem` (public), `proxy-ca.key` (0600),
+`proxy-token` (0600, `keylatch proxy token print`). Delete them and restart to rotate; guests must
+then trust the new CA. The CA key is a plain 0600 file because an unattended service has no
+keyring; the name constraints limit what a stolen key could vouch for.
+
+### Sandbox / VM guest contract
 
 | Item | Value |
 |---|---|
-| Proxy | One per owner: `http://192.168.150.1:8790` (first owner), `http://192.168.150.1:8791` (second), ... as listed in the unit. Plain HTTP to the proxy, CONNECT for HTTPS. |
-| Proxy auth | `Proxy-Authorization: Bearer <token>` or Basic with any user and the token as password (`http://keylatch:<token>@192.168.150.1:8790`). The token is `keylatch proxy token print` on the host; the guest keeps it in a 0600 file. |
-| CA | `keylatch proxy ca print` on the host (PEM, no key); install into the guest trust store, e.g. `/usr/local/share/ca-certificates/keylatch-proxy.crt` then `update-ca-certificates`; for git alone `http.sslCAInfo`. |
-| Through the proxy | `github.com`, `api.github.com`, `uploads.github.com` (see below). Everything else keeps going direct. |
-| Choosing the proxy | A request is only served by the proxy of its repository's owner (others get 403). git: one URL-scoped setting per owner, `git config --global http.https://github.com/<owner>/.proxy http://keylatch:<token>@192.168.150.1:<owner port>`. gh: pick `HTTPS_PROXY` by the repository's owner (agent-os wraps `gh`; for `-R owner/repo` or the checkout's remote, use that owner's proxy). |
-| git | `https://github.com/<owner>/<repo>.git` URLs; no credential helper and no token. If git insists on a credential, any placeholder works: the proxy replaces it. |
-| gh | `GH_TOKEN=placeholder` (any non-empty string) and `GH_HOST=github.com`; `gh` talks to `api.github.com` through `HTTPS_PROXY`. |
-| Not available | Repositories outside the list (403), `administration`, merging beyond what the token's permissions and branch protection allow. |
+| Proxy | `http://<listen>` of the listener (for example `http://10.0.2.2:7879`): plain HTTP to the proxy, CONNECT for HTTPS. |
+| Proxy auth | `Proxy-Authorization: Basic base64("<owner>:<token>")`, that is `http://<owner>:<token>@10.0.2.2:7879`: the user name is the GitHub account login, the password is `keylatch proxy token print` from the host (kept in a 0600 file in the guest). Bearer `<token>` selects the only installation when there is exactly one. |
+| CA | `keylatch proxy ca print` on the host (PEM, no key), or the `ca.pem` of `GET /info` (check `ca.sha256`). Install it in the guest trust store (for example `/usr/local/share/ca-certificates/keylatch-proxy.crt`, then `update-ca-certificates`) or point git at it with `http.sslCAInfo`. |
+| Through the proxy | Every host of the listener (`github.com`, `api.github.com`, `uploads.github.com`, or the Enterprise equivalents); everything else goes direct. |
+| git | `https://<host>/<owner>/<repo>.git` with no credential helper. Per owner: `git config --global http.https://github.com/<owner>/.proxy http://<owner>:<token>@<proxy>`. Any placeholder credential is replaced. |
+| gh | `GH_TOKEN=<any placeholder>`, `GH_HOST=<host>`, and `HTTPS_PROXY=http://<owner>:<token>@<proxy>` chosen by the repository's owner. |
+| Refused | Another owner's paths (403 `owner_mismatch`), repositories outside the list, administrative permissions unless allowed, unknown users (407). |
 
 ### Risks
 
-- 1Password service account rate limits: a mint reads three items (app id, installation, key),
-  roughly 3 reads per hour plus start-up and one extra pair per 401 retry (capped at one per 30
-  seconds). That is far under the hourly and daily caps for service accounts, but the caps are
-  per account and shared with anything else using it; give this service account its own vault
-  and check the plan's limits (`op service-account ratelimit`).
-- One process serves both the gateway and the proxy; if the vault or `op` is unreachable at a
-  mint, git and API calls answer 503 `credential_unavailable` until it recovers (the failure is
-  not retried for 5 seconds).
-- The token the proxy holds lives in memory for up to an hour and can do whatever its
-  permissions allow on the listed repositories: push branches and open pull requests. Branch
-  protection stays the merge gate.
-- A guest that can reach the proxy and knows the proxy token can use the token's powers; keep
-  the token file 0600 and the source CIDR tight.
+- A mint reads three secrets (app id, installation id, key) per installation about once an hour,
+  plus start-up reads and one extra set per 401 retry (at most one per 30 seconds). Backend rate
+  limits are per account, so give the service account its own vault.
+- One process serves the gateway and every proxy listener; if the backend is unreachable at a
+  mint, git and API calls answer 503 `credential_unavailable` until it recovers (not retried for
+  5 seconds). A bind failure on any address stops the process and the service manager restarts it.
+- A token lives in memory for up to an hour and can do whatever its permissions allow on its
+  repositories. Anyone who can reach a listener and knows the proxy token can use it: keep the
+  token file 0600 and `allow_source` tight. Branch protection stays the merge gate.
+- The CA key is a 0600 file on the host, constrained to the configured hosts.
+- Not exercised against real GitHub, git, `gh`, GitHub Enterprise Server, GHE.com or TPM2.

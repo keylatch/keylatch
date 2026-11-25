@@ -130,23 +130,32 @@ func (h *harness) now() time.Time {
 
 func newHarness(t *testing.T, repos ...string) *harness {
 	t.Helper()
+	return newHarnessHost(t, "github.com", repos...)
+}
+
+func newHarnessHost(t *testing.T, host string, repos ...string) *harness {
+	t.Helper()
 	if len(repos) == 0 {
 		repos = []string{"acme/widgets", "acme/tools"}
 	}
 	h := &harness{t: t, upstream: &fakeUpstream{}, audit: &captureAudit{}, clock: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}
 	h.minter = &fakeMinter{ttl: time.Hour, now: h.now}
-	inj, err := proxy.NewGitHubInjector(repos, h.minter.mint)
+	inj, err := proxy.NewGitHubInjector(host, repos, h.minter.mint)
 	require.NoError(t, err)
 	inj.SetClockForTest(h.now)
 	h.inj = inj
+	set, err := proxy.NewGitHubSet(inj)
+	require.NoError(t, err)
 	dir := t.TempDir()
-	ca, err := proxy.LoadOrCreateFileCA(filepath.Join(dir, "ca.pem"), filepath.Join(dir, "ca.key"), []string{"github.com"})
+	permitted, err := proxy.PermittedDNS([]string{host})
+	require.NoError(t, err)
+	ca, err := proxy.LoadOrCreateFileCA(filepath.Join(dir, "ca.pem"), filepath.Join(dir, "ca.key"), permitted)
 	require.NoError(t, err)
 	h.ca = ca
 	h.srv = &proxy.Server{
 		Profile:           proxy.ProxyProfile{Hosts: inj.Hosts()},
 		CA:                ca,
-		GitHub:            inj,
+		GitHub:            set,
 		Token:             proxyToken,
 		AuditEmitter:      h.audit,
 		UpstreamTransport: h.upstream,
@@ -236,7 +245,7 @@ func TestGitHubProxy_RefusesOutsideRepositoryListBeforeUpstream(t *testing.T) {
 	h := newHarness(t)
 	for _, tc := range []struct{ method, url, code string }{
 		{"GET", "https://github.com/acme/secret.git/info/refs?service=git-upload-pack", proxy.RefusalRepository},
-		{"POST", "https://github.com/other/widgets.git/git-receive-pack", proxy.RefusalRepository},
+		{"POST", "https://github.com/other/widgets.git/git-receive-pack", proxy.RefusalOwner},
 		{"GET", "https://api.github.com/repos/acme/secret/contents/x", proxy.RefusalRepository},
 		{"GET", "https://api.github.com/repos/acme", proxy.RefusalRepository},
 		{"POST", "https://uploads.github.com/repos/acme/secret/releases/1/assets", proxy.RefusalRepository},
@@ -259,7 +268,7 @@ func TestGitHubProxy_RefusesOutsideRepositoryListBeforeUpstream(t *testing.T) {
 }
 
 func TestGitHubProxy_AuthorizeRejectsEncodedPaths(t *testing.T) {
-	inj, err := proxy.NewGitHubInjector([]string{"acme/widgets"}, (&fakeMinter{now: time.Now}).mint)
+	inj, err := proxy.NewGitHubInjector("github.com", []string{"acme/widgets"}, (&fakeMinter{now: time.Now}).mint)
 	require.NoError(t, err)
 	for _, raw := range []string{"/acme%2Fsecret/x/info/refs", "/acme/widgets%2F..%2Fsecret/info/refs", "//acme/widgets/info/refs", "/acme/./widgets/info/refs"} {
 		u, err := url.Parse("https://github.com" + raw)
@@ -374,7 +383,7 @@ func TestGitHubProxy_CallerAuth(t *testing.T) {
 		return resp.StatusCode
 	}
 	assert.Equal(t, 200, status("Bearer "+proxyToken))
-	assert.Equal(t, 200, status("Basic "+base64.StdEncoding.EncodeToString([]byte("anyuser:"+proxyToken))))
+	assert.Equal(t, 200, status("Basic "+base64.StdEncoding.EncodeToString([]byte("acme:"+proxyToken))))
 	for _, bad := range []string{"", "Bearer wrong", "Bearer ", "Basic " + base64.StdEncoding.EncodeToString([]byte("u:wrong")), "Basic !!!", "Basic " + base64.StdEncoding.EncodeToString([]byte(proxyToken)), proxyToken} {
 		assert.Equal(t, -1, status(bad), "auth %q", bad)
 	}
@@ -413,7 +422,7 @@ func TestGitHubProxy_SourceAllowlistRunsBeforeAuth(t *testing.T) {
 		resp.Body.Close()
 		return resp, string(b)
 	}
-	h.srv.SourceAllowed = allow("192.168.150.0/24") // the test peer is 127.0.0.1
+	h.srv.SourceAllowed = allow("10.0.2.0/24") // the test peer is 127.0.0.1
 	for _, auth := range []string{"", "Bearer " + proxyToken, "Bearer wrong"} {
 		resp, body := do(auth)
 		assert.Equal(t, 403, resp.StatusCode, "outside the CIDR: refused before auth (%q)", auth)
@@ -425,7 +434,7 @@ func TestGitHubProxy_SourceAllowlistRunsBeforeAuth(t *testing.T) {
 }
 
 func TestGitHubProxy_ServeRefusals(t *testing.T) {
-	inj, err := proxy.NewGitHubInjector([]string{"acme/widgets"}, (&fakeMinter{now: time.Now}).mint)
+	inj, err := proxy.NewGitHubInjector("github.com", []string{"acme/widgets"}, (&fakeMinter{now: time.Now}).mint)
 	require.NoError(t, err)
 	dir := t.TempDir()
 	ca, err := proxy.LoadOrCreateFileCA(filepath.Join(dir, "c.pem"), filepath.Join(dir, "c.key"), []string{"github.com"})
@@ -433,15 +442,15 @@ func TestGitHubProxy_ServeRefusals(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err = (&proxy.Server{Addr: "192.168.150.1:8790", GitHub: inj, CA: ca}).Serve(ctx)
+	err = (&proxy.Server{Addr: "10.0.2.2:7879", GitHub: mustSet(t, inj), CA: ca}).Serve(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-loopback")
 
-	err = (&proxy.Server{Addr: "192.168.150.1:8790", AllowNonLoopback: true, GitHub: inj, CA: ca}).Serve(ctx)
+	err = (&proxy.Server{Addr: "10.0.2.2:7879", AllowNonLoopback: true, GitHub: mustSet(t, inj), CA: ca}).Serve(ctx)
 	require.Error(t, err, "a non-loopback bind needs a source allowlist")
 	assert.Contains(t, err.Error(), "non-loopback")
 
-	err = (&proxy.Server{Addr: "127.0.0.1:0", GitHub: inj}).Serve(ctx)
+	err = (&proxy.Server{Addr: "127.0.0.1:0", GitHub: mustSet(t, inj)}).Serve(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "needs a CA")
 }
@@ -514,10 +523,10 @@ func TestGitHubProxy_NonGitHubHostsAreNotAllowed(t *testing.T) {
 func TestNewGitHubInjector_Validation(t *testing.T) {
 	m := (&fakeMinter{now: time.Now}).mint
 	for _, bad := range [][]string{nil, {"noslash"}, {"a/b/c"}, {"/b"}, {"a/"}} {
-		_, err := proxy.NewGitHubInjector(bad, m)
+		_, err := proxy.NewGitHubInjector("github.com", bad, m)
 		assert.Error(t, err, "%v", bad)
 	}
-	_, err := proxy.NewGitHubInjector([]string{"a/b"}, nil)
+	_, err := proxy.NewGitHubInjector("github.com", []string{"a/b"}, nil)
 	assert.Error(t, err)
 }
 
@@ -563,4 +572,224 @@ func TestFileCA_PersistsIsNameConstrainedAndKeyStaysPrivate(t *testing.T) {
 func TestHeaderValue(t *testing.T) {
 	assert.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte("x-access-token:T")), proxy.HeaderValue("basic", "T"))
 	assert.Equal(t, "Bearer T", proxy.HeaderValue("bearer", "T"))
+}
+
+func authz(t *testing.T, inj *proxy.GitHubInjector, host, method, rawURL string) (string, string) {
+	t.Helper()
+	u, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	return inj.Authorize(host, method, u)
+}
+
+func TestGitHubInjector_EnterpriseServerLayout(t *testing.T) {
+	inj, err := proxy.NewGitHubInjector("ghe.example.com", []string{"acme/widgets"}, (&fakeMinter{now: time.Now}).mint)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ghe.example.com"}, inj.Hosts())
+	assert.Equal(t, "https://ghe.example.com/api/v3", inj.APIBase())
+	for _, tc := range []struct{ host, method, path, scheme, refusal string }{
+		{"ghe.example.com", "GET", "/acme/widgets.git/info/refs", "basic", ""},
+		{"ghe.example.com", "POST", "/acme/widgets/git-receive-pack", "basic", ""},
+		{"ghe.example.com", "GET", "/api/v3/repos/acme/widgets/pulls", "bearer", ""},
+		{"ghe.example.com", "GET", "/api/v3/rate_limit", "bearer", ""},
+		{"ghe.example.com", "POST", "/api/graphql", "bearer", ""},
+		{"ghe.example.com", "POST", "/api/uploads/repos/acme/widgets/releases/1/assets", "bearer", ""},
+		{"ghe.example.com", "GET", "/api/v3/repos/acme/secret", "", proxy.RefusalRepository},
+		{"ghe.example.com", "GET", "/api/uploads/repos/acme/secret/releases/1/assets", "", proxy.RefusalRepository},
+		{"ghe.example.com", "GET", "/acme/secret.git/info/refs", "", proxy.RefusalRepository},
+		{"ghe.example.com", "GET", "/api/v3/app", "", proxy.RefusalRoute},
+		{"ghe.example.com", "GET", "/api/v3/installation/token", "", proxy.RefusalRoute},
+		{"ghe.example.com", "GET", "/api/other", "", proxy.RefusalRoute},
+		{"ghe.example.com", "GET", "/api/uploads", "", proxy.RefusalRoute},
+		{"api.ghe.example.com", "GET", "/repos/acme/widgets", "", proxy.RefusalRoute},
+		{"github.com", "GET", "/acme/widgets.git/info/refs", "", proxy.RefusalRoute},
+	} {
+		scheme, refusal := authz(t, inj, tc.host, tc.method, "https://"+tc.host+tc.path)
+		assert.Equal(t, tc.scheme, scheme, tc.path)
+		assert.Equal(t, tc.refusal, refusal, tc.host+tc.path)
+	}
+	assert.False(t, inj.IsGitHubHost("github.com"))
+}
+
+func TestGitHubInjector_DataResidencyLayout(t *testing.T) {
+	inj, err := proxy.NewGitHubInjector("octocorp.ghe.com", []string{"acme/widgets"}, (&fakeMinter{now: time.Now}).mint)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"octocorp.ghe.com", "api.octocorp.ghe.com", "uploads.octocorp.ghe.com"}, inj.Hosts())
+	assert.Equal(t, "https://api.octocorp.ghe.com", inj.APIBase())
+	for _, tc := range []struct{ host, method, path, scheme, refusal string }{
+		{"octocorp.ghe.com", "GET", "/acme/widgets.git/info/refs", "basic", ""},
+		{"api.octocorp.ghe.com", "GET", "/repos/acme/widgets/issues", "bearer", ""},
+		{"api.octocorp.ghe.com", "POST", "/graphql", "bearer", ""},
+		{"uploads.octocorp.ghe.com", "POST", "/repos/acme/widgets/releases/1/assets", "bearer", ""},
+		{"api.octocorp.ghe.com", "GET", "/repos/acme/secret", "", proxy.RefusalRepository},
+		{"api.github.com", "GET", "/user", "", proxy.RefusalRoute},
+		{"api.other.ghe.com", "GET", "/user", "", proxy.RefusalRoute},
+	} {
+		scheme, refusal := authz(t, inj, tc.host, tc.method, "https://"+tc.host+tc.path)
+		assert.Equal(t, tc.scheme, scheme, tc.path)
+		assert.Equal(t, tc.refusal, refusal, tc.host+tc.path)
+	}
+}
+
+func TestNewGitHubInjector_HostValidation(t *testing.T) {
+	m := (&fakeMinter{now: time.Now}).mint
+	for _, bad := range []string{"localhost", "github.com:443", "https://github.com", "a.b.ghe.com", "-x.example.com", "ex ample.com", "../x.com"} {
+		_, err := proxy.NewGitHubInjector(bad, []string{"a/b"}, m)
+		assert.Error(t, err, bad)
+	}
+	for _, good := range []string{"", "GitHub.com", "octocorp.ghe.com", "git.example.co.uk"} {
+		_, err := proxy.NewGitHubInjector(good, []string{"a/b"}, m)
+		assert.NoError(t, err, good)
+	}
+}
+
+func TestPermittedDNS_UnionOfConfiguredHosts(t *testing.T) {
+	got, err := proxy.PermittedDNS([]string{"github.com", "octocorp.ghe.com", "ghe.example.com", "github.com"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"github.com", "octocorp.ghe.com", "ghe.example.com"}, got)
+	_, err = proxy.PermittedDNS([]string{"nodots"})
+	assert.Error(t, err)
+}
+
+func TestGitHubProxy_EnterpriseServerThroughTunnel(t *testing.T) {
+	h := newHarnessHost(t, "ghe.example.com", "acme/widgets")
+	resp, _ := h.do("GET", "https://ghe.example.com/acme/widgets.git/info/refs?service=git-upload-pack", "Basic placeholder", "")
+	assert.Equal(t, 200, resp.StatusCode)
+	resp, _ = h.do("POST", "https://ghe.example.com/api/graphql", "Bearer placeholder", "{}")
+	assert.Equal(t, 200, resp.StatusCode)
+	_, err := h.client("Bearer " + proxyToken).Get("https://github.com/acme/widgets.git/info/refs")
+	assert.Error(t, err, "a Server listener refuses the CONNECT to github.com")
+	seen := h.upstream.seen()
+	require.Len(t, seen, 2)
+	assert.Equal(t, basic("ghs_tok1"), seen[0].Auth)
+	assert.Equal(t, "Bearer ghs_tok1", seen[1].Auth)
+	assert.Equal(t, "ghe.example.com", seen[1].Host)
+}
+
+func TestFileCA_ConstraintsFollowConfiguredHosts(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := proxy.LoadOrCreateFileCA(filepath.Join(dir, "c.pem"), filepath.Join(dir, "c.key"), []string{"github.com", "ghe.example.com"})
+	require.NoError(t, err)
+	pool := x509.NewCertPool()
+	require.True(t, pool.AppendCertsFromPEM(ca.CertPEM()))
+	for host, ok := range map[string]bool{"github.com": true, "api.github.com": true, "ghe.example.com": true, "evil.example.org": false, "example.com": false} {
+		leaf, err := ca.CertForHost(host)
+		require.NoError(t, err)
+		_, verr := leaf.Leaf.Verify(x509.VerifyOptions{DNSName: host, Roots: pool})
+		assert.Equal(t, ok, verr == nil, host)
+	}
+}
+
+func mustSet(t *testing.T, in ...*proxy.GitHubInjector) *proxy.GitHubSet {
+	t.Helper()
+	set, err := proxy.NewGitHubSet(in...)
+	require.NoError(t, err)
+	return set
+}
+
+// twoOwners serves acme and other from one listener; each installation mints its own token.
+func twoOwners(t *testing.T) (*harness, *fakeMinter, *fakeMinter) {
+	t.Helper()
+	h := newHarness(t, "acme/widgets")
+	mA := h.minter
+	mB := &fakeMinter{ttl: time.Hour, now: h.now}
+	injB, err := proxy.NewGitHubInjector("github.com", []string{"other/service"}, func(ctx context.Context) (string, time.Time, error) {
+		tok, exp, err := mB.mint(ctx)
+		return "B" + tok, exp, err
+	})
+	require.NoError(t, err)
+	injB.SetClockForTest(h.now)
+	h.srv.GitHub = mustSet(t, h.inj, injB)
+	return h, mA, mB
+}
+
+func (h *harness) as(user, rawURL string) (*http.Response, string) {
+	h.t.Helper()
+	cred := "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+proxyToken))
+	req, _ := http.NewRequest("GET", rawURL, nil)
+	resp, err := h.client(cred).Do(req)
+	if err != nil {
+		return nil, err.Error()
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp, string(b)
+}
+
+func TestGitHubProxy_TwoInstallationsOnOnePort(t *testing.T) {
+	h, mA, mB := twoOwners(t)
+
+	resp, _ := h.as("acme", "https://github.com/acme/widgets.git/info/refs?service=git-upload-pack")
+	require.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode)
+	resp, _ = h.as("OTHER", "https://github.com/other/service.git/info/refs?service=git-upload-pack")
+	require.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode, "user names are case-insensitive")
+	resp, _ = h.as("other", "https://api.github.com/graphql")
+	require.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode)
+	resp, _ = h.as("acme", "https://api.github.com/graphql")
+	require.NotNil(t, resp)
+
+	seen := h.upstream.seen()
+	require.Len(t, seen, 4)
+	assert.Equal(t, basic("ghs_tok1"), seen[0].Auth)
+	assert.Equal(t, basic("Bghs_tok1"), seen[1].Auth)
+	assert.Equal(t, "Bearer Bghs_tok1", seen[2].Auth, "GraphQL uses the selected owner's token")
+	assert.Equal(t, "Bearer ghs_tok1", seen[3].Auth)
+	assert.Equal(t, 1, mA.count())
+	assert.Equal(t, 1, mB.count(), "each installation has its own cache")
+}
+
+func TestGitHubProxy_OwnerMismatchIs403(t *testing.T) {
+	h, _, _ := twoOwners(t)
+	for _, tc := range []struct{ user, url string }{
+		{"acme", "https://github.com/other/service.git/info/refs"},
+		{"other", "https://github.com/acme/widgets.git/info/refs"},
+		{"acme", "https://api.github.com/repos/other/service/pulls"},
+		{"other", "https://uploads.github.com/repos/acme/widgets/releases/1/assets"},
+	} {
+		resp, body := h.as(tc.user, tc.url)
+		require.NotNil(t, resp, tc.url)
+		assert.Equal(t, 403, resp.StatusCode, tc.url)
+		assert.JSONEq(t, `{"error":"owner_mismatch"}`, body, tc.url)
+	}
+	assert.Empty(t, h.upstream.seen())
+}
+
+func TestGitHubProxy_UnknownUserAndMissingUserAre407(t *testing.T) {
+	h, mA, mB := twoOwners(t)
+	_, msg := h.as("nobody", "https://github.com/acme/widgets.git/info/refs")
+	assert.Contains(t, msg, "Proxy Authentication Required", "unknown user")
+	_, err := h.client("Bearer " + proxyToken).Get("https://github.com/acme/widgets.git/info/refs")
+	require.Error(t, err, "Bearer with two installations has no default")
+	assert.Contains(t, err.Error(), "Proxy Authentication Required")
+	assert.Empty(t, h.upstream.seen())
+	assert.Zero(t, mA.count()+mB.count())
+
+	h.audit.mu.Lock()
+	events := fmt.Sprintf("%+v", h.audit.events)
+	h.audit.mu.Unlock()
+	assert.Contains(t, events, proxy.RefusalUnknownInstallation)
+	assert.Contains(t, events, proxy.RefusalInstallationRequired)
+}
+
+func TestGitHubProxy_BearerSelectsTheOnlyInstallation(t *testing.T) {
+	h := newHarness(t)
+	resp, _ := h.do("GET", "https://api.github.com/user", "", "")
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestNewGitHubSet_Validation(t *testing.T) {
+	m := (&fakeMinter{now: time.Now}).mint
+	a, _ := proxy.NewGitHubInjector("github.com", []string{"a/x"}, m)
+	a2, _ := proxy.NewGitHubInjector("github.com", []string{"a/y"}, m)
+	other, _ := proxy.NewGitHubInjector("octo.ghe.com", []string{"b/x"}, m)
+	_, err := proxy.NewGitHubSet()
+	assert.Error(t, err)
+	_, err = proxy.NewGitHubSet(a, a2)
+	assert.Error(t, err, "same owner twice")
+	_, err = proxy.NewGitHubSet(a, other)
+	assert.Error(t, err, "different hosts")
+	_, err = proxy.NewGitHubInjector("github.com", []string{"a/x", "b/y"}, m)
+	assert.Error(t, err, "one installation, one owner")
 }

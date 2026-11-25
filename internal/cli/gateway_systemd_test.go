@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +39,9 @@ func systemdTestEnv(t *testing.T) (home, binary string) {
 	t.Helper()
 	home = t.TempDir()
 	t.Setenv("HOME", home)
+	prevHome := operatorHome
+	operatorHome = func() (string, error) { return home, nil }
+	t.Cleanup(func() { operatorHome = prevHome })
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
 	t.Setenv("KEYLATCH_CONFIG_DIR", "")
 	t.Setenv("KEYLATCH_GATEWAY_DIR", filepath.Join(home, "gw"))
@@ -62,13 +67,14 @@ func TestGatewaySystemdPrint_BindsConfiguredAddressViaCredential(t *testing.T) {
 	_, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--allow-source", "10.0.2.0/24", "--binary", binary)
+	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:7878", "--allow-source", "10.0.2.0/24", "--binary", binary)
 	require.NoError(t, err)
 
-	assert.Contains(t, out, "ExecStart="+binary+" gateway up --allow-source 10.0.2.0/24\n")
+	assert.Contains(t, out, "ExecStart="+binary+" gateway up\n", "settings are not in ExecStart")
 	assert.Contains(t, out, "LoadCredentialEncrypted=kek:")
 	assert.Contains(t, out, "Environment=KEYLATCH_AGE_IDENTITY=%d/kek")
-	assert.Contains(t, out, "EnvironmentFile=")
+	assert.NotContains(t, out, "EnvironmentFile=")
+	assert.NotContains(t, out, "10.0.2")
 	assert.NotContains(t, out, "0.0.0.0")
 	assert.NotContains(t, out, "insecure")
 }
@@ -82,7 +88,7 @@ func TestValidateGatewayListen(t *testing.T) {
 	}
 }
 
-func TestGatewaySystemdInstall_WritesUnitAndEnvFileWithoutStarting(t *testing.T) {
+func TestGatewaySystemdInstall_WritesUnitAndConfigWithoutStarting(t *testing.T) {
 	home, binary := systemdTestEnv(t)
 	fake := installFakeUserManager(t)
 
@@ -92,15 +98,16 @@ func TestGatewaySystemdInstall_WritesUnitAndEnvFileWithoutStarting(t *testing.T)
 	unitPath := filepath.Join(home, "xdg", "systemd", "user", systemdUnitName)
 	unit, err := os.ReadFile(unitPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(unit), "ExecStart="+binary+" gateway up --allow-source 192.168.122.0/24\n")
+	assert.Contains(t, string(unit), "ExecStart="+binary+" gateway up\n")
+	assert.NotContains(t, string(unit), "192.168.122")
+	assert.NoFileExists(t, filepath.Join(home, "gw", "systemd.env"))
 
-	envPath := filepath.Join(home, "gw", "systemd.env")
-	envFile, err := os.ReadFile(envPath)
+	cfg, err := config.Load(paths.DefaultConfig(home))
 	require.NoError(t, err)
-	assert.Contains(t, string(envFile), "KEYLATCH_GATEWAY_LISTEN=192.168.122.1:7878\n")
-	info, err := os.Stat(envPath)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	require.NotNil(t, cfg.Gateway)
+	require.NotNil(t, cfg.Gateway.Service)
+	assert.Equal(t, "192.168.122.1:7878", cfg.Gateway.Service.Listen)
+	assert.Equal(t, []string{"192.168.122.0/24"}, cfg.Gateway.Service.AllowSource)
 
 	assert.Equal(t, [][]string{{"systemctl", "daemon-reload"}}, fake.calls)
 	assert.Contains(t, out, "vault key credential missing")
@@ -146,6 +153,7 @@ func TestGatewaySystemdUninstall_RemovesUnitKeepsKeyMaterial(t *testing.T) {
 	_, err := runSystemd(t, "install", "--listen", "192.168.122.1:7878", "--allow-source", "192.168.122.0/24", "--binary", binary)
 	require.NoError(t, err)
 	cred := filepath.Join(home, "gw", "kek.cred")
+	require.NoError(t, os.MkdirAll(filepath.Dir(cred), 0o700))
 	require.NoError(t, os.WriteFile(cred, []byte("sealed"), 0o600))
 	fake.calls = nil
 
@@ -173,6 +181,7 @@ func TestGatewaySystemdStatus_ReportsStateAndLinger(t *testing.T) {
 	fake.outputs["is-enabled"] = "enabled\n"
 	fake.outputs["is-active"] = "active\n"
 	fake.outputs["loginctl"] = "yes\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(home, "gw"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(home, "gw", "kek.cred"), []byte("sealed"), 0o600))
 
 	out, err := runSystemd(t, "status")
@@ -195,21 +204,50 @@ func execStartOf(t *testing.T, unit string) string {
 	return ""
 }
 
-func TestGatewaySystemdPrint_AllowSourceForms(t *testing.T) {
-	_, binary := systemdTestEnv(t)
+func TestGatewaySystemdInstall_SettingsGoToConfigCanonicalised(t *testing.T) {
+	home, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--binary", binary,
+	out, err := runSystemd(t, "install", "--listen", "10.0.2.2:7878", "--binary", binary,
 		"--allow-source", "10.0.2.7/24", "--allow-source", "fd00:1::/64", "--github-mint", "github-app")
 	require.NoError(t, err)
-	assert.Equal(t, binary+" gateway up --allow-source 10.0.2.0/24 --allow-source fd00:1::/64 --github-mint github-app", execStartOf(t, out))
+	assert.Equal(t, binary+" gateway up", execStartOf(t, readUnit(t, home)))
+	assert.Contains(t, out, "wrote gateway settings")
+
+	cfg, err := config.Load(paths.DefaultConfig(home))
+	require.NoError(t, err)
+	assert.Equal(t, &config.GatewayServiceConfig{Listen: "10.0.2.2:7878", AllowSource: []string{"10.0.2.0/24", "fd00:1::/64"}, GitHubMint: "github-app"}, cfg.Gateway.Service)
+	info, err := os.Stat(paths.DefaultConfig(home))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+func readUnit(t *testing.T, home string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(home, "xdg", "systemd", "user", systemdUnitName))
+	require.NoError(t, err)
+	return string(b)
+}
+
+func TestGatewaySystemdInstall_WithoutFlagsKeepsExistingConfig(t *testing.T) {
+	home, binary := systemdTestEnv(t)
+	installFakeUserManager(t)
+	_, err := runSystemd(t, "install", "--listen", "10.0.2.2:7878", "--allow-source", "10.0.2.0/24", "--binary", binary)
+	require.NoError(t, err)
+	before, _ := os.ReadFile(paths.DefaultConfig(home))
+
+	out, err := runSystemd(t, "install", "--binary", binary)
+	require.NoError(t, err)
+	after, _ := os.ReadFile(paths.DefaultConfig(home))
+	assert.Equal(t, string(before), string(after), "reinstalling does not rewrite settings")
+	assert.NotContains(t, out, "wrote gateway settings")
 }
 
 func TestGatewaySystemdInstall_NonLoopbackNeedsAllowSource(t *testing.T) {
 	home, binary := systemdTestEnv(t)
 	fake := installFakeUserManager(t)
 
-	for _, listen := range []string{"10.0.2.2:8788", "[fd00::1]:8788"} {
+	for _, listen := range []string{"10.0.2.2:7878", "[fd00::1]:7878"} {
 		_, err := runSystemd(t, "install", "--listen", listen, "--binary", binary)
 		require.Error(t, err, listen)
 		assert.Contains(t, err.Error(), "--allow-source")
@@ -218,17 +256,20 @@ func TestGatewaySystemdInstall_NonLoopbackNeedsAllowSource(t *testing.T) {
 	assert.Empty(t, fake.calls)
 	_, statErr := os.Stat(filepath.Join(home, "xdg", "systemd", "user", systemdUnitName))
 	assert.True(t, os.IsNotExist(statErr))
+	assert.NoFileExists(t, paths.DefaultConfig(home), "a refused install writes nothing")
 }
 
 func TestGatewaySystemdInstall_AllowAnySourceIsExplicit(t *testing.T) {
-	_, binary := systemdTestEnv(t)
+	home, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--binary", binary, "--allow-any-source")
+	_, err := runSystemd(t, "install", "--listen", "10.0.2.2:7878", "--binary", binary, "--allow-any-source")
 	require.NoError(t, err)
-	assert.Equal(t, binary+" gateway up", execStartOf(t, out))
+	cfg, err := config.Load(paths.DefaultConfig(home))
+	require.NoError(t, err)
+	assert.True(t, cfg.Gateway.Service.AllowAnySource)
 
-	_, err = runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--binary", binary, "--allow-any-source", "--allow-source", "10.0.2.0/24")
+	_, err = runSystemd(t, "print", "--listen", "10.0.2.2:7878", "--binary", binary, "--allow-any-source", "--allow-source", "10.0.2.0/24")
 	require.Error(t, err)
 }
 
@@ -236,7 +277,7 @@ func TestGatewaySystemdInstall_LoopbackNeedsNoAllowSource(t *testing.T) {
 	_, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "127.0.0.1:8788", "--binary", binary)
+	out, err := runSystemd(t, "print", "--listen", "127.0.0.1:7878", "--binary", binary)
 	require.NoError(t, err)
 	assert.Equal(t, binary+" gateway up", execStartOf(t, out))
 }
@@ -251,7 +292,7 @@ func TestGatewaySystemdInstall_RejectsBadAllowSourceAndConnection(t *testing.T) 
 		{"--allow-source", "10.0.2.0/24", "--github-mint", "x --unsafe-bind-all"},
 		{"--allow-source", "10.0.2.0/24", "--github-mint", "a\nExecStartPost=/bin/sh"},
 	} {
-		args := append([]string{"print", "--listen", "10.0.2.2:8788", "--binary", binary}, extra...)
+		args := append([]string{"print", "--listen", "10.0.2.2:7878", "--binary", binary}, extra...)
 		_, err := runSystemd(t, args...)
 		require.Error(t, err, extra)
 	}
