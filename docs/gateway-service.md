@@ -41,8 +41,10 @@ shred -u "$XDG_RUNTIME_DIR/kek"
 
 ```bash
 loginctl enable-linger "$USER"        # start the user manager at boot
-keylatch gateway systemd install --listen 192.168.122.1:7878
+keylatch gateway systemd install --listen 192.168.150.1:8788 \
+  --allow-source 192.168.150.0/24 --github-mint github-app
 systemctl --user enable --now keylatch-gateway.service
+keylatch gateway systemd status
 ```
 
 `install` writes the unit to `~/.config/systemd/user/` and the environment file, then runs
@@ -58,6 +60,18 @@ the unit to move the gateway.
 
 ## Restricting callers by source address
 
-The environment file carries a commented `KEYLATCH_GATEWAY_ALLOW_SOURCE` placeholder. This
-build has no source allowlist, so the setting is not read and has no effect. Until the
-gateway supports one, restrict the bridge with the host firewall.
+`--allow-source <CIDR>` (repeatable, IPv4 or IPv6) is written into the unit's `ExecStart`
+as `--allow-source <CIDR>`, in canonical form (`192.168.150.7/24` becomes
+`192.168.150.0/24`), for example:
+
+```
+ExecStart=/usr/local/bin/keylatch gateway up --allow-source 192.168.150.0/24 --github-mint github-app
+```
+
+The gateway compares the TCP peer address with the CIDRs before authentication and never
+reads `X-Forwarded-For`. With a non-loopback `--listen`, `install` and `print` refuse to
+continue without `--allow-source`, unless you pass `--allow-any-source` to accept any caller
+that can reach the address (it cannot be combined with `--allow-source`).
+
+`--github-mint <connection>` adds `--github-mint <connection>` so the gateway serves
+`POST /mint/github` for that `github-app` connection and its `mint.github_app` policy.

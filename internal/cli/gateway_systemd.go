@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
+	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
@@ -36,6 +38,9 @@ type gatewayUnitSpec struct {
 	Binary         string
 	EnvFile        string
 	CredentialFile string
+	// ExecArgs are the arguments after the binary: gateway up plus the
+	// validated --allow-source and --github-mint flags.
+	ExecArgs string
 }
 
 var gatewayUnitTemplate = template.Must(template.New("unit").Parse(`[Unit]
@@ -45,13 +50,13 @@ Documentation=https://github.com/keylatch/keylatch/blob/main/docs/runtime-modes.
 [Service]
 Type=simple
 # KEYLATCH_GATEWAY_LISTEN (the bridge address) comes from this file. Without it
-# the gateway binds loopback only; the unit never binds 0.0.0.0.
+# the gateway binds loopback only; the unit never binds every interface.
 EnvironmentFile={{.EnvFile}}
 # The vault key is a systemd credential decrypted for this service only, so the
 # vault opens without a login session, keyring or plaintext key file.
 LoadCredentialEncrypted={{.Credential}}:{{.CredentialFile}}
 Environment=KEYLATCH_AGE_IDENTITY=%d/{{.Credential}}
-ExecStart={{.Binary}} gateway up
+ExecStart={{.Binary}} {{.ExecArgs}}
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes
@@ -121,11 +126,39 @@ func gatewayCredentialPath(env llmcontext.Lookup) string {
 }
 
 func gatewayEnvFileContent(listen string) string {
-	return "# Address the gateway binds. Use the VM bridge address, never 0.0.0.0.\n" +
-		"KEYLATCH_GATEWAY_LISTEN=" + listen + "\n" +
-		"# Callers outside this CIDR are refused once the gateway supports a source\n" +
-		"# allowlist. This build does not read it yet.\n" +
-		"# KEYLATCH_GATEWAY_ALLOW_SOURCE=192.168.122.0/24\n"
+	return "# Address the gateway binds. Use the VM bridge address, never a wildcard.\n" +
+		"KEYLATCH_GATEWAY_LISTEN=" + listen + "\n"
+}
+
+var connectionNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// gatewayExecArgs builds the gateway command line. A non-loopback listen
+// address needs --allow-source (canonical CIDR, so hostcheck-style parsers
+// compare it exactly) unless allowAny is explicit.
+func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string) (string, error) {
+	host, _, _ := net.SplitHostPort(listen)
+	loopback := net.ParseIP(host).IsLoopback()
+	if allowAny && len(sources) > 0 {
+		return "", errors.New("--allow-any-source cannot be combined with --allow-source")
+	}
+	if !loopback && len(sources) == 0 && !allowAny {
+		return "", fmt.Errorf("listen address %q is not loopback: pass --allow-source <CIDR> (for example the VM network) or, to accept any caller that can reach it, --allow-any-source", listen)
+	}
+	args := []string{"gateway", "up"}
+	prefixes, err := gateway.ParseAllowSources(sources)
+	if err != nil {
+		return "", err
+	}
+	for _, p := range prefixes {
+		args = append(args, "--allow-source", p.String())
+	}
+	if githubMint != "" {
+		if !connectionNameRE.MatchString(githubMint) {
+			return "", fmt.Errorf("--github-mint %q: connection names use letters, digits, '.', '_' and '-'", githubMint)
+		}
+		args = append(args, "--github-mint", githubMint)
+	}
+	return strings.Join(args, " "), nil
 }
 
 func resolveGatewayBinary(flag string) (string, error) {
@@ -171,13 +204,19 @@ Use --with-key=host (or omit --with-key) on machines without a TPM2.`,
 }
 
 type gatewaySystemdFlags struct {
-	listen string
-	binary string
+	listen     string
+	binary     string
+	sources    []string
+	anySource  bool
+	githubMint string
 }
 
 func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.listen, "listen", "", "address:port the gateway binds, an IP literal such as the VM bridge address (required)")
 	cmd.Flags().StringVar(&f.binary, "binary", "", "absolute path of the keylatch binary (default: the running binary)")
+	cmd.Flags().StringArrayVar(&f.sources, "allow-source", nil, "CIDR callers must come from, repeatable; written to ExecStart as --allow-source <cidr> (required for a non-loopback --listen)")
+	cmd.Flags().BoolVar(&f.anySource, "allow-any-source", false, "accept a non-loopback --listen without --allow-source (any caller that can reach the address)")
+	cmd.Flags().StringVar(&f.githubMint, "github-mint", "", "github-app connection to serve POST /mint/github from (adds --github-mint to ExecStart)")
 	_ = cmd.MarkFlagRequired("listen")
 }
 
@@ -189,7 +228,11 @@ func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, erro
 	if err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	spec := gatewayUnitSpec{Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env)}
+	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint)
+	if err != nil {
+		return gatewayUnitSpec{}, err
+	}
+	spec := gatewayUnitSpec{ExecArgs: execArgs, Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env)}
 	for _, p := range []string{spec.Binary, spec.EnvFile, spec.CredentialFile} {
 		if err := validateUnitPath(p); err != nil {
 			return gatewayUnitSpec{}, err
