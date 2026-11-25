@@ -349,7 +349,10 @@ run_case "p9 M: env NODE_ENV=production npm start allowed"      Bash "env NODE_E
 run_case "p9 M: env -C /abs go test allowed"                    Bash "env -C /home/u/repo go test ./..."         0
 run_case "p9 M: env -C /abs with assignment allowed"            Bash "env -C /home/u/repo GOFLAGS=-race go test" 0
 run_case "p9 M: env --chdir=/abs make allowed"                  Bash "env --chdir=/home/u/repo make check"       0
-run_case "p9 M: env -i PATH=/usr/bin ls allowed"                Bash "env -i PATH=/usr/bin ls"                   0
+run_case "p9 M: env --chdir=/abs pnpm --dir allowed"            Bash "env --chdir=/home/u/repo pnpm --dir /home/u/repo test" 0
+run_case "p9 M: env -u FOO -C /abs git status allowed"          Bash "env -u FOO -C /home/u/repo git status"     0
+run_case "p9 M: env -C /abs keylatch get blocked"               Bash "env -C /home/u/repo keylatch get svc key"  2
+run_case "p9 M: env -i PATH=/usr/bin ls allowed"               Bash "env -i PATH=/usr/bin ls"                   0
 run_case "p9 M: env -u HOME -- ls allowed"                      Bash "env -u HOME -- ls"                         0
 run_case "p9 M: VAR=val cmd allowed"                            Bash "GOFLAGS=-count=1 go test ./..."            0
 run_case "p9 M: timeout wrapping env -C allowed"                Bash "timeout 60 env -C /home/u/repo make test"  0
