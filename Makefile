@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-hook test-security-suite test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
 
 ## build: compile all packages
 build:
@@ -55,6 +55,11 @@ test-hook:
 	bash contrib/agent-guards/copilot/block-keylatch-exfiltration.test.sh
 	bash contrib/agent-guards/cursor/block-keylatch-exfiltration.test.sh
 	bash contrib/agent-guards/windsurf/block-keylatch-exfiltration.test.sh
+
+## test-security-suite: run the security regression tests (memory-heavy; CI runs it, not `make ci`)
+test-security-suite:
+	bash scripts/ci/check-known-failing.sh
+	bash scripts/ci/security-suite.sh
 
 ## test-prop: run property-based tests in internal/vault
 test-prop:

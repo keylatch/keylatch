@@ -65,6 +65,24 @@ jobs:
       - name: sidecar canary scan
         run: go test ./internal/sidecar/... -run TestCanary -v -count=1
 
+  security-suite:
+    # Runs every test behind the securitysuite build tag. Some of them are
+    # known to fail, so the run reports its per-test results in the job
+    # summary without failing the job; the marker count below does block.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: known-failing markers do not grow
+        run: bash scripts/ci/check-known-failing.sh
+      - name: security suite
+        continue-on-error: true
+        run: bash scripts/ci/security-suite.sh
+
   docs-leak-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
