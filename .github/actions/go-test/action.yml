@@ -1,0 +1,37 @@
+name: go-test
+description: Run the Go test suite with race detection, coverage and the crypto and canary suites.
+
+inputs:
+  require-real-clients:
+    description: Set to "1" where the runner image ships git and gh, so the proxy tests that drive them must run.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: true
+    - name: Run tests with coverage
+      shell: bash
+      env:
+        KEYLATCH_BACKEND: file
+        KEYLATCH_REQUIRE_REAL_CLIENTS: ${{ inputs.require-real-clients }}
+      run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
+    - name: Upload coverage artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-${{ runner.os == 'Linux' && 'ubuntu' || runner.os == 'macOS' && 'macos' || 'windows' }}-latest
+        path: coverage.out
+        retention-days: 7
+    - name: go test crypto
+      shell: bash
+      run: go test -run TestCrypto -v ./internal/crypto/...
+    - name: go test canary
+      shell: bash
+      run: go test -run TestCanary -v ./internal/canary/...
+    - name: go test canary meta
+      shell: bash
+      run: go test -tags meta ./internal/canary/...
