@@ -400,7 +400,8 @@ func TestGitHubProxy_UnauthenticatedLearnsNothingAboutHosts(t *testing.T) {
 		require.NoError(t, err)
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		assert.Equal(t, 401, resp.StatusCode)
+		assert.Equal(t, 407, resp.StatusCode)
+		assert.Contains(t, resp.Header.Get("Proxy-Authenticate"), "Basic")
 		assert.JSONEq(t, `{"error":"unauthorized"}`, string(b))
 	}
 }
@@ -431,7 +432,7 @@ func TestGitHubProxy_SourceAllowlistRunsBeforeAuth(t *testing.T) {
 	}
 	h.srv.SourceAllowed = allow("127.0.0.0/8")
 	resp, _ := do("")
-	assert.Equal(t, 401, resp.StatusCode, "inside the CIDR the proxy token is still required")
+	assert.Equal(t, 407, resp.StatusCode, "inside the CIDR the proxy token is still required")
 }
 
 func TestGitHubProxy_ServeRefusals(t *testing.T) {

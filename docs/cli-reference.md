@@ -943,7 +943,10 @@ repository: `{"repository":"owner/name","permissions":{"contents":"write"}}`
 `metadata=read`). It needs `Authorization: Bearer <session token>` where the
 token carries the `github.mint` capability. The `administration` permission is
 refused regardless of policy; the connection's `mint.github_app` policy
-(allowed repositories, permission ceiling, `max_ttl`) still applies, and an
+(allowed repositories, permission ceiling, `max_ttl`) still applies; without a
+`permission_ceiling` the ceiling is the default permissions above, and a request
+above it is `403 mint_denied` (edit it with `keylatch gateway config
+set-mint-policy`). An
 audit log is required. The reply is `{"token","expires_at","repository","permissions"}`
 with `Cache-Control: no-store`. A token with `pull_requests=write` can merge a
 pull request, so branch protection on the repository remains the merge gate.

@@ -5,6 +5,7 @@ package mint
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -43,6 +44,27 @@ var (
 var levelRank = map[string]int{"read": 1, "write": 2, "admin": 3}
 
 var defaultCallers = []CallerKind{CallerService, CallerHost}
+
+// defaultCeiling applies when a policy sets no permission_ceiling: push to
+// branches and open or update pull requests, nothing administrative.
+var defaultCeiling = map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"}
+
+// EffectiveCeiling is the policy's permission ceiling, or the default ceiling
+// (contents:write, pull_requests:write, metadata:read) when it sets none.
+func EffectiveCeiling(p *config.GitHubAppMintPolicy) map[string]string {
+	if p != nil && len(p.PermissionCeiling) > 0 {
+		return maps.Clone(p.PermissionCeiling)
+	}
+	return maps.Clone(defaultCeiling)
+}
+
+// EffectiveCallers is the policy's caller kinds, or the default (service, host).
+func EffectiveCallers(p *config.GitHubAppMintPolicy) []string {
+	if p != nil && len(p.Callers) > 0 {
+		return slices.Clone(p.Callers)
+	}
+	return []string{string(CallerService), string(CallerHost)}
+}
 
 // Request is one GitHub App mint request.
 type Request struct {
@@ -115,7 +137,8 @@ func MaxLifetime(p *config.GitHubAppMintPolicy) time.Duration {
 
 // CheckGitHubApp applies, in order: the caller policy, the owner deny list
 // (which wins over every allow), the owner and repository allowlists, and
-// the permission ceiling. A nil policy denies.
+// the permission ceiling (the default ceiling when none is set). A nil policy
+// denies.
 func CheckGitHubApp(p *config.GitHubAppMintPolicy, caller CallerKind, req Request) error {
 	if caller == CallerAgent {
 		return fmt.Errorf("%w: agent sessions cannot mint", ErrDenied)
@@ -177,8 +200,9 @@ func checkScope(p *config.GitHubAppMintPolicy, req Request) error {
 	if len(req.Permissions) == 0 {
 		return fmt.Errorf("%w: at least one permission is required", ErrDenied)
 	}
+	ceilings := EffectiveCeiling(p)
 	for k, v := range req.Permissions {
-		ceiling, ok := p.PermissionCeiling[k]
+		ceiling, ok := ceilings[k]
 		if !ok {
 			return fmt.Errorf("%w: permission %q is above the ceiling (not granted)", ErrDenied, k)
 		}

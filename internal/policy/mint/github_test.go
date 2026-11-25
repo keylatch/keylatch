@@ -61,9 +61,23 @@ func TestMintEmptyAllowlistsDenyEverything(t *testing.T) {
 	p.AllowOwners, p.AllowRepos = nil, nil
 	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
 
-	p = basePolicy()
+}
+
+func TestMintDefaultCeilingWhenUnset(t *testing.T) {
+	p := basePolicy()
 	p.PermissionCeiling = nil
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
+	assert.Equal(t, map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"}, mint.EffectiveCeiling(p))
+	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"})))
+	for _, perms := range []map[string]string{
+		{"contents": "admin"}, {"metadata": "write"}, {"workflows": "write"}, {"actions": "read"},
+		{"administration": "read"}, {"organization_administration": "read"},
+	} {
+		assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", perms)), mint.ErrDenied, "%v", perms)
+	}
+	// An explicit ceiling replaces the default; it does not add to it.
+	p.PermissionCeiling = map[string]string{"contents": "read"}
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"pull_requests": "write"})), mint.ErrDenied)
+	assert.Equal(t, []string{"service", "host"}, mint.EffectiveCallers(p))
 }
 
 func TestMintNilPolicyDenies(t *testing.T) {

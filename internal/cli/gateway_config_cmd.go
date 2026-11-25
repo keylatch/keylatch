@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -22,7 +24,7 @@ func newGatewayConfigCmd() *cobra.Command {
 connections.<name>.proxy.github (one entry per proxy listener). 'gateway up' flags
 override them for ad-hoc runs. Changing a setting needs a service restart, not a reinstall.`,
 	}
-	cmd.AddCommand(newGatewayConfigGetCmd(), newGatewayConfigSetCmd(), newGatewayConfigAddProxyCmd(), newGatewayConfigRemoveProxyCmd())
+	cmd.AddCommand(newGatewayConfigGetCmd(), newGatewayConfigSetCmd(), newGatewayConfigAddProxyCmd(), newGatewayConfigRemoveProxyCmd(), newGatewayConfigSetMintPolicyCmd())
 	return cmd
 }
 
@@ -49,6 +51,11 @@ func newGatewayConfigGetCmd() *cobra.Command {
 				fmt.Fprintln(w, "allow_any_source: true")
 			}
 			fmt.Fprintf(w, "github_mint:  %s\n", orNone(info.GitHubMint))
+			if mp := info.GitHubMintPolicy; mp != nil {
+				fmt.Fprintf(w, "mint policy (%s): allow_repos %s; allow_owners %s; deny_owners %s; ceiling %s; callers %s; max_ttl %s\n", info.GitHubMint,
+					orNone(strings.Join(mp.AllowRepos, ",")), orNone(strings.Join(mp.AllowOwners, ",")), orNone(strings.Join(mp.DenyOwners, ",")),
+					formatCeiling(mp.PermissionCeiling), strings.Join(mp.Callers, ","), time.Duration(mp.MaxTTL)*time.Second)
+			}
 			for _, p := range info.Proxies {
 				fmt.Fprintf(w, "proxy %s: connection %s, host %s\n", p.Listen, p.Connection, p.Host)
 				for _, in := range p.Installations {
@@ -332,5 +339,121 @@ func newGatewayConfigRemoveProxyCmd() *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", "", "address:port of the listener (required)")
 	cmd.Flags().StringVar(&owner, "owner", "", "remove only this account's installation (default: the whole listener)")
 	_ = cmd.MarkFlagRequired("listen")
+	return cmd
+}
+
+func formatCeiling(c map[string]string) string {
+	parts := make([]string, 0, len(c))
+	for _, k := range slices.Sorted(maps.Keys(c)) {
+		parts = append(parts, k+":"+c[k])
+	}
+	return strings.Join(parts, ",")
+}
+
+func newGatewayConfigSetMintPolicyCmd() *cobra.Command {
+	var (
+		connection, maxTTL                                    string
+		allowRepos, allowOwners, denyOwners, ceiling, callers []string
+	)
+	cmd := &cobra.Command{
+		Use:   "set-mint-policy",
+		Short: "Edit the mint.github_app policy of a connection (only the flags given change)",
+		Long: `Edits connections.<connection>.mint.github_app, the policy POST /mint/github and
+'keylatch mint' apply: which repositories may be minted (--allow-repo owner/name; --allow-owner,
+--deny-owner by account), the permission ceiling (--permission-ceiling name=read|write|admin;
+default contents:write, pull_requests:write, metadata:read when none is set), the caller kinds
+(service, host, human; default service and host) and the longest token lifetime (--max-ttl,
+1s to 1h). Each list flag replaces its list; an empty value clears it. The policy is created
+when the connection has none. The 'administration' permission is never minted by the gateway.`,
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			if !connectionNameRE.MatchString(connection) {
+				return NewUsageError("gateway config set-mint-policy: --connection %q is not a connection name", connection)
+			}
+			cfg, path, err := operatorConfigForEdit()
+			if err != nil {
+				return NewPolicyDeny("gateway config: the operator config cannot be read: %v", err)
+			}
+			if cfg.Connections == nil {
+				cfg.Connections = map[string]config.ConnectionPolicy{}
+			}
+			cp := cfg.Connections[connection]
+			if cp.Mint == nil {
+				cp.Mint = &config.MintPolicy{}
+			}
+			pol := cp.Mint.GitHubApp
+			if pol == nil {
+				pol = &config.GitHubAppMintPolicy{}
+			}
+			next := *pol
+			list := func(in []string) []string {
+				var out []string
+				for _, v := range in {
+					if v != "" {
+						out = append(out, v)
+					}
+				}
+				return out
+			}
+			if c.Flags().Changed("allow-repo") {
+				next.AllowRepos = list(allowRepos)
+			}
+			if c.Flags().Changed("allow-owner") {
+				next.AllowOwners = list(allowOwners)
+			}
+			if c.Flags().Changed("deny-owner") {
+				next.DenyOwners = list(denyOwners)
+			}
+			if c.Flags().Changed("caller") {
+				next.Callers = list(callers)
+			}
+			for _, o := range append(slices.Clone(next.AllowOwners), next.DenyOwners...) {
+				if _, _, err := mint.ParseRepository(o + "/x"); err != nil {
+					return NewUsageError("gateway config set-mint-policy: owner %q is not an account login", o)
+				}
+			}
+			if c.Flags().Changed("permission-ceiling") {
+				next.PermissionCeiling = nil
+				for _, v := range list(ceiling) {
+					k, lvl, err := mint.ParsePermission(v)
+					if err != nil {
+						return NewUsageError("gateway config set-mint-policy: --permission-ceiling: %v", err)
+					}
+					if next.PermissionCeiling == nil {
+						next.PermissionCeiling = map[string]string{}
+					}
+					next.PermissionCeiling[k] = lvl
+				}
+			}
+			if c.Flags().Changed("max-ttl") {
+				next.MaxTTL = 0
+				if maxTTL != "" {
+					d, err := time.ParseDuration(maxTTL)
+					if err != nil || d < time.Second || d > mint.MaxTTL {
+						return NewUsageError("gateway config set-mint-policy: --max-ttl %q must be a duration from 1s to 1h", maxTTL)
+					}
+					next.MaxTTL = int(d / time.Second)
+				}
+			}
+			if err := mint.Validate(&next); err != nil {
+				return NewUsageError("gateway config set-mint-policy: %v", err)
+			}
+			cp.Mint.GitHubApp = &next
+			cfg.Connections[connection] = cp
+			if err := config.Save(path, cfg); err != nil {
+				return fmt.Errorf("gateway config set-mint-policy: %w", err)
+			}
+			fmt.Fprintln(c.OutOrStdout(), "saved; "+restartHint)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&connection, "connection", "", "github-app connection whose policy to edit (required)")
+	cmd.Flags().StringArrayVar(&allowRepos, "allow-repo", nil, "owner/name that may be minted, repeatable; replaces the list (an empty value clears it)")
+	cmd.Flags().StringArrayVar(&allowOwners, "allow-owner", nil, "account whose repositories may all be minted, repeatable; replaces the list")
+	cmd.Flags().StringArrayVar(&denyOwners, "deny-owner", nil, "account that may never be minted, repeatable; replaces the list")
+	cmd.Flags().StringArrayVar(&ceiling, "permission-ceiling", nil, "<name>=<read|write|admin>, repeatable; replaces the ceiling (an empty value restores the default)")
+	cmd.Flags().StringArrayVar(&callers, "caller", nil, "caller kind allowed to mint (service, host, human), repeatable; replaces the list")
+	cmd.Flags().StringVar(&maxTTL, "max-ttl", "", "longest token lifetime, 1s to 1h, for example 30m (empty restores 1h)")
+	_ = cmd.MarkFlagRequired("connection")
 	return cmd
 }
