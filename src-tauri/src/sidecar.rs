@@ -605,8 +605,19 @@ mod tests {
     #[test]
     #[ignore = "requires the real Go sidecar produced by the native CI build"]
     fn bundled_go_sidecar_bootstraps_and_rejects_old_ipc_after_restart() {
+        // Cargo's build-dir layout nests test binaries at varying depths, so find
+        // the release directory that `cargo tauri build` copied the sidecar into.
         let test_binary = std::env::current_exe().unwrap();
-        let release_dir = test_binary.parent().unwrap().parent().unwrap();
+        let sidecar_name = if cfg!(windows) {
+            "keylatchd.exe"
+        } else {
+            "keylatchd"
+        };
+        let release_dir = test_binary
+            .ancestors()
+            .skip(1)
+            .find(|dir| dir.join(sidecar_name).is_file())
+            .expect("no keylatchd sidecar above the test binary; run `cargo tauri build` first");
         let binary = crate::bundled::sidecar(&release_dir.join("keylatch-app")).unwrap();
         #[cfg(unix)]
         let root = tempfile::Builder::new()
