@@ -22,6 +22,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var backupStdinIsTTY = stdinIsTTY
+
 // newBackupCmd returns the `keylatch backup` subcommand.
 //
 // backup is value-bearing (it reads credentials) and is blocked in
@@ -74,7 +76,7 @@ parameters, so a backup decrypts by hand (see docs/cli-reference.md).`,
 
 			// The passphrase comes from the terminal only: a file or pipe could
 			// be filled by anything that can run this command.
-			if !stdinIsTTY() {
+			if !backupStdinIsTTY() {
 				return NewSecurityBlock("backup: the passphrase is read from the terminal only")
 			}
 			passphrase, err := promptHidden("Enter backup passphrase")

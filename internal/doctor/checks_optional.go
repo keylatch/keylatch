@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -359,8 +358,7 @@ func checkGatewayRunning(env llmcontext.Lookup) Check {
 				Tags:    []string{"gateway"},
 			}
 		}
-		proc, err := os.FindProcess(pid)
-		if err != nil || proc.Signal(syscall.Signal(0)) != nil {
+		if !processAlive(pid) {
 			// Stale PID file — process is not running. This is a genuine
 			// leftover-state problem (not just "the optional feature is
 			// off"), so it still warns. Name/Tags fixed to match every other

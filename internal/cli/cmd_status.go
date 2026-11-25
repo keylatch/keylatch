@@ -6,12 +6,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/exitcode"
+	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
@@ -127,13 +127,7 @@ func detectGatewayStatus(env llmcontext.Lookup) gatewayStatusInfo {
 	if err != nil {
 		return gatewayStatusInfo{Running: false}
 	}
-	// Check if process is alive.
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return gatewayStatusInfo{Running: false}
-	}
-	// On Unix, FindProcess always succeeds — send signal 0 to check existence.
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
+	if _, running := gateway.IsRunning(pidPath); !running {
 		return gatewayStatusInfo{Running: false}
 	}
 	return gatewayStatusInfo{Running: true, PID: pid, Address: ":7878"}

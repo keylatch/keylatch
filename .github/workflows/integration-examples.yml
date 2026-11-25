@@ -4,6 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+    # The examples, and the Go code that builds the binary they drive.
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/integration/examples/**'
+      - '!**/*.md'
+      - '!web/**'
+      - '!src-tauri/**'
+      - '!services/**'
+      - '!Formula/**'
+      - '!mise.toml'
 
 # This workflow verifies that every integration example script in
 # docs/integration/examples/ is syntactically valid and exits 0 in dry-run / mock mode.
@@ -43,7 +54,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "26"
 
       - name: Build keylatch binary
         run: go build -o /tmp/keylatch ./cmd/keylatch
