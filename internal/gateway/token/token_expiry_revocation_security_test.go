@@ -37,17 +37,23 @@ func TestSecurityRegression_VerifyIgnoresStoredApprovalExpiry(t *testing.T) {
 	}
 }
 
-// Revoking a token revokes every descendant, not only its direct children.
+// Revoking a token must invalidate every descendant, even through an already-revoked middle token.
 func TestSecurityRegression_RevokeDescendants(t *testing.T) {
 	d := filepath.Join(t.TempDir(), "tokens.json")
 	key := make([]byte, 32)
 	spec := TokenSpec{Actor: "audit", Capabilities: []string{"test.write"}, TTL: time.Hour, StorePath: d, SigningKey: key}
+	req := httptest.NewRequest("GET", "/", nil)
+
 	_, parent, e := Mint(spec)
 	if e != nil {
 		t.Fatal(e)
 	}
+	otherJWT, _, e := Mint(spec)
+	if e != nil {
+		t.Fatal(e)
+	}
 	spec.Parent = parent.ID
-	_, child, e := Mint(spec)
+	childJWT, child, e := Mint(spec)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -59,7 +65,55 @@ func TestSecurityRegression_RevokeDescendants(t *testing.T) {
 	if e = Revoke(parent.ID, d, key); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = Verify(jwt, httptest.NewRequest("GET", "/", nil), key, d); e == nil {
+	if _, e = Verify(childJWT, req, key, d); e == nil {
+		t.Fatal("child token remains valid after root revocation")
+	}
+	if _, e = Verify(jwt, req, key, d); e == nil {
 		t.Fatal("grandchild token remains valid after root revocation")
+	}
+	if _, e = Verify(otherJWT, req, key, d); e != nil {
+		t.Fatalf("unrelated token rejected after revocation: %v", e)
+	}
+}
+
+// A revoked middle token must not stop the cascade from reaching its own children.
+func TestSecurityRegression_RevokeReachesPastRevokedMiddle(t *testing.T) {
+	d := filepath.Join(t.TempDir(), "tokens.json")
+	key := make([]byte, 32)
+	spec := TokenSpec{Actor: "audit", Capabilities: []string{"test.write"}, TTL: time.Hour, StorePath: d, SigningKey: key}
+
+	_, root, e := Mint(spec)
+	if e != nil {
+		t.Fatal(e)
+	}
+	spec.Parent = root.ID
+	_, middle, e := Mint(spec)
+	if e != nil {
+		t.Fatal(e)
+	}
+	spec.Parent = middle.ID
+	jwt, _, e := Mint(spec)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Only the middle record is marked, as a store written before cascading revocation would hold it.
+	tokens, e := readTokens(d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := range tokens {
+		if tokens[i].ID == middle.ID {
+			tokens[i].Revoked = true
+			sealRecord(key, &tokens[i])
+		}
+	}
+	if e = writeTokens(d, tokens); e != nil {
+		t.Fatal(e)
+	}
+	if e = Revoke(root.ID, d, key); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = Verify(jwt, httptest.NewRequest("GET", "/", nil), key, d); e == nil {
+		t.Fatal("grandchild token remains valid")
 	}
 }

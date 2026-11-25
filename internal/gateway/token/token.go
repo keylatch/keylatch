@@ -365,8 +365,20 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 	}
 
 	t := tokenFromClaims(claims, rec, storePath)
-	if time.Now().UTC().After(t.ExpiresAt) {
+	now := time.Now().UTC()
+	if now.After(t.ExpiresAt) {
 		return nil, ErrTokenExpired
+	}
+
+	// Checked before the use count so an expired approval burns no use.
+	if rec.ApprovalExpiry != nil && !now.Before(*rec.ApprovalExpiry) {
+		return nil, ErrTokenExpired
+	}
+	if claims.ApprovalExpiry != "" {
+		exp, perr := time.Parse(time.RFC3339, claims.ApprovalExpiry)
+		if perr != nil || !now.Before(exp) {
+			return nil, ErrTokenExpired
+		}
 	}
 
 	// FD nonce verification.

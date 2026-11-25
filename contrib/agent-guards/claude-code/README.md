@@ -25,6 +25,7 @@ Hook version is tracked via the comment `# keylatch-hook-version: N` at the top 
 | any command naming `~`, `~user`, `$HOME`, `${HOME}`, `$USERPROFILE`, `%USERPROFILE%` or the absolute home followed by a protected path | Bash | `cat`, `tar`, `dd`, `diff`, redirections, `python3 -c 'open(...)'`, pipelines and command substitutions, and every command not listed under Allowed patterns |
 | a protected path (or a glob or directory that reaches one) | Read, Grep, Glob, `read_many_files`, `search_file_content`, `view` | File and search tools are checked on their `path`, `paths`, `file_path` and path-like `pattern` arguments |
 | `mise set` with only flags | Bash | Prints the resolved environment |
+| `env` / `printenv` printing the environment | Bash | Bare `env`, `env -0`, `env -C /abs` with no command, `printenv`, and any of them behind `sh -c`/`eval`/wrappers blocked |
 
 Protected paths are `~/.keylatch`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.local/share/atuin`, `~/.kube`, `~/.config/gcloud`, `~/.docker/config.json`, `~/.netrc`, `~/.config/gh/hosts.yml`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.azure` and `~/.terraform.d/credentials.tfrc.json`.
 
@@ -34,6 +35,7 @@ Before matching, the command text is normalised: quotes and backslashes are remo
 
 - `keylatch get --masked` — returns masked values only
 - `keylatch run <conn> -- <safe-cmd>` — runs whitelisted commands
+- `env [-C /abs/dir | --chdir=/abs/dir] [-i] [-u NAME] [NAME=value ...] <cmd>` — env only runs `<cmd>`, which is checked like any other command (`env -C /x printenv` stays blocked)
 - `keylatch list`, `keylatch describe`, `keylatch validate` — safe metadata commands
 - Commands that use a protected file without printing it, when they are the whole command (no pipe, `;`, `&&`, `||`, `$(...)` or backticks): `ls`, `stat`, `ssh`/`scp` with the key as the value of `-i`, `-F` or `-o IdentityFile`, `ssh-add`, `ssh-keygen`, `git clone|fetch|pull|push|ls-remote|init|remote|submodule|lfs`, `chmod`, `chown`, `mkdir`, `touch`
 - `kubectl`, `helm` and `gh` naming a protected file only as the value of `--kubeconfig` or `--config`, or in a `KUBECONFIG=` assignment (`--raw` and `--flatten` are still denied)
