@@ -79,6 +79,8 @@ func (s SessionEnv) Apply(base []string, cleanEnv bool, extra []string) []string
 		}
 		out = runtime.FilterChildEnv(kept, keep...)
 	}
+	// Manager auth is dropped even when extra asks to keep it: it opens the whole vault.
+	out = runtime.StripManagerAuth(out)
 	for _, a := range s.Set {
 		out = appendOrReplace(out, a.Name, a.Value)
 	}

@@ -94,6 +94,37 @@ func TestGatewaySDKDriver_SessionTokenPresent(t *testing.T) {
 		"KEYLATCH_GATEWAY_TOKEN must be a JWT (header.payload.sig)")
 }
 
+// TestGatewaySDKDriver_ManagerAuthAbsent verifies the child never inherits the
+// password manager's own session, in the default or the clean environment.
+func TestGatewaySDKDriver_ManagerAuthAbsent(t *testing.T) {
+	t.Setenv("BW_SESSION", "synthetic-manager-session")
+	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "synthetic-service-account")
+	t.Setenv("OP_SESSION_synthetic", "synthetic-cli-session")
+
+	for _, clean := range []bool{false, true} {
+		d := newSDKDriverForTest(t)
+
+		var outBuf strings.Builder
+		req := runner.ExecRequest{
+			ConnectionSlug: "openai",
+			Capability:     "chat_completion",
+			Command:        []string{"sh", "-c", "printenv"},
+			Stdout:         &outBuf,
+			Stderr:         &strings.Builder{},
+			CleanEnv:       clean,
+			ExtraEnvVars:   []string{"BW_SESSION", "OP_SERVICE_ACCOUNT_TOKEN", "OP_SESSION_synthetic"},
+		}
+
+		_, err := d.Run(context.Background(), req, sdkTmpl())
+		require.NoError(t, err)
+
+		for _, name := range req.ExtraEnvVars {
+			assert.NotContains(t, outBuf.String(), name+"=",
+				"manager authentication must not reach the child (clean env: %v)", clean)
+		}
+	}
+}
+
 // TestGatewaySDKDriver_ProviderAPIKeyAbsent verifies the provider API key is
 // NOT present in the child environment (same security invariant as direct injection).
 func TestGatewaySDKDriver_ProviderAPIKeyAbsent(t *testing.T) {

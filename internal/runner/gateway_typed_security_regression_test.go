@@ -11,10 +11,18 @@ import (
 func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) {
 	t.Setenv("BW_SESSION", "synthetic-manager-session")
 	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "synthetic-service-account")
-	env := gatewayTypedChildEnv(registry.ConnectionTemplate{}, "http://127.0.0.1:7878", "synthetic-scoped-token", false, nil)
-	for _, v := range env {
-		if strings.HasPrefix(v, "BW_SESSION=") || strings.HasPrefix(v, "OP_SERVICE_ACCOUNT_TOKEN=") {
-			t.Errorf("manager authentication inherited: %s", strings.SplitN(v, "=", 2)[0])
+	t.Setenv("OP_SESSION_synthetic", "synthetic-cli-session")
+	preserve := []string{"BW_SESSION", "OP_SERVICE_ACCOUNT_TOKEN", "OP_SESSION_synthetic"}
+	envs := map[string][]string{
+		"default": gatewayTypedChildEnv(registry.ConnectionTemplate{}, "http://127.0.0.1:7878", "synthetic-scoped-token", false, nil),
+		"clean":   gatewayTypedChildEnv(registry.ConnectionTemplate{}, "http://127.0.0.1:7878", "synthetic-scoped-token", true, preserve),
+	}
+	for mode, env := range envs {
+		for _, v := range env {
+			name := strings.SplitN(v, "=", 2)[0]
+			if name == "BW_SESSION" || name == "OP_SERVICE_ACCOUNT_TOKEN" || name == "OP_SESSION_synthetic" {
+				t.Errorf("%s env: manager authentication inherited: %s", mode, name)
+			}
 		}
 	}
 }

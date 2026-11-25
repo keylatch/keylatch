@@ -455,3 +455,25 @@ func TestFilter_NonCleanEnv_EmitsOneEvent(t *testing.T) {
 	require.Len(t, em.events, 1, "non-CleanEnv Filter must emit exactly one audit event")
 	assert.Equal(t, audit.ActionChildEnvFilter, em.events[0].Action, "the single event must be child_env.filter")
 }
+
+func TestStripManagerAuth(t *testing.T) {
+	env := []string{
+		"PATH=/usr/bin",
+		"BW_SESSION=a",
+		"BW_CLIENTSECRET=b",
+		"BWS_ACCESS_TOKEN=c",
+		"OP_SERVICE_ACCOUNT_TOKEN=d",
+		"OP_CONNECT_TOKEN=e",
+		"OP_SESSION_my=f",
+		"OP_CONNECT_HOST=http://127.0.0.1:8080",
+		"BW_SESSIONS=unrelated",
+	}
+	original := append([]string(nil), env...)
+
+	assert.Equal(t, []string{
+		"PATH=/usr/bin",
+		"OP_CONNECT_HOST=http://127.0.0.1:8080",
+		"BW_SESSIONS=unrelated",
+	}, runtime.StripManagerAuth(env))
+	assert.Equal(t, original, env, "StripManagerAuth must not modify the input slice")
+}

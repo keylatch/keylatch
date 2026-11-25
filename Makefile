@@ -1,6 +1,6 @@
 # Keylatch Makefile
 
-.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-containment test-hook test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
+.PHONY: build test lint security-grep check test-e2e-op test-e2e-bw test-core-packages test-canary test-canary-meta test-containment test-hook test-security-suite test-prop test-bench test-ui test-team test-team-e2e ci test-integration-examples docker-build govulncheck
 
 ## build: compile all packages
 build:
@@ -62,6 +62,11 @@ test-hook:
 	bash contrib/agent-guards/install-scripts.test.sh
 	KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/harness-contract.test.sh
 	KEYLATCH_TEST_NO_JQ=1 bash contrib/agent-guards/deny-corpus.test.sh
+
+## test-security-suite: run the security regression tests (memory-heavy; CI runs it, not `make ci`)
+test-security-suite:
+	bash scripts/ci/check-known-failing.sh
+	bash scripts/ci/security-suite.sh
 
 ## test-prop: run property-based tests in internal/vault
 test-prop:
