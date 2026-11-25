@@ -31,6 +31,12 @@ func ParseAllowSources(cidrs []string) ([]netip.Prefix, error) {
 	return out, nil
 }
 
+// SourceAllowed reports whether the TCP peer in remoteAddr is inside one of
+// the prefixes; the proxy uses the same check as the gateway.
+func SourceAllowed(prefixes []netip.Prefix, remoteAddr string) bool {
+	return sourceAllowed(prefixes, remoteAddr)
+}
+
 // sourceAllowed reports whether the TCP peer in remoteAddr is inside one of
 // the prefixes. Only the connection's own address is consulted; forwarding
 // headers are caller-controlled and never read.

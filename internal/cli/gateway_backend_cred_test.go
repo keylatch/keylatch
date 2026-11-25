@@ -67,9 +67,19 @@ func TestExportBackendCredentials_Refusals(t *testing.T) {
 		assert.Empty(t, os.Getenv("BW_SESSION"))
 	}
 	t.Setenv("CREDENTIALS_DIRECTORY", "")
+	// Without a credentials directory macOS falls back to the Keychain; keep the
+	// test off the real Keychain by hiding the security tool.
+	prev := resolveBinFunc
+	resolveBinFunc = func(string) string { return "" }
+	t.Cleanup(func() { resolveBinFunc = prev })
 	err := exportBackendCredentials([]backendCredential{{"x", "BW_SESSION"}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "CREDENTIALS_DIRECTORY")
+	if runtime.GOOS == "darwin" {
+		assert.Contains(t, err.Error(), "security tool was not found")
+	} else {
+		assert.Contains(t, err.Error(), "CREDENTIALS_DIRECTORY")
+	}
+	assert.Empty(t, os.Getenv("BW_SESSION"))
 }
 
 func TestBackendVerdict_NeverContainsToken(t *testing.T) {

@@ -112,6 +112,10 @@ type ServerOptions struct {
 
 	// GitHubMint, when set, serves POST /mint/github.
 	GitHubMint *GitHubMintOptions
+
+	// Info, when set, is served as JSON at GET /info to callers holding any
+	// valid session token. It must hold no secret.
+	Info any
 }
 
 // Server is the local gateway HTTP server.
@@ -360,6 +364,9 @@ func New(opts ServerOptions) (*Server, error) {
 	mux.Handle("/", proxy)
 	if opts.GitHubMint != nil {
 		mux.HandleFunc("POST "+MintGitHubPath, s.mintGitHubHandler)
+	}
+	if opts.Info != nil {
+		mux.HandleFunc("GET "+InfoPath, s.infoHandler)
 	}
 
 	s.httpSrv = &http.Server{

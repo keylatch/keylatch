@@ -185,12 +185,54 @@ type accessTokenReply struct {
 // with DELETE /installation/token and ErrScopeMismatch is returned. Nothing
 // is cached: every call mints a fresh token.
 func (s *GitHubAppInstallationStrategy) MintScoped(ctx context.Context, scope GitHubAppScope, maxLifetime time.Duration) (GitHubAppToken, error) {
-	owner, name, ok := strings.Cut(scope.Repository, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return GitHubAppToken{}, fmt.Errorf("github_app: repository %q is not owner/name", scope.Repository)
+	tok, err := s.MintScopedRepos(ctx, GitHubAppReposScope{Repositories: []string{scope.Repository}, Permissions: scope.Permissions}, maxLifetime)
+	if err != nil {
+		return GitHubAppToken{}, err
+	}
+	return GitHubAppToken{Token: tok.Token, ExpiresAt: tok.ExpiresAt, Repository: tok.Repositories[0], Permissions: tok.Permissions}, nil
+}
+
+// GitHubAppReposScope is the scope of one installation token covering several
+// repositories ("owner/name") of a single owner.
+type GitHubAppReposScope struct {
+	Repositories []string
+	Permissions  map[string]string
+}
+
+// GitHubAppReposToken is a multi-repository installation token whose scope was
+// verified against the request.
+type GitHubAppReposToken struct {
+	Token        []byte
+	ExpiresAt    time.Time
+	Repositories []string
+	Permissions  map[string]string
+}
+
+// Zero overwrites the token bytes.
+func (t *GitHubAppReposToken) Zero() { clear(t.Token) }
+
+// MintScopedRepos is MintScoped for one or more repositories that all belong
+// to the installation's owner. The reply must name exactly those repositories
+// and permissions, otherwise the token is revoked.
+func (s *GitHubAppInstallationStrategy) MintScopedRepos(ctx context.Context, scope GitHubAppReposScope, maxLifetime time.Duration) (GitHubAppReposToken, error) {
+	if len(scope.Repositories) == 0 {
+		return GitHubAppReposToken{}, errors.New("github_app: at least one repository is required")
+	}
+	var names []string
+	wantOwner := ""
+	for _, repo := range scope.Repositories {
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+			return GitHubAppReposToken{}, fmt.Errorf("github_app: repository %q is not owner/name", repo)
+		}
+		if wantOwner != "" && !strings.EqualFold(owner, wantOwner) {
+			return GitHubAppReposToken{}, errors.New("github_app: all repositories of one token must share an owner")
+		}
+		wantOwner = owner
+		names = append(names, name)
 	}
 	if len(scope.Permissions) == 0 {
-		return GitHubAppToken{}, errors.New("github_app: at least one permission is required")
+		return GitHubAppReposToken{}, errors.New("github_app: at least one permission is required")
 	}
 	if maxLifetime <= 0 || maxLifetime > MaxGitHubAppTokenLifetime {
 		maxLifetime = MaxGitHubAppTokenLifetime
@@ -199,26 +241,26 @@ func (s *GitHubAppInstallationStrategy) MintScoped(ctx context.Context, scope Gi
 	reqBody, err := json.Marshal(struct {
 		Repositories []string          `json:"repositories"`
 		Permissions  map[string]string `json:"permissions"`
-	}{[]string{name}, scope.Permissions})
+	}{names, scope.Permissions})
 	if err != nil {
-		return GitHubAppToken{}, fmt.Errorf("github_app: encode request: %w", err)
+		return GitHubAppReposToken{}, fmt.Errorf("github_app: encode request: %w", err)
 	}
 
 	status, body, err := s.postAccessToken(ctx, reqBody)
 	if err != nil {
-		return GitHubAppToken{}, err
+		return GitHubAppReposToken{}, err
 	}
 	defer clear(body)
 	if status != http.StatusCreated && status != http.StatusOK {
-		return GitHubAppToken{}, fmt.Errorf("github_app: GitHub refused the token request (HTTP %d)", status)
+		return GitHubAppReposToken{}, fmt.Errorf("github_app: GitHub refused the token request (HTTP %d)", status)
 	}
 
 	var reply accessTokenReply
 	if err := json.Unmarshal(body, &reply); err != nil {
-		return GitHubAppToken{}, errors.New("github_app: GitHub reply is not valid JSON")
+		return GitHubAppReposToken{}, errors.New("github_app: GitHub reply is not valid JSON")
 	}
 	if reply.Token == "" {
-		return GitHubAppToken{}, errors.New("github_app: GitHub reply has no token")
+		return GitHubAppReposToken{}, errors.New("github_app: GitHub reply has no token")
 	}
 	token := []byte(reply.Token)
 	reply.Token = ""
@@ -228,25 +270,35 @@ func (s *GitHubAppInstallationStrategy) MintScoped(ctx context.Context, scope Gi
 		rerr := s.revoke(ctx, token)
 		clear(token)
 		if rerr != nil {
-			return GitHubAppToken{}, fmt.Errorf("%w: %v; revoking it failed: %v", ErrScopeMismatch, verr, rerr)
+			return GitHubAppReposToken{}, fmt.Errorf("%w: %v; revoking it failed: %v", ErrScopeMismatch, verr, rerr)
 		}
-		return GitHubAppToken{}, fmt.Errorf("%w: %v; the token was revoked", ErrScopeMismatch, verr)
+		return GitHubAppReposToken{}, fmt.Errorf("%w: %v; the token was revoked", ErrScopeMismatch, verr)
 	}
 
-	return GitHubAppToken{
-		Token:       token,
-		ExpiresAt:   expiresAt,
-		Repository:  reply.Repositories[0].FullName,
-		Permissions: maps.Clone(reply.Permissions),
-	}, nil
+	repos := make([]string, 0, len(reply.Repositories))
+	for _, r := range reply.Repositories {
+		repos = append(repos, r.FullName)
+	}
+	return GitHubAppReposToken{Token: token, ExpiresAt: expiresAt, Repositories: repos, Permissions: maps.Clone(reply.Permissions)}, nil
 }
 
-func (s *GitHubAppInstallationStrategy) verifyReply(scope GitHubAppScope, reply accessTokenReply, maxLifetime time.Duration) (time.Time, error) {
-	if len(reply.Repositories) != 1 {
-		return time.Time{}, fmt.Errorf("reply covers %d repositories, want 1", len(reply.Repositories))
+func (s *GitHubAppInstallationStrategy) verifyReply(scope GitHubAppReposScope, reply accessTokenReply, maxLifetime time.Duration) (time.Time, error) {
+	if len(reply.Repositories) != len(scope.Repositories) {
+		return time.Time{}, fmt.Errorf("reply covers %d repositories, want %d", len(reply.Repositories), len(scope.Repositories))
 	}
-	if !strings.EqualFold(reply.Repositories[0].FullName, scope.Repository) {
-		return time.Time{}, fmt.Errorf("reply repository %q differs from %q", reply.Repositories[0].FullName, scope.Repository)
+	want := make(map[string]bool, len(scope.Repositories))
+	for _, r := range scope.Repositories {
+		want[strings.ToLower(r)] = true
+	}
+	for _, r := range reply.Repositories {
+		k := strings.ToLower(r.FullName)
+		if !want[k] {
+			return time.Time{}, fmt.Errorf("reply repository %q was not requested", r.FullName)
+		}
+		delete(want, k)
+	}
+	if len(want) != 0 {
+		return time.Time{}, errors.New("reply does not cover every requested repository")
 	}
 	if !maps.Equal(reply.Permissions, scope.Permissions) {
 		return time.Time{}, errors.New("reply permissions differ from the requested permissions")
