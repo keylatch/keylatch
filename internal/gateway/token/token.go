@@ -335,8 +335,20 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 	}
 
 	// Check expiry (belt-and-suspenders beyond JWT exp).
-	if time.Now().UTC().After(t.ExpiresAt) {
+	now := time.Now().UTC()
+	if now.After(t.ExpiresAt) {
 		return nil, ErrTokenExpired
+	}
+
+	// Checked before the use count so an expired approval burns no use.
+	if t.ApprovalExpiry != nil && !now.Before(*t.ApprovalExpiry) {
+		return nil, ErrTokenExpired
+	}
+	if claims.ApprovalExpiry != "" {
+		exp, perr := time.Parse(time.RFC3339, claims.ApprovalExpiry)
+		if perr != nil || !now.Before(exp) {
+			return nil, ErrTokenExpired
+		}
 	}
 
 	// FD nonce verification.
@@ -365,7 +377,7 @@ func Verify(jwtStr string, r *http.Request, signingKey []byte, storePath string)
 	return t, nil
 }
 
-// Revoke marks the token and its children as revoked.
+// Revoke marks the token and all of its descendants as revoked.
 func Revoke(id string, storePath string) error {
 	storeMu.Lock()
 	defer storeMu.Unlock()
@@ -387,11 +399,28 @@ func Revoke(id string, storePath string) error {
 		if !found {
 			return ErrTokenNotFound
 		}
-		// Cascade to children.
+		children := make(map[string][]int)
 		for i := range tokens {
-			if tokens[i].Parent == id && !tokens[i].Revoked {
-				tokens[i].Revoked = true
-				tokens[i].RevokedAt = &now
+			if tokens[i].Parent != "" {
+				children[tokens[i].Parent] = append(children[tokens[i].Parent], i)
+			}
+		}
+		// The visited set guards against parent cycles in a corrupted store.
+		visited := map[string]bool{id: true}
+		queue := []string{id}
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			for _, i := range children[cur] {
+				if visited[tokens[i].ID] {
+					continue
+				}
+				visited[tokens[i].ID] = true
+				if !tokens[i].Revoked {
+					tokens[i].Revoked = true
+					tokens[i].RevokedAt = &now
+				}
+				queue = append(queue, tokens[i].ID)
 			}
 		}
 		return writeTokens(storePath, tokens)
