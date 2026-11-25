@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -85,6 +86,9 @@ func TestBackendVerdict_NeverContainsToken(t *testing.T) {
 }
 
 func TestSystemdInstall_BackendCredentials(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("systemd units are Linux-only; Windows temp paths are not valid unit paths")
+	}
 	home, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 	opCred := filepath.Join(home, "gw", "op-sa.cred")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -37,6 +38,9 @@ func installFakeUserManager(t *testing.T) *fakeUserManager {
 
 func systemdTestEnv(t *testing.T) (home, binary string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("systemd user units are Linux-only; Windows temp paths are not valid unit-file paths")
+	}
 	home = t.TempDir()
 	t.Setenv("HOME", home)
 	prevHome := operatorHome
