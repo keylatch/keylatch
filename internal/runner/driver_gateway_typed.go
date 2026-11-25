@@ -205,7 +205,8 @@ func (d *gatewayTypedDriver) Run(ctx context.Context, req ExecRequest, tmpl regi
 // Rules:
 //  1. Strip every provider API key env var declared in tmpl.InjectionRules.
 //  2. Strip every KEYLATCH_* configuration var (FilterChildEnv).
-//  3. Re-inject only KEYLATCH_GATEWAY_URL, KEYLATCH_GATEWAY_TOKEN, KEYLATCH_RUNTIME.
+//  3. Strip every password manager authentication var (StripManagerAuth).
+//  4. Re-inject only KEYLATCH_GATEWAY_URL, KEYLATCH_GATEWAY_TOKEN, KEYLATCH_RUNTIME.
 //
 // When cleanEnv is true, step 2 is replaced by CleanBaseEnv which
 // starts from a minimal set (PATH, HOME, USER, …, LC_*) rather than the full
@@ -245,6 +246,8 @@ func gatewayTypedChildEnv(tmpl registry.ConnectionTemplate, gatewayURL, jwtStr s
 			"KEYLATCH_RUNTIME",
 		)
 	}
+	// Applied after the clean-env extras so a preserved name cannot reintroduce one.
+	childEnv = runtime.StripManagerAuth(childEnv)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_URL", gatewayURL)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewayTypedMode)
