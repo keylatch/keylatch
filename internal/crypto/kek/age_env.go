@@ -78,8 +78,9 @@ func readIdentityFile(identityPath string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: stat %q: %v", ErrKEKUnavailable, identityPath, err)
 	}
 	// Windows does not support Unix permission bits; skip the check there.
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
-		return nil, fmt.Errorf("%w: %q has mode %04o, want 0600", ErrKEKUnavailable, identityPath, info.Mode().Perm())
+	// 0400 is accepted because systemd hands credentials to a service read-only.
+	if runtime.GOOS != "windows" && (info.Mode().Perm()&0o077 != 0 || info.Mode().Perm()&0o400 == 0) {
+		return nil, fmt.Errorf("%w: %q has mode %04o, want 0600 or 0400", ErrKEKUnavailable, identityPath, info.Mode().Perm())
 	}
 
 	identity, err := os.ReadFile(identityPath) //nolint:gosec // G703: path comes from operator-controlled source; path validation above confirms it exists and has 0600 permissions

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `keylatch gateway systemd install|uninstall|status|print` manages a `keylatch-gateway.service` user unit. The gateway binds the IP address given with `--listen` (wildcard addresses and hostnames are refused). `--allow-source <CIDR>` (repeatable) is written to the unit's `ExecStart`; a non-loopback `--listen` is refused without it unless `--allow-any-source` is given. `--github-mint <connection>` serves `POST /mint/github` and opens the vault from a TPM2- or host-key-bound systemd credential, so it starts at boot with no login session, keyring or plaintext key file. `--backend-credential <cred-name>=<ENV_VAR>:<file.cred>` (repeatable) seals a backend secret (for example `OP_SERVICE_ACCOUNT_TOKEN`) as a second systemd credential that `gateway up --backend-credential <cred-name>=<ENV_VAR>` exports in-process at start, only for variables a backend reads; `gateway systemd status --check-backend` verifies it without printing it. See `docs/gateway-service.md`.
+- `keylatch bootstrap` derives the vault KEK from the file named by `KEYLATCH_AGE_IDENTITY` when it is set, without storing the identity in a keyring or plaintext file. The identity file may now be mode 0400 as well as 0600.
+- `installers/install.sh` installs a published Linux release after verifying its checksum and the cosign signature of the checksums file.
 - `keylatch mint <connection> --repo <owner/name> --permission <name>=<level> … --format json` mints a GitHub App installation token for exactly one repository and the listed permissions, and prints `{"token","expires_at","repository","permissions"}`. The App JWT is signed inside Keylatch; the private key never leaves it. Exit codes: 1 usage, 2 agent session or no audit log, 3 policy, 4 store unavailable, 5 GitHub refused or the token was revoked, 6 connection field missing.
 - `github-app` provider template: `private_key` (secret), `app_id` and one `installation_<owner>` field per account the App is installed on. `keylatch connect github-app` tests the connection with a signed App JWT against `GET /app`.
 - Per-connection policy `connections.<name>.mint.github_app` in `config.json`: `callers` (default `service` and `host`), `deny_owners`, `allow_owners`, `allow_repos`, `permission_ceiling` and `max_ttl` (1–3600 seconds, default 3600). A connection without the policy cannot mint.
@@ -30,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `keylatch scope` listed the `file` backend as unavailable although it registers, works and is the default store. It is now listed as experimental (uncertified) with a note saying so; no behaviour changed.
 - The Claude Code exfiltration guard allows `env` when it runs a command (`env -C /abs/dir cmd`, `env NAME=value cmd`, `env -i`, `env -u NAME`). Bare `env`, `env` with no command, other `env` options (`-0`, `-S`, …), a relative `-C` directory and `printenv` stay blocked, and the command after `env` is checked like any other.
 
 ## [0.9.9] - 2026-10-05
