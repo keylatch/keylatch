@@ -43,3 +43,19 @@ jobs:
         uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: "/language:${{ matrix.language }}"
+          output: sarif-results
+          upload: never
+      - name: Filter accepted findings
+        if: matrix.language == 'go'
+        uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 # v1.1
+        with:
+          # MySQL caching_sha2_password defines its scramble as SHA-256 over the password.
+          patterns: |
+            -internal/adapter/mysql/wire.go:go/weak-sensitive-data-hashing
+          input: sarif-results/go.sarif
+          output: sarif-results/go.sarif
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: sarif-results
+          category: "/language:${{ matrix.language }}"
