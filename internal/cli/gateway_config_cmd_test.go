@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -160,6 +161,10 @@ func TestGatewayInfo_ValueFreeAndFingerprintsTheCA(t *testing.T) {
 	require.Len(t, info.Proxies, 1)
 	assert.Equal(t, "octo", info.Proxies[0].Installations[0].Owner)
 	assert.Equal(t, 1, info.Schema)
+	require.NotNil(t, info.GitHubMintPolicy)
+	assert.Equal(t, map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read", "issues": "write", "actions": "read", "checks": "read"}, info.GitHubMintPolicy.PermissionCeiling)
+	assert.Equal(t, []string{"service", "host"}, info.GitHubMintPolicy.Callers)
+	assert.Equal(t, 3600, info.GitHubMintPolicy.MaxTTL)
 
 	require.NotNil(t, info.CA)
 	block, _ := pem.Decode([]byte(info.CA.PEM))
@@ -241,4 +246,69 @@ func TestKeychainSecret_ReadsViaSecurityTool(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "security add-generic-password")
 	assert.NotContains(t, err.Error(), "ops_secret")
+}
+
+func TestGatewayConfig_SetMintPolicy(t *testing.T) {
+	home, _ := systemdTestEnv(t)
+	out, err := runGatewayConfig(t, "set-mint-policy", "--connection", "github-app",
+		"--allow-repo", "octo/a", "--allow-repo", "octo/b", "--permission-ceiling", "contents=write", "--permission-ceiling", "issues=read",
+		"--max-ttl", "30m", "--caller", "host")
+	require.NoError(t, err)
+	assert.Contains(t, out, "restart")
+	path := paths.DefaultConfig(home)
+	pol := loadOperatorCfg(t, home).Connections["github-app"].Mint.GitHubApp
+	assert.Equal(t, []string{"octo/a", "octo/b"}, pol.AllowRepos)
+	assert.Equal(t, map[string]string{"contents": "write", "issues": "read"}, pol.PermissionCeiling)
+	assert.Equal(t, 1800, pol.MaxTTL)
+	assert.Equal(t, []string{"host"}, pol.Callers)
+	if runtime.GOOS != "windows" {
+		st, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+	}
+
+	// Only the flags given change; an empty value clears a list or restores a default.
+	_, err = runGatewayConfig(t, "set-mint-policy", "--connection", "github-app", "--allow-owner", "octo")
+	require.NoError(t, err)
+	pol = loadOperatorCfg(t, home).Connections["github-app"].Mint.GitHubApp
+	assert.Equal(t, []string{"octo"}, pol.AllowOwners)
+	assert.Equal(t, []string{"octo/a", "octo/b"}, pol.AllowRepos)
+	_, err = runGatewayConfig(t, "set-mint-policy", "--connection", "github-app", "--allow-repo", "", "--permission-ceiling", "", "--max-ttl", "")
+	require.NoError(t, err)
+	pol = loadOperatorCfg(t, home).Connections["github-app"].Mint.GitHubApp
+	assert.Empty(t, pol.AllowRepos)
+	assert.Empty(t, pol.PermissionCeiling)
+	assert.Zero(t, pol.MaxTTL)
+
+	// get shows it, with the defaults filled in.
+	_, err = runGatewayConfig(t, "set", "--github-mint", "github-app")
+	require.NoError(t, err)
+	text, err := runGatewayConfig(t, "get")
+	require.NoError(t, err)
+	assert.Contains(t, text, "contents:write,metadata:read,pull_requests:write")
+	assert.Contains(t, text, "1h0m0s")
+	js, err := runGatewayConfig(t, "get", "--json")
+	require.NoError(t, err)
+	assert.Contains(t, js, `"github_mint_policy"`)
+}
+
+func TestGatewayConfig_SetMintPolicyRejectsInvalidValues(t *testing.T) {
+	home, _ := systemdTestEnv(t)
+	for name, args := range map[string][]string{
+		"repo":       {"--allow-repo", "octo"},
+		"owner":      {"--deny-owner", "bad owner"},
+		"permission": {"--permission-ceiling", "contents"},
+		"level":      {"--permission-ceiling", "contents=owner"},
+		"ttl":        {"--max-ttl", "2h"},
+		"ttl zero":   {"--max-ttl", "0s"},
+		"caller":     {"--caller", "agent"},
+		"unknown":    {"--caller", "robot"},
+	} {
+		_, err := runGatewayConfig(t, append([]string{"set-mint-policy", "--connection", "github-app"}, args...)...)
+		assert.Error(t, err, name)
+	}
+	_, err := runGatewayConfig(t, "set-mint-policy", "--connection", "bad name", "--max-ttl", "1m")
+	assert.Error(t, err)
+	_, statErr := os.Stat(paths.DefaultConfig(home))
+	assert.True(t, os.IsNotExist(statErr), "a refused edit writes nothing")
 }

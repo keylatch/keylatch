@@ -232,6 +232,31 @@ keylatch gateway config remove-proxy --listen 10.0.2.2:7879 --owner otherorg   #
   `keylatch proxy ca print` refuse until you delete `proxy-ca.pem` and `proxy-ca.key` in the
   gateway directory and re-trust the new CA in the guests.
 
+### Mint policy
+
+`POST /mint/github` and `keylatch mint` apply the connection's `mint.github_app` policy. Edit it
+with:
+
+```bash
+keylatch gateway config set-mint-policy --connection github-app \
+  --allow-repo octo/app --allow-repo octo/tools \
+  --permission-ceiling contents=write --permission-ceiling pull_requests=write --permission-ceiling metadata=read \
+  --max-ttl 1h --caller service --caller host
+keylatch gateway config get          # shows the policy; --json for the machine form
+```
+
+Only the flags given change; each list flag replaces its list and an empty value clears it
+(`--allow-owner`, `--deny-owner` work the same way). Values are validated, the config is written
+atomically with mode 0600, and the command prints the restart hint (the gateway reads the policy at
+start).
+
+A request for a permission that is not in the ceiling, or above its level, is refused with `403`
+and `{"error":"mint_denied","message":"..."}`; so is a repository outside `allow_repos` and
+`allow_owners`, or of a `deny_owners` account. When the policy sets no `permission_ceiling` the
+default ceiling applies: `contents:write`, `pull_requests:write`, `metadata:read`. Anything else,
+including `workflows`, `actions` and the organization-level permissions, needs an explicit
+ceiling entry; `administration` is never minted by the gateway whatever the ceiling says.
+
 ### Introspection
 
 `keylatch gateway status --json` and `GET /info` on the gateway return the effective settings, with
@@ -245,6 +270,11 @@ no tokens, keys, secret file paths or vault references:
   "allow_source": ["10.0.2.0/24"],
   "allow_any_source": false,
   "github_mint": "github-app",
+  "github_mint_policy": {
+    "allow_repos": ["octo/app"], "allow_owners": [], "deny_owners": [],
+    "permission_ceiling": {"contents": "write", "pull_requests": "write", "metadata": "read"},
+    "callers": ["service", "host"], "max_ttl": 3600
+  },
   "proxies": [
     { "listen": "10.0.2.2:7879", "host": "github.com", "connection": "github-app",
       "installations": [
@@ -254,6 +284,11 @@ no tokens, keys, secret file paths or vault references:
   "ca": { "sha256": "<hex>", "pem": "-----BEGIN CERTIFICATE-----\n..." }
 }
 ```
+
+`github_mint_policy` is the effective `mint.github_app` policy of the `github_mint` connection (`null`
+when there is no such connection or policy): the lists are as configured, `permission_ceiling` and
+`callers` show the defaults when the policy sets none, `max_ttl` is in seconds. It was added to
+`schema: 1` as a new field; existing readers that ignore unknown fields are unaffected.
 
 `/info` sits behind the source allowlist like every route and also needs a valid gateway session
 token (any capability): the reply names repositories and permissions, and every legitimate caller
@@ -293,7 +328,37 @@ keyring; the name constraints limit what a stolen key could vouch for.
 | Through the proxy | Every host of the listener (`github.com`, `api.github.com`, `uploads.github.com`, or the Enterprise equivalents); everything else goes direct. |
 | git | `https://<host>/<owner>/<repo>.git` with no credential helper. Per owner: `git config --global http.https://github.com/<owner>/.proxy http://<owner>:<token>@<proxy>`. Any placeholder credential is replaced. |
 | gh | `GH_TOKEN=<any placeholder>`, `GH_HOST=<host>`, and `HTTPS_PROXY=http://<owner>:<token>@<proxy>` chosen by the repository's owner. |
+| Placeholder | git needs no credential in the URL and no credential helper. If a tool insists on one (`https://x-access-token:<placeholder>@github.com/...`), any value works: the proxy strips it. |
 | Refused | Another owner's paths (403 `owner_mismatch`), repositories outside the list, administrative permissions unless allowed, unknown users (407). |
+
+The settings below are exactly what the proxy test suite (`internal/proxy/realclients_test.go`)
+gives real `git` and `gh` binaries; it clones, commits, pushes a branch (including a push over
+1 MiB, which git sends chunked), runs `gh api user`, `gh pr create --draft` and `gh pr view`
+against a fake GitHub, and checks that upstream never sees the placeholder or the proxy token:
+
+```bash
+# one proxy user per owner; PROXY is the listener address, TOKEN is `keylatch proxy token print`
+git config --global http.sslCAInfo /etc/keylatch/proxy-ca.pem
+git config --global http.https://github.com/octo/.proxy "http://octo:$TOKEN@$PROXY"
+git config --global http.https://github.com/otherorg/.proxy "http://otherorg:$TOKEN@$PROXY"
+git config --global credential.helper ''          # no helper; nothing to store
+git clone https://github.com/octo/app.git
+
+# gh: the proxy picks the installation from the proxy user, gh needs any token
+export GH_TOKEN=placeholder GH_HOST=github.com
+export HTTPS_PROXY="http://octo:$TOKEN@$PROXY"
+export SSL_CERT_FILE=/etc/keylatch/proxy-ca.pem   # gh is a Go program: SSL_CERT_FILE or the system store
+gh pr create --draft --head feature --base main --title "..." --body "..."
+```
+
+How the clients behave: curl (so git and gh through `HTTPS_PROXY`) sends the proxy credentials
+only after a `407 Proxy Authentication Required` with `Proxy-Authenticate: Basic`, which is what
+the proxy answers to a caller with no, an unknown or a wrong credential. Inside the tunnel the
+proxy speaks HTTP/1.1 only; clients fall back from HTTP/2 on their own, and the proxy talks
+HTTP/2 to GitHub where offered. Refused paths answer `403` with a JSON body; git prints
+`The requested URL returned error: 403`. An unknown proxy user fails the tunnel (`CONNECT tunnel
+failed, response 407`). Git commands that reach an owner use that owner's `.proxy` entry; a
+mismatch (one owner's proxy user asking for another owner's repository) is `owner_mismatch`.
 
 ### Risks
 
@@ -307,4 +372,4 @@ keyring; the name constraints limit what a stolen key could vouch for.
   repositories. Anyone who can reach a listener and knows the proxy token can use it: keep the
   token file 0600 and `allow_source` tight. Branch protection stays the merge gate.
 - The CA key is a 0600 file on the host, constrained to the configured hosts.
-- Not exercised against real GitHub, git, `gh`, GitHub Enterprise Server, GHE.com or TPM2.
+- Exercised with real `git` and `gh` against a local fake GitHub (HTTP/2 upstream, TLS signed by a test CA). Not exercised against real GitHub, GitHub Enterprise Server, GHE.com or TPM2.
