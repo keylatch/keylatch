@@ -32,7 +32,7 @@ func TestBackendListJSONMatchesTierPolicy(t *testing.T) {
 		assert.NotEmpty(t, r.Note, r.ID)
 	}
 	want := map[string]string{
-		"bw": "supported", "op": "supported", "file": "supported",
+		"bw": "supported", "op": "supported", "file": "preview",
 		"vault": "community", "awssm": "community", "gcpsm": "community", "azurekv": "community",
 		"doppler": "community", "infisical": "community", "opconnect": "community", "bws": "community", "sops": "community",
 		"keychain": "deprecated", "keeper": "deprecated", "lastpass": "deprecated", "proton-pass": "deprecated",

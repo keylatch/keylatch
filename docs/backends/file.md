@@ -9,6 +9,13 @@ The `file` backend is the default keylatch credential store. It stores credentia
 in `~/.keylatch/vault/` as AEAD-encrypted blobs on the local filesystem. No
 external services or binaries are required.
 
+## Support status
+
+`keylatch scope` lists the `file` backend as **preview**: it works, it is the default
+store and nothing in the build blocks it, but it is not certified. Recovery, integrity and
+migration checks are still pending, so do not read it as a guarantee. Only entries listed
+as `supported` are certified; community and deprecated backends are listed but never enabled.
+
 ## Security properties
 
 | Property | Detail |
@@ -93,6 +100,15 @@ disk". CI runners use `scripts/ci-operator-config.sh` for this.
 re-wraps the vault key under the new key-encryption key, proves that the new key
 alone opens the keyring and reads every secret, and only then overwrites and
 deletes the plaintext identity. It needs a human at a terminal.
+
+### Unattended hosts: operator-supplied identity
+
+When `KEYLATCH_AGE_IDENTITY` points at a file, `keylatch bootstrap` derives the KEK from
+it and stores the identity nowhere else (no keyring item, no `identity` file). The file
+must be owner-only (mode 0600 or 0400). Every later command needs the same variable. This
+is how the [gateway service](../gateway-service.md) opens the vault with no login session:
+systemd decrypts a TPM2- or host-key-bound credential into a read-only file for the
+service only.
 
 ### Upgrading an existing install
 

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -290,6 +292,18 @@ func checkBackendOPAuth(env llmcontext.Lookup, probe kexec.Probe, runner kexec.C
 		// check presence only — never expose the token value.
 		tokenSet := env("OP_SERVICE_ACCOUNT_TOKEN") != ""
 		if !tokenSet {
+			// A token sealed for the gateway unit is not in this shell's
+			// environment on purpose; point at the check that can read it.
+			if sealed, _ := filepath.Glob(filepath.Join(paths.GatewayDir(env), "*.cred")); slices.ContainsFunc(sealed, func(p string) bool { return filepath.Base(p) != "kek.cred" }) {
+				return Status{
+					Name:    "backend.op.auth",
+					Section: "backends",
+					OK:      true,
+					Detail:  "no OP_SERVICE_ACCOUNT_TOKEN in this shell; a backend credential is sealed for the gateway unit",
+					Fix:     "Run `keylatch gateway systemd status --check-backend` to verify the sealed credential, with `op whoami` for 1Password (the value is not printed).",
+					Tags:    []string{"backend", "op", "auth"},
+				}
+			}
 			// Biometric may be available; treat as warn not error.
 			return Status{
 				Name:    "backend.op.auth",

@@ -64,7 +64,7 @@ func Current() Manifest {
 			// Managers — backend registry IDs; tiers follow the backend support policy.
 			{ID: "bw", Category: CategoryManager, Status: Supported, Note: "Bitwarden CLI, including Vaultwarden servers"},
 			{ID: "op", Category: CategoryManager, Status: Supported, Note: "1Password CLI"},
-			{ID: "file", Category: CategoryManager, Status: Supported, Note: "encrypted in-user file store"},
+			{ID: "file", Category: CategoryManager, Status: Preview, Note: "encrypted-file backend works and is the default store, but is not certified yet: recovery, integrity and migration checks are pending"},
 			{ID: "vault", Category: CategoryManager, Status: Community, Note: "HashiCorp Vault KV; no live suite yet"},
 			{ID: "awssm", Category: CategoryManager, Status: Community, Note: "AWS Secrets Manager; no live suite yet"},
 			{ID: "gcpsm", Category: CategoryManager, Status: Community, Note: "Google Cloud Secret Manager; no live suite"},

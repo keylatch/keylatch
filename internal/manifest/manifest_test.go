@@ -44,7 +44,8 @@ func TestCurrent_EveryEntryHasValidFields(t *testing.T) {
 func TestCurrent_BackendTiers(t *testing.T) {
 	m := manifest.Current()
 	tiers := map[manifest.Status][]string{
-		manifest.Supported:  {"bw", "op", "file"},
+		manifest.Supported:  {"bw", "op"},
+		manifest.Preview:    {"file"},
 		manifest.Community:  {"vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "opconnect", "bws", "sops"},
 		manifest.Deprecated: {"keychain", "keeper", "lastpass", "proton-pass"},
 	}
@@ -70,6 +71,14 @@ func TestCurrent_OnlySupportedAndPreviewAreEnabled(t *testing.T) {
 	}
 	assert.Equal(t, manifest.Preview, m.Status("macos"))
 	assert.Equal(t, manifest.Preview, m.Status("windows"))
+}
+
+// TestCurrent_FileBackendIsUncertifiedPreview: the file backend works and is
+// the default store, so it stays enabled, but it is not certified yet.
+func TestCurrent_FileBackendIsUncertifiedPreview(t *testing.T) {
+	m := manifest.Current()
+	assert.Equal(t, manifest.Preview, m.Status("file"))
+	assert.True(t, m.Enabled("file"))
 }
 
 // TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy

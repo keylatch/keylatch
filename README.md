@@ -96,7 +96,7 @@ A step-by-step walk-through lives in [docs/guides/secure-agent-setup.md](docs/gu
 |---------|------|-------|
 | `bw` | supported | Bitwarden CLI, including Vaultwarden servers |
 | `op` | supported | 1Password CLI |
-| `file` | supported | encrypted in-user file store |
+| `file` | preview | encrypted in-user file store; works and is the default, not certified yet (recovery, integrity and migration checks pending) |
 | `vault` | community | HashiCorp Vault KV; Go SDK, no live suite yet |
 | `awssm` | community | AWS Secrets Manager; no live suite yet |
 | `gcpsm` | community | Google Cloud Secret Manager; no live suite |
