@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -39,7 +40,7 @@ func (s *Server) githubClient() *http.Client {
 func jsonError(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = io.WriteString(w, `{"error":"`+code+`"}`+"\n")
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": code})
 }
 
 // githubForward serves one request for a GitHub host. The caller's

@@ -563,7 +563,9 @@ func newGatewayUpCmd() *cobra.Command {
 			first := <-done
 			cancel()
 			for range servers {
-				<-done
+				if err := <-done; first == nil {
+					first = err
+				}
 			}
 			return first
 		},
