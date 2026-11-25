@@ -157,7 +157,7 @@ func TestCheckBackendOPAuth_SealedServiceAccountPointsAtUnitCheck(t *testing.T) 
 	_, env := bootstrappedHome(t)
 	selectBackend(t, env, "op")
 	gw := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(gw, "op-sa-token.cred"), []byte("sealed"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(gw, "op-sa.cred"), []byte("sealed"), 0o600))
 	env = makeEnv(map[string]string{
 		"KEYLATCH_CONFIG_DIR":  env("KEYLATCH_CONFIG_DIR"),
 		"KEYLATCH_GATEWAY_DIR": gw,
@@ -170,6 +170,6 @@ func TestCheckBackendOPAuth_SealedServiceAccountPointsAtUnitCheck(t *testing.T) 
 	s := findCheck(t, report, "backend.op.auth")
 	assert.True(t, s.OK)
 	assert.Contains(t, s.Detail, "sealed for the gateway unit")
-	assert.Contains(t, s.Fix, "systemd status --check-op")
+	assert.Contains(t, s.Fix, "systemd status --check-backend")
 	assert.Empty(t, runner.Calls)
 }

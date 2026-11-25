@@ -41,8 +41,8 @@ shred -u "$XDG_RUNTIME_DIR/kek"
 
 ```bash
 loginctl enable-linger "$USER"        # start the user manager at boot
-keylatch gateway systemd install --listen 192.168.150.1:8788 \
-  --allow-source 192.168.150.0/24 --github-mint github-app
+keylatch gateway systemd install --listen 10.0.2.2:7878 \
+  --allow-source 10.0.2.0/24 --github-mint github-app
 systemctl --user enable --now keylatch-gateway.service
 keylatch gateway systemd status
 ```
@@ -61,11 +61,11 @@ the unit to move the gateway.
 ## Restricting callers by source address
 
 `--allow-source <CIDR>` (repeatable, IPv4 or IPv6) is written into the unit's `ExecStart`
-as `--allow-source <CIDR>`, in canonical form (`192.168.150.7/24` becomes
-`192.168.150.0/24`), for example:
+as `--allow-source <CIDR>`, in canonical form (`10.0.2.7/24` becomes
+`10.0.2.0/24`), for example:
 
 ```
-ExecStart=/usr/local/bin/keylatch gateway up --allow-source 192.168.150.0/24 --github-mint github-app
+ExecStart=/usr/local/bin/keylatch gateway up --allow-source 10.0.2.0/24 --github-mint github-app
 ```
 
 The gateway compares the TCP peer address with the CIDRs before authentication and never
@@ -76,45 +76,43 @@ that can reach the address (it cannot be combined with `--allow-source`).
 `--github-mint <connection>` adds `--github-mint <connection>` so the gateway serves
 `POST /mint/github` for that `github-app` connection and its `mint.github_app` policy.
 
-## 1Password behind the gateway, unattended
+## Unattended backend access
 
-With the `op` backend the gateway reads secrets through the `op` CLI. A person signing in
-does not work for overnight runs, so give the unit a
-[1Password service account](https://developer.1password.com/docs/service-accounts/) that can
-read one vault only.
+A backend that needs a secret from its environment cannot be unlocked by a person at 3 a.m.
+Seal that secret as a second systemd credential and let `keylatch` export it at start:
 
-1. In 1Password create a vault (for example `keylatch-agent`), put the GitHub App private key
-   in it, and create a service account with read access to that vault only.
-2. Seal the service account token for the unit. The token is read from stdin, so it never
-   appears in argv or shell history; paste it and press Ctrl-D twice:
+```bash
+# The secret is read from stdin, so it is not in argv or shell history (Ctrl-D twice to end).
+systemd-creds encrypt --user --name=op-sa --with-key=tpm2 - ~/.config/keylatch/gateway/op-sa.cred
 
-   ```bash
-   systemd-creds encrypt --user --name=op-sa-token --with-key=tpm2 - \
-     ~/.config/keylatch/gateway/op-sa-token.cred
-   ```
+keylatch gateway systemd install --listen 10.0.2.2:7878 --allow-source 10.0.2.0/24 \
+  --backend-credential op-sa=OP_SERVICE_ACCOUNT_TOKEN:$HOME/.config/keylatch/gateway/op-sa.cred
+```
 
-   `--name=op-sa-token` must match; use `--with-key=host` without a TPM2.
-3. Install the unit with the credential:
+`--backend-credential <cred-name>=<ENV_VAR>:<file.cred>` is repeatable. The unit gets
+`LoadCredentialEncrypted=<cred-name>:<file>`, and `ExecStart` carries only
+`--backend-credential <cred-name>=<ENV_VAR>`. At start `gateway up` reads
+`$CREDENTIALS_DIRECTORY/<cred-name>` and sets `ENV_VAR` in its own process; the value is never in
+an env file, `ExecStart` or a log line. `--name` must match `<cred-name>`.
 
-   ```bash
-   keylatch gateway systemd install --listen 192.168.150.1:8788 \
-     --allow-source 192.168.150.0/24 --github-mint github-app \
-     --op-service-account-credential ~/.config/keylatch/gateway/op-sa-token.cred
-   ```
+`ENV_VAR` must be a variable a backend reads a secret from: `OP_SERVICE_ACCOUNT_TOKEN`,
+`OP_CONNECT_TOKEN`, `KEYLATCH_OP_CONNECT_TOKEN`, `BW_SESSION`, `VAULT_TOKEN`,
+`KEYLATCH_VAULT_TOKEN`, `KEYLATCH_VAULT_SECRET_ID`, `AWS_SECRET_ACCESS_KEY`,
+`KEYLATCH_AWS_SECRET_ACCESS_KEY`, `AZURE_CLIENT_SECRET`, `KEYLATCH_AZURE_CLIENT_SECRET`,
+`KEYLATCH_GCP_CREDENTIALS_JSON`, `DOPPLER_TOKEN`, `KEYLATCH_DOPPLER_TOKEN`,
+`INFISICAL_CLIENT_SECRET`, `KEYLATCH_INFISICAL_CLIENT_SECRET`. Anything else is refused, so the
+flag cannot set `PATH`, `LD_PRELOAD` and the like. Non-secret settings (vault address, project)
+stay in the config file or `systemd.env`.
 
-   (use the absolute path; `~` is not expanded inside a unit.) The unit gets
-   `LoadCredentialEncrypted=op-sa-token:<file>` and `ExecStart=... --op-service-account-credential op-sa-token`.
-   At start `keylatch` reads `$CREDENTIALS_DIRECTORY/op-sa-token` and exports
-   `OP_SERVICE_ACCOUNT_TOKEN` in its own process. The token is never in an env file,
-   `ExecStart`, or a log line.
-4. Verify without printing the token:
+For 1Password, create a vault, a service account with read access to that vault only, and seal
+its token as above. Verify without printing the secret:
 
-   ```bash
-   keylatch gateway systemd status --check-op   # decrypts for this call only, runs `op whoami`
-   journalctl --user -u keylatch-gateway -n 20  # "gateway: 1Password service account authenticated"
-   keylatch doctor                              # backend.op.auth points here when the shell has no token
-   ```
+```bash
+keylatch gateway systemd status --check-backend   # decrypts for this call only; `op whoami` for 1Password
+journalctl --user -u keylatch-gateway -n 20       # "gateway: backend credential op-sa: service account authenticated"
+keylatch doctor                                   # backend.op.auth points here when the shell has no token
+```
 
-Boot start stays the default: with `loginctl enable-linger "$USER"` the unit starts at boot.
-A failed `op whoami` at start is logged but does not stop the gateway, so a boot before the
-network is up recovers when `op` can reach 1Password again.
+Backends other than 1Password get a decrypt-only verdict. A failed check at start is logged but
+does not stop the gateway, so a boot before the network is up recovers on its own. Boot start
+stays the default with `loginctl enable-linger "$USER"`.

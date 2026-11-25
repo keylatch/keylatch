@@ -62,10 +62,10 @@ func TestGatewaySystemdPrint_BindsConfiguredAddressViaCredential(t *testing.T) {
 	_, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--allow-source", "192.168.150.0/24", "--binary", binary)
+	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--allow-source", "10.0.2.0/24", "--binary", binary)
 	require.NoError(t, err)
 
-	assert.Contains(t, out, "ExecStart="+binary+" gateway up --allow-source 192.168.150.0/24\n")
+	assert.Contains(t, out, "ExecStart="+binary+" gateway up --allow-source 10.0.2.0/24\n")
 	assert.Contains(t, out, "LoadCredentialEncrypted=kek:")
 	assert.Contains(t, out, "Environment=KEYLATCH_AGE_IDENTITY=%d/kek")
 	assert.Contains(t, out, "EnvironmentFile=")
@@ -199,17 +199,17 @@ func TestGatewaySystemdPrint_AllowSourceForms(t *testing.T) {
 	_, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--binary", binary,
-		"--allow-source", "192.168.150.7/24", "--allow-source", "fd00:1::/64", "--github-mint", "github-app")
+	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--binary", binary,
+		"--allow-source", "10.0.2.7/24", "--allow-source", "fd00:1::/64", "--github-mint", "github-app")
 	require.NoError(t, err)
-	assert.Equal(t, binary+" gateway up --allow-source 192.168.150.0/24 --allow-source fd00:1::/64 --github-mint github-app", execStartOf(t, out))
+	assert.Equal(t, binary+" gateway up --allow-source 10.0.2.0/24 --allow-source fd00:1::/64 --github-mint github-app", execStartOf(t, out))
 }
 
 func TestGatewaySystemdInstall_NonLoopbackNeedsAllowSource(t *testing.T) {
 	home, binary := systemdTestEnv(t)
 	fake := installFakeUserManager(t)
 
-	for _, listen := range []string{"192.168.150.1:8788", "[fd00::1]:8788"} {
+	for _, listen := range []string{"10.0.2.2:8788", "[fd00::1]:8788"} {
 		_, err := runSystemd(t, "install", "--listen", listen, "--binary", binary)
 		require.Error(t, err, listen)
 		assert.Contains(t, err.Error(), "--allow-source")
@@ -224,11 +224,11 @@ func TestGatewaySystemdInstall_AllowAnySourceIsExplicit(t *testing.T) {
 	_, binary := systemdTestEnv(t)
 	installFakeUserManager(t)
 
-	out, err := runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--binary", binary, "--allow-any-source")
+	out, err := runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--binary", binary, "--allow-any-source")
 	require.NoError(t, err)
 	assert.Equal(t, binary+" gateway up", execStartOf(t, out))
 
-	_, err = runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--binary", binary, "--allow-any-source", "--allow-source", "192.168.150.0/24")
+	_, err = runSystemd(t, "print", "--listen", "10.0.2.2:8788", "--binary", binary, "--allow-any-source", "--allow-source", "10.0.2.0/24")
 	require.Error(t, err)
 }
 
@@ -246,12 +246,12 @@ func TestGatewaySystemdInstall_RejectsBadAllowSourceAndConnection(t *testing.T) 
 	installFakeUserManager(t)
 
 	for _, extra := range [][]string{
-		{"--allow-source", "192.168.150.0"},
+		{"--allow-source", "10.0.2.0"},
 		{"--allow-source", "not-a-cidr"},
-		{"--allow-source", "192.168.150.0/24", "--github-mint", "x --unsafe-bind-all"},
-		{"--allow-source", "192.168.150.0/24", "--github-mint", "a\nExecStartPost=/bin/sh"},
+		{"--allow-source", "10.0.2.0/24", "--github-mint", "x --unsafe-bind-all"},
+		{"--allow-source", "10.0.2.0/24", "--github-mint", "a\nExecStartPost=/bin/sh"},
 	} {
-		args := append([]string{"print", "--listen", "192.168.150.1:8788", "--binary", binary}, extra...)
+		args := append([]string{"print", "--listen", "10.0.2.2:8788", "--binary", binary}, extra...)
 		_, err := runSystemd(t, args...)
 		require.Error(t, err, extra)
 	}

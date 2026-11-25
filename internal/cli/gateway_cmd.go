@@ -229,7 +229,7 @@ func newGatewayUpCmd() *cobra.Command {
 		force         bool
 		allowSources  []string
 		githubMint    string
-		opSACred      string
+		backendCreds  []string
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -307,8 +307,8 @@ func newGatewayUpCmd() *cobra.Command {
 				if githubMint != "" {
 					childArgs = append(childArgs, "--github-mint="+githubMint)
 				}
-				if opSACred != "" {
-					childArgs = append(childArgs, "--op-service-account-credential="+opSACred)
+				for _, bc := range backendCreds {
+					childArgs = append(childArgs, "--backend-credential="+bc)
 				}
 				if err := startDetached(childArgs, pidPath); err != nil {
 					return err
@@ -373,15 +373,20 @@ func newGatewayUpCmd() *cobra.Command {
 				})
 			}
 
-			// Unattended 1Password access: export the sealed service account
-			// token before the backend is selected. A verdict goes to stderr
-			// (the journal); a failed check does not stop the gateway, so a
+			// Unattended backend access: export sealed credentials before the
+			// backend is selected. A failed check does not stop the gateway, so a
 			// boot before the network is up recovers on its own.
-			if opSACred != "" {
-				if err := exportOPServiceAccountToken(opSACred); err != nil {
+			if len(backendCreds) > 0 {
+				parsed, perr := parseBackendCredentials(backendCreds)
+				if perr != nil {
+					return NewUsageError("gateway up: %v", perr)
+				}
+				if err := exportBackendCredentials(parsed); err != nil {
 					return NewBackendUnavailable("gateway up: %v", err)
 				}
-				fmt.Fprintf(c.ErrOrStderr(), "gateway: 1Password %s\n", opWhoamiVerdict(ctx, nil))
+				for _, bc := range parsed {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: backend credential %s: %s\n", bc.Name, backendVerdict(ctx, bc.Env, nil))
+				}
 			}
 
 			// The gateway's job is to inject the provider credential into the
@@ -482,7 +487,7 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().StringArrayVar(&allowSources, "allow-source", nil, "refuse callers whose address is outside this CIDR, before authentication (repeatable; X-Forwarded-For is never read)")
 	cmd.Flags().StringVar(&githubMint, "github-mint", "", "serve POST /mint/github using this github-app connection and its mint.github_app policy")
-	cmd.Flags().StringVar(&opSACred, "op-service-account-credential", "", "name of the systemd credential holding the 1Password service account token; exported as OP_SERVICE_ACCOUNT_TOKEN from $CREDENTIALS_DIRECTORY")
+	cmd.Flags().StringArrayVar(&backendCreds, "backend-credential", nil, "<cred-name>=<ENV_VAR>, repeatable: export the systemd credential <cred-name> from $CREDENTIALS_DIRECTORY as ENV_VAR (a variable a backend reads a secret from) before the backend opens")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }
