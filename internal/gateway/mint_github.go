@@ -189,8 +189,16 @@ func decodeMintRequest(w http.ResponseWriter, r *http.Request) (mintGitHubReques
 }
 
 func (s *Server) githubAppStrategy(ctx context.Context, opts *GitHubMintOptions, repo string) (*strategies.GitHubAppInstallationStrategy, error) {
+	return NewGitHubAppStrategy(ctx, s.vault, opts, repo)
+}
+
+// NewGitHubAppStrategy loads the connection's app_id, installation id for the
+// owner of repo ("owner/name" or just the owner) and private key from the vault
+// and returns the strategy that mints installation tokens. The proxy uses it
+// too, so both read the connection the same way.
+func NewGitHubAppStrategy(ctx context.Context, vault VaultReader, opts *GitHubMintOptions, repo string) (*strategies.GitHubAppInstallationStrategy, error) {
 	read := func(path string) ([]byte, error) {
-		v, _, err := s.vault.Get(ctx, path)
+		v, _, err := vault.Get(ctx, path)
 		if err == nil && len(v) == 0 {
 			return nil, backend.ErrNotFound
 		}

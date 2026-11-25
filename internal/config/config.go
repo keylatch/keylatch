@@ -47,7 +47,27 @@ type Config struct {
 
 // ConnectionPolicy is the policy attached to one connection.
 type ConnectionPolicy struct {
-	Mint *MintPolicy `json:"mint,omitempty"`
+	Mint  *MintPolicy  `json:"mint,omitempty"`
+	Proxy *ProxyPolicy `json:"proxy,omitempty"`
+}
+
+// ProxyPolicy configures the credentials the intercepting proxy injects for a
+// connection.
+type ProxyPolicy struct {
+	GitHub *GitHubProxyPolicy `json:"github,omitempty"`
+}
+
+// GitHubProxyPolicy limits the one installation token the proxy mints from a
+// github-app connection. The connection's mint.github_app policy still applies
+// to every repository and permission listed here.
+type GitHubProxyPolicy struct {
+	// Repositories is the exact list of owner/name the proxy reaches; all
+	// must share one owner (one installation).
+	Repositories []string `json:"repositories"`
+	// Permissions defaults to contents:write, pull_requests:write,
+	// metadata:read. Only contents, pull_requests, metadata, actions, checks
+	// and issues are accepted, never administration.
+	Permissions map[string]string `json:"permissions,omitempty"`
 }
 
 // MintPolicy governs `keylatch mint` for a connection.

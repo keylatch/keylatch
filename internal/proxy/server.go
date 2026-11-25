@@ -9,11 +9,11 @@
 package proxy
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -63,10 +63,25 @@ type Server struct {
 	// (see internal/ui/api receipts handler); intended for tests only, since
 	// Serve() always ensures a token is set for any real listener.
 	Token string
+	// GitHub, when set, serves the GitHub hosts from the injector: it checks
+	// the route and repository, strips the caller's credentials and injects
+	// the minted installation token. Profile.Hosts must list its hosts, and
+	// CA must be set so HTTPS tunnels can be inspected.
+	GitHub *GitHubInjector
+	// SourceAllowed, when set, is asked about every request's TCP peer
+	// address before authentication; false answers 403.
+	SourceAllowed func(remoteAddr string) bool
+	// AllowNonLoopback permits a non-loopback Addr. It is refused unless
+	// SourceAllowed is also set, so the proxy is never open to the network.
+	AllowNonLoopback bool
+	// UpstreamTransport replaces the transport for GitHub upstream calls; tests only.
+	UpstreamTransport http.RoundTripper
 	// client is the shared HTTP client reused across requests (S1: avoids per-request allocation).
 	// Initialised lazily via clientOnce.
 	client     *http.Client
 	clientOnce sync.Once
+	ghClient   *http.Client
+	ghOnce     sync.Once
 	tokenOnce  sync.Once
 	tokenErr   error
 }
@@ -108,12 +123,24 @@ func (s *Server) checkCallerAuth(r *http.Request) bool {
 		// Auth disabled — test/demo mode only (see Token doc comment).
 		return true
 	}
-	const prefix = "Bearer "
 	got := r.Header.Get(proxyAuthHeader)
-	if !strings.HasPrefix(got, prefix) {
-		return false
+	presented, ok := strings.CutPrefix(got, "Bearer ")
+	if !ok {
+		// curl and git send a proxy URL's credentials as Basic; the token is
+		// the password and the user name is ignored.
+		enc, isBasic := strings.CutPrefix(got, "Basic ")
+		if !isBasic {
+			return false
+		}
+		raw, err := base64.StdEncoding.DecodeString(enc)
+		if err != nil {
+			return false
+		}
+		_, presented, ok = strings.Cut(string(raw), ":")
+		if !ok {
+			return false
+		}
 	}
-	presented := strings.TrimPrefix(got, prefix)
 	return subtle.ConstantTimeCompare([]byte(presented), []byte(s.Token)) == 1
 }
 
@@ -154,8 +181,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		addr = defaultProxyAddr
 	}
 
-	if !isLoopbackAddr(addr) {
-		return fmt.Errorf("proxy: refusing non-loopback bind %q — the CONNECT proxy is loopback-only by design (no --listen/--unsafe-bind-all opt-in)", addr)
+	if !isLoopbackAddr(addr) && (!s.AllowNonLoopback || s.SourceAllowed == nil) {
+		return fmt.Errorf("proxy: refusing non-loopback bind %q: the CONNECT proxy is loopback-only unless a source allowlist is configured", addr)
+	}
+	if s.GitHub != nil && s.CA == nil {
+		return errors.New("proxy: the GitHub injector needs a CA to inspect HTTPS tunnels")
 	}
 
 	// Mint the per-session caller-auth bearer token before accepting any
@@ -203,6 +233,11 @@ func (s *Server) Serve(ctx context.Context) error {
 // host-allowlist decisions — an unauthenticated caller must not learn
 // anything about the profile (not even "host not allowed" vs "unauthorized").
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.SourceAllowed != nil && !s.SourceAllowed(r.RemoteAddr) {
+		s.auditDeny(r.Context(), "source_not_allowed", "")
+		http.Error(w, `{"error":"source_not_allowed"}`, http.StatusForbidden)
+		return
+	}
 	if !s.checkCallerAuth(r) {
 		s.auditDeny(r.Context(), "proxy_caller_unauthenticated", r.Host)
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -245,6 +280,11 @@ func (s *Server) routeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 2: strip caller-supplied Authorization header.
 	r.Header.Del("Authorization")
+
+	if s.GitHub != nil && s.GitHub.IsGitHubHost(host) {
+		s.githubForward(w, r, host)
+		return
+	}
 
 	// Step 3: find matching route — deny if none matches (fail-closed).
 	route := s.matchRoute(r)
@@ -420,18 +460,19 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tlsConn.Close() }()
 
-	// Read the decrypted HTTP request.
-	decryptedReq, err := http.ReadRequest(bufio.NewReader(tlsConn))
-	if err != nil {
-		return
+	// Serve every request on the tunnel (git makes several per operation,
+	// keep-alive, streamed bodies) through routeHandler.
+	target := r.Host
+	tunnel := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			req.URL.Scheme = "https"
+			req.URL.Host = target
+			s.routeHandler(w, req)
+		}),
+		ReadHeaderTimeout: 30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
-	decryptedReq.URL.Scheme = "https"
-	decryptedReq.URL.Host = r.Host
-
-	// Replay through routeHandler using a synthetic ResponseWriter.
-	rw := newBufferedResponseWriter()
-	s.routeHandler(rw, decryptedReq)
-	rw.writeResponseTo(tlsConn) //nolint:errcheck
+	_ = tunnel.Serve(newOneConnListener(tlsConn))
 }
 
 // hostAllowed returns true if host is in the Profile's Hosts allowlist.

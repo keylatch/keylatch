@@ -20,6 +20,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/budget"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
@@ -230,6 +231,8 @@ func newGatewayUpCmd() *cobra.Command {
 		allowSources  []string
 		githubMint    string
 		opSACred      string
+		proxyListen   string
+		proxyConn     string
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -241,6 +244,11 @@ func newGatewayUpCmd() *cobra.Command {
 			sourcePrefixes, srcErr := gateway.ParseAllowSources(allowSources)
 			if srcErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", srcErr)
+				os.Exit(exitcode.UserError)
+			}
+
+			if (proxyConn == "") != (proxyListen == "") {
+				fmt.Fprintln(c.ErrOrStderr(), "gateway: --proxy-connection and --proxy-listen go together")
 				os.Exit(exitcode.UserError)
 			}
 
@@ -309,6 +317,9 @@ func newGatewayUpCmd() *cobra.Command {
 				}
 				if opSACred != "" {
 					childArgs = append(childArgs, "--op-service-account-credential="+opSACred)
+				}
+				if proxyConn != "" {
+					childArgs = append(childArgs, "--proxy-connection="+proxyConn, "--proxy-listen="+proxyListen)
 				}
 				if err := startDetached(childArgs, pidPath); err != nil {
 					return err
@@ -469,7 +480,37 @@ func newGatewayUpCmd() *cobra.Command {
 				}
 			}
 
-			return srv.Serve(ctx)
+			if proxyConn == "" {
+				return srv.Serve(ctx)
+			}
+			mintCfg, cfgErr := mintPolicyConfig()
+			if cfgErr != nil {
+				return NewPolicyDeny("gateway up: the proxy policy cannot be read: %v", cfgErr)
+			}
+			psrv, err := newGitHubProxy(gitHubProxyParams{
+				Connection: proxyConn, Listen: proxyListen, AllowSources: sourcePrefixes, Lookup: env,
+				Config: mintCfg, Vault: vaultReader, Audit: audit.AsEmitter(auditLogger),
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(c.OutOrStdout(), "gateway: GitHub proxy listening on %s\n", proxyListen)
+			gwDone, pxDone := make(chan error, 1), make(chan error, 1)
+			go func() { gwDone <- srv.Serve(ctx) }()
+			go func() { pxDone <- psrv.Serve(ctx) }()
+			var first error
+			select {
+			case first = <-gwDone:
+				cancel()
+				<-pxDone
+			case perr := <-pxDone:
+				cancel()
+				<-gwDone
+				if perr != nil {
+					first = fmt.Errorf("gateway up: proxy: %w", perr)
+				}
+			}
+			return first
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", 7878, "port to listen on")
@@ -483,6 +524,8 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&allowSources, "allow-source", nil, "refuse callers whose address is outside this CIDR, before authentication (repeatable; X-Forwarded-For is never read)")
 	cmd.Flags().StringVar(&githubMint, "github-mint", "", "serve POST /mint/github using this github-app connection and its mint.github_app policy")
 	cmd.Flags().StringVar(&opSACred, "op-service-account-credential", "", "name of the systemd credential holding the 1Password service account token; exported as OP_SERVICE_ACCOUNT_TOKEN from $CREDENTIALS_DIRECTORY")
+	cmd.Flags().StringVar(&proxyListen, "proxy-listen", "", "address:port of the GitHub-injecting CONNECT proxy, an IP literal such as the VM bridge address (with --proxy-connection)")
+	cmd.Flags().StringVar(&proxyConn, "proxy-connection", "", "github-app connection whose proxy.github policy the proxy mints from (with --proxy-listen)")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }

@@ -118,3 +118,117 @@ read one vault only.
 Boot start stays the default: with `loginctl enable-linger "$USER"` the unit starts at boot.
 A failed `op whoami` at start is logged but does not stop the gateway, so a boot before the
 network is up recovers when `op` can reach 1Password again.
+
+## GitHub through the proxy: the VM holds no GitHub token
+
+`--with-proxy --proxy-listen <ip:port>` adds an intercepting CONNECT proxy to the same
+unit. The guest sends git and `gh` traffic for `github.com`, `api.github.com` and
+`uploads.github.com` through it. The proxy terminates TLS with its own CA, checks the route and
+repository, **removes the caller's `Authorization`** and injects a GitHub App installation token
+that never leaves the host.
+
+I chose the same unit over a sibling unit: both listeners need the same vault key, the same
+1Password service account and the same audit log, so a second unit would duplicate the sealed
+credentials and a second process would race on them. The cost is that one crash restarts both;
+`Restart=on-failure` covers that. The default proxy port is **8789** (the gateway uses 8788).
+
+### How it behaves
+
+- One installation token is minted for exactly the `repositories` listed, with the configured
+  permissions (default `contents:write`, `pull_requests:write`, `metadata:read`; `actions:read`,
+  `checks:read` and `issues:write` may be added; `administration` and everything else is refused
+  at startup). It is cached in memory, minted again about 5 minutes before it expires, and again
+  once when GitHub answers 401 (never more often than every 30 seconds).
+- `github.com`: only git smart HTTP (`/<owner>/<repo>[.git]/info/refs`, `/git-upload-pack`,
+  `/git-receive-pack`) with `Authorization: Basic base64("x-access-token:<token>")`.
+- `api.github.com` (REST and `/graphql`) and `uploads.github.com`: `Authorization: Bearer <token>`.
+  `/app`, `/installation` and `/applications` are refused so the cached token cannot be revoked.
+- A repository path outside the list answers `403 {"error":"repository_not_allowed"}` before
+  anything is sent to GitHub; an unsupported route answers `403 {"error":"route_not_allowed"}`.
+  Encoded or non-canonical paths are refused.
+- Redirects from GitHub go back to the caller; the proxy never replays the token elsewhere.
+- Callers must come from `--allow-source` (same check as the gateway, before authentication) and
+  present the proxy token. Without `--allow-source` a non-loopback `--proxy-listen` is refused.
+- Every mint is audited (`mint`, `via: proxy`) and every denial too. The token is never logged.
+
+### Owner setup (Fedora, normal shell)
+
+Everything in the sections above applies (sealed vault key, 1Password service account). Then:
+
+```bash
+# 1. GitHub App private key and ids live in the 1Password vault the service account can read;
+#    connect the github-app connection with op:// references (see `keylatch connect github-app`).
+
+# 2. Operator config (~/.config/keylatch/config.json): the mint policy is the ceiling, the proxy
+#    block says which repositories the proxy token covers.
+```
+
+```json
+{
+  "backend": "op",
+  "connections": {
+    "github-app": {
+      "mint": { "github_app": {
+        "allow_repos": ["octo/app", "octo/tools"],
+        "permission_ceiling": { "contents": "write", "pull_requests": "write", "metadata": "read" }
+      } },
+      "proxy": { "github": {
+        "repositories": ["octo/app", "octo/tools"]
+      } }
+    }
+  }
+}
+```
+
+All repositories must belong to one owner (one installation). Optional `permissions` replaces the
+default set; each must also be under the mint ceiling.
+
+```bash
+# 3. Install (adds --proxy-listen/--proxy-connection to ExecStart) and start.
+keylatch gateway systemd install --listen 192.168.150.1:8788 --allow-source 192.168.150.0/24 \
+  --github-mint github-app --with-proxy --proxy-listen 192.168.150.1:8789 \
+  --op-service-account-credential ~/.config/keylatch/gateway/op-sa-token.cred
+systemctl --user enable --now keylatch-gateway.service
+
+# 4. Verify.
+keylatch gateway systemd status --check-op
+ss -ltn | grep -E '8788|8789'
+keylatch proxy ca print | openssl x509 -noout -subject -ext nameConstraints
+keylatch proxy token print > /dev/null && echo token ok      # created on first use, mode 0600
+curl -s -o /dev/null -w '%{http_code}\n' --proxy http://192.168.150.1:8789 \
+  --proxy-header "Proxy-Authorization: Bearer $(keylatch proxy token print)" \
+  --cacert <(keylatch proxy ca print) https://api.github.com/repos/octo/app    # 200
+```
+
+State files live in the gateway directory: `proxy-ca.pem` (public), `proxy-ca.key` (0600),
+`proxy-token` (0600). Delete them (and restart) to rotate; the guest must then trust the new CA.
+The CA key is a plain 0600 file because an unattended unit has no keyring. The certificate is
+name-constrained to `github.com`, so even a stolen key cannot vouch for other sites.
+
+### agent-os guest contract
+
+| Item | Value |
+|---|---|
+| Proxy | `http://192.168.150.1:8789` (plain HTTP to the proxy, CONNECT for HTTPS) |
+| Proxy auth | `Proxy-Authorization: Bearer <token>` or Basic with any user and the token as password (`http://keylatch:<token>@192.168.150.1:8789`). The token is `keylatch proxy token print` on the host; the guest keeps it in a 0600 file. |
+| CA | `keylatch proxy ca print` on the host (PEM, no key); install into the guest trust store, e.g. `/usr/local/share/ca-certificates/keylatch-proxy.crt` then `update-ca-certificates`; for git alone `http.sslCAInfo`. |
+| Through the proxy | `github.com`, `api.github.com`, `uploads.github.com` (set `HTTPS_PROXY`, or per host `git config http.https://github.com/.proxy`). Everything else keeps going direct. |
+| git | `https://github.com/<owner>/<repo>.git` URLs; no credential helper and no token. If git insists on a credential, any placeholder works: the proxy replaces it. |
+| gh | `GH_TOKEN=placeholder` (any non-empty string) and `GH_HOST=github.com`; `gh` talks to `api.github.com` through `HTTPS_PROXY`. |
+| Not available | Repositories outside the list (403), `administration`, merging beyond what the token's permissions and branch protection allow. |
+
+### Risks
+
+- 1Password service account rate limits: a mint reads three items (app id, installation, key),
+  roughly 3 reads per hour plus start-up and one extra pair per 401 retry (capped at one per 30
+  seconds). That is far under the hourly and daily caps for service accounts, but the caps are
+  per account and shared with anything else using it; give this service account its own vault
+  and check the plan's limits (`op service-account ratelimit`).
+- One process serves both the gateway and the proxy; if the vault or `op` is unreachable at a
+  mint, git and API calls answer 503 `credential_unavailable` until it recovers (the failure is
+  not retried for 5 seconds).
+- The token the proxy holds lives in memory for up to an hour and can do whatever its
+  permissions allow on the listed repositories: push branches and open pull requests. Branch
+  protection stays the merge gate.
+- A guest that can reach the proxy and knows the proxy token can use the token's powers; keep
+  the token file 0600 and the source CIDR tight.
