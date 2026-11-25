@@ -78,6 +78,11 @@ type mintHarness struct {
 
 func newMintHarness(t *testing.T, policy *config.GitHubAppMintPolicy, withAudit bool) *mintHarness {
 	t.Helper()
+	return newMintHarnessInfo(t, policy, withAudit, nil)
+}
+
+func newMintHarnessInfo(t *testing.T, policy *config.GitHubAppMintPolicy, withAudit bool, info any) *mintHarness {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +112,7 @@ func newMintHarness(t *testing.T, policy *config.GitHubAppMintPolicy, withAudit 
 	}
 
 	opts := ServerOptions{
+		Info:           info,
 		SigningKey:     signing,
 		ApprovalsDir:   filepath.Join(dir, "approvals"),
 		TokenStorePath: storePath,

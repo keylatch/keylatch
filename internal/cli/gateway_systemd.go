@@ -11,7 +11,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
@@ -38,13 +37,12 @@ type unitBackendCredential struct{ Name, File string }
 
 type gatewayUnitSpec struct {
 	Binary         string
-	EnvFile        string
 	CredentialFile string
 	// BackendCredentials are sealed secrets a backend reads from its
 	// environment, each loaded as a systemd credential.
 	BackendCredentials []unitBackendCredential
-	// ExecArgs are the arguments after the binary: gateway up plus the
-	// validated --allow-source and --github-mint flags.
+	// ExecArgs are the arguments after the binary: `gateway up` plus the
+	// backend credential wiring. Settings live in the operator config.
 	ExecArgs string
 }
 
@@ -54,9 +52,8 @@ Documentation=https://github.com/keylatch/keylatch/blob/main/docs/runtime-modes.
 
 [Service]
 Type=simple
-# KEYLATCH_GATEWAY_LISTEN (the bridge address) comes from this file. Without it
-# the gateway binds loopback only; the unit never binds every interface.
-EnvironmentFile={{.EnvFile}}
+# Listen address, allowed sources, mint connection and proxy listeners are read from the
+# operator config (keylatch gateway config get); changing them needs a restart, not a reinstall.
 # The vault key is a systemd credential decrypted for this service only, so the
 # vault opens without a login session, keyring or plaintext key file.
 LoadCredentialEncrypted={{.Credential}}:{{.CredentialFile}}
@@ -97,10 +94,10 @@ func validateGatewayListen(addr string) error {
 	host, _, _ := net.SplitHostPort(addr)
 	ip := net.ParseIP(host)
 	if ip == nil {
-		return fmt.Errorf("listen address %q: host must be an IP address (for example the VM bridge address), not %q", addr, host)
+		return fmt.Errorf("listen address %q: host must be an IP address (for example the address of a VM or container network), not %q", addr, host)
 	}
 	if ip.IsUnspecified() {
-		return fmt.Errorf("listen address %q binds every interface; use the bridge address", addr)
+		return fmt.Errorf("listen address %q binds every interface; use an address of the network the callers are on", addr)
 	}
 	return nil
 }
@@ -127,51 +124,20 @@ func systemdUserUnitDir() (string, error) {
 	return filepath.Join(home, ".config", "systemd", "user"), nil
 }
 
-func gatewayEnvFilePath(env llmcontext.Lookup) string {
-	return filepath.Join(paths.GatewayDir(env), "systemd.env")
-}
-
 func gatewayCredentialPath(env llmcontext.Lookup) string {
 	return filepath.Join(paths.GatewayDir(env), "kek.cred")
 }
 
-func gatewayEnvFileContent(listen string) string {
-	return "# Address the gateway binds. Use the VM bridge address, never a wildcard.\n" +
-		"KEYLATCH_GATEWAY_LISTEN=" + listen + "\n"
-}
-
 var connectionNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// gatewayExecArgs builds the gateway command line. A non-loopback listen
-// address needs --allow-source (canonical CIDR, so hostcheck-style parsers
-// compare it exactly) unless allowAny is explicit.
-func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string, backendCreds []backendCredential) (string, error) {
-	host, _, _ := net.SplitHostPort(listen)
-	loopback := net.ParseIP(host).IsLoopback()
-	if allowAny && len(sources) > 0 {
-		return "", errors.New("--allow-any-source cannot be combined with --allow-source")
-	}
-	if !loopback && len(sources) == 0 && !allowAny {
-		return "", fmt.Errorf("listen address %q is not loopback: pass --allow-source <CIDR> (for example the VM network) or, to accept any caller that can reach it, --allow-any-source", listen)
-	}
+// gatewayExecArgs builds the service command line: `gateway up` and the
+// backend credential wiring only. Everything else is read from the operator config.
+func gatewayExecArgs(backendCreds []backendCredential) string {
 	args := []string{"gateway", "up"}
-	prefixes, err := gateway.ParseAllowSources(sources)
-	if err != nil {
-		return "", err
-	}
-	for _, p := range prefixes {
-		args = append(args, "--allow-source", p.String())
-	}
-	if githubMint != "" {
-		if !connectionNameRE.MatchString(githubMint) {
-			return "", fmt.Errorf("--github-mint %q: connection names use letters, digits, '.', '_' and '-'", githubMint)
-		}
-		args = append(args, "--github-mint", githubMint)
-	}
 	for _, c := range backendCreds {
 		args = append(args, "--backend-credential", c.flag())
 	}
-	return strings.Join(args, " "), nil
+	return strings.Join(args, " ")
 }
 
 func resolveGatewayBinary(flag string) (string, error) {
@@ -230,28 +196,18 @@ Paste the secret, then press Ctrl-D twice (or pipe it from a password manager).`
 }
 
 type gatewaySystemdFlags struct {
-	listen      string
 	binary      string
-	sources     []string
-	anySource   bool
-	githubMint  string
 	backendCred []string
+	settings    gatewaySettingsFlags
 }
 
 func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.listen, "listen", "", "address:port the gateway binds, an IP literal such as the VM bridge address (required)")
+	f.settings.bind(cmd)
 	cmd.Flags().StringVar(&f.binary, "binary", "", "absolute path of the keylatch binary (default: the running binary)")
-	cmd.Flags().StringArrayVar(&f.sources, "allow-source", nil, "CIDR callers must come from, repeatable; written to ExecStart as --allow-source <cidr> (required for a non-loopback --listen)")
-	cmd.Flags().BoolVar(&f.anySource, "allow-any-source", false, "accept a non-loopback --listen without --allow-source (any caller that can reach the address)")
-	cmd.Flags().StringVar(&f.githubMint, "github-mint", "", "github-app connection to serve POST /mint/github from (adds --github-mint to ExecStart)")
 	cmd.Flags().StringArrayVar(&f.backendCred, "backend-credential", nil, "<cred-name>=<ENV_VAR>:<file.cred>, repeatable: a systemd-creds sealed secret exported as ENV_VAR from $CREDENTIALS_DIRECTORY at start (the name must match systemd-creds --name)")
-	_ = cmd.MarkFlagRequired("listen")
 }
 
 func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, error) {
-	if err := validateGatewayListen(f.listen); err != nil {
-		return gatewayUnitSpec{}, err
-	}
 	bin, err := resolveGatewayBinary(f.binary)
 	if err != nil {
 		return gatewayUnitSpec{}, err
@@ -273,12 +229,8 @@ func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, erro
 	if _, err := parseBackendCredentials(credFlags(backendCreds)); err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint, backendCreds)
-	if err != nil {
-		return gatewayUnitSpec{}, err
-	}
-	spec := gatewayUnitSpec{ExecArgs: execArgs, Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env), BackendCredentials: unitCreds}
-	unitPaths := []string{spec.Binary, spec.EnvFile, spec.CredentialFile}
+	spec := gatewayUnitSpec{ExecArgs: gatewayExecArgs(backendCreds), Binary: bin, CredentialFile: gatewayCredentialPath(env), BackendCredentials: unitCreds}
+	unitPaths := []string{spec.Binary, spec.CredentialFile}
 	for _, c := range spec.BackendCredentials {
 		unitPaths = append(unitPaths, c.File)
 	}
@@ -301,6 +253,9 @@ func newGatewaySystemdPrintCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if _, _, _, err := f.settings.effective(c); err != nil {
+				return err
+			}
 			unit, err := spec.render()
 			if err != nil {
 				return err
@@ -320,7 +275,7 @@ func newGatewaySystemdInstallCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Write the user unit and gateway environment file",
+		Short: "Write the user unit (and, with settings flags, the gateway settings into the operator config)",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
@@ -330,6 +285,9 @@ func newGatewaySystemdInstallCmd() *cobra.Command {
 			}
 			unit, err := spec.render()
 			if err != nil {
+				return err
+			}
+			if err := f.settings.persist(c); err != nil {
 				return err
 			}
 			unitDir, err := systemdUserUnitDir()
@@ -343,13 +301,7 @@ func newGatewaySystemdInstallCmd() *cobra.Command {
 			if err := os.WriteFile(unitPath, []byte(unit), 0o644); err != nil { //nolint:gosec // unit files carry no secrets
 				return fmt.Errorf("gateway systemd install: write %q: %w", unitPath, err)
 			}
-			if err := os.MkdirAll(filepath.Dir(spec.EnvFile), 0o700); err != nil {
-				return fmt.Errorf("gateway systemd install: mkdir: %w", err)
-			}
-			if err := os.WriteFile(spec.EnvFile, []byte(gatewayEnvFileContent(f.listen)), 0o600); err != nil {
-				return fmt.Errorf("gateway systemd install: write %q: %w", spec.EnvFile, err)
-			}
-			fmt.Fprintf(c.OutOrStdout(), "wrote %s\nwrote %s\n", unitPath, spec.EnvFile)
+			fmt.Fprintf(c.OutOrStdout(), "wrote %s\n", unitPath)
 
 			if out, err := systemctlRunFunc("daemon-reload"); err != nil {
 				return fmt.Errorf("gateway systemd install: systemctl daemon-reload: %v: %s", err, strings.TrimSpace(string(out)))
@@ -381,7 +333,7 @@ func newGatewaySystemdInstallCmd() *cobra.Command {
 func newGatewaySystemdUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
-		Short: "Stop and remove the user unit (keeps the environment file and credential)",
+		Short: "Stop and remove the user unit (keeps the config and credentials)",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			unitDir, err := systemdUserUnitDir()
@@ -437,7 +389,7 @@ func newGatewaySystemdStatusCmd() *cobra.Command {
 			report("unit", present(filepath.Join(unitDir, systemdUnitName)))
 			report("enabled", state("is-enabled", systemdUnitName))
 			report("active", state("is-active", systemdUnitName))
-			report("env file", present(gatewayEnvFilePath(env)))
+
 			report("credential", present(gatewayCredentialPath(env)))
 			linger := "unknown"
 			if out, err := loginctlRunFunc("show-user", currentUserName(), "--property=Linger", "--value"); err == nil {

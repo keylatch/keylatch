@@ -122,6 +122,8 @@ have independent lifecycles. Stop the proxy explicitly with 'keylatch proxy down
 	cmd.AddCommand(newProxyUpCmd())
 	cmd.AddCommand(newProxyDownCmd())
 	cmd.AddCommand(newProxyStatusCmd())
+	cmd.AddCommand(newProxyCACmd())
+	cmd.AddCommand(newProxyTokenCmd())
 	return cmd
 }
 
