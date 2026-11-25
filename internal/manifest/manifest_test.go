@@ -47,10 +47,19 @@ func TestCurrent_ManagerCohort(t *testing.T) {
 	assert.True(t, m.Enabled("op"))
 	assert.True(t, m.Enabled("bw"))
 
-	for _, id := range []string{"vaultwarden", "opconnect", "keeper", "proton-pass", "lastpass", "keychain", "file"} {
+	for _, id := range []string{"vaultwarden", "opconnect", "keeper", "proton-pass", "lastpass", "keychain"} {
 		assert.False(t, m.Enabled(id), "manager %q must not be enabled", id)
 		assert.Equal(t, manifest.Unavailable, m.Status(id))
 	}
+}
+
+// TestCurrent_FileBackendIsUncertifiedNotGated records that the file backend
+// registers and works regardless of the manifest, so it must not be reported
+// as unreachable; it stays uncertified (never Enabled) until its checks land.
+func TestCurrent_FileBackendIsUncertifiedNotGated(t *testing.T) {
+	m := manifest.Current()
+	assert.Equal(t, manifest.Experimental, m.Status("file"))
+	assert.False(t, m.Enabled("file"))
 }
 
 // TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy,
