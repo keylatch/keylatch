@@ -313,3 +313,55 @@ func TestMintGitHub_SourceCheckPrecedesAuth(t *testing.T) {
 		t.Error("a refused source must not reach GitHub")
 	}
 }
+
+func TestMintGitHub_CeilingDefaultAndEnforcement(t *testing.T) {
+	post := func(h *mintHarness, body string) (int, string) {
+		w := h.post(h.jwt, body)
+		return w.Code, w.Body.String()
+	}
+
+	// No permission_ceiling: the default ceiling applies.
+	h := newMintHarness(t, &config.GitHubAppMintPolicy{AllowRepos: []string{"octo/app"}}, true)
+	if code, body := post(h, `{"repository":"octo/app"}`); code != http.StatusOK {
+		t.Fatalf("default permissions under the default ceiling = %d %s", code, body)
+	}
+	if code, _ := post(h, `{"repository":"octo/app","permissions":{"contents":"write","pull_requests":"write","metadata":"read"}}`); code != http.StatusOK {
+		t.Fatalf("the ceiling itself = %d, want 200", code)
+	}
+	for _, perms := range []string{`{"contents":"admin"}`, `{"workflows":"write"}`, `{"actions":"write"}`, `{"metadata":"write"}`, `{"contents":"write","members":"read"}`} {
+		code, body := post(h, `{"repository":"octo/app","permissions":`+perms+`}`)
+		var e struct{ Error string }
+		if code != http.StatusForbidden || json.Unmarshal([]byte(body), &e) != nil || e.Error == "" {
+			t.Errorf("%s = %d %s, want 403 with a JSON error", perms, code, body)
+		}
+	}
+	if len(h.gh.posts) != 2 {
+		t.Errorf("GitHub saw %d requests, want 2 (only the allowed ones)", len(h.gh.posts))
+	}
+
+	// An explicit ceiling wins over the default, in both directions.
+	h = newMintHarness(t, &config.GitHubAppMintPolicy{AllowRepos: []string{"octo/app"}, PermissionCeiling: map[string]string{"contents": "read"}}, true)
+	if code, _ := post(h, `{"repository":"octo/app","permissions":{"contents":"write"}}`); code != http.StatusForbidden {
+		t.Errorf("contents:write above an explicit contents:read ceiling = %d, want 403", code)
+	}
+	if code, _ := post(h, `{"repository":"octo/app","permissions":{"contents":"read"}}`); code != http.StatusOK {
+		t.Errorf("contents:read under its ceiling = %d, want 200", code)
+	}
+	h = newMintHarness(t, &config.GitHubAppMintPolicy{AllowRepos: []string{"octo/app"}, PermissionCeiling: map[string]string{"issues": "write"}}, true)
+	if code, _ := post(h, `{"repository":"octo/app","permissions":{"issues":"write"}}`); code != http.StatusOK {
+		t.Errorf("a permission the default lacks but the ceiling grants = %d, want 200", code)
+	}
+}
+
+func TestMintGitHub_AllowReposAndOwnersEnforced(t *testing.T) {
+	h := newMintHarness(t, &config.GitHubAppMintPolicy{AllowRepos: []string{"octo/app"}}, true)
+	for repo, want := range map[string]int{"octo/app": http.StatusOK, "OCTO/App": http.StatusOK, "octo/other": http.StatusForbidden, "other/app": http.StatusForbidden} {
+		if w := h.post(h.jwt, `{"repository":"`+repo+`"}`); w.Code != want {
+			t.Errorf("%s = %d %s, want %d", repo, w.Code, w.Body.String(), want)
+		}
+	}
+	h = newMintHarness(t, &config.GitHubAppMintPolicy{AllowOwners: []string{"octo"}, DenyOwners: []string{"octo"}}, true)
+	if w := h.post(h.jwt, `{"repository":"octo/app"}`); w.Code != http.StatusForbidden {
+		t.Errorf("deny_owners must win over allow_owners: %d", w.Code)
+	}
+}

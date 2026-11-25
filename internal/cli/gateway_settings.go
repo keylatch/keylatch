@@ -19,6 +19,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/policy/mint"
 	"github.com/keylatch/keylatch/internal/version"
 )
 
@@ -115,14 +116,41 @@ func proxyListenersFromConfig(cfg config.Config) []proxyListener {
 // by `gateway status --json` and GET /info. It holds no token, key, secret
 // file path or vault reference.
 type gatewayInfo struct {
-	Schema         int         `json:"schema"`
-	Version        string      `json:"version"`
-	Listen         string      `json:"listen"`
-	AllowSource    []string    `json:"allow_source"`
-	AllowAnySource bool        `json:"allow_any_source"`
-	GitHubMint     string      `json:"github_mint"`
-	Proxies        []proxyInfo `json:"proxies"`
-	CA             *caInfo     `json:"ca,omitempty"`
+	Schema         int      `json:"schema"`
+	Version        string   `json:"version"`
+	Listen         string   `json:"listen"`
+	AllowSource    []string `json:"allow_source"`
+	AllowAnySource bool     `json:"allow_any_source"`
+	GitHubMint     string   `json:"github_mint"`
+	// GitHubMintPolicy is the effective mint.github_app policy of the
+	// github_mint connection (null without a connection or a policy). Additive
+	// to schema 1.
+	GitHubMintPolicy *mintPolicyInfo `json:"github_mint_policy"`
+	Proxies          []proxyInfo     `json:"proxies"`
+	CA               *caInfo         `json:"ca,omitempty"`
+}
+
+// mintPolicyInfo lists the effective limits of POST /mint/github: the default
+// ceiling and callers are shown when the policy sets none. MaxTTL is seconds.
+type mintPolicyInfo struct {
+	AllowRepos        []string          `json:"allow_repos"`
+	AllowOwners       []string          `json:"allow_owners"`
+	DenyOwners        []string          `json:"deny_owners"`
+	PermissionCeiling map[string]string `json:"permission_ceiling"`
+	Callers           []string          `json:"callers"`
+	MaxTTL            int               `json:"max_ttl"`
+}
+
+func mintPolicyInfoFor(cfg config.Config, connection string) *mintPolicyInfo {
+	cp, ok := cfg.Connections[connection]
+	if connection == "" || !ok || cp.Mint == nil || cp.Mint.GitHubApp == nil {
+		return nil
+	}
+	p := cp.Mint.GitHubApp
+	return &mintPolicyInfo{
+		AllowRepos: append([]string{}, p.AllowRepos...), AllowOwners: append([]string{}, p.AllowOwners...), DenyOwners: append([]string{}, p.DenyOwners...),
+		PermissionCeiling: mint.EffectiveCeiling(p), Callers: mint.EffectiveCallers(p), MaxTTL: int(mint.MaxLifetime(p).Seconds()),
+	}
 }
 
 type proxyInfo struct {
@@ -153,6 +181,7 @@ func buildGatewayInfo(cfg config.Config, settings gatewaySettings, lookup llmcon
 		AllowAnySource: settings.AllowAnySource, GitHubMint: settings.GitHubMint,
 		Proxies: []proxyInfo{},
 	}
+	info.GitHubMintPolicy = mintPolicyInfoFor(cfg, settings.GitHubMint)
 	for _, pl := range proxyListenersFromConfig(cfg) {
 		r, err := proxyGitHubSettings(cfg, pl.Connection, pl.Addr)
 		if err != nil {
