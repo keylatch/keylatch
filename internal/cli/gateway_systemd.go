@@ -24,9 +24,6 @@ const defaultProxyPort = "8790"
 const (
 	systemdUnitName      = "keylatch-gateway.service"
 	systemdCredentialKEK = "kek"
-	// systemdCredentialOPSA names the credential carrying the 1Password
-	// service account token. It must match --name= given to systemd-creds.
-	systemdCredentialOPSA = "op-sa-token"
 )
 
 // systemctlRunFunc and loginctlRunFunc are vars so tests substitute fakes and
@@ -41,13 +38,15 @@ var (
 )
 
 // gatewayUnitSpec is everything the unit template needs; all paths are absolute.
+type unitBackendCredential struct{ Name, File string }
+
 type gatewayUnitSpec struct {
 	Binary         string
 	EnvFile        string
 	CredentialFile string
-	// OPCredentialFile is the sealed 1Password service account token; empty
-	// means the unit does not load one.
-	OPCredentialFile string
+	// BackendCredentials are sealed secrets a backend reads from its
+	// environment, each loaded as a systemd credential.
+	BackendCredentials []unitBackendCredential
 	// ExecArgs are the arguments after the binary: gateway up plus the
 	// validated --allow-source and --github-mint flags.
 	ExecArgs string
@@ -66,10 +65,10 @@ EnvironmentFile={{.EnvFile}}
 # vault opens without a login session, keyring or plaintext key file.
 LoadCredentialEncrypted={{.Credential}}:{{.CredentialFile}}
 Environment=KEYLATCH_AGE_IDENTITY=%d/{{.Credential}}
-{{- if .OPCredentialFile}}
-# 1Password service account token, sealed the same way. keylatch reads it from
-# $CREDENTIALS_DIRECTORY at start and keeps it in its own process environment only.
-LoadCredentialEncrypted={{.OPCredential}}:{{.OPCredentialFile}}
+{{- range .BackendCredentials}}
+# Backend secret, sealed the same way. keylatch reads it from $CREDENTIALS_DIRECTORY
+# at start and keeps it in its own process environment only.
+LoadCredentialEncrypted={{.Name}}:{{.File}}
 {{- end}}
 ExecStart={{.Binary}} {{.ExecArgs}}
 Restart=on-failure
@@ -88,9 +87,8 @@ func (s gatewayUnitSpec) render() (string, error) {
 	var b strings.Builder
 	err := gatewayUnitTemplate.Execute(&b, struct {
 		gatewayUnitSpec
-		Credential   string
-		OPCredential string
-	}{s, systemdCredentialKEK, systemdCredentialOPSA})
+		Credential string
+	}{s, systemdCredentialKEK})
 	return b.String(), err
 }
 
@@ -151,7 +149,7 @@ var connectionNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // gatewayExecArgs builds the gateway command line. A non-loopback listen
 // address needs --allow-source (canonical CIDR, so hostcheck-style parsers
 // compare it exactly) unless allowAny is explicit.
-func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string, opSA bool, proxies []proxyListener) (string, error) {
+func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string, backendCreds []backendCredential, proxies []proxyListener) (string, error) {
 	host, _, _ := net.SplitHostPort(listen)
 	loopback := net.ParseIP(host).IsLoopback()
 	if allowAny && len(sources) > 0 {
@@ -191,8 +189,8 @@ func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint 
 		}
 		args = append(args, "--proxy-listen", pl.Addr+"="+pl.Connection)
 	}
-	if opSA {
-		args = append(args, "--op-service-account-credential", systemdCredentialOPSA)
+	for _, c := range backendCreds {
+		args = append(args, "--backend-credential", c.flag())
 	}
 	return strings.Join(args, " "), nil
 }
@@ -235,14 +233,18 @@ Provision the credential once, before 'keylatch bootstrap':
 
 Use --with-key=host (or omit --with-key) on machines without a TPM2.
 
-To read secrets from 1Password without anyone present (overnight agent runs), seal
-a 1Password service account token the same way and pass it with
---op-service-account-credential. The token is read from stdin, never from argv:
+To let a backend authenticate without anyone present (long unattended runs), seal its
+secret the same way and pass it with --backend-credential <cred-name>=<ENV_VAR>:<file>.
+ENV_VAR must be one a backend reads (for example OP_SERVICE_ACCOUNT_TOKEN for a
+1Password service account, BW_SESSION, VAULT_TOKEN, DOPPLER_TOKEN). The secret is read
+from stdin, never from argv:
 
-  systemd-creds encrypt --user --name=op-sa-token --with-key=tpm2 - \
-    ~/.config/keylatch/gateway/op-sa-token.cred
+  systemd-creds encrypt --user --name=op-sa --with-key=tpm2 - \
+    ~/.config/keylatch/gateway/op-sa.cred
+  keylatch gateway systemd install ... \
+    --backend-credential op-sa=OP_SERVICE_ACCOUNT_TOKEN:$HOME/.config/keylatch/gateway/op-sa.cred
 
-Paste the token, then press Ctrl-D twice (or pipe it from a password manager).`,
+Paste the secret, then press Ctrl-D twice (or pipe it from a password manager).`,
 	}
 	cmd.AddCommand(newGatewaySystemdPrintCmd(), newGatewaySystemdInstallCmd(), newGatewaySystemdUninstallCmd(), newGatewaySystemdStatusCmd())
 	return cmd
@@ -254,10 +256,9 @@ type gatewaySystemdFlags struct {
 	sources     []string
 	anySource   bool
 	githubMint  string
-	opSACred    string
+	backendCred []string
 	withProxy   bool
 	proxyListen []string
-	proxyConn   string
 }
 
 func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
@@ -266,7 +267,7 @@ func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&f.sources, "allow-source", nil, "CIDR callers must come from, repeatable; written to ExecStart as --allow-source <cidr> (required for a non-loopback --listen)")
 	cmd.Flags().BoolVar(&f.anySource, "allow-any-source", false, "accept a non-loopback --listen without --allow-source (any caller that can reach the address)")
 	cmd.Flags().StringVar(&f.githubMint, "github-mint", "", "github-app connection to serve POST /mint/github from (adds --github-mint to ExecStart)")
-	cmd.Flags().StringVar(&f.opSACred, "op-service-account-credential", "", "systemd-creds encrypted file holding the 1Password service account token (adds LoadCredentialEncrypted=op-sa-token to the unit)")
+	cmd.Flags().StringArrayVar(&f.backendCred, "backend-credential", nil, "<cred-name>=<ENV_VAR>:<file.cred>, repeatable: a systemd-creds sealed secret exported as ENV_VAR from $CREDENTIALS_DIRECTORY at start (the name must match systemd-creds --name)")
 	cmd.Flags().BoolVar(&f.withProxy, "with-proxy", false, "also run the GitHub-injecting CONNECT proxy in this unit (needs --proxy-listen and a github-app connection)")
 	cmd.Flags().StringArrayVar(&f.proxyListen, "proxy-listen", nil, "proxy listener as <ip:port>[=<connection>], repeatable, one per GitHub installation (default with --with-proxy: <--listen host>:8790=<--github-mint connection>)")
 	_ = cmd.MarkFlagRequired("listen")
@@ -304,14 +305,31 @@ func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, erro
 	case len(f.proxyListen) > 0:
 		return gatewayUnitSpec{}, errors.New("--proxy-listen needs --with-proxy")
 	}
-	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint, f.opSACred != "", proxies)
+	var backendCreds []backendCredential
+	var unitCreds []unitBackendCredential
+	for _, v := range f.backendCred {
+		head, file, ok := strings.Cut(v, ":")
+		if !ok || file == "" {
+			return gatewayUnitSpec{}, fmt.Errorf("--backend-credential %q: use <cred-name>=<ENV_VAR>:<file.cred>", v)
+		}
+		parsed, err := parseBackendCredentials([]string{head})
+		if err != nil {
+			return gatewayUnitSpec{}, err
+		}
+		backendCreds = append(backendCreds, parsed[0])
+		unitCreds = append(unitCreds, unitBackendCredential{parsed[0].Name, file})
+	}
+	if _, err := parseBackendCredentials(credFlags(backendCreds)); err != nil {
+		return gatewayUnitSpec{}, err
+	}
+	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint, backendCreds, proxies)
 	if err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	spec := gatewayUnitSpec{ExecArgs: execArgs, Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env), OPCredentialFile: f.opSACred}
+	spec := gatewayUnitSpec{ExecArgs: execArgs, Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env), BackendCredentials: unitCreds}
 	unitPaths := []string{spec.Binary, spec.EnvFile, spec.CredentialFile}
-	if spec.OPCredentialFile != "" {
-		unitPaths = append(unitPaths, spec.OPCredentialFile)
+	for _, c := range spec.BackendCredentials {
+		unitPaths = append(unitPaths, c.File)
 	}
 	for _, p := range unitPaths {
 		if err := validateUnitPath(p); err != nil {
@@ -388,9 +406,9 @@ func newGatewaySystemdInstallCmd() *cobra.Command {
 			if _, err := os.Stat(spec.CredentialFile); errors.Is(err, os.ErrNotExist) {
 				fmt.Fprintf(c.OutOrStdout(), "vault key credential missing at %s; see 'keylatch gateway systemd --help' to create it before starting\n", spec.CredentialFile)
 			}
-			if spec.OPCredentialFile != "" {
-				if _, err := os.Stat(spec.OPCredentialFile); errors.Is(err, os.ErrNotExist) {
-					fmt.Fprintf(c.OutOrStdout(), "1Password service account credential missing at %s; see 'keylatch gateway systemd --help' to create it before starting\n", spec.OPCredentialFile)
+			for _, bc := range spec.BackendCredentials {
+				if _, err := os.Stat(bc.File); errors.Is(err, os.ErrNotExist) {
+					fmt.Fprintf(c.OutOrStdout(), "backend credential %s missing at %s; see 'keylatch gateway systemd --help' to create it before starting\n", bc.Name, bc.File)
 				}
 			}
 			if now {
@@ -439,7 +457,7 @@ func newGatewaySystemdUninstallCmd() *cobra.Command {
 }
 
 func newGatewaySystemdStatusCmd() *cobra.Command {
-	var checkOP bool
+	var checkBackend bool
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show whether the unit is installed, enabled, active and able to unlock the vault",
@@ -475,16 +493,17 @@ func newGatewaySystemdStatusCmd() *cobra.Command {
 				linger = strings.TrimSpace(string(out))
 			}
 			report("linger", linger+" (must be yes to run without a login session)")
-			if opCred, ok := unitLoadsCredential(filepath.Join(unitDir, systemdUnitName), systemdCredentialOPSA); ok {
-				report("op account", present(opCred))
-				if checkOP {
-					report("op auth", checkSealedOPServiceAccount(c.Context(), opCred))
+			creds, files := unitBackendCredentials(filepath.Join(unitDir, systemdUnitName))
+			for _, bc := range creds {
+				report("backend cred", bc.Name+" -> "+bc.Env+" "+present(files[bc.Name]))
+				if checkBackend {
+					report("backend auth", bc.Name+": "+checkSealedBackendCredential(c.Context(), bc, files[bc.Name]))
 				}
 			}
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&checkOP, "check-op", false, "decrypt the sealed 1Password service account token for this command only and run 'op whoami' (the token is never printed)")
+	cmd.Flags().BoolVar(&checkBackend, "check-backend", false, "decrypt each sealed backend credential for this command only and verify it (1Password: `op whoami`); the value is never printed")
 	return cmd
 }
 
@@ -493,4 +512,12 @@ func currentUserName() string {
 		return u
 	}
 	return fmt.Sprint(os.Getuid())
+}
+
+func credFlags(cs []backendCredential) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.flag())
+	}
+	return out
 }
