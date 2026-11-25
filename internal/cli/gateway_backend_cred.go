@@ -3,10 +3,12 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -71,6 +73,16 @@ var resolveBinFunc = kexec.Resolve
 func exportBackendCredentials(creds []backendCredential) error {
 	for _, c := range creds {
 		dir := os.Getenv("CREDENTIALS_DIRECTORY")
+		if dir == "" && runtime.GOOS == "darwin" {
+			tok, err := keychainSecret(c.Name)
+			if err != nil {
+				return fmt.Errorf("--backend-credential %s: %w", c.flag(), err)
+			}
+			if err := os.Setenv(c.Env, tok); err != nil {
+				return err
+			}
+			continue
+		}
 		if dir == "" {
 			return fmt.Errorf("--backend-credential %s: CREDENTIALS_DIRECTORY is not set; run this under the service manager (systemd: LoadCredentialEncrypted=%s:<file>)", c.flag(), c.Name)
 		}
@@ -160,3 +172,21 @@ func unitBackendCredentials(unitPath string) (creds []backendCredential, files m
 	creds, _ = parseBackendCredentials(flags)
 	return creds, files
 }
+
+// keychainSecret reads the secret stored for a backend credential in the login
+// Keychain: service "keylatch-backend", account <name>.
+func keychainSecret(name string) (string, error) {
+	bin := resolveBinFunc("security")
+	if bin == "" {
+		return "", errors.New("the security tool was not found")
+	}
+	out, _, code, err := opSARunner.Run(context.Background(), bin, []string{"find-generic-password", "-s", keychainBackendService, "-a", name, "-w"}, nil)
+	defer clear(out)
+	tok := strings.TrimSpace(string(out))
+	if err != nil || code != 0 || tok == "" {
+		return "", fmt.Errorf("no Keychain item (service %q, account %q); add it with: security add-generic-password -s %s -a %s -w", keychainBackendService, name, keychainBackendService, name)
+	}
+	return tok, nil
+}
+
+const keychainBackendService = "keylatch-backend"

@@ -118,6 +118,9 @@ jobs:
         shell: bash
         env:
           KEYLATCH_BACKEND: file
+          # The runner image ships git and gh: the proxy tests that drive them
+          # must run there, not skip.
+          KEYLATCH_REQUIRE_REAL_CLIENTS: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
         run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
       - name: Check coverage threshold
         run: bash release-checks/coverage-threshold.sh coverage.out
