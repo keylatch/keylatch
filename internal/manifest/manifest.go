@@ -61,7 +61,7 @@ func Current() Manifest {
 			{ID: "proton-pass", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
 			{ID: "lastpass", Category: CategoryManager, Status: Unavailable, Note: "enabled on demand"},
 			{ID: "keychain", Category: CategoryManager, Status: Unavailable, Note: "macOS is not a certified platform yet"},
-			{ID: "file", Category: CategoryManager, Status: Unavailable, Note: "encrypted-file secret backend unavailable pending recovery, integrity and migration checks"},
+			{ID: "file", Category: CategoryManager, Status: Experimental, Note: "encrypted-file backend works and is the default store, but is not certified yet: recovery, integrity and migration checks are pending"},
 
 			// Runtimes — internal/runtime, internal/runner driver mode names.
 			{ID: "gateway_typed", Category: CategoryRuntime, Status: Supported, Note: "typed gateway actions; certified provider contract"},
