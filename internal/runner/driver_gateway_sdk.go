@@ -152,6 +152,8 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 			"KEYLATCH_RUNTIME",
 		)
 	}
+	// Applied after the clean-env extras so a preserved name cannot reintroduce one.
+	childEnv = runtime.StripManagerAuth(childEnv)
 	baseURL := "http://" + d.server.Addr()
 	childEnv = appendOrReplace(childEnv, sdkBaseURLVar(tmpl), baseURL)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
