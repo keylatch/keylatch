@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -127,7 +128,8 @@ func ensureProxyCallerToken(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("proxy token: %w", err)
 	}
-	if st, err := os.Stat(path); err == nil && st.Mode().Perm()&0o077 != 0 {
+	// Windows reports 0666 for every file; access there is governed by the ACL.
+	if st, err := os.Stat(path); err == nil && runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
 		return "", fmt.Errorf("proxy token: %s must not be readable by group or others (chmod 600)", path)
 	}
 	tok := strings.TrimSpace(string(data))

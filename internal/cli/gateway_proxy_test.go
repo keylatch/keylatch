@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -196,16 +197,18 @@ func TestEnsureProxyCallerToken(t *testing.T) {
 	a, err := ensureProxyCallerToken(path)
 	require.NoError(t, err)
 	assert.Len(t, a, 64)
-	st, _ := os.Stat(path)
-	assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
 	b, err := ensureProxyCallerToken(path)
 	require.NoError(t, err)
 	assert.Equal(t, a, b, "stable across restarts")
 
-	require.NoError(t, os.Chmod(path, 0o644))
-	_, err = ensureProxyCallerToken(path)
-	assert.Error(t, err)
-	require.NoError(t, os.Chmod(path, 0o600))
+	if runtime.GOOS != "windows" {
+		st, _ := os.Stat(path)
+		assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+		require.NoError(t, os.Chmod(path, 0o644))
+		_, err = ensureProxyCallerToken(path)
+		assert.Error(t, err)
+		require.NoError(t, os.Chmod(path, 0o600))
+	}
 	require.NoError(t, os.WriteFile(path, []byte("short"), 0o600))
 	_, err = ensureProxyCallerToken(path)
 	assert.Error(t, err)
