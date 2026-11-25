@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -538,7 +539,9 @@ func TestFileCA_PersistsIsNameConstrainedAndKeyStaysPrivate(t *testing.T) {
 
 	st, err := os.Stat(keyPath)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o600), st.Mode().Perm())
+	}
 	pemBytes := ca.CertPEM()
 	assert.NotContains(t, string(pemBytes), "PRIVATE")
 	onDisk, _ := os.ReadFile(certPath)
