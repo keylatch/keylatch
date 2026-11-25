@@ -199,6 +199,41 @@ func FilterChildEnv(env []string, keep ...string) []string {
 	return out
 }
 
+// managerAuthVars are the variables the supported password managers read their
+// own session or account credentials from.
+var managerAuthVars = map[string]bool{
+	"BW_SESSION":               true,
+	"BW_CLIENTID":              true,
+	"BW_CLIENTSECRET":          true,
+	"BW_PASSWORD":              true,
+	"BWS_ACCESS_TOKEN":         true,
+	"OP_SERVICE_ACCOUNT_TOKEN": true,
+	"OP_CONNECT_TOKEN":         true,
+}
+
+// IsManagerAuthVar reports whether name carries a password manager's own
+// authentication. OP_SESSION_<account> is how the 1Password CLI exports a
+// signed-in session.
+func IsManagerAuthVar(name string) bool {
+	return managerAuthVars[name] || strings.HasPrefix(name, "OP_SESSION_")
+}
+
+// StripManagerAuth returns a copy of env without any password manager
+// authentication variable. A child holding one could read every secret the
+// manager serves, bypassing the gateway entirely.
+//
+// StripManagerAuth does NOT modify the input slice.
+func StripManagerAuth(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if IsManagerAuthVar(envKey(e)) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 // envKey returns the variable name portion of an "KEY=VALUE" string.
 // If there is no '=', the whole string is returned as the key.
 func envKey(e string) string {
