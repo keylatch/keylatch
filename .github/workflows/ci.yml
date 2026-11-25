@@ -91,6 +91,16 @@ jobs:
         if: github.event_name == 'pull_request'
         run: bash release-checks/naming-scan.sh --range "origin/${{ github.base_ref }}..HEAD"
 
+  install-script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck installers/install.sh installers/install.test.sh
+      - name: install script test
+        run: bash installers/install.test.sh
+
   go-test:
     needs: lint
     strategy:
@@ -109,6 +119,9 @@ jobs:
         shell: bash
         env:
           KEYLATCH_BACKEND: file
+          # The runner image ships git and gh: the proxy tests that drive them
+          # must run there, not skip.
+          KEYLATCH_REQUIRE_REAL_CLIENTS: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
         run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
       - name: Upload coverage artifact
         if: always()

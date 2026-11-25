@@ -2,6 +2,10 @@
 
 Installation methods for Keylatch.
 
+## Linux release install
+
+`install.sh --version X.Y.Z [--prefix DIR]` downloads a published release archive, checks its SHA-256 and the cosign signature of the checksums file, and installs `keylatch` and `keylatchd`. `install.test.sh` exercises it against a local fake release and a fake cosign.
+
 ## Homebrew (macOS / Linux)
 
 ```bash
