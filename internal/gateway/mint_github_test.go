@@ -89,9 +89,9 @@ func newMintHarness(t *testing.T, policy *config.GitHubAppMintPolicy, withAudit 
 	t.Cleanup(ghSrv.Close)
 
 	vault := fakeVault{
-		"default/code-hosting/github-app/config/app_id":           []byte("1234"),
+		"default/code-hosting/github-app/config/app_id":            []byte("1234"),
 		"default/code-hosting/github-app/config/installation_octo": []byte("42"),
-		"default/code-hosting/github-app/private_key":             keyPEM,
+		"default/code-hosting/github-app/private_key":              keyPEM,
 	}
 
 	dir := t.TempDir()
