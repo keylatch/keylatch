@@ -45,6 +45,7 @@ func newGatewayCmd() *cobra.Command {
 	cmd.AddCommand(newGatewayTokenCmd())
 	cmd.AddCommand(newGatewayLogsCmd())
 	cmd.AddCommand(newGatewayInstallCmd())
+	cmd.AddCommand(newGatewaySystemdCmd())
 	return cmd
 }
 
@@ -226,12 +227,22 @@ func newGatewayUpCmd() *cobra.Command {
 		budgetPerHour float64
 		budgetPerDay  float64
 		force         bool
+		allowSources  []string
+		githubMint    string
+		backendCreds  []string
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Start the local process gateway",
 		RunE: func(c *cobra.Command, _ []string) error {
 			env := llmcontext.DefaultLookup
+
+			// Validate before any detach so a typo fails in the foreground.
+			sourcePrefixes, srcErr := gateway.ParseAllowSources(allowSources)
+			if srcErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", srcErr)
+				os.Exit(exitcode.UserError)
+			}
 
 			// Check if gateway is already running. With --force, a
 			// "running" pid is not taken at face value — it may be a stale
@@ -289,6 +300,15 @@ func newGatewayUpCmd() *cobra.Command {
 				}
 				if budgetPerDay > 0 {
 					childArgs = append(childArgs, fmt.Sprintf("--budget-per-day=%g", budgetPerDay))
+				}
+				for _, cidr := range allowSources {
+					childArgs = append(childArgs, "--allow-source="+cidr)
+				}
+				if githubMint != "" {
+					childArgs = append(childArgs, "--github-mint="+githubMint)
+				}
+				for _, bc := range backendCreds {
+					childArgs = append(childArgs, "--backend-credential="+bc)
 				}
 				if err := startDetached(childArgs, pidPath); err != nil {
 					return err
@@ -353,6 +373,22 @@ func newGatewayUpCmd() *cobra.Command {
 				})
 			}
 
+			// Unattended backend access: export sealed credentials before the
+			// backend is selected. A failed check does not stop the gateway, so a
+			// boot before the network is up recovers on its own.
+			if len(backendCreds) > 0 {
+				parsed, perr := parseBackendCredentials(backendCreds)
+				if perr != nil {
+					return NewUsageError("gateway up: %v", perr)
+				}
+				if err := exportBackendCredentials(parsed); err != nil {
+					return NewBackendUnavailable("gateway up: %v", err)
+				}
+				for _, bc := range parsed {
+					fmt.Fprintf(c.ErrOrStderr(), "gateway: backend credential %s: %s\n", bc.Name, backendVerdict(ctx, bc.Env, nil))
+				}
+			}
+
 			// The gateway's job is to inject the provider credential into the
 			// upstream request; without a vault it would forward requests
 			// unauthenticated, so an unusable backend is fatal here.
@@ -369,7 +405,17 @@ func newGatewayUpCmd() *cobra.Command {
 			}
 			defer auditCleanup()
 
+			var mintOpts *gateway.GitHubMintOptions
+			if githubMint != "" {
+				mintOpts, err = gatewayGitHubMintOptions(githubMint)
+				if err != nil {
+					return err
+				}
+			}
+
 			opts := gateway.ServerOptions{
+				AllowSources:      sourcePrefixes,
+				GitHubMint:        mintOpts,
 				Bind:              bind,
 				SigningKey:        signingKey,
 				Mode:              gateway.ModeLocalProcess,
@@ -439,6 +485,9 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().IntVar(&proxyPort, "proxy-port", 8888, "port for the CONNECT proxy listener (requires --with-proxy)")
 	cmd.Flags().Float64Var(&budgetPerHour, "budget-per-hour", 0, "per-actor request budget per hour (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
+	cmd.Flags().StringArrayVar(&allowSources, "allow-source", nil, "refuse callers whose address is outside this CIDR, before authentication (repeatable; X-Forwarded-For is never read)")
+	cmd.Flags().StringVar(&githubMint, "github-mint", "", "serve POST /mint/github using this github-app connection and its mint.github_app policy")
+	cmd.Flags().StringArrayVar(&backendCreds, "backend-credential", nil, "<cred-name>=<ENV_VAR>, repeatable: export the systemd credential <cred-name> from $CREDENTIALS_DIRECTORY as ENV_VAR (a variable a backend reads a secret from) before the backend opens")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }
