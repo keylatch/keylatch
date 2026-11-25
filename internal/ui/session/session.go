@@ -188,15 +188,16 @@ func (s *Session) ValidateRequest(r *http.Request) error {
 	return nil
 }
 
-// SetCookie writes the HttpOnly session cookie to the response writer.
-func (s *Session) SetCookie(w http.ResponseWriter, cookieVal string) {
-	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure flag intentionally absent; server binds to 127.0.0.1 only (no TLS on loopback)
+// SetCookie writes the HttpOnly session cookie for the request r answers.
+func (s *Session) SetCookie(w http.ResponseWriter, r *http.Request, cookieVal string) {
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure follows r.TLS; loopback HTTP cannot hold a Secure cookie
 		Name:     cookieName,
 		Value:    cookieVal,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		// No Secure flag: this server binds to 127.0.0.1 only and uses HTTP.
+		// Plain-HTTP loopback cannot carry a Secure cookie in every webview.
+		Secure: r.TLS != nil,
 	})
 }
 

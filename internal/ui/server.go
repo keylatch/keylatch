@@ -395,7 +395,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Issue session cookie.
-	s.session.SetCookie(w, cookieVal)
+	s.session.SetCookie(w, r, cookieVal)
 
 	// Issue CSRF token cookie.
 	csrfToken, err := csrf.IssueToken()
@@ -403,7 +403,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	csrf.SetCookie(w, csrfToken)
+	csrf.SetCookie(w, r, csrfToken)
 	if r.Method == http.MethodPost {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -424,7 +424,7 @@ func (s *Server) handleCSRF(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	csrf.SetCookie(w, token)
+	csrf.SetCookie(w, r, token)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"csrf": token})
 }
