@@ -86,6 +86,10 @@ func (s *Server) githubForward(w http.ResponseWriter, r *http.Request, host stri
 		if err != nil {
 			return nil, err
 		}
+		if stream != nil && r.ContentLength > 0 {
+			// Keep the caller's framing: a known length stays known upstream.
+			req.ContentLength = r.ContentLength
+		}
 		for k, vv := range r.Header {
 			lower := strings.ToLower(k)
 			if lower == "authorization" || lower == "proxy-authorization" || hopHeaders[lower] || strings.HasPrefix(lower, "x-keylatch-") {

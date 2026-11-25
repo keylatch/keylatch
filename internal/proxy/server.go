@@ -255,7 +255,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.checkCallerAuth(r) {
 		s.auditDeny(r.Context(), "proxy_caller_unauthenticated", r.Host)
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		// 407 with a challenge: curl (so git and gh) sends proxy credentials
+		// only after the proxy asks for them, never preemptively.
+		w.Header().Set("Proxy-Authenticate", `Basic realm="keylatch"`)
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusProxyAuthRequired)
 		return
 	}
 	if s.GitHub != nil {
