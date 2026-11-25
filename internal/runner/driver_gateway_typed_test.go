@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -102,11 +103,26 @@ func TestGatewayChildToken_HarnessExecutableIsMarked(t *testing.T) {
 	for _, drv := range childTokenDrivers {
 		t.Run(drv.name, func(t *testing.T) {
 			testutil.ClearLLMSessionEnv(t)
-			script := filepath.Join(t.TempDir(), "claude")
-			require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755))
-			tok, err := runChildToken(t, drv.new, []string{script})
+			tok, err := runChildToken(t, drv.new, harnessNamedCommand(t))
 			require.NoError(t, err)
 			assert.True(t, tok.LLMSession)
 		})
 	}
+}
+
+// harnessNamedCommand returns a command whose executable is named "claude" and
+// exits 0. Windows cannot run a shebang script, so it uses a renamed cmd.exe.
+func harnessNamedCommand(t *testing.T) []string {
+	t.Helper()
+	dir := t.TempDir()
+	if goruntime.GOOS != "windows" {
+		script := filepath.Join(dir, "claude")
+		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+		return []string{script}
+	}
+	src, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"))
+	require.NoError(t, err)
+	exe := filepath.Join(dir, "claude.exe")
+	require.NoError(t, os.WriteFile(exe, src, 0o755))
+	return []string{exe, "/c", "exit 0"}
 }
