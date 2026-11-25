@@ -17,6 +17,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// defaultProxyPort is the proxy port when --with-proxy names no address (the
+// gateway uses 8788; 8789 is taken by another service on the bridge).
+const defaultProxyPort = "8790"
+
 const (
 	systemdUnitName      = "keylatch-gateway.service"
 	systemdCredentialKEK = "kek"
@@ -147,7 +151,7 @@ var connectionNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // gatewayExecArgs builds the gateway command line. A non-loopback listen
 // address needs --allow-source (canonical CIDR, so hostcheck-style parsers
 // compare it exactly) unless allowAny is explicit.
-func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string, opSA bool, proxyListen, proxyConn string) (string, error) {
+func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string, opSA bool, proxies []proxyListener) (string, error) {
 	host, _, _ := net.SplitHostPort(listen)
 	loopback := net.ParseIP(host).IsLoopback()
 	if allowAny && len(sources) > 0 {
@@ -170,20 +174,22 @@ func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint 
 		}
 		args = append(args, "--github-mint", githubMint)
 	}
-	if proxyListen != "" {
-		if err := validateGatewayListen(proxyListen); err != nil {
+	seenProxy := map[string]bool{listen: true}
+	for _, pl := range proxies {
+		if err := validateGatewayListen(pl.Addr); err != nil {
 			return "", fmt.Errorf("--proxy-listen: %w", err)
 		}
-		if proxyListen == listen {
-			return "", errors.New("--proxy-listen must differ from --listen")
+		if seenProxy[pl.Addr] {
+			return "", fmt.Errorf("--proxy-listen %q duplicates another listen address", pl.Addr)
 		}
-		if !connectionNameRE.MatchString(proxyConn) {
-			return "", fmt.Errorf("--proxy-connection %q: connection names use letters, digits, '.', '_' and '-'", proxyConn)
+		seenProxy[pl.Addr] = true
+		if !connectionNameRE.MatchString(pl.Connection) {
+			return "", fmt.Errorf("--proxy-listen connection %q: connection names use letters, digits, '.', '_' and '-'", pl.Connection)
 		}
-		if ph, _, _ := net.SplitHostPort(proxyListen); !net.ParseIP(ph).IsLoopback() && len(sources) == 0 {
-			return "", fmt.Errorf("--proxy-listen %q is not loopback: pass --allow-source <CIDR>; --allow-any-source does not apply to the proxy", proxyListen)
+		if ph, _, _ := net.SplitHostPort(pl.Addr); !net.ParseIP(ph).IsLoopback() && len(sources) == 0 {
+			return "", fmt.Errorf("--proxy-listen %q is not loopback: pass --allow-source <CIDR>; --allow-any-source does not apply to the proxy", pl.Addr)
 		}
-		args = append(args, "--proxy-listen", proxyListen, "--proxy-connection", proxyConn)
+		args = append(args, "--proxy-listen", pl.Addr+"="+pl.Connection)
 	}
 	if opSA {
 		args = append(args, "--op-service-account-credential", systemdCredentialOPSA)
@@ -250,7 +256,7 @@ type gatewaySystemdFlags struct {
 	githubMint  string
 	opSACred    string
 	withProxy   bool
-	proxyListen string
+	proxyListen []string
 	proxyConn   string
 }
 
@@ -262,8 +268,7 @@ func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.githubMint, "github-mint", "", "github-app connection to serve POST /mint/github from (adds --github-mint to ExecStart)")
 	cmd.Flags().StringVar(&f.opSACred, "op-service-account-credential", "", "systemd-creds encrypted file holding the 1Password service account token (adds LoadCredentialEncrypted=op-sa-token to the unit)")
 	cmd.Flags().BoolVar(&f.withProxy, "with-proxy", false, "also run the GitHub-injecting CONNECT proxy in this unit (needs --proxy-listen and a github-app connection)")
-	cmd.Flags().StringVar(&f.proxyListen, "proxy-listen", "", "address:port of the proxy, an IP literal such as the VM bridge address (for example 192.168.150.1:8789)")
-	cmd.Flags().StringVar(&f.proxyConn, "proxy-connection", "", "github-app connection the proxy mints from (default: the --github-mint connection)")
+	cmd.Flags().StringArrayVar(&f.proxyListen, "proxy-listen", nil, "proxy listener as <ip:port>[=<connection>], repeatable, one per GitHub installation (default with --with-proxy: <--listen host>:8790=<--github-mint connection>)")
 	_ = cmd.MarkFlagRequired("listen")
 }
 
@@ -275,23 +280,31 @@ func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, erro
 	if err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	proxyListen, proxyConn := "", ""
+	var proxies []proxyListener
 	switch {
 	case f.withProxy:
-		if f.proxyListen == "" {
-			return gatewayUnitSpec{}, errors.New("--with-proxy needs --proxy-listen (for example 192.168.150.1:8789)")
+		values := f.proxyListen
+		if len(values) == 0 {
+			host, _, _ := net.SplitHostPort(f.listen)
+			values = []string{net.JoinHostPort(host, defaultProxyPort)}
 		}
-		if proxyConn = f.proxyConn; proxyConn == "" {
-			proxyConn = f.githubMint
+		for _, v := range values {
+			if !strings.Contains(v, "=") {
+				if f.githubMint == "" {
+					return gatewayUnitSpec{}, fmt.Errorf("--proxy-listen %q needs =<connection> (or --github-mint to default it)", v)
+				}
+				v += "=" + f.githubMint
+			}
+			pl, err := parseProxyListeners([]string{v})
+			if err != nil {
+				return gatewayUnitSpec{}, err
+			}
+			proxies = append(proxies, pl...)
 		}
-		if proxyConn == "" {
-			return gatewayUnitSpec{}, errors.New("--with-proxy needs --proxy-connection (or --github-mint) naming a github-app connection")
-		}
-		proxyListen = f.proxyListen
-	case f.proxyListen != "" || f.proxyConn != "":
-		return gatewayUnitSpec{}, errors.New("--proxy-listen and --proxy-connection need --with-proxy")
+	case len(f.proxyListen) > 0:
+		return gatewayUnitSpec{}, errors.New("--proxy-listen needs --with-proxy")
 	}
-	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint, f.opSACred != "", proxyListen, proxyConn)
+	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint, f.opSACred != "", proxies)
 	if err != nil {
 		return gatewayUnitSpec{}, err
 	}

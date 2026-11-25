@@ -54,13 +54,19 @@ type ConnectionPolicy struct {
 // ProxyPolicy configures the credentials the intercepting proxy injects for a
 // connection.
 type ProxyPolicy struct {
-	GitHub *GitHubProxyPolicy `json:"github,omitempty"`
+	// GitHub lists one entry per proxy listener; each listener serves one
+	// installation (one owner) with its own token.
+	GitHub []GitHubProxyPolicy `json:"github,omitempty"`
 }
 
-// GitHubProxyPolicy limits the one installation token the proxy mints from a
-// github-app connection. The connection's mint.github_app policy still applies
-// to every repository and permission listed here.
+// GitHubProxyPolicy limits the one installation token a proxy listener mints
+// from a github-app connection. The connection's mint.github_app policy
+// (permission ceiling, deny list, lifetime) still applies; the listed
+// repositories are added to its allowed repositories for the proxy only.
 type GitHubProxyPolicy struct {
+	// Listen is the address:port of this listener; it must match a
+	// --proxy-listen <addr>=<connection> flag.
+	Listen string `json:"listen"`
 	// Repositories is the exact list of owner/name the proxy reaches; all
 	// must share one owner (one installation).
 	Repositories []string `json:"repositories"`

@@ -29,6 +29,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
+	"github.com/keylatch/keylatch/internal/proxy"
 	"github.com/keylatch/keylatch/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -231,8 +232,7 @@ func newGatewayUpCmd() *cobra.Command {
 		allowSources  []string
 		githubMint    string
 		opSACred      string
-		proxyListen   string
-		proxyConn     string
+		proxyListens  []string
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -247,8 +247,9 @@ func newGatewayUpCmd() *cobra.Command {
 				os.Exit(exitcode.UserError)
 			}
 
-			if (proxyConn == "") != (proxyListen == "") {
-				fmt.Fprintln(c.ErrOrStderr(), "gateway: --proxy-connection and --proxy-listen go together")
+			proxyLs, plErr := parseProxyListeners(proxyListens)
+			if plErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: %v\n", plErr)
 				os.Exit(exitcode.UserError)
 			}
 
@@ -318,8 +319,8 @@ func newGatewayUpCmd() *cobra.Command {
 				if opSACred != "" {
 					childArgs = append(childArgs, "--op-service-account-credential="+opSACred)
 				}
-				if proxyConn != "" {
-					childArgs = append(childArgs, "--proxy-connection="+proxyConn, "--proxy-listen="+proxyListen)
+				for _, v := range proxyListens {
+					childArgs = append(childArgs, "--proxy-listen="+v)
 				}
 				if err := startDetached(childArgs, pidPath); err != nil {
 					return err
@@ -480,35 +481,36 @@ func newGatewayUpCmd() *cobra.Command {
 				}
 			}
 
-			if proxyConn == "" {
+			if len(proxyLs) == 0 {
 				return srv.Serve(ctx)
 			}
 			mintCfg, cfgErr := mintPolicyConfig()
 			if cfgErr != nil {
 				return NewPolicyDeny("gateway up: the proxy policy cannot be read: %v", cfgErr)
 			}
-			psrv, err := newGitHubProxy(gitHubProxyParams{
-				Connection: proxyConn, Listen: proxyListen, AllowSources: sourcePrefixes, Lookup: env,
-				Config: mintCfg, Vault: vaultReader, Audit: audit.AsEmitter(auditLogger),
-			})
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(c.OutOrStdout(), "gateway: GitHub proxy listening on %s\n", proxyListen)
-			gwDone, pxDone := make(chan error, 1), make(chan error, 1)
-			go func() { gwDone <- srv.Serve(ctx) }()
-			go func() { pxDone <- psrv.Serve(ctx) }()
-			var first error
-			select {
-			case first = <-gwDone:
-				cancel()
-				<-pxDone
-			case perr := <-pxDone:
-				cancel()
-				<-gwDone
-				if perr != nil {
-					first = fmt.Errorf("gateway up: proxy: %w", perr)
+			// One listener per installation, each with its own token cache,
+			// all behind the same source allowlist and caller token.
+			servers := make([]*proxy.Server, 0, len(proxyLs))
+			for _, pl := range proxyLs {
+				psrv, err := newGitHubProxy(gitHubProxyParams{
+					Connection: pl.Connection, Listen: pl.Addr, AllowSources: sourcePrefixes, Lookup: env,
+					Config: mintCfg, Vault: vaultReader, Audit: audit.AsEmitter(auditLogger),
+				})
+				if err != nil {
+					return err
 				}
+				servers = append(servers, psrv)
+				fmt.Fprintf(c.OutOrStdout(), "gateway: GitHub proxy for %s listening on %s\n", pl.Connection, pl.Addr)
+			}
+			done := make(chan error, len(servers)+1)
+			go func() { done <- srv.Serve(ctx) }()
+			for _, psrv := range servers {
+				go func() { done <- psrv.Serve(ctx) }()
+			}
+			first := <-done
+			cancel()
+			for range servers {
+				<-done
 			}
 			return first
 		},
@@ -524,8 +526,7 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&allowSources, "allow-source", nil, "refuse callers whose address is outside this CIDR, before authentication (repeatable; X-Forwarded-For is never read)")
 	cmd.Flags().StringVar(&githubMint, "github-mint", "", "serve POST /mint/github using this github-app connection and its mint.github_app policy")
 	cmd.Flags().StringVar(&opSACred, "op-service-account-credential", "", "name of the systemd credential holding the 1Password service account token; exported as OP_SERVICE_ACCOUNT_TOKEN from $CREDENTIALS_DIRECTORY")
-	cmd.Flags().StringVar(&proxyListen, "proxy-listen", "", "address:port of the GitHub-injecting CONNECT proxy, an IP literal such as the VM bridge address (with --proxy-connection)")
-	cmd.Flags().StringVar(&proxyConn, "proxy-connection", "", "github-app connection whose proxy.github policy the proxy mints from (with --proxy-listen)")
+	cmd.Flags().StringArrayVar(&proxyListens, "proxy-listen", nil, "GitHub-injecting CONNECT proxy as <ip:port>=<github-app connection>, repeatable (one listener per installation); needs a matching proxy.github entry in the operator config")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }

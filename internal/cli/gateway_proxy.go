@@ -109,16 +109,23 @@ func ensureProxyCallerToken(path string) (string, error) {
 
 // proxyGitHubSettings validates the connection's proxy.github policy against
 // the operator's mint.github_app policy and returns what to mint.
-func proxyGitHubSettings(cfg config.Config, connection string) (repos []string, perms map[string]string, mintPolicy *config.GitHubAppMintPolicy, err error) {
-	cp, ok := cfg.Connections[connection]
-	if !ok || cp.Proxy == nil || cp.Proxy.GitHub == nil || len(cp.Proxy.GitHub.Repositories) == 0 {
-		return nil, nil, nil, NewPolicyDeny("gateway up: connection %q has no proxy.github.repositories in the operator config", connection)
+func proxyGitHubSettings(cfg config.Config, connection, listen string) (repos []string, perms map[string]string, mintPolicy *config.GitHubAppMintPolicy, err error) {
+	var entry *config.GitHubProxyPolicy
+	if cp, ok := cfg.Connections[connection]; ok && cp.Proxy != nil {
+		for i := range cp.Proxy.GitHub {
+			if cp.Proxy.GitHub[i].Listen == listen {
+				entry = &cp.Proxy.GitHub[i]
+			}
+		}
+	}
+	if entry == nil || len(entry.Repositories) == 0 {
+		return nil, nil, nil, NewPolicyDeny("gateway up: connection %q has no proxy.github entry with listen %q and repositories in the operator config", connection, listen)
 	}
 	mintPolicy = githubAppMintPolicy(cfg, connection)
 	if mintPolicy == nil {
 		return nil, nil, nil, NewPolicyDeny("gateway up: connection %q has no mint.github_app policy in the operator config; the proxy mints under the same limits", connection)
 	}
-	perms = maps.Clone(cp.Proxy.GitHub.Permissions)
+	perms = maps.Clone(entry.Permissions)
 	if len(perms) == 0 {
 		perms = maps.Clone(defaultProxyGitHubPermissions)
 	}
@@ -131,8 +138,14 @@ func proxyGitHubSettings(cfg config.Config, connection string) (repos []string, 
 			return nil, nil, nil, NewPolicyDeny("gateway up: proxy.github.permissions: %s may be at most %q", k, top)
 		}
 	}
+	// The proxy's own repository list is the allowlist for this listener, so
+	// it is not repeated in mint.github_app.allow_repos; the ceiling, deny
+	// list, callers and lifetime still come from the mint policy.
+	derived := *mintPolicy
+	derived.AllowRepos = append(slices.Clone(mintPolicy.AllowRepos), entry.Repositories...)
+	mintPolicy = &derived
 	owner := ""
-	for _, r := range cp.Proxy.GitHub.Repositories {
+	for _, r := range entry.Repositories {
 		o, _, perr := mint.ParseRepository(r)
 		if perr != nil {
 			return nil, nil, nil, NewPolicyDeny("gateway up: proxy.github.repositories: %v", perr)
@@ -145,7 +158,7 @@ func proxyGitHubSettings(cfg config.Config, connection string) (repos []string, 
 			return nil, nil, nil, NewPolicyDeny("gateway up: mint policy refuses %s for the proxy: %v", r, cerr)
 		}
 	}
-	return slices.Clone(cp.Proxy.GitHub.Repositories), perms, mintPolicy, nil
+	return slices.Clone(entry.Repositories), perms, mintPolicy, nil
 }
 
 type gitHubProxyParams struct {
@@ -169,16 +182,16 @@ func newGitHubProxy(p gitHubProxyParams) (*proxy.Server, error) {
 		return nil, NewUsageError("gateway up: --proxy-listen: %v", err)
 	}
 	if !connectionNameRE.MatchString(p.Connection) {
-		return nil, NewUsageError("gateway up: --proxy-connection %q is not a connection name", p.Connection)
+		return nil, NewUsageError("gateway up: --proxy-listen connection %q is not a connection name", p.Connection)
 	}
 	tmpl, terr := registry.Get(p.Connection)
 	if terr != nil || !slices.ContainsFunc(tmpl.Capabilities, func(cp registry.Capability) bool { return cp.Name == mintCapability }) {
-		return nil, NewUsageError("gateway up: --proxy-connection %q is not a connection type that can mint (use a github-app connection)", p.Connection)
+		return nil, NewUsageError("gateway up: --proxy-listen connection %q is not a connection type that can mint (use a github-app connection)", p.Connection)
 	}
 	if !isLoopbackListen(p.Listen) && len(p.AllowSources) == 0 {
 		return nil, NewUsageError("gateway up: --proxy-listen %s is not loopback: --allow-source is required so the proxy is not reachable from other networks", p.Listen)
 	}
-	repos, perms, mintPolicy, err := proxyGitHubSettings(p.Config, p.Connection)
+	repos, perms, mintPolicy, err := proxyGitHubSettings(p.Config, p.Connection, p.Listen)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +256,26 @@ func newGitHubProxy(p gitHubProxyParams) (*proxy.Server, error) {
 		UpstreamTransport: p.Upstream,
 	}, nil
 }
+
+// parseProxyListeners splits repeated --proxy-listen <addr>=<connection> values.
+func parseProxyListeners(values []string) ([]proxyListener, error) {
+	var out []proxyListener
+	seen := map[string]bool{}
+	for _, v := range values {
+		addr, conn, ok := strings.Cut(v, "=")
+		if !ok || addr == "" || conn == "" {
+			return nil, fmt.Errorf("--proxy-listen %q: use <ip:port>=<connection>", v)
+		}
+		if seen[addr] {
+			return nil, fmt.Errorf("--proxy-listen %q is given twice", addr)
+		}
+		seen[addr] = true
+		out = append(out, proxyListener{Addr: addr, Connection: conn})
+	}
+	return out, nil
+}
+
+type proxyListener struct{ Addr, Connection string }
 
 func sourceAllowedFunc(prefixes []netip.Prefix) func(string) bool {
 	if len(prefixes) == 0 {

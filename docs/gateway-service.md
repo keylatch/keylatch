@@ -121,7 +121,7 @@ network is up recovers when `op` can reach 1Password again.
 
 ## GitHub through the proxy: the VM holds no GitHub token
 
-`--with-proxy --proxy-listen <ip:port>` adds an intercepting CONNECT proxy to the same
+`--with-proxy` (and `--proxy-listen <ip:port>=<connection>`, repeatable) adds an intercepting CONNECT proxy to the same
 unit. The guest sends git and `gh` traffic for `github.com`, `api.github.com` and
 `uploads.github.com` through it. The proxy terminates TLS with its own CA, checks the route and
 repository, **removes the caller's `Authorization`** and injects a GitHub App installation token
@@ -130,11 +130,13 @@ that never leaves the host.
 I chose the same unit over a sibling unit: both listeners need the same vault key, the same
 1Password service account and the same audit log, so a second unit would duplicate the sealed
 credentials and a second process would race on them. The cost is that one crash restarts both;
-`Restart=on-failure` covers that. The default proxy port is **8789** (the gateway uses 8788).
+`Restart=on-failure` covers that. The default proxy port is **8790** (the gateway uses 8788; 8789 is taken by another service on the bridge).
+
+There is one listener per GitHub installation, because GraphQL requests cannot be routed by repository: a token is minted for one owner, so each owner gets its own address, its own token cache and its own `proxy.github` entry. All listeners share the source allowlist, the CA and the caller token. I chose the repeatable `--proxy-listen <ip:port>=<connection>` flag over deriving listeners from the config so the unit's `ExecStart` shows exactly what listens and `install`/`print` need not read the operator config; the config entry for each listener is matched by its address at start.
 
 ### How it behaves
 
-- One installation token is minted for exactly the `repositories` listed, with the configured
+- Per listener, one installation token is minted for exactly the `repositories` listed, with the configured
   permissions (default `contents:write`, `pull_requests:write`, `metadata:read`; `actions:read`,
   `checks:read` and `issues:write` may be added; `administration` and everything else is refused
   at startup). It is cached in memory, minted again about 5 minutes before it expires, and again
@@ -169,33 +171,40 @@ Everything in the sections above applies (sealed vault key, 1Password service ac
   "connections": {
     "github-app": {
       "mint": { "github_app": {
-        "allow_repos": ["octo/app", "octo/tools"],
         "permission_ceiling": { "contents": "write", "pull_requests": "write", "metadata": "read" }
       } },
-      "proxy": { "github": {
-        "repositories": ["octo/app", "octo/tools"]
-      } }
+      "proxy": { "github": [
+        { "listen": "192.168.150.1:8790", "repositories": ["octo/app", "octo/tools"] },
+        { "listen": "192.168.150.1:8791", "repositories": ["otherorg/service"] }
+      ] }
     }
   }
 }
 ```
 
-All repositories must belong to one owner (one installation). Optional `permissions` replaces the
-default set; each must also be under the mint ceiling.
+Each entry's repositories must belong to one owner (one installation); mixed owners are refused at
+start. An entry's repositories are added to `allow_repos` for the proxy only, so they are not
+listed twice, and `POST /mint/github` still uses just the policy as written. The ceiling, deny
+list and lifetime still come from `mint.github_app`, which must exist. Optional `permissions`
+per entry replaces the default set; each must be under the mint ceiling. The installation id for
+each owner is the connection's `installation_<owner>` field; one connection can serve several
+owners, one listener each.
 
 ```bash
-# 3. Install (adds --proxy-listen/--proxy-connection to ExecStart) and start.
+# 3. Install (each --proxy-listen goes to ExecStart; without it, --with-proxy listens on
+#    <bridge host>:8790 for the --github-mint connection) and start.
 keylatch gateway systemd install --listen 192.168.150.1:8788 --allow-source 192.168.150.0/24 \
-  --github-mint github-app --with-proxy --proxy-listen 192.168.150.1:8789 \
+  --github-mint github-app --with-proxy \
+  --proxy-listen 192.168.150.1:8790=github-app --proxy-listen 192.168.150.1:8791=github-app \
   --op-service-account-credential ~/.config/keylatch/gateway/op-sa-token.cred
 systemctl --user enable --now keylatch-gateway.service
 
 # 4. Verify.
 keylatch gateway systemd status --check-op
-ss -ltn | grep -E '8788|8789'
+ss -ltn | grep -E '8788|8790|8791'
 keylatch proxy ca print | openssl x509 -noout -subject -ext nameConstraints
 keylatch proxy token print > /dev/null && echo token ok      # created on first use, mode 0600
-curl -s -o /dev/null -w '%{http_code}\n' --proxy http://192.168.150.1:8789 \
+curl -s -o /dev/null -w '%{http_code}\n' --proxy http://192.168.150.1:8790 \
   --proxy-header "Proxy-Authorization: Bearer $(keylatch proxy token print)" \
   --cacert <(keylatch proxy ca print) https://api.github.com/repos/octo/app    # 200
 ```
@@ -209,10 +218,11 @@ name-constrained to `github.com`, so even a stolen key cannot vouch for other si
 
 | Item | Value |
 |---|---|
-| Proxy | `http://192.168.150.1:8789` (plain HTTP to the proxy, CONNECT for HTTPS) |
-| Proxy auth | `Proxy-Authorization: Bearer <token>` or Basic with any user and the token as password (`http://keylatch:<token>@192.168.150.1:8789`). The token is `keylatch proxy token print` on the host; the guest keeps it in a 0600 file. |
+| Proxy | One per owner: `http://192.168.150.1:8790` (first owner), `http://192.168.150.1:8791` (second), ... as listed in the unit. Plain HTTP to the proxy, CONNECT for HTTPS. |
+| Proxy auth | `Proxy-Authorization: Bearer <token>` or Basic with any user and the token as password (`http://keylatch:<token>@192.168.150.1:8790`). The token is `keylatch proxy token print` on the host; the guest keeps it in a 0600 file. |
 | CA | `keylatch proxy ca print` on the host (PEM, no key); install into the guest trust store, e.g. `/usr/local/share/ca-certificates/keylatch-proxy.crt` then `update-ca-certificates`; for git alone `http.sslCAInfo`. |
-| Through the proxy | `github.com`, `api.github.com`, `uploads.github.com` (set `HTTPS_PROXY`, or per host `git config http.https://github.com/.proxy`). Everything else keeps going direct. |
+| Through the proxy | `github.com`, `api.github.com`, `uploads.github.com` (see below). Everything else keeps going direct. |
+| Choosing the proxy | A request is only served by the proxy of its repository's owner (others get 403). git: one URL-scoped setting per owner, `git config --global http.https://github.com/<owner>/.proxy http://keylatch:<token>@192.168.150.1:<owner port>`. gh: pick `HTTPS_PROXY` by the repository's owner (agent-os wraps `gh`; for `-R owner/repo` or the checkout's remote, use that owner's proxy). |
 | git | `https://github.com/<owner>/<repo>.git` URLs; no credential helper and no token. If git insists on a credential, any placeholder works: the proxy replaces it. |
 | gh | `GH_TOKEN=placeholder` (any non-empty string) and `GH_HOST=github.com`; `gh` talks to `api.github.com` through `HTTPS_PROXY`. |
 | Not available | Repositories outside the list (403), `administration`, merging beyond what the token's permissions and branch protection allow. |

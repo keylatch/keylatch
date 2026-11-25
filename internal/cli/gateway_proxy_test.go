@@ -64,46 +64,96 @@ func (r *recordingUpstream) RoundTrip(req *http.Request) (*http.Response, error)
 	return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("ok")), Request: req}, nil
 }
 
+// proxyTestListen is the listener every test config entry describes.
+const proxyTestListen = "192.168.150.1:8790"
+
 func proxyTestConfig(repos []string, perms map[string]string) config.Config {
 	return config.Config{Connections: map[string]config.ConnectionPolicy{"github-app": {
 		Mint: &config.MintPolicy{GitHubApp: &config.GitHubAppMintPolicy{
-			AllowOwners:       []string{"octo"},
 			PermissionCeiling: map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read", "issues": "write", "actions": "read", "checks": "read"},
 		}},
-		Proxy: &config.ProxyPolicy{GitHub: &config.GitHubProxyPolicy{Repositories: repos, Permissions: perms}},
+		Proxy: &config.ProxyPolicy{GitHub: []config.GitHubProxyPolicy{{Listen: proxyTestListen, Repositories: repos, Permissions: perms}}},
 	}}}
 }
 
 func TestProxyGitHubSettings(t *testing.T) {
-	repos, perms, _, err := proxyGitHubSettings(proxyTestConfig([]string{"octo/a", "octo/b"}, nil), "github-app")
+	repos, perms, _, err := proxyGitHubSettings(proxyTestConfig([]string{"octo/a", "octo/b"}, nil), "github-app", proxyTestListen)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"octo/a", "octo/b"}, repos)
 	assert.Equal(t, defaultProxyGitHubPermissions, perms)
 
-	_, perms, _, err = proxyGitHubSettings(proxyTestConfig([]string{"octo/a"}, map[string]string{"contents": "read", "actions": "read", "checks": "read", "issues": "write"}), "github-app")
+	_, perms, _, err = proxyGitHubSettings(proxyTestConfig([]string{"octo/a"}, map[string]string{"contents": "read", "actions": "read", "checks": "read", "issues": "write"}), "github-app", proxyTestListen)
 	require.NoError(t, err)
 	assert.Equal(t, "read", perms["contents"])
 
 	for name, cfg := range map[string]config.Config{
-		"administration":    proxyTestConfig([]string{"octo/a"}, map[string]string{"administration": "read"}),
-		"unknown":           proxyTestConfig([]string{"octo/a"}, map[string]string{"workflows": "write"}),
-		"metadata write":    proxyTestConfig([]string{"octo/a"}, map[string]string{"metadata": "write"}),
-		"actions write":     proxyTestConfig([]string{"octo/a"}, map[string]string{"actions": "write"}),
-		"mixed owners":      proxyTestConfig([]string{"octo/a", "other/b"}, nil),
-		"bad repo":          proxyTestConfig([]string{"octo"}, nil),
-		"no repos":          proxyTestConfig(nil, nil),
-		"owner not in mint": proxyTestConfig([]string{"evil/a"}, nil),
-		"no connection":     {},
+		"administration": proxyTestConfig([]string{"octo/a"}, map[string]string{"administration": "read"}),
+		"unknown":        proxyTestConfig([]string{"octo/a"}, map[string]string{"workflows": "write"}),
+		"metadata write": proxyTestConfig([]string{"octo/a"}, map[string]string{"metadata": "write"}),
+		"actions write":  proxyTestConfig([]string{"octo/a"}, map[string]string{"actions": "write"}),
+		"mixed owners":   proxyTestConfig([]string{"octo/a", "other/b"}, nil),
+		"bad repo":       proxyTestConfig([]string{"octo"}, nil),
+		"no repos":       proxyTestConfig(nil, nil),
+		"deny owner":     withDenyOwner(proxyTestConfig([]string{"octo/a"}, nil)),
+		"no connection":  {},
 	} {
-		_, _, _, err := proxyGitHubSettings(cfg, "github-app")
+		_, _, _, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
 		assert.Error(t, err, name)
 	}
 	noMint := proxyTestConfig([]string{"octo/a"}, nil)
 	cp := noMint.Connections["github-app"]
 	cp.Mint = nil
 	noMint.Connections["github-app"] = cp
-	_, _, _, err = proxyGitHubSettings(noMint, "github-app")
+	_, _, _, err = proxyGitHubSettings(noMint, "github-app", proxyTestListen)
 	assert.Error(t, err, "the proxy mints under the mint policy; without one it is denied")
+}
+
+func loopbackProxyConfig(c config.Config) config.Config {
+	c.Connections["github-app"].Proxy.GitHub[0].Listen = "127.0.0.1:18790"
+	return c
+}
+
+func withDenyOwner(c config.Config) config.Config {
+	cp := c.Connections["github-app"]
+	cp.Mint.GitHubApp.DenyOwners = []string{"octo"}
+	c.Connections["github-app"] = cp
+	return c
+}
+
+func TestProxyGitHubSettings_RepositoriesFeedTheMintAllowlistNotTheReverse(t *testing.T) {
+	// The mint policy names no repositories; the proxy list is the allowlist
+	// for the proxy only, so another repo is still not minted by /mint/github.
+	cfg := proxyTestConfig([]string{"octo/a"}, nil)
+	_, _, derived, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"octo/a"}, derived.AllowRepos)
+	assert.Empty(t, cfg.Connections["github-app"].Mint.GitHubApp.AllowRepos, "the operator's mint policy is not modified")
+
+	_, _, _, err = proxyGitHubSettings(cfg, "github-app", "192.168.150.1:9999")
+	assert.Error(t, err, "a listener needs its own config entry")
+}
+
+func TestProxyGitHubSettings_TwoListenersTwoOwners(t *testing.T) {
+	cfg := proxyTestConfig([]string{"octo/a"}, nil)
+	cp := cfg.Connections["github-app"]
+	cp.Proxy.GitHub = append(cp.Proxy.GitHub, config.GitHubProxyPolicy{Listen: "192.168.150.1:8791", Repositories: []string{"other/x", "other/y"}})
+	cfg.Connections["github-app"] = cp
+	r1, _, _, err := proxyGitHubSettings(cfg, "github-app", proxyTestListen)
+	require.NoError(t, err)
+	r2, _, _, err := proxyGitHubSettings(cfg, "github-app", "192.168.150.1:8791")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"octo/a"}, r1)
+	assert.Equal(t, []string{"other/x", "other/y"}, r2)
+}
+
+func TestParseProxyListeners(t *testing.T) {
+	got, err := parseProxyListeners([]string{"192.168.150.1:8790=a", "192.168.150.1:8791=b"})
+	require.NoError(t, err)
+	assert.Equal(t, []proxyListener{{"192.168.150.1:8790", "a"}, {"192.168.150.1:8791", "b"}}, got)
+	for _, bad := range [][]string{{"x"}, {"=a"}, {"1.1.1.1:1="}, {"1.1.1.1:1=a", "1.1.1.1:1=b"}} {
+		_, err := parseProxyListeners(bad)
+		assert.Error(t, err, "%v", bad)
+	}
 }
 
 func TestEnsureProxyCallerToken(t *testing.T) {
@@ -157,8 +207,8 @@ func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
 	em := &proxyAudit{}
 	up := &recordingUpstream{}
 	srv, err := newGitHubProxy(gitHubProxyParams{
-		Connection: "github-app", Listen: "127.0.0.1:18789", Lookup: llmcontext.DefaultLookup,
-		Config: proxyTestConfig([]string{"octo/a", "octo/b"}, nil), Vault: vault, Audit: em,
+		Connection: "github-app", Listen: "127.0.0.1:18790", Lookup: llmcontext.DefaultLookup,
+		Config: loopbackProxyConfig(proxyTestConfig([]string{"octo/a", "octo/b"}, nil)), Vault: vault, Audit: em,
 		APIBase: gh.URL, Upstream: up,
 	})
 	require.NoError(t, err)
@@ -197,7 +247,7 @@ func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
 
 func TestNewGitHubProxy_RefusesOpenBindAndBadInput(t *testing.T) {
 	t.Setenv("KEYLATCH_GATEWAY_DIR", filepath.Join(t.TempDir(), "gw"))
-	base := gitHubProxyParams{Connection: "github-app", Listen: "192.168.150.1:8789", Lookup: llmcontext.DefaultLookup, Config: proxyTestConfig([]string{"octo/a"}, nil), Vault: proxyFakeVault{}, Audit: &proxyAudit{}}
+	base := gitHubProxyParams{Connection: "github-app", Listen: "192.168.150.1:8790", Lookup: llmcontext.DefaultLookup, Config: proxyTestConfig([]string{"octo/a"}, nil), Vault: proxyFakeVault{}, Audit: &proxyAudit{}}
 
 	_, err := newGitHubProxy(base)
 	require.Error(t, err, "bridge address without --allow-source")
@@ -211,7 +261,7 @@ func TestNewGitHubProxy_RefusesOpenBindAndBadInput(t *testing.T) {
 	assert.False(t, srv.SourceAllowed("10.0.0.5:1234"))
 	assert.True(t, srv.SourceAllowed("192.168.150.7:1234"))
 
-	for _, bad := range []string{"0.0.0.0:8789", "host:8789", ":8789"} {
+	for _, bad := range []string{"0.0.0.0:8790", "host:8790", ":8790"} {
 		p := ok
 		p.Listen = bad
 		_, err := newGitHubProxy(p)
@@ -249,25 +299,32 @@ func TestSystemdInstall_WithProxy(t *testing.T) {
 	installFakeUserManager(t)
 	args := []string{"print", "--listen", "192.168.150.1:8788", "--allow-source", "192.168.150.0/24", "--binary", binary, "--github-mint", "github-app"}
 
-	out, err := runSystemd(t, append(args, "--with-proxy", "--proxy-listen", "192.168.150.1:8789")...)
+	out, err := runSystemd(t, append(args, "--with-proxy")...)
 	require.NoError(t, err)
-	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8789 --proxy-connection github-app")
+	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8790=github-app", "default: bridge host, port 8790, the mint connection")
+
+	out, err = runSystemd(t, append(args, "--with-proxy", "--proxy-listen", "192.168.150.1:8790=github-patrik", "--proxy-listen", "192.168.150.1:8791=github-org")...)
+	require.NoError(t, err)
+	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8790=github-patrik --proxy-listen 192.168.150.1:8791=github-org")
+
+	out, err = runSystemd(t, append(args, "--with-proxy", "--proxy-listen", "192.168.150.1:8791")...)
+	require.NoError(t, err)
+	assert.Contains(t, execStartOf(t, out), "--proxy-listen 192.168.150.1:8791=github-app")
 
 	for name, extra := range map[string][]string{
-		"no listen":           {"--with-proxy"},
-		"listen without flag": {"--proxy-listen", "192.168.150.1:8789"},
-		"wildcard":            {"--with-proxy", "--proxy-listen", "0.0.0.0:8789"},
-		"same address":        {"--with-proxy", "--proxy-listen", "192.168.150.1:8788"},
-		"bad connection":      {"--with-proxy", "--proxy-listen", "192.168.150.1:8789", "--proxy-connection", "a b"},
+		"listen without flag": {"--proxy-listen", "192.168.150.1:8790"},
+		"wildcard":            {"--with-proxy", "--proxy-listen", "0.0.0.0:8790"},
+		"same as gateway":     {"--with-proxy", "--proxy-listen", "192.168.150.1:8788"},
+		"duplicate":           {"--with-proxy", "--proxy-listen", "192.168.150.1:8790", "--proxy-listen", "192.168.150.1:8790=x"},
+		"bad connection":      {"--with-proxy", "--proxy-listen", "192.168.150.1:8790=a b"},
 	} {
 		_, err := runSystemd(t, append(append([]string{}, args...), extra...)...)
 		assert.Error(t, err, name)
 	}
 
-	noConn := []string{"print", "--listen", "192.168.150.1:8788", "--allow-source", "192.168.150.0/24", "--binary", binary, "--with-proxy", "--proxy-listen", "192.168.150.1:8789"}
-	_, err = runSystemd(t, noConn...)
-	assert.Error(t, err, "a proxy needs a connection")
+	_, err = runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--allow-source", "192.168.150.0/24", "--binary", binary, "--with-proxy")
+	assert.Error(t, err, "no connection to default to")
 
-	_, err = runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--allow-any-source", "--binary", binary, "--with-proxy", "--proxy-listen", "192.168.150.1:8789", "--proxy-connection", "github-app")
+	_, err = runSystemd(t, "print", "--listen", "192.168.150.1:8788", "--allow-any-source", "--binary", binary, "--with-proxy", "--proxy-listen", "192.168.150.1:8790=github-app")
 	assert.Error(t, err, "--allow-any-source never opens the proxy")
 }

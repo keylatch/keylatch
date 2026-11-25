@@ -433,11 +433,11 @@ func TestGitHubProxy_ServeRefusals(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err = (&proxy.Server{Addr: "192.168.150.1:8789", GitHub: inj, CA: ca}).Serve(ctx)
+	err = (&proxy.Server{Addr: "192.168.150.1:8790", GitHub: inj, CA: ca}).Serve(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-loopback")
 
-	err = (&proxy.Server{Addr: "192.168.150.1:8789", AllowNonLoopback: true, GitHub: inj, CA: ca}).Serve(ctx)
+	err = (&proxy.Server{Addr: "192.168.150.1:8790", AllowNonLoopback: true, GitHub: inj, CA: ca}).Serve(ctx)
 	require.Error(t, err, "a non-loopback bind needs a source allowlist")
 	assert.Contains(t, err.Error(), "non-loopback")
 
