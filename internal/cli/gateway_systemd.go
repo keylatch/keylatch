@@ -20,6 +20,9 @@ import (
 const (
 	systemdUnitName      = "keylatch-gateway.service"
 	systemdCredentialKEK = "kek"
+	// systemdCredentialOPSA names the credential carrying the 1Password
+	// service account token. It must match --name= given to systemd-creds.
+	systemdCredentialOPSA = "op-sa-token"
 )
 
 // systemctlRunFunc and loginctlRunFunc are vars so tests substitute fakes and
@@ -38,6 +41,9 @@ type gatewayUnitSpec struct {
 	Binary         string
 	EnvFile        string
 	CredentialFile string
+	// OPCredentialFile is the sealed 1Password service account token; empty
+	// means the unit does not load one.
+	OPCredentialFile string
 	// ExecArgs are the arguments after the binary: gateway up plus the
 	// validated --allow-source and --github-mint flags.
 	ExecArgs string
@@ -56,6 +62,11 @@ EnvironmentFile={{.EnvFile}}
 # vault opens without a login session, keyring or plaintext key file.
 LoadCredentialEncrypted={{.Credential}}:{{.CredentialFile}}
 Environment=KEYLATCH_AGE_IDENTITY=%d/{{.Credential}}
+{{- if .OPCredentialFile}}
+# 1Password service account token, sealed the same way. keylatch reads it from
+# $CREDENTIALS_DIRECTORY at start and keeps it in its own process environment only.
+LoadCredentialEncrypted={{.OPCredential}}:{{.OPCredentialFile}}
+{{- end}}
 ExecStart={{.Binary}} {{.ExecArgs}}
 Restart=on-failure
 RestartSec=5
@@ -73,8 +84,9 @@ func (s gatewayUnitSpec) render() (string, error) {
 	var b strings.Builder
 	err := gatewayUnitTemplate.Execute(&b, struct {
 		gatewayUnitSpec
-		Credential string
-	}{s, systemdCredentialKEK})
+		Credential   string
+		OPCredential string
+	}{s, systemdCredentialKEK, systemdCredentialOPSA})
 	return b.String(), err
 }
 
@@ -135,7 +147,7 @@ var connectionNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // gatewayExecArgs builds the gateway command line. A non-loopback listen
 // address needs --allow-source (canonical CIDR, so hostcheck-style parsers
 // compare it exactly) unless allowAny is explicit.
-func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string) (string, error) {
+func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint string, opSA bool) (string, error) {
 	host, _, _ := net.SplitHostPort(listen)
 	loopback := net.ParseIP(host).IsLoopback()
 	if allowAny && len(sources) > 0 {
@@ -157,6 +169,9 @@ func gatewayExecArgs(listen string, sources []string, allowAny bool, githubMint 
 			return "", fmt.Errorf("--github-mint %q: connection names use letters, digits, '.', '_' and '-'", githubMint)
 		}
 		args = append(args, "--github-mint", githubMint)
+	}
+	if opSA {
+		args = append(args, "--op-service-account-credential", systemdCredentialOPSA)
 	}
 	return strings.Join(args, " "), nil
 }
@@ -197,7 +212,16 @@ Provision the credential once, before 'keylatch bootstrap':
   KEYLATCH_AGE_IDENTITY="$XDG_RUNTIME_DIR/kek" keylatch bootstrap
   shred -u "$XDG_RUNTIME_DIR/kek"
 
-Use --with-key=host (or omit --with-key) on machines without a TPM2.`,
+Use --with-key=host (or omit --with-key) on machines without a TPM2.
+
+To read secrets from 1Password without anyone present (overnight agent runs), seal
+a 1Password service account token the same way and pass it with
+--op-service-account-credential. The token is read from stdin, never from argv:
+
+  systemd-creds encrypt --user --name=op-sa-token --with-key=tpm2 - \
+    ~/.config/keylatch/gateway/op-sa-token.cred
+
+Paste the token, then press Ctrl-D twice (or pipe it from a password manager).`,
 	}
 	cmd.AddCommand(newGatewaySystemdPrintCmd(), newGatewaySystemdInstallCmd(), newGatewaySystemdUninstallCmd(), newGatewaySystemdStatusCmd())
 	return cmd
@@ -209,6 +233,7 @@ type gatewaySystemdFlags struct {
 	sources    []string
 	anySource  bool
 	githubMint string
+	opSACred   string
 }
 
 func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
@@ -217,6 +242,7 @@ func (f *gatewaySystemdFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&f.sources, "allow-source", nil, "CIDR callers must come from, repeatable; written to ExecStart as --allow-source <cidr> (required for a non-loopback --listen)")
 	cmd.Flags().BoolVar(&f.anySource, "allow-any-source", false, "accept a non-loopback --listen without --allow-source (any caller that can reach the address)")
 	cmd.Flags().StringVar(&f.githubMint, "github-mint", "", "github-app connection to serve POST /mint/github from (adds --github-mint to ExecStart)")
+	cmd.Flags().StringVar(&f.opSACred, "op-service-account-credential", "", "systemd-creds encrypted file holding the 1Password service account token (adds LoadCredentialEncrypted=op-sa-token to the unit)")
 	_ = cmd.MarkFlagRequired("listen")
 }
 
@@ -228,12 +254,16 @@ func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, erro
 	if err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint)
+	execArgs, err := gatewayExecArgs(f.listen, f.sources, f.anySource, f.githubMint, f.opSACred != "")
 	if err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	spec := gatewayUnitSpec{ExecArgs: execArgs, Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env)}
-	for _, p := range []string{spec.Binary, spec.EnvFile, spec.CredentialFile} {
+	spec := gatewayUnitSpec{ExecArgs: execArgs, Binary: bin, EnvFile: gatewayEnvFilePath(env), CredentialFile: gatewayCredentialPath(env), OPCredentialFile: f.opSACred}
+	unitPaths := []string{spec.Binary, spec.EnvFile, spec.CredentialFile}
+	if spec.OPCredentialFile != "" {
+		unitPaths = append(unitPaths, spec.OPCredentialFile)
+	}
+	for _, p := range unitPaths {
 		if err := validateUnitPath(p); err != nil {
 			return gatewayUnitSpec{}, err
 		}
@@ -308,6 +338,11 @@ func newGatewaySystemdInstallCmd() *cobra.Command {
 			if _, err := os.Stat(spec.CredentialFile); errors.Is(err, os.ErrNotExist) {
 				fmt.Fprintf(c.OutOrStdout(), "vault key credential missing at %s; see 'keylatch gateway systemd --help' to create it before starting\n", spec.CredentialFile)
 			}
+			if spec.OPCredentialFile != "" {
+				if _, err := os.Stat(spec.OPCredentialFile); errors.Is(err, os.ErrNotExist) {
+					fmt.Fprintf(c.OutOrStdout(), "1Password service account credential missing at %s; see 'keylatch gateway systemd --help' to create it before starting\n", spec.OPCredentialFile)
+				}
+			}
 			if now {
 				if out, err := systemctlRunFunc("enable", "--now", systemdUnitName); err != nil {
 					return fmt.Errorf("gateway systemd install: systemctl enable --now: %v: %s", err, strings.TrimSpace(string(out)))
@@ -354,7 +389,8 @@ func newGatewaySystemdUninstallCmd() *cobra.Command {
 }
 
 func newGatewaySystemdStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var checkOP bool
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show whether the unit is installed, enabled, active and able to unlock the vault",
 		Args:  cobra.NoArgs,
@@ -389,9 +425,17 @@ func newGatewaySystemdStatusCmd() *cobra.Command {
 				linger = strings.TrimSpace(string(out))
 			}
 			report("linger", linger+" (must be yes to run without a login session)")
+			if opCred, ok := unitLoadsCredential(filepath.Join(unitDir, systemdUnitName), systemdCredentialOPSA); ok {
+				report("op account", present(opCred))
+				if checkOP {
+					report("op auth", checkSealedOPServiceAccount(c.Context(), opCred))
+				}
+			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&checkOP, "check-op", false, "decrypt the sealed 1Password service account token for this command only and run 'op whoami' (the token is never printed)")
+	return cmd
 }
 
 func currentUserName() string {

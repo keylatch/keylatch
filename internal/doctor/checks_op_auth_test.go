@@ -152,3 +152,24 @@ func TestCheckExternalOP_NotSignedIn_Warns(t *testing.T) {
 	assert.True(t, s.Warn, "a signed-out op CLI must warn — the previous `op --version` check could never catch this")
 	assert.Contains(t, s.Detail, "not signed in")
 }
+
+func TestCheckBackendOPAuth_SealedServiceAccountPointsAtUnitCheck(t *testing.T) {
+	_, env := bootstrappedHome(t)
+	selectBackend(t, env, "op")
+	gw := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(gw, "op-sa-token.cred"), []byte("sealed"), 0o600))
+	env = makeEnv(map[string]string{
+		"KEYLATCH_CONFIG_DIR":  env("KEYLATCH_CONFIG_DIR"),
+		"KEYLATCH_GATEWAY_DIR": gw,
+	})
+	runner := &kexec.MockRunner{}
+
+	report, err := doctor.Run(context.Background(), doctor.Options{Verbose: true, Env: env, Probe: newMockProbe(), Runner: runner})
+	require.NoError(t, err)
+
+	s := findCheck(t, report, "backend.op.auth")
+	assert.True(t, s.OK)
+	assert.Contains(t, s.Detail, "sealed for the gateway unit")
+	assert.Contains(t, s.Fix, "systemd status --check-op")
+	assert.Empty(t, runner.Calls)
+}

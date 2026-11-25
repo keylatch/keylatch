@@ -229,6 +229,7 @@ func newGatewayUpCmd() *cobra.Command {
 		force         bool
 		allowSources  []string
 		githubMint    string
+		opSACred      string
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
@@ -306,6 +307,9 @@ func newGatewayUpCmd() *cobra.Command {
 				if githubMint != "" {
 					childArgs = append(childArgs, "--github-mint="+githubMint)
 				}
+				if opSACred != "" {
+					childArgs = append(childArgs, "--op-service-account-credential="+opSACred)
+				}
 				if err := startDetached(childArgs, pidPath); err != nil {
 					return err
 				}
@@ -367,6 +371,17 @@ func newGatewayUpCmd() *cobra.Command {
 					SpendPerHour: budgetPerHour,
 					SpendPerDay:  budgetPerDay,
 				})
+			}
+
+			// Unattended 1Password access: export the sealed service account
+			// token before the backend is selected. A verdict goes to stderr
+			// (the journal); a failed check does not stop the gateway, so a
+			// boot before the network is up recovers on its own.
+			if opSACred != "" {
+				if err := exportOPServiceAccountToken(opSACred); err != nil {
+					return NewBackendUnavailable("gateway up: %v", err)
+				}
+				fmt.Fprintf(c.ErrOrStderr(), "gateway: 1Password %s\n", opWhoamiVerdict(ctx, nil))
 			}
 
 			// The gateway's job is to inject the provider credential into the
@@ -467,6 +482,7 @@ func newGatewayUpCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&budgetPerDay, "budget-per-day", 0, "per-actor request budget per day (in-memory; resets on gateway restart; 0 = disabled)")
 	cmd.Flags().StringArrayVar(&allowSources, "allow-source", nil, "refuse callers whose address is outside this CIDR, before authentication (repeatable; X-Forwarded-For is never read)")
 	cmd.Flags().StringVar(&githubMint, "github-mint", "", "serve POST /mint/github using this github-app connection and its mint.github_app policy")
+	cmd.Flags().StringVar(&opSACred, "op-service-account-credential", "", "name of the systemd credential holding the 1Password service account token; exported as OP_SERVICE_ACCOUNT_TOKEN from $CREDENTIALS_DIRECTORY")
 	cmd.Flags().BoolVar(&force, "force", false, "when the gateway appears to be running, verify process identity and recover from a stale PID file if it doesn't match a keylatch process")
 	return cmd
 }

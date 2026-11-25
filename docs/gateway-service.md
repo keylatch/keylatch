@@ -75,3 +75,46 @@ that can reach the address (it cannot be combined with `--allow-source`).
 
 `--github-mint <connection>` adds `--github-mint <connection>` so the gateway serves
 `POST /mint/github` for that `github-app` connection and its `mint.github_app` policy.
+
+## 1Password behind the gateway, unattended
+
+With the `op` backend the gateway reads secrets through the `op` CLI. A person signing in
+does not work for overnight runs, so give the unit a
+[1Password service account](https://developer.1password.com/docs/service-accounts/) that can
+read one vault only.
+
+1. In 1Password create a vault (for example `keylatch-agent`), put the GitHub App private key
+   in it, and create a service account with read access to that vault only.
+2. Seal the service account token for the unit. The token is read from stdin, so it never
+   appears in argv or shell history; paste it and press Ctrl-D twice:
+
+   ```bash
+   systemd-creds encrypt --user --name=op-sa-token --with-key=tpm2 - \
+     ~/.config/keylatch/gateway/op-sa-token.cred
+   ```
+
+   `--name=op-sa-token` must match; use `--with-key=host` without a TPM2.
+3. Install the unit with the credential:
+
+   ```bash
+   keylatch gateway systemd install --listen 192.168.150.1:8788 \
+     --allow-source 192.168.150.0/24 --github-mint github-app \
+     --op-service-account-credential ~/.config/keylatch/gateway/op-sa-token.cred
+   ```
+
+   (use the absolute path; `~` is not expanded inside a unit.) The unit gets
+   `LoadCredentialEncrypted=op-sa-token:<file>` and `ExecStart=... --op-service-account-credential op-sa-token`.
+   At start `keylatch` reads `$CREDENTIALS_DIRECTORY/op-sa-token` and exports
+   `OP_SERVICE_ACCOUNT_TOKEN` in its own process. The token is never in an env file,
+   `ExecStart`, or a log line.
+4. Verify without printing the token:
+
+   ```bash
+   keylatch gateway systemd status --check-op   # decrypts for this call only, runs `op whoami`
+   journalctl --user -u keylatch-gateway -n 20  # "gateway: 1Password service account authenticated"
+   keylatch doctor                              # backend.op.auth points here when the shell has no token
+   ```
+
+Boot start stays the default: with `loginctl enable-linger "$USER"` the unit starts at boot.
+A failed `op whoami` at start is logged but does not stop the gateway, so a boot before the
+network is up recovers when `op` can reach 1Password again.
