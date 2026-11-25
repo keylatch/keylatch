@@ -212,6 +212,7 @@ func TestEnsureProxyCallerToken(t *testing.T) {
 }
 
 func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
+	require.NoError(t, registry.InitFromConfig(context.Background(), os.Getenv), "the github-app template must be loaded")
 	t.Setenv("KEYLATCH_GATEWAY_DIR", filepath.Join(t.TempDir(), "gw"))
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -281,6 +282,7 @@ func TestNewGitHubProxy_MintsOneMultiRepoTokenAndInjectsIt(t *testing.T) {
 }
 
 func TestNewGitHubProxy_RefusesOpenBindAndBadInput(t *testing.T) {
+	require.NoError(t, registry.InitFromConfig(context.Background(), os.Getenv), "the github-app template must be loaded")
 	t.Setenv("KEYLATCH_GATEWAY_DIR", filepath.Join(t.TempDir(), "gw"))
 	base := gitHubProxyParams{Connection: "github-app", Listen: "10.0.2.2:7879", Lookup: llmcontext.DefaultLookup, Config: proxyTestConfig([]string{"octo/a"}, nil), Vault: proxyFakeVault{}, Audit: &proxyAudit{}}
 
