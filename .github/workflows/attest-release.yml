@@ -125,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           notes="$RUNNER_TEMP/notes.md"
-          sed "s/{{TAG}}/${TAG}/g" docs/release-notes/unverified-release.md >"$notes"
+          sed "s/{{TAG}}/${TAG}/g" .github/unverified-release-note.md >"$notes"
           printf '\n---\n\n' >>"$notes"
           gh release view "$TAG" --json body --jq .body >>"$notes"
           gh release edit "$TAG" --latest=false --notes-file "$notes"

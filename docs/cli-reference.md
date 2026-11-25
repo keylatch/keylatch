@@ -767,6 +767,19 @@ is loaded once at startup; editing the file requires a `gateway down` /
 | `--port` | `7878` | Port to listen on |
 | `--detach` | | Background mode (stub in current release) |
 | `--unsafe-bind-all` | | Bind to `0.0.0.0` (non-LLM sessions only) |
+| `--allow-source <CIDR>` | | Repeatable. Refuse callers whose TCP peer address is outside every CIDR (IPv4 or IPv6), before authentication and for every path including `/health`. `X-Forwarded-For` and similar headers are never read. Malformed CIDRs fail startup. |
+| `--github-mint <connection>` | | Serve `POST /mint/github` for this `github-app` connection, using its `mint.github_app` policy from the operator config (see `keylatch mint`). |
+
+**`POST /mint/github`** returns a GitHub App installation token for exactly one
+repository: `{"repository":"owner/name","permissions":{"contents":"write"}}`
+(permissions optional; default `contents=write`, `pull_requests=write`,
+`metadata=read`). It needs `Authorization: Bearer <session token>` where the
+token carries the `github.mint` capability. The `administration` permission is
+refused regardless of policy; the connection's `mint.github_app` policy
+(allowed repositories, permission ceiling, `max_ttl`) still applies, and an
+audit log is required. The reply is `{"token","expires_at","repository","permissions"}`
+with `Cache-Control: no-store`. A token with `pull_requests=write` can merge a
+pull request, so branch protection on the repository remains the merge gate.
 
 #### `gateway down`
 

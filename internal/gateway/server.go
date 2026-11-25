@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -90,6 +91,14 @@ type ServerOptions struct {
 	// Budget enforces per-actor budget limits on gateway requests. When nil,
 	// no budget enforcement is applied.
 	Budget budget.BudgetCounter
+
+	// AllowSources restricts callers to these source prefixes, checked against
+	// the TCP peer address before any other processing. Empty allows every
+	// source the bind address already admits.
+	AllowSources []netip.Prefix
+
+	// GitHubMint, when set, serves POST /mint/github.
+	GitHubMint *GitHubMintOptions
 }
 
 // Server is the local gateway HTTP server.
@@ -314,10 +323,13 @@ func New(opts ServerOptions) (*Server, error) {
 	proxy = hostOverrideBlockerMiddleware(proxy, allowedHosts)
 	proxy = authBlockerMiddleware(proxy, false /* allowSelfAuth */)
 	mux.Handle("/", proxy)
+	if opts.GitHubMint != nil {
+		mux.HandleFunc("POST "+MintGitHubPath, s.mintGitHubHandler)
+	}
 
 	s.httpSrv = &http.Server{
 		Addr:              opts.Bind,
-		Handler:           reserveApprovalPaths(mux),
+		Handler:           s.allowSourceMiddleware(reserveApprovalPaths(mux), opts.AllowSources),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
