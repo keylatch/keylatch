@@ -22,6 +22,7 @@ keylatch secret add acme --ref op://Private/acme/key \
 
 keylatch secret list              # name, hosts, injection kind, source (stored or reference scheme)
 keylatch secret show acme         # rules only, never the value
+keylatch secret add acme --replace ...   # change the rules and/or rotate the value or reference
 keylatch secret rm acme           # removes the rules and the stored value
 ```
 
@@ -36,9 +37,13 @@ keylatch secret rm acme           # removes the rules and the stored value
 | `--basic <user>` | Send HTTP basic auth with this user name and the value as the password. |
 | `--base-url-env <ENV>` | Env var that `keylatch run` sets to the gateway URL for this secret. |
 
+`--replace` changes an existing secret. Give all rule flags again; add `--value-stdin`
+or `--ref` to rotate the value, or omit both to keep the stored one. The value is
+written before the rules. Without `--replace`, a duplicate name is refused.
+
 Exactly one of `--header`, `--query` and `--basic` is required.
 
-`add` and `rm` are refused inside an LLM session (exit 2). `list` and `show`
+`add` (including `--replace`) and `rm` are refused inside an LLM session (exit 2). `list` and `show`
 are metadata only and work everywhere. `keylatch status` and `keylatch doctor`
 list custom secrets by name, hosts, injection kind and source.
 
@@ -91,4 +96,20 @@ keylatch config directory (mode 0600); the file never contains the value.
 Custom secrets inject one static credential. They do not support OAuth or other
 token exchange, request signing (AWS SigV4, HMAC), mTLS or multi-field
 credentials. Use a [provider template](./provider-templates.md) for those.
-Custom secrets are denied to LLM-session tokens by default.
+
+## Agent sessions
+
+An agent in an LLM session may use a custom secret, but only within its rules: the
+host, path prefixes and methods set with `secret add`. Anything else gets 404 and
+nothing is sent upstream. The agent cannot add, change or remove secrets, and never
+sees the value.
+
+The usual flow is that you start the agent. Two ways work, and neither needs `--allow`
+from inside the session (`keylatch run --allow` is refused in LLM sessions):
+
+- Run the agent under `keylatch run <name> --allow <agent command> -- <agent command>`
+  outside an LLM session. The agent gets `--base-url-env` (or `<NAME>_BASE_URL`)
+  pointing at `http://<gateway>/sdk/<name>/v1` and a session token granting `<name>.*`.
+- Mint a token yourself with `keylatch gateway token create --allow <name>.request`
+  and give it to the agent as its gateway token. A token created inside an LLM session
+  is marked as one and is still accepted for custom secrets.

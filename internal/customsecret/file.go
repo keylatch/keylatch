@@ -117,3 +117,19 @@ func Find(path, name string) (Secret, error) {
 	}
 	return Secret{}, fmt.Errorf("%w: %s", ErrNotFound, name)
 }
+
+// Replace overwrites the entry with the same name, keeping its creation time.
+func Replace(path string, s Secret) error {
+	secrets, err := Load(path)
+	if err != nil {
+		return err
+	}
+	for i, e := range secrets {
+		if e.Name == s.Name {
+			s.CreatedAt = e.CreatedAt
+			secrets[i] = s
+			return Save(path, secrets)
+		}
+	}
+	return fmt.Errorf("%w: %s", ErrNotFound, s.Name)
+}

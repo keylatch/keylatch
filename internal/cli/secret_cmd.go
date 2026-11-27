@@ -72,6 +72,7 @@ func newSecretAddCmd() *cobra.Command {
 		query      string
 		basic      string
 		baseURLEnv string
+		replace    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add <name>",
@@ -91,8 +92,8 @@ Examples:
 			if err := blockSecretMutationInLLMSession("add"); err != nil {
 				return err
 			}
-			if valueStdin == (ref != "") {
-				return NewUsageError("exactly one of --value-stdin or --ref is required")
+			if valueStdin && ref != "" || (!replace && !valueStdin && ref == "") {
+				return NewUsageError("exactly one of --value-stdin or --ref is required (with --replace, neither keeps the stored value)")
 			}
 			injection, err := injectionFromFlags(header, query, basic)
 			if err != nil {
@@ -105,16 +106,23 @@ Examples:
 			if err := sec.Normalize(); err != nil {
 				return NewUsageError("%v", err)
 			}
-			if err := customsecret.Check(sec.Name); err != nil {
-				return NewUsageError("%v", err)
-			}
 			file := paths.CustomSecrets(llmcontext.DefaultLookup)
-			if _, err := customsecret.Find(file, sec.Name); err == nil {
-				return NewUsageError("custom secret %q already exists; remove it first with: keylatch secret rm %s", sec.Name, sec.Name)
+			existing, findErr := customsecret.Find(file, sec.Name)
+			switch {
+			case replace && findErr != nil:
+				return NewUsageError("custom secret %q does not exist; add it without --replace", sec.Name)
+			case !replace && findErr == nil:
+				return NewUsageError("custom secret %q already exists; use --replace to change it or remove it with: keylatch secret rm %s", sec.Name, sec.Name)
+			case !replace:
+				if err := customsecret.Check(sec.Name); err != nil {
+					return NewUsageError("%v", err)
+				}
 			}
 
 			var value []byte
-			if ref != "" {
+			if replace && ref == "" && !valueStdin {
+				sec.RefScheme = existing.RefScheme
+			} else if ref != "" {
 				scheme, refErr := customsecret.RefSchemeOf(ref)
 				if refErr != nil {
 					// The cause is not shown: a secret passed by mistake must not reach stderr.
@@ -148,9 +156,20 @@ Examples:
 			cfg := loadCLIConfig(c)
 			env := llmcontext.DefaultLookup
 			valuePath := customsecret.ValuePath(sec.Name)
-			meta := backend.Meta{Path: valuePath, Backend: cfg.Backend, Version: 1}
-			if err := vault.Set(ctx, valuePath, value, meta, cfg, env); err != nil {
-				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: store value: %w", err))
+			// The value is written before the rules so a failure never leaves rules without a value.
+			if value != nil {
+				meta := backend.Meta{Path: valuePath, Backend: cfg.Backend, Version: 1}
+				if err := vault.Set(ctx, valuePath, value, meta, cfg, env); err != nil {
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: store value: %w", err))
+				}
+			}
+			if replace {
+				if err := customsecret.Replace(file, sec); err != nil {
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: save rule: %w", err))
+				}
+				fmt.Fprintf(c.OutOrStdout(), "[keylatch] secret replaced: %s -> %s (%s, %s)\n", sec.Name, sec.Hosts[0], sec.Kind(), sec.Source())
+				fmt.Fprintln(c.OutOrStdout(), "  restart the gateway to serve the new rules")
+				return nil
 			}
 			if err := customsecret.Add(file, sec); err != nil {
 				if delErr := vault.Delete(ctx, valuePath, cfg, env); delErr != nil && !errors.Is(delErr, backend.ErrNotFound) {
@@ -171,6 +190,7 @@ Examples:
 	cmd.Flags().StringVar(&header, "header", "", `inject as a header, e.g. "Authorization: Bearer {value}"`)
 	cmd.Flags().StringVar(&query, "query", "", "inject as this query parameter")
 	cmd.Flags().StringVar(&basic, "basic", "", "inject as HTTP basic auth with this user name")
+	cmd.Flags().BoolVar(&replace, "replace", false, "change an existing secret: new rules (all rule flags again) and, with --value-stdin or --ref, a new value")
 	cmd.Flags().StringVar(&baseURLEnv, "base-url-env", "", "env var that receives the gateway URL in `keylatch run`")
 	return cmd
 }

@@ -242,3 +242,65 @@ func TestRegisterCustomSecretsMakesThemRoutable(t *testing.T) {
 	require.NotNil(t, got.Custom)
 	assert.Equal(t, "ACME_BASE_URL", got.Custom.BaseURLEnv)
 }
+
+func TestSecretAddReplace(t *testing.T) {
+	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	file := paths.CustomSecrets(llmcontext.DefaultLookup)
+	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
+	require.NoError(t, err, errOut)
+	before, err := customsecret.Find(file, "acme")
+	require.NoError(t, err)
+
+	// Without --replace a duplicate stays refused; --replace needs an existing secret.
+	_, _, err = caRun(t, caStdinFile(t, "x-0123456789"), secretAddArgs("--value-stdin")...)
+	require.Error(t, err)
+	_, _, err = caRun(t, caStdinFile(t, "x-0123456789"), "secret", "add", "nope", "--replace", "--value-stdin",
+		"--host", "api.acme.example", "--query", "k")
+	require.Error(t, err)
+
+	// Rules only: the stored value is kept.
+	out, errOut, err := caRun(t, nil, "secret", "add", "acme", "--replace", "--host", "api.new.example",
+		"--path", "/v2", "--query", "token")
+	require.NoError(t, err, errOut)
+	assert.Contains(t, out, "secret replaced")
+	got, err := storedValue(t, f, "acme")
+	require.NoError(t, err)
+	assert.Equal(t, secretTestValue, string(got))
+	after, err := customsecret.Find(file, "acme")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"api.new.example"}, after.Hosts)
+	assert.Equal(t, "query token", after.Kind())
+	assert.True(t, after.CreatedAt.Equal(before.CreatedAt))
+
+	// New value and a reference.
+	const rotated = "acme-rotated-0123456789"
+	_, errOut, err = caRun(t, caStdinFile(t, rotated), "secret", "add", "acme", "--replace", "--value-stdin",
+		"--host", "api.new.example", "--query", "token")
+	require.NoError(t, err, errOut)
+	got, err = storedValue(t, f, "acme")
+	require.NoError(t, err)
+	assert.Equal(t, rotated, string(got))
+
+	_, errOut, err = caRun(t, nil, "secret", "add", "acme", "--replace", "--ref", "op://Private/acme/key",
+		"--host", "api.new.example", "--query", "token")
+	require.NoError(t, err, errOut)
+	after, _ = customsecret.Find(file, "acme")
+	assert.Equal(t, "op", after.RefScheme)
+
+	// Invalid replacement rules change nothing.
+	_, _, err = caRun(t, nil, "secret", "add", "acme", "--replace", "--host", "127.0.0.1", "--query", "token")
+	require.Error(t, err)
+	again, _ := customsecret.Find(file, "acme")
+	assert.Equal(t, after.Hosts, again.Hosts)
+}
+
+func TestSecretReplaceRefusedInLLMSession(t *testing.T) {
+	caNewVault(t, envelope.XChaCha20Poly1305)
+	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
+	require.NoError(t, err, errOut)
+	caSetLLMSession(t)
+
+	_, _, err = caRun(t, caStdinFile(t, "x-0123456789"), secretAddArgs("--replace", "--value-stdin")...)
+	require.Error(t, err)
+	assert.Equal(t, exitcode.SecurityBlock, caExitCode(err))
+}
