@@ -273,7 +273,7 @@ keylatch secret approve <name>
 keylatch secret reject <name>
 ```
 
-In an LLM session `add` only proposes the secret (pending until `approve`); `rm`, `approve` and `reject` are blocked there (exit 2); `approve` and `reject` need the approver passphrase. The value is never accepted as an
+`add` takes effect at once only from a terminal with the approver passphrase; otherwise (and always in an LLM session) it only proposes the secret, pending until `approve`; `rm`, `approve` and `reject` are blocked there (exit 2); `approve` and `reject` need the approver passphrase. The value is never accepted as an
 argument. `list` and `show` print metadata only. See [custom-secrets.md](./custom-secrets.md).
 
 ---

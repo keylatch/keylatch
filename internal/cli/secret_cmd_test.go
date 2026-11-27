@@ -28,13 +28,22 @@ func storedValue(t *testing.T, f *caFixture, name string) ([]byte, error) {
 	return vault.Get(ctx, customsecret.ValuePath(name), f.cfg, f.env)
 }
 
+// secretFixture is an isolated install whose owner has an approver passphrase
+// and a terminal, so a human `secret add` takes effect at once.
+func secretFixture(t *testing.T) *caFixture {
+	t.Helper()
+	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	secretApprover(t, f)
+	return f
+}
+
 func secretAddArgs(extra ...string) []string {
 	return append([]string{"secret", "add", "acme", "--host", "api.acme.example", "--path", "/v1",
 		"--method", "get", "--header", "Authorization: Bearer {value}"}, extra...)
 }
 
 func TestSecretAddStoresValueAndMetadataSeparately(t *testing.T) {
-	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	f := secretFixture(t)
 
 	out, errOut, err := caRun(t, caStdinFile(t, secretTestValue+"\n"), secretAddArgs("--value-stdin", "--base-url-env", "ACME_BASE_URL")...)
 	require.NoError(t, err, errOut)
@@ -67,7 +76,7 @@ func TestSecretAddStoresValueAndMetadataSeparately(t *testing.T) {
 }
 
 func TestSecretAddWithReferenceStoresTheReferenceOnly(t *testing.T) {
-	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	f := secretFixture(t)
 	const ref = "op://Private/acme/key"
 
 	out, errOut, err := caRun(t, nil, "secret", "add", "acme", "--ref", ref, "--host", "api.acme.example", "--query", "api_key")
@@ -85,12 +94,12 @@ func TestSecretAddWithReferenceStoresTheReferenceOnly(t *testing.T) {
 }
 
 func TestSecretRmStaysRefusedInLLMSession(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
+	_ = secretFixture(t)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)
 	caSetLLMSession(t)
 
-	_, errOut, err = caRun(t, nil, "secret", "rm", "acme", "--force")
+	_, _, err = caRun(t, nil, "secret", "rm", "acme", "--force")
 	require.Error(t, err)
 	assert.Equal(t, exitcode.SecurityBlock, caExitCode(err))
 	assert.Contains(t, err.Error(), "human terminal")
@@ -99,7 +108,7 @@ func TestSecretRmStaysRefusedInLLMSession(t *testing.T) {
 }
 
 func TestSecretReadOnlyCommandsWorkInLLMSession(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
+	_ = secretFixture(t)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)
 	caSetLLMSession(t)
@@ -113,7 +122,7 @@ func TestSecretReadOnlyCommandsWorkInLLMSession(t *testing.T) {
 }
 
 func TestSecretAddRejectsBadInput(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
+	_ = secretFixture(t)
 	file := paths.CustomSecrets(llmcontext.DefaultLookup)
 
 	cases := []struct {
@@ -127,8 +136,9 @@ func TestSecretAddRejectsBadInput(t *testing.T) {
 		{"no host", []string{"secret", "add", "acme", "--value-stdin", "--query", "k"}},
 		{"ip host", []string{"secret", "add", "acme", "--value-stdin", "--host", "127.0.0.1", "--query", "k"}},
 		{"private suffix host", []string{"secret", "add", "acme", "--value-stdin", "--host", "db.internal", "--query", "k"}},
-		{"wildcard on public suffix", []string{"secret", "add", "acme", "--value-stdin", "--host", "api.acme.example", "--host", "*.co.uk", "--query", "k"}},
-		{"wildcard as the only host", []string{"secret", "add", "acme", "--value-stdin", "--host", "*.acme.example", "--query", "k"}},
+		{"ip as second host", []string{"secret", "add", "acme", "--value-stdin", "--host", "api.acme.example", "--host", "10.0.0.1", "--query", "k"}},
+		{"wildcard host", []string{"secret", "add", "acme", "--value-stdin", "--host", "*.co.uk", "--query", "k"}},
+		{"wildcard under a real domain", []string{"secret", "add", "acme", "--value-stdin", "--host", "*.acme.example", "--query", "k"}},
 		{"bad name", []string{"secret", "add", "Acme_Prod", "--value-stdin", "--host", "api.acme.example", "--query", "k"}},
 		{"name of a provider template", []string{"secret", "add", "openrouter", "--value-stdin", "--host", "api.acme.example", "--query", "k"}},
 		{"header without placeholder", []string{"secret", "add", "acme", "--value-stdin", "--host", "api.acme.example", "--header", "Authorization: Bearer abc"}},
@@ -144,14 +154,14 @@ func TestSecretAddRejectsBadInput(t *testing.T) {
 }
 
 func TestSecretAddNeverEchoesAValuePassedAsRef(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
+	_ = secretFixture(t)
 	_, errOut, err := caRun(t, nil, "secret", "add", "acme", "--ref", secretTestValue, "--host", "api.acme.example", "--query", "k")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error()+errOut, secretTestValue)
 }
 
 func TestSecretAddRefusesDuplicateAndKeepsTheFirstValue(t *testing.T) {
-	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	f := secretFixture(t)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)
 
@@ -164,7 +174,7 @@ func TestSecretAddRefusesDuplicateAndKeepsTheFirstValue(t *testing.T) {
 }
 
 func TestSecretListShowAndStatusNeverContainTheValue(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
+	_ = secretFixture(t)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)
 	_, errOut, err = caRun(t, nil, "secret", "add", "viaref", "--ref", "aws-sm://eu-west-1/acme-key",
@@ -208,7 +218,7 @@ func TestSecretListShowAndStatusNeverContainTheValue(t *testing.T) {
 }
 
 func TestSecretRmRemovesValueAndMetadata(t *testing.T) {
-	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	f := secretFixture(t)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)
 
@@ -226,7 +236,7 @@ func TestSecretRmRemovesValueAndMetadata(t *testing.T) {
 }
 
 func TestRegisterCustomSecretsMakesThemRoutable(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
+	_ = secretFixture(t)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin", "--base-url-env", "ACME_BASE_URL")...)
 	require.NoError(t, err, errOut)
 
@@ -240,7 +250,7 @@ func TestRegisterCustomSecretsMakesThemRoutable(t *testing.T) {
 }
 
 func TestSecretAddReplace(t *testing.T) {
-	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	f := secretFixture(t)
 	file := paths.CustomSecrets(llmcontext.DefaultLookup)
 	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)

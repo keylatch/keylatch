@@ -31,7 +31,8 @@ a provider template. A secret is a value (or an op://, aws-sm:// or hashivault:/
 reference), the hosts and paths it may be sent to, and how it is injected.
 
 The gateway serves a custom secret at /sdk/<name>/v1/<path> and forwards it to
-https://<first host>/<path>. Restart the gateway after adding or removing one.
+https://<first host>/<path>; other listed hosts are reached at
+/sdk/<name>/h/<host>/<path>. Restart the gateway after adding or removing one.
 
 See docs/custom-secrets.md.`,
 	}
@@ -98,7 +99,7 @@ Examples:
 	}
 	cmd.Flags().BoolVar(&valueStdin, "value-stdin", false, "read the secret value from stdin")
 	cmd.Flags().StringVar(&ref, "ref", "", "external-store reference (op://..., aws-sm://..., hashivault://...) instead of a value")
-	cmd.Flags().StringArrayVar(&hosts, "host", nil, "allowed HTTPS host (repeatable; the first receives requests; *.example.com allowed after it)")
+	cmd.Flags().StringArrayVar(&hosts, "host", nil, "allowed upstream HTTPS host, an exact DNS name (repeatable; the first receives /sdk/<name>/v1/ requests)")
 	cmd.Flags().StringArrayVar(&pathFlags, "path", nil, "allowed upstream path prefix (repeatable; default /)")
 	cmd.Flags().StringArrayVar(&methods, "method", nil, "allowed HTTP method (repeatable; default any)")
 	cmd.Flags().StringVar(&header, "header", "", `inject as a header, e.g. "Authorization: Bearer {value}"`)
@@ -196,6 +197,19 @@ func printSecretRules(out io.Writer, s customsecret.Secret, indent string) {
 	}
 }
 
+// gatewayURLs lists the gateway path that reaches each allowed host.
+func gatewayURLs(s customsecret.Secret) []string {
+	out := make([]string, 0, len(s.Hosts))
+	for i, h := range s.Hosts {
+		if i == 0 {
+			out = append(out, fmt.Sprintf("/sdk/%s/v1/<path>  -> %s (first host, used by --base-url-env)", s.Name, h))
+			continue
+		}
+		out = append(out, fmt.Sprintf("/sdk/%s/h/%s/<path>  -> %s", s.Name, h, h))
+	}
+	return out
+}
+
 func newSecretShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <name>",
@@ -217,7 +231,7 @@ func newSecretShowCmd() *cobra.Command {
 			if s.Active() {
 				printSecretRules(out, s, "")
 				fmt.Fprintf(out, "source:      %s\n", s.Source())
-				fmt.Fprintf(out, "gateway:     /sdk/%s/v1/<path>\n", s.Name)
+				fmt.Fprintf(out, "gateway:     %s\n", strings.Join(gatewayURLs(s), "\n             "))
 				fmt.Fprintf(out, "created:     %s\n", s.CreatedAt.Format(time.RFC3339))
 			}
 			if s.Proposed != nil {
@@ -260,14 +274,20 @@ func newSecretRmCmd() *cobra.Command {
 			ctx := audit.WithEmitter(c.Context(), audit.AsEmitter(al))
 
 			// The value goes first: if it cannot be deleted the rule stays and rm can be retried.
-			if err := vault.Delete(ctx, customsecret.ValuePath(name), loadCLIConfig(c), llmcontext.DefaultLookup); err != nil && !errors.Is(err, backend.ErrNotFound) {
-				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: delete value: %w", err))
-			}
-			if err := vault.Delete(ctx, customsecret.PendingPath(name), loadCLIConfig(c), llmcontext.DefaultLookup); err != nil && !errors.Is(err, backend.ErrNotFound) {
-				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: delete pending value: %w", err))
-			}
-			if err := customsecret.Remove(file, name); err != nil {
-				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
+			cfg := loadCLIConfig(c)
+			err = customsecret.WithLock(file, func(tx customsecret.Tx) error {
+				for _, p := range []string{customsecret.ValuePath(name), customsecret.PendingPath(name)} {
+					if err := vault.Delete(ctx, p, cfg, llmcontext.DefaultLookup); err != nil && !errors.Is(err, backend.ErrNotFound) {
+						return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: delete value: %w", err))
+					}
+				}
+				if err := tx.Remove(name); err != nil {
+					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))
+				}
+				return nil
+			})
+			if err != nil {
+				return err
 			}
 			fmt.Fprintf(c.OutOrStdout(), "[keylatch] secret removed: %s\n", name)
 			return nil

@@ -31,13 +31,13 @@ keylatch secret reject acme       # owner: discard it
 | Flag | Meaning |
 |------|---------|
 | `--value-stdin` / `--ref <uri>` | Exactly one. The value comes from stdin (or a hidden prompt on a terminal); a reference is validated locally and not resolved at add time. |
-| `--host <host>` | Allowed upstream host, repeatable. HTTPS only. The first host receives the requests and must be an exact name. A later host may be `*.example.com`. |
+| `--host <host>` | Allowed upstream host, repeatable. HTTPS only, exact DNS names (no wildcards). The first host receives `/sdk/<name>/v1/` requests; every listed host is reachable at `/sdk/<name>/h/<host>/`. |
 | `--path <prefix>` | Allowed upstream path prefix, repeatable. Default `/`. A prefix matches whole segments: `/v1` allows `/v1` and `/v1/x`, not `/v1beta`. |
-| `--method <M>` | Allowed HTTP method, repeatable. Default: any. |
+| `--method <M>` | Allowed HTTP method, repeatable. Default: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS. TRACE and CONNECT are never allowed. |
 | `--header "<Name>: <format>"` | Put the value in a header. `{value}` marks the place, e.g. `Authorization: Bearer {value}` or `X-Api-Key: {value}`. |
 | `--query <param>` | Put the value in this query parameter. |
 | `--basic <user>` | Send HTTP basic auth with this user name and the value as the password. |
-| `--base-url-env <ENV>` | Env var that `keylatch run` sets to the gateway URL for this secret. |
+| `--base-url-env <ENV>` | Env var that `keylatch run` sets to the gateway URL (first host) for this secret. Must look like `*_BASE_URL`, `*_API_URL`, `*_URL`, `*_ENDPOINT` or `*_HOST`. |
 
 `--replace` changes an existing secret. Give all rule flags again; add `--value-stdin`
 or `--ref` to rotate the value, or omit both to keep the stored one. The value is
@@ -45,25 +45,37 @@ written before the rules. Without `--replace`, a duplicate name is refused.
 
 Exactly one of `--header`, `--query` and `--basic` is required.
 
-Outside an LLM session `add` takes effect at once: you are the approver. Inside one, `add`
-only proposes the secret (see "Agent sessions"). `rm`, `approve` and `reject` are refused
-inside an LLM session (exit 2). `list` and `show` are metadata only and work everywhere. `keylatch status` and `keylatch doctor`
-list custom secrets by name, hosts, injection kind and source.
+`add` takes effect at once only when stdin is a terminal and the approver passphrase
+(set with `keylatch approve init`) unlocks: you are the approver. Otherwise it only
+proposes the secret, which stays pending until `keylatch secret approve` (see "Agent
+sessions"). That includes a piped `printf ... | keylatch secret add --value-stdin`,
+because stdin is not a terminal; approve it afterwards. `rm`, `approve` and `reject`
+are refused inside an LLM session (exit 2). `list` and `show` are metadata only and
+work everywhere. `keylatch status` and `keylatch doctor` list custom secrets by name,
+state, hosts, injection kind and source.
 
 ## How requests are served
 
-The gateway serves a custom secret at `/sdk/<name>/v1/<path>` and forwards the
-request to `https://<first host>/<path>`:
+The gateway serves a custom secret at `/sdk/<name>/v1/<path>`, which it forwards to
+`https://<first host>/<path>`. Any other listed host is reached at
+`/sdk/<name>/h/<host>/<path>`; the host segment must equal a listed host exactly
+(no case change, trailing dot, port, `user@`, encoded slash or IP form), otherwise
+the answer is 404 and nothing is sent upstream. `keylatch secret show` prints the
+gateway path for each host. Paths, methods and the injection rule apply to every host.
 
 - the path must match an allowed prefix and the method an allowed method, or the
-  gateway answers 404 and nothing is sent upstream;
+  gateway answers 404 and nothing is sent upstream. A percent-encoded `%2F` in the
+  path reaches the gateway decoded and is sent upstream as `/`;
 - the caller's `Authorization` header (the gateway session token), `x-keylatch-*`
   headers, cookies and any credential-looking header or query parameter are
   dropped or refused, and the stored credential is injected per the rule;
 - redirects are not followed, so the credential cannot be sent to another origin;
   the 3xx response is returned to the caller;
-- the upstream host passes the same SSRF check as provider hosts: it must resolve
-  to a public address;
+- every listed host passes the same SSRF check as provider hosts, on each request:
+  it must be on the secret's host list and resolve to a public address;
+- if the upstream echoes the credential back (in the body, any header or a
+  `Location`), the gateway replaces it with `****`, including its URL-encoded and
+  base64 basic-auth forms;
 - every request writes the usual gateway audit event, with the secret's
   capability (`<name>.request`), host, method and path. The query string and the
   value are never logged.
@@ -80,16 +92,18 @@ Restart the gateway after adding or removing a secret; it reads the rules at sta
 
 The value (or reference) is stored in the configured backend at
 `default/custom/<name>/value`. The rules are kept in `custom-secrets.json` in the
-keylatch config directory (mode 0600); the file never contains the value.
+keylatch config directory (mode 0600, edited under a file lock); the file never
+contains the value. Anyone who can write to the config directory can change the rules,
+or an agent's pending proposal, without the approver passphrase: approval protects
+against agent sessions, not against write access to your own config directory.
 
 ## Validation
 
 - Names are kebab-case (`^[a-z][a-z0-9-]{0,62}$`) and must not match a provider
   template or an existing custom secret.
-- Hosts must be DNS names: no IP literals (including decimal and hex forms), no
-  `localhost` or private suffixes such as `.local`, `.internal`, `.lan`, no port,
-  scheme or path. A `*.` wildcard is only the single leftmost label and is refused
-  on public suffixes (`*.com`, `*.co.uk`, `*.github.io`).
+- Hosts must be exact DNS names: no wildcards, no IP literals (including decimal and
+  hex forms), no `localhost` or private suffixes such as `.local`, `.internal`,
+  `.lan`, no port, scheme or path, and not a public suffix such as `co.uk`.
 - Paths are plain prefixes without `..`, empty segments, query or encoding.
 - Header names cannot be `Host`, `Content-Length`, `Cookie` or other framing and
   routing headers.
@@ -115,11 +129,14 @@ An agent may also propose secrets, but they stay unusable until you approve them
 - `keylatch secret list`, `show`, `status` and `doctor` mark pending entries, and
   `gateway up` logs that a pending secret is skipped.
 - `keylatch secret approve <name>` (outside an LLM session, at a terminal) prints what
-  will activate: hosts, paths, methods, injection rule, and the reference URI or
-  "stored value" (never the value). It then asks for the approver passphrase set with
+  will activate: every host, paths, methods, injection rule (and the basic-auth
+  user), the base-URL env var, and the reference URI or "stored value" with a short
+  hash (never the value). The pending value is read once for that summary; after the
+  passphrase prompt the entry and value are read again, and if either changed while
+  the prompt was open nothing is done. It then asks for the approver passphrase set with
   `keylatch approve init`, moves the pending value to its active path and activates the
   rules. Restart the gateway afterwards.
-- `keylatch secret reject <name>` (same passphrase) deletes the pending value and the
+- `keylatch secret reject <name>` (same passphrase; works on an invalid proposal too) deletes the pending value and the
   proposal; a never-approved secret is removed, an active one keeps serving.
 - An agent cannot `rm`, `approve` or `reject`.
 
