@@ -38,7 +38,11 @@ func (e *UnsupportedError) Error() string {
 		e.Name, e.Status, strings.Join(e.Supported, ", "), AllowUnsupportedEnv, e.Name)
 }
 
-func (e *UnsupportedError) Is(target error) bool { return target == ErrUnsupportedBackend }
+// Is also matches ErrUnavailable for a backend that cannot be enabled, as its
+// factory refused it before, so callers keep their unavailable handling.
+func (e *UnsupportedError) Is(target error) bool {
+	return target == ErrUnsupportedBackend || (!e.OptIn && target == ErrUnavailable)
+}
 
 // SupportedManagers lists the manager backends the manifest enables, in manifest order.
 func SupportedManagers() []string {

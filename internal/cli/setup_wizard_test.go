@@ -106,53 +106,57 @@ func TestSetupFromEnv_UsesKeylatchBackend(t *testing.T) {
 	assert.Equal(t, "op", cbLoadConfig(t, cfgDir).Backend)
 }
 
-func skipIfKeychainRecommended(t *testing.T) {
+// setupMenuEnv makes the recommendation deterministic: no manager CLI on
+// PATH means no default, and a service-account token skips the live op probe.
+func setupMenuEnv(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "darwin" {
-		t.Skip("the recommended backend on macOS is the Keychain, which blocks on GUI authorisation")
-	}
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "test-token")
 }
 
 func TestSetupInteractive_BasicMenuChoices(t *testing.T) {
-	type menuCase struct {
-		choice string
-		want   string
-	}
-	cases := []menuCase{{"1", "file"}}
-	// On macOS the invalid and default choices resolve to the Keychain
-	// backend, which prompts for GUI authorisation.
-	if runtime.GOOS != "darwin" {
-		cases = append(cases, menuCase{"7", "file"}, menuCase{"", "file"}, menuCase{"2", "file"})
+	cases := []struct {
+		choice  string
+		want    string
+		wantErr string
+	}{
+		{choice: "1", want: "op"},
+		{choice: "7", wantErr: "no password manager chosen"},
+		{choice: "", wantErr: "no password manager chosen"},
+		{choice: "file", wantErr: "no password manager chosen"},
 	}
 	for _, tc := range cases {
 		t.Run("choice_"+tc.choice, func(t *testing.T) {
 			cfgDir := cbIsolate(t)
-			// storage, decline recommended, menu choice, mode, provider, open UI
-			cbScriptStdin(t, strings.Join([]string{"local", "n", tc.choice, "", "", ""}, "\n")+"\n")
-			out, stderr, err := cbRun(t, "setup", "--no-daemon-start")
-			require.NoError(t, err)
+			setupMenuEnv(t)
+			// storage, menu choice, mode, provider, open UI
+			cbScriptStdin(t, strings.Join([]string{"local", tc.choice, "", "", ""}, "\n")+"\n")
+			out, _, err := cbRun(t, "setup", "--no-daemon-start")
 			assert.Contains(t, out, "Welcome to Keylatch.")
-			assert.Contains(t, out, "Choose a backend:")
+			assert.Contains(t, out, "Which password manager do you want to connect?")
+			assert.NotContains(t, out, "Encrypted file")
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				assert.NotContains(t, err.Error(), "--backend")
+				assert.Equal(t, "", cbLoadConfig(t, cfgDir).Backend)
+				return
+			}
+			require.NoError(t, err)
 			assert.Contains(t, out, "Backend \""+tc.want+"\" configured.")
 			assert.Contains(t, out, "Operating mode: standard")
 			assert.Contains(t, out, "Skipping — run `keylatch connect <provider>` when ready.")
 			assert.Contains(t, out, "You're set up!")
 			assert.NotContains(t, out, "[3/5]")
-			if tc.choice == "2" {
-				assert.Contains(t, stderr, "macOS Keychain is only available on macOS")
-			}
-			if tc.choice == "7" {
-				assert.Contains(t, out, "Invalid choice")
-			}
 			assert.Equal(t, tc.want, cbLoadConfig(t, cfgDir).Backend)
 		})
 	}
 }
 
 func TestSetupInteractive_StorageBranchReprompts(t *testing.T) {
-	skipIfKeychainRecommended(t)
 	cbIsolate(t)
-	cbScriptStdin(t, "maybe\nl\n\n\n\n\n")
+	setupMenuEnv(t)
+	cbScriptStdin(t, "maybe\nl\n1\n\n\n\n")
 	out, _, err := cbRun(t, "setup", "--no-daemon-start")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Please enter 'local', 'reference', or 'q' to quit")
@@ -211,14 +215,13 @@ func TestSetupInteractive_KeychainUnavailableOffLinux(t *testing.T) {
 }
 
 func TestSetupInteractive_FullFlowSpawnsGatewayConnectAndUI(t *testing.T) {
-	skipIfKeychainRecommended(t)
 	cbIsolate(t)
-	// No password-manager CLI on PATH, so the recommended backend and the
-	// prompts below do not depend on what the machine has installed.
-	t.Setenv("PATH", t.TempDir())
+	// No password-manager CLI on PATH, so the prompts below do not depend on
+	// what the machine has installed.
+	setupMenuEnv(t)
 	argvLog := cbFakeSelf(t, "ok")
-	// storage, accept recommended, mode, provider #1, open UI
-	cbScriptStdin(t, "\ny\n\n1\ny\n")
+	// storage, manager 1 (op), mode, provider #1, open UI
+	cbScriptStdin(t, "\n1\n\n1\ny\n")
 	out, _, err := cbRunToFiles(t, "setup")
 	require.NoError(t, err)
 	assert.Contains(t, out, "[3/5] Gateway setup...")

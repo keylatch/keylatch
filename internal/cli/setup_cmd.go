@@ -557,7 +557,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 	}
 
 	if chosen == "" {
-		return "", errNoBackendChosen()
+		return "", fmt.Errorf("no password manager chosen: run setup again and pick one of: %s", strings.Join(backend.SupportedManagers(), ", "))
 	}
 	canonical, ok := backend.CanonicalName(chosen)
 	if !ok {
