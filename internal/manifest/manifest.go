@@ -15,13 +15,15 @@ const (
 	// Preview: enabled, but not yet certified on this platform or path.
 	Preview Status = "preview"
 	// Community: builds and passes fake-based unit tests only. Listed but
-	// never enabled by this manifest; a manager backend needs the explicit opt-in.
+	// never enabled by this manifest; use needs the explicit opt-in, and only
+	// where the entry is marked OptIn.
 	Community Status = "community"
 	// Deprecated marks an entry kept for migration only and removed in a later
 	// release. This manifest never enables it.
 	Deprecated Status = "deprecated"
-	// Unavailable: gated out of this build. A manager backend opens only with
-	// the explicit opt-in named in internal/backend (KEYLATCH_ALLOW_UNSUPPORTED_BACKEND).
+	// Unavailable: gated out of this build. Unreachable via CLI/API/MCP/UI
+	// entry points, regardless of feature flags or environment overrides,
+	// except a manager entry marked OptIn.
 	Unavailable Status = "unavailable"
 	// Experimental: exists in source but is neither certified nor gated as a
 	// release boundary. Never enabled — see Enabled.
@@ -50,6 +52,10 @@ type Entry struct {
 	// Note explains the disposition in one line — why it's supported,
 	// gated, or experimental, and what (if anything) unlocks it later.
 	Note string
+	// OptIn marks a manager backend that is not enabled but may be opened by
+	// naming it in KEYLATCH_ALLOW_UNSUPPORTED_BACKEND. Without it an entry
+	// that is not enabled is unreachable, whatever the environment says.
+	OptIn bool
 }
 
 // Manifest is an ordered, immutable set of entries for one build.
@@ -64,19 +70,19 @@ func Current() Manifest {
 			// Managers — backend registry IDs; tiers follow the backend support policy.
 			{ID: "bw", Category: CategoryManager, Status: Supported, Note: "Bitwarden CLI, including Vaultwarden servers"},
 			{ID: "op", Category: CategoryManager, Status: Supported, Note: "1Password CLI"},
-			{ID: "file", Category: CategoryManager, Status: Unavailable, Note: "Keylatch own encrypted store, not a password manager: a test fixture and an opt-in for existing installs; recovery, integrity and migration are unproven"},
-			{ID: "vault", Category: CategoryManager, Status: Community, Note: "HashiCorp Vault KV; no live suite yet"},
-			{ID: "aws-sm", Category: CategoryManager, Status: Community, Note: "AWS Secrets Manager; no live suite yet"},
-			{ID: "gcp-sm", Category: CategoryManager, Status: Community, Note: "Google Cloud Secret Manager; no live suite"},
-			{ID: "azure-kv", Category: CategoryManager, Status: Community, Note: "Azure Key Vault; no live suite"},
-			{ID: "doppler", Category: CategoryManager, Status: Community, Note: "Doppler; no live suite"},
-			{ID: "infisical", Category: CategoryManager, Status: Community, Note: "Infisical; no live suite"},
+			{ID: "file", Category: CategoryManager, Status: Unavailable, Note: "Keylatch own encrypted store, not a password manager: a test fixture and an opt-in for existing installs; recovery, integrity and migration are unproven", OptIn: true},
+			{ID: "vault", Category: CategoryManager, Status: Community, Note: "HashiCorp Vault KV; no live suite yet", OptIn: true},
+			{ID: "aws-sm", Category: CategoryManager, Status: Community, Note: "AWS Secrets Manager; no live suite yet", OptIn: true},
+			{ID: "gcp-sm", Category: CategoryManager, Status: Community, Note: "Google Cloud Secret Manager; no live suite", OptIn: true},
+			{ID: "azure-kv", Category: CategoryManager, Status: Community, Note: "Azure Key Vault; no live suite", OptIn: true},
+			{ID: "doppler", Category: CategoryManager, Status: Community, Note: "Doppler; no live suite", OptIn: true},
+			{ID: "infisical", Category: CategoryManager, Status: Community, Note: "Infisical; no live suite", OptIn: true},
 			{ID: "op-connect", Category: CategoryManager, Status: Community, Note: "1Password Connect server; no live suite"},
-			{ID: "bws", Category: CategoryManager, Status: Community, Note: "Bitwarden Secrets Manager, read-only, machine-account token held by Keylatch; no live suite"},
-			{ID: "sops", Category: CategoryManager, Status: Community, Note: "SOPS files encrypted to age, read-only, decrypted in memory by the daemon"},
+			{ID: "bws", Category: CategoryManager, Status: Community, Note: "Bitwarden Secrets Manager, read-only, machine-account token held by Keylatch; no live suite", OptIn: true},
+			{ID: "sops", Category: CategoryManager, Status: Community, Note: "SOPS files encrypted to age, read-only, decrypted in memory by the daemon", OptIn: true},
 			{ID: "keychain", Category: CategoryManager, Status: Deprecated, Note: "macOS Keychain secrets; the Keychain stays as a key store, not as a backend"},
 			{ID: "keeper", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
-			{ID: "lastpass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
+			{ID: "lastpass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered", OptIn: true},
 			{ID: "proton-pass", Category: CategoryManager, Status: Deprecated, Note: "vendor CLI sessions are directly callable by an agent, so it cannot be brokered"},
 
 			// Runtimes — internal/runtime, internal/runner driver mode names.
@@ -131,12 +137,22 @@ func (m Manifest) Status(id string) Status {
 }
 
 // Enabled reports whether id may be used by this build. Only Supported and
-// Preview entries are enabled. Features and runtimes have no override; a
-// manager backend that is not enabled opens only through the opt-in checked by
-// backend.CheckSupported.
+// Preview entries are enabled — Community, Deprecated and Experimental entries
+// are excluded, so no environment variable, feature flag, or config override
+// can turn on an uncertified credential path. The one exception is a manager
+// entry marked OptIn, which backend.CheckSupported opens for an operator who
+// names it explicitly. This is the enforcement point consumers should call
+// before allowing an operation to proceed.
 func (m Manifest) Enabled(id string) bool {
 	s := m.Status(id)
 	return s == Supported || s == Preview
+}
+
+// OptInAllowed reports whether id is a manager entry an operator may open
+// explicitly although it is not enabled.
+func (m Manifest) OptInAllowed(id string) bool {
+	e, ok := m.Lookup(id)
+	return ok && e.Category == CategoryManager && e.OptIn && !m.Enabled(id)
 }
 
 // ByCategory returns entries in category, preserving manifest order.

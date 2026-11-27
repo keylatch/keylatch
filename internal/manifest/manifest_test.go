@@ -145,3 +145,25 @@ func TestEntryString(t *testing.T) {
 	e := manifest.Entry{ID: "op", Category: manifest.CategoryManager, Status: manifest.Supported, Note: "example"}
 	assert.Equal(t, "op: supported (example)", e.String())
 }
+
+// knownFailingBackends have a KNOWN-FAILING security test (op-connect: the
+// duplicate-creating upsert; keeper and proton-pass: the shared cache slice)
+// or are platform-gated (keychain); none may be opened by any opt-in.
+var knownFailingBackends = []string{"op-connect", "keeper", "proton-pass", "keychain"}
+
+func TestCurrent_NoKnownFailingBackendCanBeOptedInto(t *testing.T) {
+	m := manifest.Current()
+	for _, id := range knownFailingBackends {
+		e, ok := m.Lookup(id)
+		require.True(t, ok, id)
+		assert.False(t, e.OptIn, "%s must not carry the opt-in marker", id)
+		assert.False(t, m.OptInAllowed(id), id)
+	}
+	for _, e := range m.Entries {
+		if e.OptIn {
+			assert.Equal(t, manifest.CategoryManager, e.Category, "%s: only managers take the marker", e.ID)
+			assert.False(t, m.Enabled(e.ID), "%s: an enabled entry needs no marker", e.ID)
+		}
+	}
+	assert.True(t, m.OptInAllowed("file"))
+}

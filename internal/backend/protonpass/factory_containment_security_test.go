@@ -19,6 +19,7 @@ func TestSecurityRegression_ProtonPassUnselectable(t *testing.T) {
 		t.Fatal("proton-pass backend not registered; import side-effect missing")
 	}
 
+	t.Setenv(backend.AllowUnsupportedEnv, "proton-pass") // naming it must not enable it
 	_, err := dispatch.Open(context.Background(), config.Config{Backend: "proton-pass"}, func(string) string { return "" })
 	if !errors.Is(err, backend.ErrUnsupportedBackend) {
 		t.Errorf("expected ErrUnsupportedBackend, got: %v", err)

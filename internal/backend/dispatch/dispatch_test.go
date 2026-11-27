@@ -201,7 +201,7 @@ func TestSelect_BWUnavailable(t *testing.T) {
 	}
 }
 
-func TestSelect_KeychainOnNonDarwin(t *testing.T) {
+func TestSelect_KeychainIsNeverOpened(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("this test is for non-darwin platforms only")
 	}
@@ -213,7 +213,27 @@ func TestSelect_KeychainOnNonDarwin(t *testing.T) {
 	cfg.Backend = "keychain"
 
 	_, err := dispatch.Select(context.Background(), cfg, nil)
-	if !errors.Is(err, backend.ErrUnavailable) {
-		t.Errorf("keychain on non-darwin: got %v, want ErrUnavailable", err)
+	if !errors.Is(err, backend.ErrUnsupportedBackend) {
+		t.Errorf("keychain: got %v, want ErrUnsupportedBackend", err)
+	}
+}
+
+func TestSelect_OptInCannotEnableUnmarkedBackends(t *testing.T) {
+	for _, id := range []string{"keeper", "proton-pass", "op-connect", "keychain"} {
+		t.Run(id, func(t *testing.T) {
+			dispatch.ClearCached()
+			defer dispatch.ClearCached()
+			t.Setenv(backend.AllowUnsupportedEnv, "keeper,proton-pass,op-connect,keychain,"+id)
+
+			cfg := tempDirConfig(t)
+			cfg.Backend = id
+			_, err := dispatch.Open(context.Background(), cfg, fakeEnv(nil))
+			if !errors.Is(err, backend.ErrUnsupportedBackend) {
+				t.Fatalf("%s with the opt-in set: got %v, want ErrUnsupportedBackend", id, err)
+			}
+			if strings.Contains(err.Error(), backend.AllowUnsupportedEnv) {
+				t.Errorf("error %q must not suggest the opt-in", err)
+			}
+		})
 	}
 }

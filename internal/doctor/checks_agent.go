@@ -313,10 +313,14 @@ func checkBackendTier(env llmcontext.Lookup) Check {
 			st.Warn = true
 			st.Detail += ", in use through " + backend.AllowUnsupportedEnv + ": " + entry.Note
 			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + ": docs/backends/moving-off-file.md"
-		default:
+		case backend.OptInAllowed(name):
 			st.OK = false
 			st.Detail += ": " + entry.Note
 			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + " (docs/backends/moving-off-file.md), or set " + backend.AllowUnsupportedEnv + "=" + name + " for now."
+		default:
+			st.OK = false
+			st.Detail += ": " + entry.Note
+			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + "; this backend cannot be enabled."
 		}
 		return st
 	}

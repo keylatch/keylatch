@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("KEYLATCH_CONFIG_DIR", dir); err != nil {
 		panic(err)
 	}
-	if err := os.Setenv(backend.AllowUnsupportedEnv, "file,keychain"); err != nil {
+	if err := os.Setenv(backend.AllowUnsupportedEnv, "file"); err != nil {
 		panic(err)
 	}
 	code := m.Run()

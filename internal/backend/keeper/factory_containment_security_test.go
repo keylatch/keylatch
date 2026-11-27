@@ -19,6 +19,7 @@ func TestSecurityRegression_KeeperUnselectable(t *testing.T) {
 		t.Fatal("keeper backend not registered; import side-effect missing")
 	}
 
+	t.Setenv(backend.AllowUnsupportedEnv, "keeper") // naming it must not enable it
 	_, err := dispatch.Open(context.Background(), config.Config{Backend: "keeper"}, func(string) string { return "" })
 	if !errors.Is(err, backend.ErrUnsupportedBackend) {
 		t.Errorf("expected ErrUnsupportedBackend, got: %v", err)

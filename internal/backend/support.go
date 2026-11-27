@@ -24,9 +24,15 @@ type UnsupportedError struct {
 	Name      string
 	Status    manifest.Status
 	Supported []string
+	// OptIn is true when the backend may be opened through AllowUnsupportedEnv.
+	OptIn bool
 }
 
 func (e *UnsupportedError) Error() string {
+	if !e.OptIn {
+		return fmt.Sprintf("backend %q is not supported (%s) and cannot be enabled. Supported managers: %s",
+			e.Name, e.Status, strings.Join(e.Supported, ", "))
+	}
 	return fmt.Sprintf("backend %q is not supported (%s). Supported managers: %s. "+
 		"To keep using it for now, set %s=%s; to move off it, see docs/backends/moving-off-file.md",
 		e.Name, e.Status, strings.Join(e.Supported, ", "), AllowUnsupportedEnv, e.Name)
@@ -56,8 +62,8 @@ var (
 )
 
 // CheckSupported is the one gate every backend open goes through. name must be
-// canonical. A backend the manifest enables passes; any other passes only when
-// the process environment's AllowUnsupportedEnv names it, and then the notice
+// canonical. A backend the manifest enables passes; one marked OptIn passes
+// only when the process environment's AllowUnsupportedEnv names it, and then the notice
 // says what is unproven. It reads the process environment, not an injected
 // lookup, so no caller can grant the opt-in on someone else's behalf.
 func CheckSupported(name string) error {
@@ -70,16 +76,22 @@ func CheckSupported(name string) error {
 	if tracked {
 		status = entry.Status
 	}
-	if optedIn(name, os.Getenv(AllowUnsupportedEnv)) {
+	allowed := m.OptInAllowed(name)
+	if allowed && optedIn(name, os.Getenv(AllowUnsupportedEnv)) {
 		warnUnsupported(name, status, entry.Note)
 		return nil
 	}
-	return &UnsupportedError{Name: name, Status: status, Supported: SupportedManagers()}
+	return &UnsupportedError{Name: name, Status: status, Supported: SupportedManagers(), OptIn: allowed}
 }
 
-// OptedIn reports whether the process environment opts into the unsupported
-// backend name (canonical).
-func OptedIn(name string) bool { return optedIn(name, os.Getenv(AllowUnsupportedEnv)) }
+// OptedIn reports whether name (canonical) may be opened and the process
+// environment opts into it.
+func OptedIn(name string) bool {
+	return manifest.Current().OptInAllowed(name) && optedIn(name, os.Getenv(AllowUnsupportedEnv))
+}
+
+// OptInAllowed reports whether the manifest lets an operator opt into name.
+func OptInAllowed(name string) bool { return manifest.Current().OptInAllowed(name) }
 
 func optedIn(name, list string) bool {
 	for _, item := range strings.Split(list, ",") {

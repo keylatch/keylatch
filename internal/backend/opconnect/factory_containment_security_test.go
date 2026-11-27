@@ -19,6 +19,7 @@ func TestSecurityRegression_ConnectUnselectable(t *testing.T) {
 		t.Fatal("op-connect backend not registered; import side-effect missing")
 	}
 
+	t.Setenv(backend.AllowUnsupportedEnv, "op-connect") // naming it must not enable it
 	_, err := dispatch.Open(context.Background(), config.Config{Backend: "op-connect"}, func(string) string { return "" })
 	if !errors.Is(err, backend.ErrUnsupportedBackend) {
 		t.Errorf("expected ErrUnsupportedBackend, got: %v", err)
