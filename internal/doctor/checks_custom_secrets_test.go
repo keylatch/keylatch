@@ -56,3 +56,22 @@ func TestCheckCustomSecrets(t *testing.T) {
 	assert.Contains(t, st.Detail, "bad")
 	assert.NotEmpty(t, st.Fix)
 }
+
+func TestCheckCustomSecretsReportsPending(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom-secrets.json")
+	proposal := customsecret.Secret{
+		Name: "acme", Hosts: []string{"api.acme.example"}, Paths: []string{"/"},
+		Injection: customsecret.Injection{Kind: customsecret.InjectQuery, Name: "k"},
+	}
+	require.NoError(t, proposal.Normalize())
+	require.NoError(t, customsecret.Add(path, customsecret.Secret{
+		Name: "acme", Status: customsecret.StatusPending, CreatedAt: time.Now(), Proposed: &proposal, NewValue: true,
+	}))
+
+	st := checkCustomSecrets(customSecretsEnv(path))(context.Background())
+	assert.True(t, st.OK)
+	assert.True(t, st.Warn)
+	assert.Contains(t, st.Detail, "pending approval")
+	assert.Contains(t, st.Detail, "api.acme.example")
+	assert.Contains(t, st.Fix, "secret approve")
+}

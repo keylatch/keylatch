@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/keylatch/keylatch/internal/customsecret"
 	"io"
 	"os"
 	"os/exec"
@@ -509,6 +510,14 @@ func newGatewayUpCmd() *cobra.Command {
 				// this does not change behavior for operators who have
 				// never created a policy file.
 				PolicyPath: paths.Policy(env),
+			}
+
+			if custom, loadErr := customsecret.Load(paths.CustomSecrets(env)); loadErr == nil {
+				for _, cs := range custom {
+					if !cs.Active() {
+						fmt.Fprintf(c.ErrOrStderr(), "gateway: custom secret %s is pending approval and is not served (keylatch secret approve %s)\n", cs.Name, cs.Name)
+					}
+				}
 			}
 
 			srv, err := gateway.New(opts)

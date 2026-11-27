@@ -39,6 +39,48 @@ type Secret struct {
 	// stored value is a reference; empty when keylatch stores the value itself.
 	RefScheme string    `json:"ref_scheme,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// Status is StatusPending for an entry an agent session added that the
+	// owner has not approved; such an entry has no active rules and is never routed.
+	Status string `json:"status,omitempty"`
+	// Proposed is a change an agent session asked for. The active rules above
+	// keep serving until the owner approves it.
+	Proposed *Secret `json:"proposed,omitempty"`
+	// NewValue marks a proposal that carries a value or reference, held at PendingPath.
+	NewValue bool `json:"new_value,omitempty"`
+}
+
+// StatusPending marks an entry that has never been approved.
+const StatusPending = "pending"
+
+// Active reports whether the entry's own rules are approved and may be routed.
+func (s Secret) Active() bool { return s.Status != StatusPending }
+
+// State is a short label for list output.
+func (s Secret) State() string {
+	switch {
+	case !s.Active():
+		return "pending approval"
+	case s.Proposed != nil:
+		return "active, change pending"
+	}
+	return "active"
+}
+
+// Shown returns the rules worth displaying: the proposal for a never-approved entry, else the entry.
+func (s Secret) Shown() Secret {
+	if !s.Active() && s.Proposed != nil {
+		p := *s.Proposed
+		p.Status, p.Proposed = s.Status, s.Proposed
+		return p
+	}
+	return s
+}
+
+// PendingPath is the backend path of a proposed value or reference. The
+// gateway only reads ValuePath, so a pending value is never served.
+func PendingPath(name string) string {
+	return "default/" + Category + "/" + name + "/pending"
 }
 
 // ValuePath is the backend path of the secret's value or reference.
@@ -180,6 +222,9 @@ func (s Secret) Template() registry.ConnectionTemplate {
 func RegisterAll(secrets []Secret) []error {
 	var errs []error
 	for _, s := range secrets {
+		if !s.Active() {
+			continue
+		}
 		if err := s.Normalize(); err != nil {
 			errs = append(errs, fmt.Errorf("custom secret %q: %w", s.Name, err))
 			continue

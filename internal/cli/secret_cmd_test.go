@@ -84,22 +84,18 @@ func TestSecretAddWithReferenceStoresTheReferenceOnly(t *testing.T) {
 	assert.Equal(t, []string{"/"}, s.Paths)
 }
 
-func TestSecretAddRefusedInLLMSession(t *testing.T) {
+func TestSecretRmStaysRefusedInLLMSession(t *testing.T) {
 	caNewVault(t, envelope.XChaCha20Poly1305)
+	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
+	require.NoError(t, err, errOut)
 	caSetLLMSession(t)
 
-	for _, args := range [][]string{
-		secretAddArgs("--value-stdin"),
-		{"secret", "rm", "acme", "--force"},
-	} {
-		_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), args...)
-		require.Error(t, err, args)
-		assert.Equal(t, exitcode.SecurityBlock, caExitCode(err))
-		assert.Contains(t, err.Error(), "human terminal")
-		assert.NotContains(t, err.Error()+errOut, secretTestValue)
-	}
-	_, statErr := os.Stat(paths.CustomSecrets(llmcontext.DefaultLookup))
-	assert.True(t, os.IsNotExist(statErr), "nothing is written in an LLM session")
+	_, errOut, err = caRun(t, nil, "secret", "rm", "acme", "--force")
+	require.Error(t, err)
+	assert.Equal(t, exitcode.SecurityBlock, caExitCode(err))
+	assert.Contains(t, err.Error(), "human terminal")
+	_, err = customsecret.Find(paths.CustomSecrets(llmcontext.DefaultLookup), "acme")
+	assert.NoError(t, err, "the secret is untouched")
 }
 
 func TestSecretReadOnlyCommandsWorkInLLMSession(t *testing.T) {
@@ -292,15 +288,4 @@ func TestSecretAddReplace(t *testing.T) {
 	require.Error(t, err)
 	again, _ := customsecret.Find(file, "acme")
 	assert.Equal(t, after.Hosts, again.Hosts)
-}
-
-func TestSecretReplaceRefusedInLLMSession(t *testing.T) {
-	caNewVault(t, envelope.XChaCha20Poly1305)
-	_, errOut, err := caRun(t, caStdinFile(t, secretTestValue), secretAddArgs("--value-stdin")...)
-	require.NoError(t, err, errOut)
-	caSetLLMSession(t)
-
-	_, _, err = caRun(t, caStdinFile(t, "x-0123456789"), secretAddArgs("--replace", "--value-stdin")...)
-	require.Error(t, err)
-	assert.Equal(t, exitcode.SecurityBlock, caExitCode(err))
 }

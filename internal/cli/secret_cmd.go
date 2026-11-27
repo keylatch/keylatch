@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"text/tabwriter"
@@ -34,7 +35,7 @@ https://<first host>/<path>. Restart the gateway after adding or removing one.
 
 See docs/custom-secrets.md.`,
 	}
-	cmd.AddCommand(newSecretAddCmd(), newSecretListCmd(), newSecretShowCmd(), newSecretRmCmd())
+	cmd.AddCommand(newSecretAddCmd(), newSecretListCmd(), newSecretShowCmd(), newSecretRmCmd(), newSecretApproveCmd(), newSecretRejectCmd())
 	return cmd
 }
 
@@ -52,8 +53,8 @@ func registerCustomSecrets(env llmcontext.Lookup) {
 	}
 }
 
-// blockSecretMutationInLLMSession refuses commands that write or remove secret
-// material in an agent session.
+// blockSecretMutationInLLMSession refuses commands that remove or approve
+// secrets in an agent session; an agent may only propose them with `secret add`.
 func blockSecretMutationInLLMSession(command string) error {
 	if llmcontext.IsLLMSession(llmcontext.DefaultLookup) {
 		return NewSecurityBlock("secret %s requires a human terminal. Run outside an LLM session.", command)
@@ -89,97 +90,10 @@ Examples:
       --host api.acme.example --query api_key --base-url-env ACME_BASE_URL`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			if err := blockSecretMutationInLLMSession("add"); err != nil {
-				return err
-			}
-			if valueStdin && ref != "" || (!replace && !valueStdin && ref == "") {
-				return NewUsageError("exactly one of --value-stdin or --ref is required (with --replace, neither keeps the stored value)")
-			}
-			injection, err := injectionFromFlags(header, query, basic)
-			if err != nil {
-				return err
-			}
-			sec := customsecret.Secret{
-				Name: args[0], Hosts: hosts, Paths: pathFlags, Methods: methods,
-				Injection: injection, BaseURLEnv: baseURLEnv, CreatedAt: time.Now().UTC(),
-			}
-			if err := sec.Normalize(); err != nil {
-				return NewUsageError("%v", err)
-			}
-			file := paths.CustomSecrets(llmcontext.DefaultLookup)
-			existing, findErr := customsecret.Find(file, sec.Name)
-			switch {
-			case replace && findErr != nil:
-				return NewUsageError("custom secret %q does not exist; add it without --replace", sec.Name)
-			case !replace && findErr == nil:
-				return NewUsageError("custom secret %q already exists; use --replace to change it or remove it with: keylatch secret rm %s", sec.Name, sec.Name)
-			case !replace:
-				if err := customsecret.Check(sec.Name); err != nil {
-					return NewUsageError("%v", err)
-				}
-			}
-
-			var value []byte
-			if replace && ref == "" && !valueStdin {
-				sec.RefScheme = existing.RefScheme
-			} else if ref != "" {
-				scheme, refErr := customsecret.RefSchemeOf(ref)
-				if refErr != nil {
-					// The cause is not shown: a secret passed by mistake must not reach stderr.
-					return NewUsageError("--ref must be an op://, aws-sm:// or hashivault:// reference (secret values are never accepted as arguments)")
-				}
-				sec.RefScheme = scheme
-				value = []byte(strings.TrimSpace(ref))
-			} else {
-				value, err = readSecretValue(c)
-				if err != nil {
-					return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
-				}
-				if err := customsecret.ValidateValue(value); err != nil {
-					return NewUsageError("%v", err)
-				}
-			}
-			defer func() {
-				for i := range value {
-					value[i] = 0
-				}
-			}()
-
-			// Refuse before storing anything: an unaudited write would not be recorded.
-			al, auditCleanup, err := requireAuditLogger("secret add")
-			if err != nil {
-				return err
-			}
-			defer auditCleanup()
-			ctx := audit.WithEmitter(c.Context(), audit.AsEmitter(al))
-
-			cfg := loadCLIConfig(c)
-			env := llmcontext.DefaultLookup
-			valuePath := customsecret.ValuePath(sec.Name)
-			// The value is written before the rules so a failure never leaves rules without a value.
-			if value != nil {
-				meta := backend.Meta{Path: valuePath, Backend: cfg.Backend, Version: 1}
-				if err := vault.Set(ctx, valuePath, value, meta, cfg, env); err != nil {
-					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: store value: %w", err))
-				}
-			}
-			if replace {
-				if err := customsecret.Replace(file, sec); err != nil {
-					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: save rule: %w", err))
-				}
-				fmt.Fprintf(c.OutOrStdout(), "[keylatch] secret replaced: %s -> %s (%s, %s)\n", sec.Name, sec.Hosts[0], sec.Kind(), sec.Source())
-				fmt.Fprintln(c.OutOrStdout(), "  restart the gateway to serve the new rules")
-				return nil
-			}
-			if err := customsecret.Add(file, sec); err != nil {
-				if delErr := vault.Delete(ctx, valuePath, cfg, env); delErr != nil && !errors.Is(delErr, backend.ErrNotFound) {
-					return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: save rule: %v (stored value could not be removed: %v)", err, delErr))
-				}
-				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: save rule: %w", err))
-			}
-			fmt.Fprintf(c.OutOrStdout(), "[keylatch] secret added: %s -> %s (%s, %s)\n", sec.Name, sec.Hosts[0], sec.Kind(), sec.Source())
-			fmt.Fprintf(c.OutOrStdout(), "  gateway path: /sdk/%s/v1/<path>  (restart the gateway to serve it)\n", sec.Name)
-			return nil
+			return runSecretAdd(c, secretAddInput{
+				name: args[0], valueStdin: valueStdin, ref: ref, hosts: hosts, paths: pathFlags, methods: methods,
+				header: header, query: query, basic: basic, baseURLEnv: baseURLEnv, replace: replace,
+			})
 		},
 	}
 	cmd.Flags().BoolVar(&valueStdin, "value-stdin", false, "read the secret value from stdin")
@@ -248,13 +162,37 @@ func newSecretListCmd() *cobra.Command {
 				fmt.Fprintln(c.OutOrStdout(), "No custom secrets. Add one with: keylatch secret add <name> --help")
 				return nil
 			}
-			w := tabwriter.NewWriter(c.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tHOSTS\tINJECTION\tSOURCE")
-			for _, s := range secrets {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.Name, strings.Join(s.Hosts, ","), s.Kind(), s.Source())
-			}
-			return w.Flush()
+			printSecretTable(c.OutOrStdout(), secrets)
+			return nil
 		},
+	}
+}
+
+// printSecretTable lists secrets by name, state, hosts, injection kind and source.
+func printSecretTable(out io.Writer, secrets []customsecret.Secret) {
+	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tSTATE\tHOSTS\tINJECTION\tSOURCE")
+	for _, s := range secrets {
+		v := s.Shown()
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.Name, s.State(), strings.Join(v.Hosts, ","), v.Kind(), v.Source())
+	}
+	_ = w.Flush()
+}
+
+func printSecretRules(out io.Writer, s customsecret.Secret, indent string) {
+	fmt.Fprintf(out, "%shosts:       %s\n", indent, strings.Join(s.Hosts, ", "))
+	fmt.Fprintf(out, "%spaths:       %s\n", indent, strings.Join(s.Paths, ", "))
+	methods := "any"
+	if len(s.Methods) > 0 {
+		methods = strings.Join(s.Methods, ", ")
+	}
+	fmt.Fprintf(out, "%smethods:     %s\n", indent, methods)
+	fmt.Fprintf(out, "%sinjection:   %s\n", indent, s.Kind())
+	if s.Injection.Format != "" {
+		fmt.Fprintf(out, "%sformat:      %s\n", indent, s.Injection.Format)
+	}
+	if s.BaseURLEnv != "" {
+		fmt.Fprintf(out, "%sbase url env: %s\n", indent, s.BaseURLEnv)
 	}
 }
 
@@ -275,23 +213,22 @@ func newSecretShowCmd() *cobra.Command {
 			}
 			out := c.OutOrStdout()
 			fmt.Fprintf(out, "name:        %s\n", s.Name)
-			fmt.Fprintf(out, "hosts:       %s\n", strings.Join(s.Hosts, ", "))
-			fmt.Fprintf(out, "paths:       %s\n", strings.Join(s.Paths, ", "))
-			methods := "any"
-			if len(s.Methods) > 0 {
-				methods = strings.Join(s.Methods, ", ")
+			fmt.Fprintf(out, "state:       %s\n", s.State())
+			if s.Active() {
+				printSecretRules(out, s, "")
+				fmt.Fprintf(out, "source:      %s\n", s.Source())
+				fmt.Fprintf(out, "gateway:     /sdk/%s/v1/<path>\n", s.Name)
+				fmt.Fprintf(out, "created:     %s\n", s.CreatedAt.Format(time.RFC3339))
 			}
-			fmt.Fprintf(out, "methods:     %s\n", methods)
-			fmt.Fprintf(out, "injection:   %s\n", s.Kind())
-			if s.Injection.Format != "" {
-				fmt.Fprintf(out, "format:      %s\n", s.Injection.Format)
+			if s.Proposed != nil {
+				fmt.Fprintln(out, "pending change (not served until approved with: keylatch secret approve "+s.Name+"):")
+				printSecretRules(out, *s.Proposed, "  ")
+				src := "unchanged"
+				if s.NewValue {
+					src = s.Proposed.Source() + " (new)"
+				}
+				fmt.Fprintf(out, "  source:      %s\n", src)
 			}
-			fmt.Fprintf(out, "source:      %s\n", s.Source())
-			if s.BaseURLEnv != "" {
-				fmt.Fprintf(out, "base url env: %s\n", s.BaseURLEnv)
-			}
-			fmt.Fprintf(out, "gateway:     /sdk/%s/v1/<path>\n", s.Name)
-			fmt.Fprintf(out, "created:     %s\n", s.CreatedAt.Format(time.RFC3339))
 			return nil
 		},
 	}
@@ -325,6 +262,9 @@ func newSecretRmCmd() *cobra.Command {
 			// The value goes first: if it cannot be deleted the rule stays and rm can be retried.
 			if err := vault.Delete(ctx, customsecret.ValuePath(name), loadCLIConfig(c), llmcontext.DefaultLookup); err != nil && !errors.Is(err, backend.ErrNotFound) {
 				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: delete value: %w", err))
+			}
+			if err := vault.Delete(ctx, customsecret.PendingPath(name), loadCLIConfig(c), llmcontext.DefaultLookup); err != nil && !errors.Is(err, backend.ErrNotFound) {
+				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: delete pending value: %w", err))
 			}
 			if err := customsecret.Remove(file, name); err != nil {
 				return withExitCode(exitcode.OperationFailed, fmt.Errorf("[keylatch] error: %w", err))

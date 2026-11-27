@@ -253,15 +253,27 @@ func checkCustomSecrets(env llmcontext.Lookup) Check {
 		if len(secrets) == 0 {
 			return Status{Name: checkName, Section: "providers", OK: true, Detail: "no custom secrets", Tags: tags}
 		}
-		var parts, invalid []string
+		var parts, invalid, pending []string
 		for _, s := range secrets {
-			parts = append(parts, fmt.Sprintf("%s (%s, %s, %s)", s.Name, strings.Join(s.Hosts, ","), s.Kind(), s.Source()))
+			v := s.Shown()
+			parts = append(parts, fmt.Sprintf("%s [%s] (%s, %s, %s)", s.Name, s.State(), strings.Join(v.Hosts, ","), v.Kind(), v.Source()))
+			if !s.Active() || s.Proposed != nil {
+				pending = append(pending, s.Name)
+			}
+			if !s.Active() {
+				continue
+			}
 			if verr := s.Normalize(); verr != nil {
 				invalid = append(invalid, fmt.Sprintf("%s: %v", s.Name, verr))
 			}
 		}
 		st := Status{Name: checkName, Section: "providers", OK: true, Tags: tags,
 			Detail: fmt.Sprintf("%d custom secret(s): %s", len(secrets), strings.Join(parts, "; "))}
+		if len(pending) > 0 {
+			st.Warn = true
+			st.Detail += " — awaiting owner approval, not served: " + strings.Join(pending, ", ")
+			st.Fix = "review with 'keylatch secret show <name>', then 'keylatch secret approve <name>' or 'reject <name>'"
+		}
 		if len(invalid) > 0 {
 			st.Warn = true
 			st.Detail += " — invalid and skipped by the gateway: " + strings.Join(invalid, "; ")

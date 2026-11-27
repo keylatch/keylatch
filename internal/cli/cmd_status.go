@@ -136,9 +136,10 @@ func printCustomSecrets(c *cobra.Command, secrets []customsecret.Secret) {
 	}
 	w := tabwriter.NewWriter(c.OutOrStdout(), 0, 0, 3, ' ', 0)
 	fmt.Fprintf(w, "\nCustom secrets\t\t\t\n")
-	fmt.Fprintf(w, "  NAME\tHOSTS\tINJECTION\tSOURCE\n")
+	fmt.Fprintf(w, "  NAME\tSTATE\tHOSTS\tINJECTION\tSOURCE\n")
 	for _, s := range secrets {
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", s.Name, strings.Join(s.Hosts, ","), s.Kind(), s.Source())
+		v := s.Shown()
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", s.Name, s.State(), strings.Join(v.Hosts, ","), v.Kind(), v.Source())
 	}
 	w.Flush() //nolint:errcheck // output errors are non-critical here
 }

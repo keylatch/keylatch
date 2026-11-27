@@ -262,16 +262,18 @@ for a service that has no provider template, with the hosts, paths and methods i
 sent to and how it is injected.
 
 ```bash
-keylatch secret add <name> (--value-stdin | --ref <uri>) --host <host> [--host ...] \
+keylatch secret add <name> (--value-stdin | --ref <uri>) [--replace] --host <host> [--host ...] \
   [--path <prefix> ...] [--method <M> ...] \
   (--header "<Name>: <format with {value}>" | --query <param> | --basic <user>) \
   [--base-url-env <ENV>]
 keylatch secret list [--json]
 keylatch secret show <name> [--json]
 keylatch secret rm <name> [--force]
+keylatch secret approve <name>
+keylatch secret reject <name>
 ```
 
-`add` and `rm` are blocked in LLM sessions (exit 2). The value is never accepted as an
+In an LLM session `add` only proposes the secret (pending until `approve`); `rm`, `approve` and `reject` are blocked there (exit 2); `approve` and `reject` need the approver passphrase. The value is never accepted as an
 argument. `list` and `show` print metadata only. See [custom-secrets.md](./custom-secrets.md).
 
 ---

@@ -24,6 +24,8 @@ keylatch secret list              # name, hosts, injection kind, source (stored 
 keylatch secret show acme         # rules only, never the value
 keylatch secret add acme --replace ...   # change the rules and/or rotate the value or reference
 keylatch secret rm acme           # removes the rules and the stored value
+keylatch secret approve acme      # owner: activate what an agent session proposed
+keylatch secret reject acme       # owner: discard it
 ```
 
 | Flag | Meaning |
@@ -43,8 +45,9 @@ written before the rules. Without `--replace`, a duplicate name is refused.
 
 Exactly one of `--header`, `--query` and `--basic` is required.
 
-`add` (including `--replace`) and `rm` are refused inside an LLM session (exit 2). `list` and `show`
-are metadata only and work everywhere. `keylatch status` and `keylatch doctor`
+Outside an LLM session `add` takes effect at once: you are the approver. Inside one, `add`
+only proposes the secret (see "Agent sessions"). `rm`, `approve` and `reject` are refused
+inside an LLM session (exit 2). `list` and `show` are metadata only and work everywhere. `keylatch status` and `keylatch doctor`
 list custom secrets by name, hosts, injection kind and source.
 
 ## How requests are served
@@ -101,8 +104,24 @@ credentials. Use a [provider template](./provider-templates.md) for those.
 
 An agent in an LLM session may use a custom secret, but only within its rules: the
 host, path prefixes and methods set with `secret add`. Anything else gets 404 and
-nothing is sent upstream. The agent cannot add, change or remove secrets, and never
-sees the value.
+nothing is sent upstream. The agent never sees the value.
+
+An agent may also propose secrets, but they stay unusable until you approve them:
+
+- `keylatch secret add` (and `--replace`) in an LLM session saves the secret as
+  *pending*. A pending secret is never routed, and a pending change to an active
+  secret leaves the active rules and value serving unchanged. The proposed value or
+  reference waits at `default/custom/<name>/pending`, which the gateway never reads.
+- `keylatch secret list`, `show`, `status` and `doctor` mark pending entries, and
+  `gateway up` logs that a pending secret is skipped.
+- `keylatch secret approve <name>` (outside an LLM session, at a terminal) prints what
+  will activate: hosts, paths, methods, injection rule, and the reference URI or
+  "stored value" (never the value). It then asks for the approver passphrase set with
+  `keylatch approve init`, moves the pending value to its active path and activates the
+  rules. Restart the gateway afterwards.
+- `keylatch secret reject <name>` (same passphrase) deletes the pending value and the
+  proposal; a never-approved secret is removed, an active one keeps serving.
+- An agent cannot `rm`, `approve` or `reject`.
 
 The usual flow is that you start the agent. Two ways work, and neither needs `--allow`
 from inside the session (`keylatch run --allow` is refused in LLM sessions):
