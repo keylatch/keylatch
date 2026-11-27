@@ -26,7 +26,7 @@ func customHarness(t *testing.T, mutate func(*customsecret.Secret)) *scHarness {
 	t.Helper()
 	sec := customsecret.Secret{
 		Name:      "acme",
-		Hosts:     []string{"api.acme.example", "*.acme.example"},
+		Hosts:     []string{"api.acme.example", "eu.acme.example"},
 		Paths:     []string{"/v1"},
 		Methods:   []string{"GET", "POST"},
 		Injection: customsecret.Injection{Kind: customsecret.InjectHeader, Name: "Authorization", Format: "Bearer {value}"},
@@ -253,14 +253,41 @@ func TestCustomSecret_MissingStoredValueFailsClosed(t *testing.T) {
 	assert.Empty(t, h.upstream, "no unauthenticated request is forwarded")
 }
 
-func TestCustomSecret_SSRFGateAllowsOnlyTheFirstHost(t *testing.T) {
+func TestCustomSecret_SecondHostRoutesAndUnlistedHostsAreRefused(t *testing.T) {
+	h := customHarness(t, nil)
+	jwtStr := h.customToken(t, nil)
+
+	rr := h.customDo(t, jwtStr, http.MethodGet, "/sdk/acme/h/eu.acme.example/v1/models", "", nil)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	require.Len(t, h.upstream, 1)
+	assert.Equal(t, "eu.acme.example", h.upstream[0].URL.Host)
+	assert.Equal(t, "/v1/models", h.upstream[0].URL.Path)
+	assert.Equal(t, "Bearer "+customValue, h.upstream[0].Header.Get("Authorization"), "the same injection applies to every host")
+
+	for _, target := range []string{
+		"/sdk/acme/h/evil.example/v1/x",
+		"/sdk/acme/h/EU.acme.example/v1/x",
+		"/sdk/acme/h/eu.acme.example./v1/x",
+		"/sdk/acme/h/127.0.0.1/v1/x",
+		"/sdk/acme/h/eu.acme.example:8443/v1/x",
+		"/sdk/acme/h/eu.acme.example@evil.example/v1/x",
+		"/sdk/acme/h/evil.example@eu.acme.example/v1/x",
+		"/sdk/acme/h/eu.acme.example%2F@evil.example/v1/x",
+		"/sdk/acme/h/eu.acme.example/admin",
+	} {
+		rr = h.customDo(t, jwtStr, http.MethodGet, target, "", nil)
+		assert.NotEqual(t, http.StatusOK, rr.Code, target)
+	}
+	assert.Len(t, h.upstream, 1, "nothing outside the listed hosts, paths and methods is sent")
+}
+
+func TestCustomSecret_SSRFGateAllowsEveryListedHostOnly(t *testing.T) {
 	_ = customHarness(t, nil)
 	gate := NewSSRFGate()
 
-	assert.Equal(t, []string{"api.acme.example"}, gate.allowedBaseURLs["acme"])
-	err := gate.Validate("acme", "evil.example")
-	assert.ErrorIs(t, err, ErrSSRFTargetForbidden)
-	err = gate.Validate("acme", "foo.acme.example")
-	assert.ErrorIs(t, err, ErrSSRFTargetForbidden, "wildcard entries are never dialled")
+	assert.Equal(t, []string{"api.acme.example", "eu.acme.example"}, gate.allowedBaseURLs["acme"])
+	assert.ErrorIs(t, gate.Validate("acme", "evil.example"), ErrSSRFTargetForbidden)
+	assert.ErrorIs(t, gate.Validate("acme", "foo.acme.example"), ErrSSRFTargetForbidden, "sibling hosts are never dialled")
+	assert.ErrorIs(t, gate.Validate("acme", "127.0.0.1"), ErrSSRFTargetForbidden)
 	assert.ErrorIs(t, gate.Validate("not-registered", "api.acme.example"), ErrSSRFTargetForbidden)
 }

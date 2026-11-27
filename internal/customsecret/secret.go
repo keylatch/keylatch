@@ -106,7 +106,7 @@ func (s Secret) Kind() string {
 	case InjectQuery:
 		return "query " + s.Injection.Name
 	case InjectBasic:
-		return "basic auth"
+		return "basic auth user " + s.Injection.Name
 	}
 	return s.Injection.Kind
 }
@@ -130,13 +130,10 @@ func (s *Secret) Normalize() error {
 	}
 	hosts := make([]string, 0, len(s.Hosts))
 	seen := map[string]bool{}
-	for i, h := range s.Hosts {
+	for _, h := range s.Hosts {
 		n, err := NormalizeHost(h)
 		if err != nil {
 			return err
-		}
-		if i == 0 && strings.HasPrefix(n, "*.") {
-			return fmt.Errorf("the first host %q receives the requests and must be an exact name", h)
 		}
 		if !seen[n] {
 			seen[n] = true
@@ -166,6 +163,9 @@ func (s *Secret) Normalize() error {
 			return err
 		}
 		methods = append(methods, n)
+	}
+	if len(methods) == 0 {
+		methods = append([]string(nil), DefaultMethods...)
 	}
 	s.Methods = methods
 
@@ -238,7 +238,7 @@ func RegisterAll(secrets []Secret) []error {
 			errs = append(errs, fmt.Errorf("custom secret %q: %w", s.Name, err))
 			continue
 		}
-		registry.AllowProviderHosts(s.Name, s.Hosts[:1])
+		registry.AllowProviderHosts(s.Name, s.Hosts)
 	}
 	return errs
 }

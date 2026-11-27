@@ -267,14 +267,17 @@ func customRoute(tmpl registry.ConnectionTemplate) *Route {
 	}
 }
 
-// matchCustom resolves /sdk/<name>/v1/<path> for a user-defined secret. The
-// returned route is a per-request copy carrying the upstream path and method.
+// matchCustom resolves /sdk/<name>/v1/<path> (first host) and
+// /sdk/<name>/h/<host>/<path> (any listed host) for a user-defined secret. The
+// host segment must equal a listed host exactly: no case folding, trailing dot,
+// port, userinfo or IP form is accepted. The returned route is a per-request
+// copy carrying the upstream host, path and method.
 func (r *Router) matchCustom(method, reqPath string) (*Route, bool) {
 	rest, ok := strings.CutPrefix(reqPath, "/sdk/")
 	if !ok {
 		return nil, false
 	}
-	name, tail, ok := strings.Cut(rest, "/v1/")
+	name, tail, ok := strings.Cut(rest, "/")
 	if !ok {
 		return nil, false
 	}
@@ -282,12 +285,24 @@ func (r *Router) matchCustom(method, reqPath string) (*Route, bool) {
 	if !ok {
 		return nil, false
 	}
-	upstream := "/" + tail
+	var host, upstream string
+	switch {
+	case strings.HasPrefix(tail, "v1/"):
+		host, upstream = base.Custom.Hosts[0], "/"+strings.TrimPrefix(tail, "v1/")
+	case strings.HasPrefix(tail, "h/"):
+		h, p, found := strings.Cut(strings.TrimPrefix(tail, "h/"), "/")
+		if !found || !contains(base.Custom.Hosts, h) {
+			return nil, false
+		}
+		host, upstream = h, "/"+p
+	default:
+		return nil, false
+	}
 	// A non-canonical path (dot or empty segments) could slip past the prefix check.
 	if upstream != "/" && path.Clean(upstream) != strings.TrimSuffix(upstream, "/") {
 		return nil, false
 	}
-	if len(base.Custom.Methods) > 0 && !contains(base.Custom.Methods, method) {
+	if !customMethodAllowed(base.Custom.Methods, method) {
 		return nil, false
 	}
 	if !pathAllowed(base.Custom.Paths, upstream) {
@@ -295,8 +310,23 @@ func (r *Router) matchCustom(method, reqPath string) (*Route, bool) {
 	}
 	rt := *base
 	rt.Method = method
+	rt.UpstreamHost = host
 	rt.UpstreamPath = upstream
 	return &rt, true
+}
+
+// defaultCustomMethods apply when a custom secret lists none. TRACE and CONNECT
+// are never allowed, even when listed.
+var defaultCustomMethods = []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+
+func customMethodAllowed(listed []string, method string) bool {
+	if method == "TRACE" || method == "CONNECT" {
+		return false
+	}
+	if len(listed) == 0 {
+		listed = defaultCustomMethods
+	}
+	return contains(listed, method)
 }
 
 // pathAllowed reports whether p equals an allowed prefix or sits below it on a segment boundary.

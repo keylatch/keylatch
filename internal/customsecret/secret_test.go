@@ -2,8 +2,11 @@ package customsecret
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,7 +33,7 @@ func newSecret(t *testing.T, name string) Secret {
 	t.Helper()
 	s := Secret{
 		Name:      name,
-		Hosts:     []string{"api.acme.example", "*.acme.example"},
+		Hosts:     []string{"api.acme.example", "eu.acme.example"},
 		Paths:     []string{"/v1"},
 		Methods:   []string{"GET", "POST"},
 		Injection: Injection{Kind: InjectHeader, Name: "Authorization", Format: "Bearer {value}"},
@@ -60,7 +63,7 @@ func TestTemplateShape(t *testing.T) {
 	assert.Equal(t, []registry.RuntimeMode{registry.RuntimeGatewaySDK, registry.RuntimeGatewayProxy}, tmpl.RuntimeSupport.Supported)
 	assert.Equal(t, registry.AuthPlacement{In: "header", Name: "Authorization", Format: "Bearer {value}"}, tmpl.AuthPlacement)
 	require.NotNil(t, tmpl.Custom)
-	assert.Equal(t, []string{"api.acme.example", "*.acme.example"}, tmpl.Custom.Hosts)
+	assert.Equal(t, []string{"api.acme.example", "eu.acme.example"}, tmpl.Custom.Hosts)
 	assert.Empty(t, tmpl.AllowedCommandPrefixes, "no command is allowed implicitly")
 	assert.Equal(t, "default/custom/acme/value", ValuePath("acme"))
 }
@@ -79,7 +82,7 @@ func TestRegisterAll(t *testing.T) {
 	got, err := registry.Get("acme")
 	require.NoError(t, err)
 	require.NotNil(t, got.Custom)
-	assert.Equal(t, []string{"api.acme.example"}, registry.AllowedProviderBaseURLs["acme"], "only the exact first host is dialled")
+	assert.Equal(t, []string{"api.acme.example", "eu.acme.example"}, registry.AllowedProviderBaseURLs["acme"], "every listed host is allowed")
 
 	or, err := registry.Get("openrouter")
 	require.NoError(t, err)
@@ -131,10 +134,15 @@ func TestFileRoundTripAndPermissions(t *testing.T) {
 	got, err = Load(path)
 	require.NoError(t, err)
 	assert.Len(t, got, 1)
+	entries0, err := os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(entries0), 2, "the data file and its lock file only")
 
 	entries, err := os.ReadDir(filepath.Dir(path))
 	require.NoError(t, err)
-	assert.Len(t, entries, 1, "no temp files are left behind")
+	for _, e := range entries {
+		assert.NotContains(t, e.Name(), ".custom-secrets-", "no temp files are left behind")
+	}
 }
 
 func TestLoadRejectsCorruptFile(t *testing.T) {
@@ -142,4 +150,42 @@ func TestLoadRejectsCorruptFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("{not json"), 0o600))
 	_, err := Load(path)
 	assert.Error(t, err)
+}
+
+func TestConcurrentAddsUnderTheLockKeepEveryEntry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom-secrets.json")
+	const n = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s := newSecret(t, fmt.Sprintf("svc-%02d", i))
+			errs <- WithLock(path, func(tx Tx) error {
+				if _, err := tx.Find(s.Name); !errors.Is(err, ErrNotFound) {
+					return fmt.Errorf("unexpected %v", err)
+				}
+				return tx.Add(s)
+			})
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	got, err := Load(path)
+	require.NoError(t, err)
+	assert.Len(t, got, n, "no concurrent add lost another's entry")
+}
+
+func TestFindDistinguishesMissingFromUnreadable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom-secrets.json")
+	_, err := Find(path, "acme")
+	assert.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, os.WriteFile(path, []byte("{broken"), 0o600))
+	_, err = Find(path, "acme")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNotFound)
 }

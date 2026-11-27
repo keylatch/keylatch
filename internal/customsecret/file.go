@@ -69,9 +69,26 @@ func Save(path string, secrets []Secret) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+// Tx is a locked view of the rules file. Every read-modify-write that spans
+// more than one step (check, write the value, save the rules) runs in one Tx.
+type Tx struct{ path string }
+
+// WithLock runs fn while holding the advisory lock on the rules file.
+func WithLock(path string, fn func(tx Tx) error) error {
+	unlock, err := lockFile(path)
+	if err != nil {
+		return fmt.Errorf("lock %s: %w", path, err)
+	}
+	defer unlock()
+	return fn(Tx{path: path})
+}
+
+// Find returns the named entry, ErrNotFound when it is absent, or the read error.
+func (t Tx) Find(name string) (Secret, error) { return Find(t.path, name) }
+
 // Add appends s, refusing a duplicate name.
-func Add(path string, s Secret) error {
-	secrets, err := Load(path)
+func (t Tx) Add(s Secret) error {
+	secrets, err := Load(t.path)
 	if err != nil {
 		return err
 	}
@@ -80,12 +97,28 @@ func Add(path string, s Secret) error {
 			return fmt.Errorf("%w: %s", ErrExists, s.Name)
 		}
 	}
-	return Save(path, append(secrets, s))
+	return Save(t.path, append(secrets, s))
+}
+
+// Replace overwrites the entry with the same name, keeping its creation time.
+func (t Tx) Replace(s Secret) error {
+	secrets, err := Load(t.path)
+	if err != nil {
+		return err
+	}
+	for i, e := range secrets {
+		if e.Name == s.Name {
+			s.CreatedAt = e.CreatedAt
+			secrets[i] = s
+			return Save(t.path, secrets)
+		}
+	}
+	return fmt.Errorf("%w: %s", ErrNotFound, s.Name)
 }
 
 // Remove deletes the named entry.
-func Remove(path, name string) error {
-	secrets, err := Load(path)
+func (t Tx) Remove(name string) error {
+	secrets, err := Load(t.path)
 	if err != nil {
 		return err
 	}
@@ -101,7 +134,22 @@ func Remove(path, name string) error {
 	if !found {
 		return fmt.Errorf("%w: %s", ErrNotFound, name)
 	}
-	return Save(path, kept)
+	return Save(t.path, kept)
+}
+
+// Add appends s under the lock, refusing a duplicate name.
+func Add(path string, s Secret) error {
+	return WithLock(path, func(tx Tx) error { return tx.Add(s) })
+}
+
+// Replace overwrites the entry with the same name under the lock.
+func Replace(path string, s Secret) error {
+	return WithLock(path, func(tx Tx) error { return tx.Replace(s) })
+}
+
+// Remove deletes the named entry under the lock.
+func Remove(path, name string) error {
+	return WithLock(path, func(tx Tx) error { return tx.Remove(name) })
 }
 
 // Find returns the named entry.
@@ -116,20 +164,4 @@ func Find(path, name string) (Secret, error) {
 		}
 	}
 	return Secret{}, fmt.Errorf("%w: %s", ErrNotFound, name)
-}
-
-// Replace overwrites the entry with the same name, keeping its creation time.
-func Replace(path string, s Secret) error {
-	secrets, err := Load(path)
-	if err != nil {
-		return err
-	}
-	for i, e := range secrets {
-		if e.Name == s.Name {
-			s.CreatedAt = e.CreatedAt
-			secrets[i] = s
-			return Save(path, secrets)
-		}
-	}
-	return fmt.Errorf("%w: %s", ErrNotFound, s.Name)
 }

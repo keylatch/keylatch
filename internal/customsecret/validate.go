@@ -29,7 +29,7 @@ var (
 	labelRe      = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	headerNameRe = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}$")
 	queryParamRe = regexp.MustCompile(`^[A-Za-z0-9_.\[\]-]{1,64}$`)
-	envNameRe    = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
+	envNameRe    = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}_(BASE_URL|API_URL|URL|ENDPOINT|HOST)$`)
 )
 
 // internalSuffixes are names that resolve inside a private network or only locally.
@@ -44,6 +44,9 @@ var forbiddenHeaders = map[string]bool{
 	"cookie": true, "set-cookie": true, "forwarded": true,
 }
 
+// DefaultMethods are allowed when a secret lists none. TRACE and CONNECT are never allowed.
+var DefaultMethods = []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+
 var allowedMethods = map[string]bool{
 	"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true, "HEAD": true, "OPTIONS": true,
 }
@@ -56,8 +59,9 @@ func ValidateName(name string) error {
 	return nil
 }
 
-// NormalizeHost validates one host entry and returns its lowercase form.
-// Only HTTPS destinations are supported, so no scheme, port, path or credentials are accepted.
+// NormalizeHost validates one upstream host and returns its lowercase form.
+// Only HTTPS destinations are supported, so no scheme, port, path, credentials,
+// IP literal or wildcard is accepted: hosts are exact names.
 func NormalizeHost(raw string) (string, error) {
 	host := strings.ToLower(strings.TrimSpace(raw))
 	if host == "" {
@@ -69,16 +73,13 @@ func NormalizeHost(raw string) (string, error) {
 	if _, err := netip.ParseAddr(host); err == nil {
 		return "", fmt.Errorf("host %q is an IP literal; use a DNS name", raw)
 	}
-
-	wildcard := strings.HasPrefix(host, "*.")
-	base := strings.TrimPrefix(host, "*.")
-	if strings.Contains(base, "*") {
-		return "", fmt.Errorf("host %q: a wildcard is only allowed as the single leftmost label (*.example.com)", raw)
+	if strings.Contains(host, "*") {
+		return "", fmt.Errorf("host %q: wildcards are not supported; name the exact host", raw)
 	}
-	if len(base) > 253 || strings.HasPrefix(base, ".") || strings.HasSuffix(base, ".") {
+	if len(host) > 253 || strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") {
 		return "", fmt.Errorf("host %q is not a valid DNS name", raw)
 	}
-	labels := strings.Split(base, ".")
+	labels := strings.Split(host, ".")
 	if len(labels) < 2 {
 		return "", fmt.Errorf("host %q must have at least two labels", raw)
 	}
@@ -91,18 +92,15 @@ func NormalizeHost(raw string) (string, error) {
 	if last := labels[len(labels)-1]; strings.Trim(last, "0123456789") == "" {
 		return "", fmt.Errorf("host %q must end in a DNS suffix, not a number", raw)
 	}
-	if base == "localhost" {
+	if host == "localhost" {
 		return "", fmt.Errorf("host %q is local to this machine", raw)
 	}
 	for _, s := range internalSuffixes {
-		if strings.HasSuffix(base, s) {
+		if strings.HasSuffix(host, s) {
 			return "", fmt.Errorf("host %q is in the private suffix %q", raw, s)
 		}
 	}
-	if suffix, _ := publicsuffix.PublicSuffix(base); suffix == base {
-		if wildcard {
-			return "", fmt.Errorf("host %q: wildcards on the public suffix %q would cover unrelated sites", raw, base)
-		}
+	if suffix, _ := publicsuffix.PublicSuffix(host); suffix == host {
 		return "", fmt.Errorf("host %q is a public suffix, not a service host", raw)
 	}
 	return host, nil
@@ -143,7 +141,8 @@ func ParseHeaderRule(spec string) (Injection, error) {
 	name = strings.TrimSpace(name)
 	format = strings.TrimSpace(format)
 	if !ok || name == "" || format == "" {
-		return Injection{}, fmt.Errorf("header rule %q must look like \"Name: format with %s\"", spec, ValuePlaceholder)
+		// The spec is not echoed: it is shaped like a header and a careless caller could have put a secret in it.
+		return Injection{}, fmt.Errorf("--header must look like \"Name: format with %s\"", ValuePlaceholder)
 	}
 	in := Injection{Kind: InjectHeader, Name: name, Format: format}
 	return in, in.validate()
@@ -174,7 +173,7 @@ func (in Injection) validate() error {
 			return errors.New("query injection takes no format")
 		}
 	case InjectBasic:
-		if in.Name == "" || len(in.Name) > 128 || strings.ContainsAny(in.Name, ":\r\n\x00") {
+		if in.Name == "" || len(in.Name) > 128 || strings.ContainsRune(in.Name, ':') || hasControl(in.Name) {
 			return errors.New("basic user must be 1-128 characters without ':' or control characters")
 		}
 		if in.Format != "" {
@@ -186,19 +185,21 @@ func (in Injection) validate() error {
 	return nil
 }
 
-// ValidateBaseURLEnv checks the env var that receives the gateway URL.
-func ValidateBaseURLEnv(name string) error {
-	if !envNameRe.MatchString(name) {
-		return fmt.Errorf("env var %q must be upper-case letters, digits and underscores", name)
-	}
-	for _, p := range []string{"KEYLATCH_", "LD_", "DYLD_"} {
-		if strings.HasPrefix(name, p) {
-			return fmt.Errorf("env var %q is reserved", name)
+func hasControl(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return true
 		}
 	}
-	switch name {
-	case "PATH", "HOME", "SHELL", "USER", "IFS", "PWD", "TMPDIR", "NODE_OPTIONS", "PYTHONPATH", "PYTHONSTARTUP", "BASH_ENV", "ENV":
-		return fmt.Errorf("env var %q is reserved", name)
+	return false
+}
+
+// ValidateBaseURLEnv checks the env var that receives the gateway URL. Only
+// names that end like a base URL setting are accepted, so a secret cannot be used
+// to set PATH, LD_PRELOAD, NODE_OPTIONS or similar in the child process.
+func ValidateBaseURLEnv(name string) error {
+	if !envNameRe.MatchString(name) || strings.HasPrefix(name, "KEYLATCH_") || strings.HasPrefix(name, "LD_") || strings.HasPrefix(name, "DYLD_") {
+		return fmt.Errorf("env var %q must be UPPER_CASE and end in _BASE_URL, _API_URL, _URL, _ENDPOINT or _HOST", name)
 	}
 	return nil
 }

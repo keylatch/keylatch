@@ -17,7 +17,7 @@ func customTemplate(paths, methods []string) registry.ConnectionTemplate {
 		AuthPlacement:  registry.AuthPlacement{In: "header", Name: "X-Api-Key", Format: "{value}"},
 		RuntimeSupport: registry.RuntimeSupport{Preferred: registry.RuntimeGatewaySDK, Supported: []registry.RuntimeMode{registry.RuntimeGatewaySDK}},
 		InjectionRules: []registry.InjectionRule{{Source: "value"}},
-		Custom:         &registry.CustomEndpoint{Hosts: []string{"api.acme.example", "*.acme.example"}, Paths: paths, Methods: methods},
+		Custom:         &registry.CustomEndpoint{Hosts: []string{"api.acme.example", "eu.acme.example"}, Paths: paths, Methods: methods},
 	}
 }
 
@@ -99,4 +99,86 @@ func TestCustomRouteListedAndDoesNotShadowTemplates(t *testing.T) {
 	routes := r.Routes()
 	require.Len(t, routes, 1)
 	assert.Equal(t, "acme", routes[0].Provider)
+}
+
+func TestCustomRouteDefaultMethodsExcludeTraceAndConnect(t *testing.T) {
+	r, err := Compile([]registry.ConnectionTemplate{customTemplate([]string{"/"}, nil)})
+	require.NoError(t, err)
+	for _, m := range []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"} {
+		_, ok := r.Match(m, "/sdk/acme/v1/x")
+		assert.True(t, ok, m)
+	}
+	for _, m := range []string{"TRACE", "CONNECT", "PROPFIND", ""} {
+		_, ok := r.Match(m, "/sdk/acme/v1/x")
+		assert.False(t, ok, "%q", m)
+	}
+
+	// Even listed explicitly, TRACE and CONNECT stay refused.
+	r, err = Compile([]registry.ConnectionTemplate{customTemplate([]string{"/"}, []string{"GET", "TRACE", "CONNECT"})})
+	require.NoError(t, err)
+	_, ok := r.Match("GET", "/sdk/acme/v1/x")
+	assert.True(t, ok)
+	for _, m := range []string{"TRACE", "CONNECT"} {
+		_, ok = r.Match(m, "/sdk/acme/v1/x")
+		assert.False(t, ok, m)
+	}
+}
+
+func TestCustomRouteRefusesEncodedAndNonCanonicalPathsAtTheRouter(t *testing.T) {
+	r, err := Compile([]registry.ConnectionTemplate{customTemplate([]string{"/v1"}, nil)})
+	require.NoError(t, err)
+	// r.Match sees the decoded path, so %2e%2e and %2f arrive as these forms.
+	for _, p := range []string{
+		"/sdk/acme/v1/v1/../admin", "/sdk/acme/v1/v1/./x", "/sdk/acme/v1//evil.example/v1",
+		"/sdk/acme/v1/v1//x", "/sdk/acme/v1/v1/x/..", "/sdk/acme/v1/v1/..",
+	} {
+		_, ok := r.Match("GET", p)
+		assert.False(t, ok, p)
+	}
+}
+
+func TestCustomRouteSecondHostAndHostSegmentRefusals(t *testing.T) {
+	r, err := Compile([]registry.ConnectionTemplate{customTemplate([]string{"/v1"}, []string{"GET"})})
+	require.NoError(t, err)
+
+	rt, ok := r.Match("GET", "/sdk/acme/h/eu.acme.example/v1/models")
+	require.True(t, ok)
+	assert.Equal(t, "eu.acme.example", rt.UpstreamHost)
+	assert.Equal(t, "/v1/models", rt.UpstreamPath)
+	rt, ok = r.Match("GET", "/sdk/acme/h/api.acme.example/v1")
+	require.True(t, ok, "the first host is also reachable by name")
+	assert.Equal(t, "api.acme.example", rt.UpstreamHost)
+	rt, _ = r.Match("GET", "/sdk/acme/v1/v1/x")
+	assert.Equal(t, "api.acme.example", rt.UpstreamHost, "/v1/ still goes to the first host")
+
+	// Paths and methods apply to every host.
+	_, ok = r.Match("GET", "/sdk/acme/h/eu.acme.example/admin")
+	assert.False(t, ok)
+	_, ok = r.Match("POST", "/sdk/acme/h/eu.acme.example/v1/x")
+	assert.False(t, ok)
+
+	for _, p := range []string{
+		"/sdk/acme/h/evil.example/v1/x",
+		"/sdk/acme/h/EU.acme.example/v1/x",
+		"/sdk/acme/h/eu.acme.example./v1/x",
+		"/sdk/acme/h/eu.acme.example:443/v1/x",
+		"/sdk/acme/h/user@eu.acme.example/v1/x",
+		"/sdk/acme/h/eu.acme.example@evil.example/v1/x",
+		"/sdk/acme/h/evil.example@eu.acme.example/v1/x",
+		"/sdk/acme/h/eu.acme.example%2Fevil/v1/x",
+		"/sdk/acme/h/eu.acme.example/../evil.example/v1/x",
+		"/sdk/acme/h/eu.acme.example\\@evil.example/v1/x",
+		"/sdk/acme/h/127.0.0.1/v1/x",
+		"/sdk/acme/h/2130706433/v1/x",
+		"/sdk/acme/h/[::1]/v1/x",
+		"/sdk/acme/h//v1/x",
+		"/sdk/acme/h/eu.acme.example",
+		"/sdk/acme/h/",
+		"/sdk/acme/h",
+		"/sdk/acme/h/*.acme.example/v1/x",
+		"/sdk/acme/h/eu.acme.example//evil.example/v1",
+	} {
+		_, ok := r.Match("GET", p)
+		assert.False(t, ok, p)
+	}
 }

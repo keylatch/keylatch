@@ -422,6 +422,10 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	var scrub *credentialScrubber
+	if rt.Custom != nil {
+		scrub = newCredentialScrubber(rt.AuthPlacement, accessToken.Value)
+	}
 	respBody, err := readUpstreamBody(resp, rt.MaxBodyBytes)
 	if errors.Is(err, errUnsupportedEncoding) {
 		writeError(w, http.StatusBadGateway, "upstream_encoding_unsupported", "upstream response uses a content encoding the gateway cannot redact")
@@ -432,11 +436,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if scrub != nil {
+		respBody = scrub.bytes(respBody)
+	}
+
 	// Step 11: Redact response.
 	// Leakage reduction only, not a primary security control.
 	redactedHeaders := redact.Headers(resp.Header)
 	for _, h := range responseHeadersDroppedAfterDecode {
 		redactedHeaders.Del(h)
+	}
+	if scrub != nil {
+		scrub.headers(redactedHeaders)
 	}
 
 	// Collect redaction patterns from route.

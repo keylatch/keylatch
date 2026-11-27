@@ -24,10 +24,8 @@ func TestNormalizeHost(t *testing.T) {
 		"api.acme.example":       "api.acme.example",
 		"API.Acme.Example":       "api.acme.example",
 		" api.acme.example ":     "api.acme.example",
-		"*.acme.example":         "*.acme.example",
 		"xn--bcher-kva.example":  "xn--bcher-kva.example",
 		"a-b.c-d.example.co.uk":  "a-b.c-d.example.co.uk",
-		"*.eu.acme.example.com":  "*.eu.acme.example.com",
 		"api.example.github.io":  "api.example.github.io",
 		"1.2.3.4.nip.example.io": "1.2.3.4.nip.example.io",
 	}
@@ -57,6 +55,7 @@ func TestNormalizeHost(t *testing.T) {
 		"com":                                    "bare TLD",
 		"co.uk":                                  "multi-label public suffix",
 		"github.io":                              "private-section public suffix",
+		"*.acme.example":                         "wildcards are not supported",
 		"*.com":                                  "wildcard on TLD",
 		"*.co.uk":                                "wildcard on multi-label public suffix",
 		"*.github.io":                            "wildcard on hosting suffix",
@@ -124,6 +123,13 @@ func TestParseHeaderRule(t *testing.T) {
 		require.NoError(t, err, spec)
 		assert.Equal(t, want, got, spec)
 	}
+	_, err := ParseHeaderRule("Authorization: sk-live-supersecret")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "sk-live-supersecret", "the spec is not echoed")
+	assert.NoError(t, Injection{Kind: InjectBasic, Name: "svc"}.validate())
+	for _, u := range []string{"a\x00b", "a\tb", "a\x7fb", "a\u0085b", "a:b", ""} {
+		assert.Error(t, Injection{Kind: InjectBasic, Name: u}.validate(), "%q", u)
+	}
 	for _, spec := range []string{
 		"", "Authorization", "Authorization:", ": {value}", "Authorization: Bearer token",
 		"Authorization: {value}{value}", "Host: {value}", "Content-Length: {value}", "Cookie: {value}",
@@ -146,8 +152,14 @@ func TestInjectionValidate(t *testing.T) {
 }
 
 func TestValidateBaseURLEnv(t *testing.T) {
-	assert.NoError(t, ValidateBaseURLEnv("ACME_BASE_URL"))
-	for _, n := range []string{"", "acme_base_url", "1ACME", "ACME-URL", "PATH", "LD_PRELOAD", "KEYLATCH_GATEWAY_TOKEN", "NODE_OPTIONS", "DYLD_INSERT_LIBRARIES"} {
+	for _, n := range []string{"ACME_BASE_URL", "ACME_API_URL", "ACME_URL", "ACME_ENDPOINT", "ACME_API_HOST", "OPENAI_BASE_URL"} {
+		assert.NoError(t, ValidateBaseURLEnv(n), n)
+	}
+	for _, n := range []string{
+		"", "acme_base_url", "1ACME_BASE_URL", "ACME-URL", "PATH", "HOME", "LD_PRELOAD", "LD_BASE_URL",
+		"KEYLATCH_GATEWAY_TOKEN", "KEYLATCH_BASE_URL", "NODE_OPTIONS", "DYLD_INSERT_LIBRARIES", "PYTHONPATH",
+		"HTTPS_PROXY", "ACME_BASE_URL_X", "ACME_KEY",
+	} {
 		assert.Error(t, ValidateBaseURLEnv(n), n)
 	}
 }
@@ -163,15 +175,23 @@ func TestNormalizeSecret(t *testing.T) {
 	base := func() Secret {
 		return Secret{
 			Name:      "acme",
-			Hosts:     []string{"API.acme.example", "*.acme.example", "api.acme.example"},
+			Hosts:     []string{"API.acme.example"},
 			Injection: Injection{Kind: InjectQuery, Name: "key"},
 		}
 	}
 
 	s := base()
 	require.NoError(t, s.Normalize())
-	assert.Equal(t, []string{"api.acme.example", "*.acme.example"}, s.Hosts, "lowercased, deduplicated, order kept")
+	assert.Equal(t, []string{"api.acme.example"}, s.Hosts)
 	assert.Equal(t, []string{"/"}, s.Paths, "paths default to the root")
+	assert.Equal(t, DefaultMethods, s.Methods, "an empty method list defaults to the safe set")
+	assert.NotContains(t, s.Methods, "TRACE")
+	assert.NotContains(t, s.Methods, "CONNECT")
+
+	s = base()
+	s.Hosts = []string{"API.acme.example", "eu.acme.example", "api.acme.example"}
+	require.NoError(t, s.Normalize())
+	assert.Equal(t, []string{"api.acme.example", "eu.acme.example"}, s.Hosts, "lowercased, deduplicated, order kept")
 
 	s = base()
 	s.Paths, s.Methods = []string{"/v1/", "/health"}, []string{"get", "post"}
@@ -181,10 +201,13 @@ func TestNormalizeSecret(t *testing.T) {
 
 	cases := map[string]func(*Secret){
 		"no hosts":         func(s *Secret) { s.Hosts = nil },
-		"wildcard first":   func(s *Secret) { s.Hosts = []string{"*.acme.example"} },
+		"wildcard second":  func(s *Secret) { s.Hosts = []string{"api.acme.example", "*.acme.example"} },
+		"ip second":        func(s *Secret) { s.Hosts = []string{"api.acme.example", "10.0.0.1"} },
+		"wildcard host":    func(s *Secret) { s.Hosts = []string{"*.acme.example"} },
 		"bad host":         func(s *Secret) { s.Hosts = []string{"127.0.0.1"} },
 		"bad path":         func(s *Secret) { s.Paths = []string{"/../etc"} },
 		"bad method":       func(s *Secret) { s.Methods = []string{"TRACE"} },
+		"connect method":   func(s *Secret) { s.Methods = []string{"CONNECT"} },
 		"bad name":         func(s *Secret) { s.Name = "Acme" },
 		"bad injection":    func(s *Secret) { s.Injection = Injection{Kind: "cookie"} },
 		"bad base url env": func(s *Secret) { s.BaseURLEnv = "PATH" },
