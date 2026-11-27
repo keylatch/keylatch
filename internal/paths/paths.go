@@ -166,6 +166,15 @@ func Projects(env Lookup) string {
 	return filepath.Join(ConfigDir(env), "projects.json")
 }
 
+// CustomSecrets returns the path to the custom-secret rules file.
+// Override: KEYLATCH_CUSTOM_SECRETS_PATH
+func CustomSecrets(env Lookup) string {
+	if v := env("KEYLATCH_CUSTOM_SECRETS_PATH"); v != "" {
+		return v
+	}
+	return filepath.Join(ConfigDir(env), "custom-secrets.json")
+}
+
 // KeyringDir returns the directory containing the keyring file.
 // Override: KEYLATCH_KEYRING_DIR
 func KeyringDir(env Lookup) string {
