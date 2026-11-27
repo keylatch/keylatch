@@ -1,3 +1,5 @@
+//go:build experimental
+
 package breakglass_test
 
 import (

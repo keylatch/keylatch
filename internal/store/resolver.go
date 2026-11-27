@@ -5,6 +5,7 @@
 //	op://vault/item/field      — 1Password CLI (op)
 //	aws-sm://region/secret-id  — AWS Secrets Manager (aws secretsmanager get-secret-value)
 //	hashivault://path          — HashiCorp Vault (vault kv get)
+//	bw://scope/collection/item/field — Bitwarden CLI (see bwref.go)
 //
 // Each scheme shells out to the appropriate CLI tool (op, aws, vault). The
 // implementations are intentionally thin stubs that shell out so they remain
@@ -26,6 +27,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // validIdent matches safe KV path segments and field names for hashivault.
@@ -50,6 +52,24 @@ var validSchemes = map[string]bool{
 	"op":         true,
 	"aws-sm":     true,
 	"hashivault": true,
+	"bw":         true,
+}
+
+// SchemeResolver resolves the part of a reference after "<scheme>://". bin is
+// the binary override for the scheme, empty when none is set.
+type SchemeResolver func(ctx context.Context, runner CommandRunner, bin, rest string) ([]byte, error)
+
+var (
+	schemeMu        sync.RWMutex
+	schemeResolvers = map[string]SchemeResolver{}
+)
+
+// RegisterSchemeResolver installs the resolver for a scheme implemented outside
+// this package (a package that imports store cannot be imported here).
+func RegisterSchemeResolver(scheme string, fn SchemeResolver) {
+	schemeMu.Lock()
+	defer schemeMu.Unlock()
+	schemeResolvers[scheme] = fn
 }
 
 // IsProviderRefURI reports whether val begins with a supported external-store
@@ -58,7 +78,8 @@ var validSchemes = map[string]bool{
 func IsProviderRefURI(val []byte) bool {
 	return bytes.HasPrefix(val, []byte("op://")) ||
 		bytes.HasPrefix(val, []byte("aws-sm://")) ||
-		bytes.HasPrefix(val, []byte("hashivault://"))
+		bytes.HasPrefix(val, []byte("hashivault://")) ||
+		bytes.HasPrefix(val, []byte("bw://"))
 }
 
 // ValidateProviderRefURI performs a dry-run check on a provider-ref URI before
@@ -81,7 +102,13 @@ func ValidateProviderRefURI(uri string) error {
 	scheme := uri[:idx]
 	rest := uri[idx+3:]
 	if !validSchemes[scheme] {
-		return fmt.Errorf("%w: unsupported scheme %q (supported: op, aws-sm, hashivault)", ErrInvalidURI, scheme)
+		return fmt.Errorf("%w: unsupported scheme %q (supported: op, aws-sm, hashivault, bw)", ErrInvalidURI, scheme)
+	}
+	if scheme == "bw" {
+		if _, err := ParseBWRef(rest); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidURI, err)
+		}
+		return nil
 	}
 	// Require at least "something/something" after the scheme.
 	if !strings.Contains(rest, "/") || strings.HasSuffix(rest, "/") {
@@ -134,6 +161,7 @@ func (r *Resolver) WithBinOverride(scheme, binPath string) *Resolver {
 //   - op://vault/item/field
 //   - aws-sm://region/secret-id[#key]   (key is optional; returns the full JSON value if absent)
 //   - hashivault://mount/path#field      (field defaults to "value" when absent)
+//   - bw://scope/collection/item/field   (resolved by the bw package)
 func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -157,7 +185,13 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 	case "hashivault":
 		return r.resolveHashiVault(ctx, rest)
 	default:
-		return nil, fmt.Errorf("%w: %q", ErrUnsupportedScheme, scheme)
+		schemeMu.RLock()
+		fn := schemeResolvers[scheme]
+		schemeMu.RUnlock()
+		if fn == nil {
+			return nil, fmt.Errorf("%w: %q", ErrUnsupportedScheme, scheme)
+		}
+		return fn(ctx, r.runner, r.binOverrides[scheme], rest)
 	}
 }
 

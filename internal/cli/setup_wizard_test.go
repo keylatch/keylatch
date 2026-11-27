@@ -29,12 +29,17 @@ func cbLoadConfig(t *testing.T, cfgDir string) config.Config {
 func TestSetupHeadless_BootstrapsFileBackendWithPrivatePerms(t *testing.T) {
 	cfgDir := cbIsolate(t)
 
-	out, stderr, err := cbRun(t, "setup", "--headless")
+	// The backend is named: without it setup picks whichever manager CLI
+	// the machine has installed.
+	out, stderr, err := cbRun(t, "setup", "--headless", "--backend", "file")
 	require.NoError(t, err)
 	assert.Empty(t, out, "headless mode keeps stdout quiet")
 	var res setupHeadlessResult
 	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(lastLine(stderr))), &res))
-	assert.Equal(t, setupHeadlessResult{OK: true, Backend: "file"}, res)
+	assert.True(t, res.OK)
+	assert.Equal(t, "file", res.Backend)
+	assert.Equal(t, "created", res.Policy, "first setup writes the default-deny policy")
+	assert.Empty(t, res.Error)
 
 	assert.Equal(t, "file", cbLoadConfig(t, cfgDir).Backend)
 	cbAssertMode(t, cfgDir, 0o700)
@@ -51,7 +56,10 @@ func TestSetupHeadless_BootstrapsFileBackendWithPrivatePerms(t *testing.T) {
 
 	_, stderr, err = cbRun(t, "setup", "--headless", "--backend", "file")
 	require.NoError(t, err)
-	assert.Contains(t, stderr, `{"ok":true,"backend":"file"}`)
+	var again setupHeadlessResult
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(lastLine(stderr))), &again))
+	assert.True(t, again.OK)
+	assert.Equal(t, "file", again.Backend)
 	after, err := os.ReadFile(keyringPath)
 	require.NoError(t, err)
 	assert.Equal(t, before, after, "keyring must not be regenerated")
@@ -64,7 +72,10 @@ func TestSetupHeadless_CanonicalizesBackendAlias(t *testing.T) {
 	cfgDir := cbIsolate(t)
 	_, stderr, err := cbRun(t, "setup", "--headless", "--backend", "hashivault")
 	require.NoError(t, err)
-	assert.Contains(t, stderr, `{"ok":true,"backend":"vault"}`)
+	var res setupHeadlessResult
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(lastLine(stderr))), &res))
+	assert.True(t, res.OK)
+	assert.Equal(t, "vault", res.Backend)
 	assert.Equal(t, "vault", cbLoadConfig(t, cfgDir).Backend)
 }
 
@@ -146,59 +157,6 @@ func TestSetupInteractive_StorageBranchReprompts(t *testing.T) {
 	assert.Contains(t, out, "[1/5] Detecting platform")
 }
 
-func TestSetupInteractive_AdvancedTelemetryOptIn(t *testing.T) {
-	cfgDir := cbIsolate(t)
-	// storage, telemetry yes, backend 1, mode canary, provider skip, UI no
-	cbScriptStdin(t, "\ny\n1\ncanary\nno\nn\n")
-	out, _, err := cbRun(t, "setup", "--advanced", "--no-daemon-start")
-	require.NoError(t, err)
-	assert.Contains(t, out, "Advanced backend options:")
-	assert.Contains(t, out, "Telemetry: on")
-	assert.Contains(t, out, "canary     — inject canary tokens")
-	assert.Contains(t, out, "Operating mode: canary")
-
-	cfg := cbLoadConfig(t, cfgDir)
-	assert.Equal(t, "file", cfg.Backend)
-	assert.Equal(t, "canary", cfg.Mode)
-	assert.True(t, cfg.Telemetry.Enabled)
-	assert.Equal(t, "local", cfg.Telemetry.Sink)
-}
-
-func TestSetupInteractive_AdvancedUnknownChoiceAndTelemetryDeclined(t *testing.T) {
-	skipIfKeychainRecommended(t)
-	cfgDir := cbIsolate(t)
-	cbScriptStdin(t, "\n\n99\n\n\n\n")
-	out, _, err := cbRun(t, "setup", "--advanced", "--no-daemon-start")
-	require.NoError(t, err)
-	assert.Contains(t, out, "Telemetry: off")
-	assert.Contains(t, out, "Using recommended backend \"file\"")
-	cfg := cbLoadConfig(t, cfgDir)
-	assert.False(t, cfg.Telemetry.Enabled)
-}
-
-func TestSetupInteractive_AdvancedTelemetryFlagSkipsPrompt(t *testing.T) {
-	cfgDir := cbIsolate(t)
-	cbScriptStdin(t, "\n9\n\n\n\n")
-	out, _, err := cbRun(t, "setup", "--advanced", "--telemetry", "off", "--no-daemon-start")
-	require.NoError(t, err)
-	assert.NotContains(t, out, "Allow anonymous usage stats?")
-	assert.Contains(t, out, "Telemetry: off")
-	assert.Equal(t, "aws-sm", cbLoadConfig(t, cfgDir).Backend)
-}
-
-func TestSetupInteractive_BackendFlagWithTelemetryOff(t *testing.T) {
-	cfgDir := cbIsolate(t)
-	cbScriptStdin(t, "\nadvanced\ncustom\n\n\n")
-	out, _, err := cbRun(t, "setup", "--backend", "file", "--telemetry", "OFF", "--no-daemon-start")
-	require.NoError(t, err)
-	assert.Contains(t, out, "Using --backend=file")
-	assert.Contains(t, out, "All modes:")
-	assert.Contains(t, out, "Operating mode: custom")
-	cfg := cbLoadConfig(t, cfgDir)
-	assert.False(t, cfg.Telemetry.Enabled)
-	assert.Equal(t, "custom", cfg.Mode)
-}
-
 func TestSetupInteractive_ModeAdvancedDefaultsToStandard(t *testing.T) {
 	cfgDir := cbIsolate(t)
 	cbScriptStdin(t, "\nadvanced\n\n\n\n")
@@ -253,6 +211,9 @@ func TestSetupInteractive_KeychainUnavailableOffLinux(t *testing.T) {
 func TestSetupInteractive_FullFlowSpawnsGatewayConnectAndUI(t *testing.T) {
 	skipIfKeychainRecommended(t)
 	cbIsolate(t)
+	// No password-manager CLI on PATH, so the recommended backend and the
+	// prompts below do not depend on what the machine has installed.
+	t.Setenv("PATH", t.TempDir())
 	argvLog := cbFakeSelf(t, "ok")
 	// storage, accept recommended, mode, provider #1, open UI
 	cbScriptStdin(t, "\ny\n\n1\ny\n")

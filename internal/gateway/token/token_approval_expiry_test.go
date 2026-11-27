@@ -71,6 +71,7 @@ func TestVerify_AcceptsFutureApprovalExpiry(t *testing.T) {
 	for i := range tokens {
 		if tokens[i].ID == tok.ID {
 			tokens[i].ApprovalExpiry = &future
+			sealRecord(key, &tokens[i])
 		}
 	}
 	if err = writeTokens(store, tokens); err != nil {
@@ -96,7 +97,7 @@ func TestRevoke_CascadesThroughAllLevels(t *testing.T) {
 		jwts = append(jwts, s)
 		parent = tok.ID
 	}
-	if err := Revoke(root.ID, store); err != nil {
+	if err := Revoke(root.ID, store, key); err != nil {
 		t.Fatal(err)
 	}
 	for i, s := range jwts {

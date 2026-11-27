@@ -1,0 +1,71 @@
+provider: aws
+display_name: AWS
+category: cloud
+description: "AWS account access through STS. keylatch run --runtime minted gives the command an endpoint for short-lived, session-policy-limited credentials; the access key stays in Keylatch."
+docs_url: https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html
+docs:
+  credentials_url: https://console.aws.amazon.com/iam/home#/security_credentials
+
+secret_fields:
+  - name: secret_access_key
+    label: Secret access key of the key that may assume the role
+    description: "Supply with -f secret_access_key=@- ; never on the command line."
+    required: true
+    sensitive: true
+
+config_fields:
+  - name: access_key_id
+    label: Access key ID of the key that may assume the role
+    required: true
+
+auth_flow: custom
+
+storage_path_tpl: "{{.Namespace}}/cloud/aws/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: minted
+  supported:
+    - minted
+  runtime_reason: "The command receives the address of a loopback endpoint and a token that opens only it. The endpoint serves STS credentials limited by the session policy in the connection's mint.aws policy; the access key never reaches the command."
+  gateway_supported: false
+
+minted_fields:
+  - container_credentials_uri
+  - container_authorization_token
+
+injection_rules:
+  - env_var: AWS_CONTAINER_CREDENTIALS_FULL_URI
+    source: container_credentials_uri
+  - env_var: AWS_CONTAINER_AUTHORIZATION_TOKEN
+    source: container_authorization_token
+
+allowed_command_prefixes:
+  - "aws"
+  - "terraform"
+  - "tofu"
+  - "pulumi"
+  - "cdk"
+  - "sam"
+  - "python3"
+  - "node"
+
+capabilities:
+  - name: tokens.mint
+    description: Assume a role with a session policy for one command
+
+redaction:
+  - pattern: 'ASIA[A-Z0-9]{16}'
+    replacement: "****"
+
+# Instance metadata routes that hand out credentials. AWS API calls carry the
+# action in the request body, so there is nothing else to refuse by path.
+deny_routes:
+  - "/latest/meta-data/iam/security-credentials/**"
+  - "/latest/api/token"
+
+test_strategy:
+  kind: http_get
+  endpoint: https://sts.amazonaws.com/
+  expect:
+    status_code: 200

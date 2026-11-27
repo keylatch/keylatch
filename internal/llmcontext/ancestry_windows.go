@@ -2,7 +2,6 @@ package llmcontext
 
 import (
 	"errors"
-	"os"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -66,13 +65,12 @@ func readProcessInfo(pid int) (Process, error) {
 // processChain walks one snapshot. Windows keeps a dead parent's PID in the
 // child's entry, so a parent created after its child is a reused PID and
 // ends the walk.
-func processChain() []Process {
+func chainFrom(pid int) []Process {
 	entries, err := snapshotProcesses()
 	if err != nil {
 		return nil
 	}
 	var chain []Process
-	pid := os.Getpid()
 	var childStart uint64
 	for i := 0; i < maxAncestry && pid > 0; i++ {
 		e, ok := entries[pid]

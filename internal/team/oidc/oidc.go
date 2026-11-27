@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package oidc implements OIDC/SSO authentication.
 //
 // Security invariants:

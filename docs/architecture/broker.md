@@ -37,7 +37,7 @@ by `sync.RWMutex`). Tokens are never written to disk. The cache:
 
 - Is bounded at 1000 entries (`DefaultMaxCacheEntries`).
 - Evicts expired entries every 30 seconds via a background goroutine.
-- Is flushed synchronously on vault lock (FIND2-004).
+- Is flushed synchronously on vault lock.
 
 ### Security invariants
 
@@ -94,7 +94,7 @@ detect it programmatically.
 
 ## Split-brain: internal/broker vs internal/gateway/broker
 
-The `internal/broker` package is the canonical Phase-13 in-process
+The `internal/broker` package is the canonical in-process
 implementation. `internal/gateway/broker` (if present) is a separate
 gateway-side component that owns a different broker instance running inside the
 gateway process.
@@ -103,7 +103,7 @@ Cross-process queries (CLI → gateway broker) are intentionally not supported
 via the `BrokerHandle` interface. To inspect or manage tokens in a running
 gateway, use `keylatch gateway status` and `keylatch gateway token revoke`.
 
-This split is NOT resolved in EPIC-23. CLI broker commands target only the
+This split is not resolved. CLI broker commands target only the
 in-process broker.
 
 ## Dry-run exchange

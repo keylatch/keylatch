@@ -1,3 +1,5 @@
+//go:build experimental
+
 package review_test
 
 import (

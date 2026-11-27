@@ -48,13 +48,15 @@ func IssueToken() (string, error) {
 
 // SetCookie writes the CSRF token as a readable (non-HttpOnly) cookie so that
 // JavaScript can read it and echo it in X-CSRF-Token headers.
-func SetCookie(w http.ResponseWriter, token string) {
-	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure flag intentionally absent; server binds to 127.0.0.1 only (no TLS on loopback)
+func SetCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure follows r.TLS; loopback HTTP cannot hold a Secure cookie
 		Name:     CookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: false, // must be readable by JS
 		SameSite: http.SameSiteStrictMode,
+		// Plain-HTTP loopback cannot carry a Secure cookie in every webview.
+		Secure: r.TLS != nil,
 	})
 }
 

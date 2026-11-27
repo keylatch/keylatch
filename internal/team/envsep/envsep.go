@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package envsep implements environment separation policies.
 package envsep
 

@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package cli — team governance CLI commands.
 //
 // Security invariants:

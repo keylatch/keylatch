@@ -8,8 +8,8 @@ import (
 )
 
 func TestResolveMode_FlagWins(t *testing.T) {
-	t.Setenv("KEYLATCH_MODE", "telemetry")
-	got, err := runtime.ResolveMode("canary", runtime.ModeTelemetry)
+	t.Setenv("KEYLATCH_MODE", "custom")
+	got, err := runtime.ResolveMode("canary", runtime.ModeCustom)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -19,13 +19,13 @@ func TestResolveMode_FlagWins(t *testing.T) {
 }
 
 func TestResolveMode_EnvBeatsCfg(t *testing.T) {
-	t.Setenv("KEYLATCH_MODE", "telemetry")
+	t.Setenv("KEYLATCH_MODE", "custom")
 	got, err := runtime.ResolveMode("", runtime.ModeCanary)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != runtime.ModeTelemetry {
-		t.Fatalf("expected telemetry, got %q", got)
+	if got != runtime.ModeCustom {
+		t.Fatalf("expected custom, got %q", got)
 	}
 }
 
@@ -68,23 +68,10 @@ func TestParseMode_CaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestEffectiveSettings_StandardDisablesTelemetry(t *testing.T) {
+func TestEffectiveSettings_StandardDisablesCanary(t *testing.T) {
 	s := runtime.EffectiveSettingsForMode(runtime.ModeStandard, nil)
-	if s.TelemetryEnabled {
-		t.Fatal("standard mode must not enable telemetry")
-	}
 	if s.CanaryInjectionEnabled {
 		t.Fatal("standard mode must not enable canary injection")
-	}
-}
-
-func TestEffectiveSettings_TelemetryEnables(t *testing.T) {
-	s := runtime.EffectiveSettingsForMode(runtime.ModeTelemetry, nil)
-	if !s.TelemetryEnabled {
-		t.Fatal("telemetry mode must enable telemetry")
-	}
-	if s.CanaryInjectionEnabled {
-		t.Fatal("telemetry mode must not enable canary injection")
 	}
 }
 
@@ -93,21 +80,20 @@ func TestEffectiveSettings_CanaryEnablesInjector(t *testing.T) {
 	if !s.CanaryInjectionEnabled {
 		t.Fatal("canary mode must enable canary injection")
 	}
-	if s.TelemetryEnabled {
-		t.Fatal("canary mode must not enable telemetry")
+}
+
+func TestParseMode_TelemetryRemoved(t *testing.T) {
+	if _, err := runtime.ParseMode("telemetry"); err == nil {
+		t.Fatal("the telemetry operating mode no longer exists")
 	}
 }
 
 func TestEffectiveSettings_CustomReadsIndividualKeys(t *testing.T) {
 	cfg := &runtime.CustomModeConfig{
-		TelemetryEnabled:       true,
 		CanaryInjectionEnabled: true,
 		ExperimentalGated:      true,
 	}
 	s := runtime.EffectiveSettingsForMode(runtime.ModeCustom, cfg)
-	if !s.TelemetryEnabled {
-		t.Fatal("custom: TelemetryEnabled should be true")
-	}
 	if !s.CanaryInjectionEnabled {
 		t.Fatal("custom: CanaryInjectionEnabled should be true")
 	}
@@ -118,7 +104,7 @@ func TestEffectiveSettings_CustomReadsIndividualKeys(t *testing.T) {
 
 func TestEffectiveSettings_CustomNilConfig(t *testing.T) {
 	s := runtime.EffectiveSettingsForMode(runtime.ModeCustom, nil)
-	if s.TelemetryEnabled || s.CanaryInjectionEnabled || s.ExperimentalGated {
+	if s.CanaryInjectionEnabled || s.ExperimentalGated {
 		t.Fatal("custom with nil config must produce all-false settings")
 	}
 }

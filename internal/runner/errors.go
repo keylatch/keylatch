@@ -19,7 +19,7 @@ type RuntimeError struct {
 	// Provider is the connection slug (e.g. "anthropic", "openrouter").
 	Provider string
 
-	// Mode is the runtime mode string (e.g. "gateway_typed", "direct_brokered").
+	// Mode is the runtime mode string (e.g. "gateway_typed", "minted").
 	Mode string
 
 	// Reason is a short human-readable explanation of why the operation failed.

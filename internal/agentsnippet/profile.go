@@ -14,40 +14,10 @@ type agentPreset struct {
 }
 
 // agentPresets maps agent names to their target file configurations.
+// The coding-agent harnesses (Claude Code, Codex, Cursor, OpenCode and the
+// rest) are installed from internal/harness, which knows where each keeps its
+// files; the presets here are for tools outside that registry.
 var agentPresets = map[string]agentPreset{
-	"claude-code": {
-		name: "Claude Code",
-		files: []ProfileFile{
-			{
-				Path:           "${HOME}/.claude/settings.json",
-				Mode:           0o600,
-				Content:        `{"mcpServers":{"keylatch":{"command":"keylatch","args":["mcp","--stdio"]}}}`,
-				ConflictPolicy: "merge",
-			},
-		},
-	},
-	"codex": {
-		name: "OpenAI Codex",
-		files: []ProfileFile{
-			{
-				Path:           "${HOME}/.codex/config.json",
-				Mode:           0o600,
-				Content:        `{"mcpServers":{"keylatch":{"command":"keylatch","args":["mcp","--stdio"]}}}`,
-				ConflictPolicy: "merge",
-			},
-		},
-	},
-	"cursor": {
-		name: "Cursor",
-		files: []ProfileFile{
-			{
-				Path:           "${HOME}/.cursor/settings.json",
-				Mode:           0o600,
-				Content:        `{"mcpServers":{"keylatch":{"command":"keylatch","args":["mcp","--stdio"]}}}`,
-				ConflictPolicy: "merge",
-			},
-		},
-	},
 	"openhands": {
 		name: "OpenHands",
 		files: []ProfileFile{
@@ -55,17 +25,6 @@ var agentPresets = map[string]agentPreset{
 				Path:           "${HOME}/.openhands/config.json",
 				Mode:           0o600,
 				Content:        `{"mcp":{"servers":{"keylatch":{"command":"keylatch","args":["mcp","--stdio"]}}}}`,
-				ConflictPolicy: "merge",
-			},
-		},
-	},
-	"opencode": {
-		name: "OpenCode",
-		files: []ProfileFile{
-			{
-				Path:           "${HOME}/.opencode/config.json",
-				Mode:           0o600,
-				Content:        `{"mcpServers":{"keylatch":{"command":"keylatch","args":["mcp","--stdio"]}}}`,
 				ConflictPolicy: "merge",
 			},
 		},

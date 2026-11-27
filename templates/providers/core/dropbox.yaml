@@ -25,9 +25,8 @@ trust_level: 0
 multi_account: true
 
 runtime_support:
-  preferred: direct_brokered
+  preferred: gateway_proxy
   supported:
-    - direct_brokered
     - gateway_proxy
 
 capabilities:
@@ -49,6 +48,12 @@ injection_rules:
 redaction:
   - pattern: 'sl\.[A-Za-z0-9\-_]{40,}'
     replacement: "****"
+
+# Routes that issue or exchange access tokens.
+deny_routes:
+  - "/oauth2/token"
+  - "/2/auth/token/from_oauth1"
+  - "/2/team/token/**"
 
 test_strategy:
   kind: http_post

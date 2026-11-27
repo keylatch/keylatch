@@ -1,4 +1,4 @@
-//go:build securitysuite
+//go:build experimental && securitysuite
 
 // Requires the securitysuite build tag; excluded from the ordinary
 // go test ./... run. Run with: go test -tags securitysuite ./...

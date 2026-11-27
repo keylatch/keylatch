@@ -4,79 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	goruntime "runtime"
+	"io"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/keylatch/keylatch/internal/audit"
+	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runner"
+	"github.com/keylatch/keylatch/internal/runtime"
 )
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// fakeDispatcher records the ExecRequest it receives and writes canned output
-// to the request's writers.
-type fakeDispatcher struct {
-	stdout   string
-	stderr   string
-	exitCode int
-	err      error
-
-	calls int
-	got   runner.ExecRequest
-}
-
-func (f *fakeDispatcher) Run(_ context.Context, req runner.ExecRequest) (runner.RuntimeReceipt, error) {
-	f.calls++
-	f.got = req
-	if f.err != nil {
-		return runner.RuntimeReceipt{Provider: req.ConnectionSlug}, f.err
-	}
-	if req.Stdout != nil {
-		_, _ = req.Stdout.Write([]byte(f.stdout))
-	}
-	if req.Stderr != nil {
-		_, _ = req.Stderr.Write([]byte(f.stderr))
-	}
-	return runner.RuntimeReceipt{Provider: req.ConnectionSlug, Runtime: req.Runtime, ExitCode: f.exitCode}, nil
-}
-
-// runTestProvider is a registered template whose allowlist accepts absolute paths.
-const runTestProvider = "mcp-run-test"
-
-// runTestTool is absolute on the host OS; "/opt/tool" is not absolute on Windows.
-var runTestTool = func() string {
-	if goruntime.GOOS == "windows" {
-		return `C:\opt\tool`
-	}
-	return "/opt/tool"
-}()
-
-func registerRunTestTemplate(t *testing.T) {
-	t.Helper()
-	// Duplicate registration across tests is expected and harmless.
-	_ = registry.Register(registry.ConnectionTemplate{
-		Provider:               runTestProvider,
-		DisplayName:            "MCP Run Test",
-		Category:               "test",
-		AuthFlow:               "api_key",
-		StoragePathTpl:         "default/test/" + runTestProvider + "/default",
-		TrustLevel:             registry.TrustLocalOnly,
-		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
-		AllowedCommandPrefixes: []string{runTestTool + " "},
-		RuntimeSupport: registry.RuntimeSupport{
-			Preferred: registry.RuntimeGatewayTyped,
-			Supported: []registry.RuntimeMode{registry.RuntimeGatewayTyped},
-		},
-		TestStrategy: registry.TestStrategy{Kind: "http_get", Endpoint: "https://example.com/health", Expect: registry.TestExpectation{StatusCode: 200}},
-	})
-}
 
 // buildRunRequest builds a CallToolRequest from an args map.
 func buildRunRequest(t *testing.T, args map[string]any) *sdkmcp.CallToolRequest {
@@ -95,10 +43,8 @@ func buildRunRequest(t *testing.T, args map[string]any) *sdkmcp.CallToolRequest 
 // callRunHandler invokes makeRunHandler and returns text + isError.
 func callRunHandler(t *testing.T, store *mockStore, d runner.Dispatcher, args map[string]any) (string, bool) {
 	t.Helper()
-	ctx := context.Background()
 	handler := makeRunHandler(store, d)
-	req := buildRunRequest(t, args)
-	result, err := handler(ctx, req)
+	result, err := handler(context.Background(), buildRunRequest(t, args))
 	require.NoError(t, err, "handler must not return a Go error")
 
 	var sb strings.Builder
@@ -110,26 +56,69 @@ func callRunHandler(t *testing.T, store *mockStore, d runner.Dispatcher, args ma
 	return sb.String(), result.IsError
 }
 
+// stubDispatcher records the request it is given and answers with a canned
+// receipt, output and error.
+type stubDispatcher struct {
+	mu      sync.Mutex
+	calls   int
+	req     runner.ExecRequest
+	receipt runner.RuntimeReceipt
+	stdout  string
+	stderr  string
+	err     error
+}
+
+func (s *stubDispatcher) Run(_ context.Context, req runner.ExecRequest) (runner.RuntimeReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls++
+	s.req = req
+	_, _ = io.WriteString(req.Stdout, s.stdout)
+	_, _ = io.WriteString(req.Stderr, s.stderr)
+	return s.receipt, s.err
+}
+
+// shellProvider registers a provider that allows the shell with these
+// argument patterns and returns its slug and the shell's path.
+func shellProvider(t *testing.T, slug string, entries ...string) (string, string) {
+	t.Helper()
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skipf("sh not available: %v", err)
+	}
+	require.NoError(t, registry.Register(registry.ConnectionTemplate{
+		Provider:               slug,
+		DisplayName:            "MCP run test " + slug,
+		Category:               "test",
+		AuthFlow:               "api_key",
+		StoragePathTpl:         "default/test/" + slug + "/default",
+		TrustLevel:             registry.TrustLocalOnly,
+		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
+		AllowedCommandPrefixes: entries,
+		RuntimeSupport: registry.RuntimeSupport{
+			Preferred: registry.RuntimeGatewayTyped,
+			Supported: []registry.RuntimeMode{registry.RuntimeGatewayTyped},
+		},
+		Redaction:    []registry.RedactionRule{{Pattern: `leak-[0-9]+`, Replacement: "****"}},
+		TestStrategy: registry.TestStrategy{Kind: "http_get", Endpoint: "https://example.com/health", Expect: registry.TestExpectation{StatusCode: 200}},
+	}))
+	return slug, sh
+}
+
 // ---------------------------------------------------------------------------
-// makeRunHandler: missing provider
+// Argument validation
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerMissingProvider(t *testing.T) {
-	store := newMockStore()
-	d := &fakeDispatcher{}
-	_, isErr := callRunHandler(t, store, d, map[string]any{})
+	d := &stubDispatcher{}
+	_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{})
 	assert.True(t, isErr, "missing provider must produce an error result")
 	assert.Zero(t, d.calls)
 }
 
-// ---------------------------------------------------------------------------
-// makeRunHandler: provider not found in registry
-// ---------------------------------------------------------------------------
-
 func TestRunHandlerUnknownProvider(t *testing.T) {
-	store := newMockStore()
-	d := &fakeDispatcher{}
-	_, isErr := callRunHandler(t, store, d, map[string]any{
+	d := &stubDispatcher{}
+	_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": "nonexistent-provider-xyz-12345",
 		"command":  []interface{}{"/bin/echo", "hello"},
 	})
@@ -137,311 +126,178 @@ func TestRunHandlerUnknownProvider(t *testing.T) {
 	assert.Zero(t, d.calls)
 }
 
-// ---------------------------------------------------------------------------
-// makeRunHandler: command rejected by allowlist (string form)
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerCommandRejectedByAllowlistStringForm(t *testing.T) {
-	store := newMockStore()
-	d := &fakeDispatcher{}
-	// "sentry" has AllowedCommandPrefixes ["node ", "python3 "]; "bash" is not allowed.
-	_, isErr := callRunHandler(t, store, d, map[string]any{
-		"provider": "sentry",
-		"command":  "bash -c env",
-	})
-	assert.True(t, isErr, "banned command (string form) must produce an error result")
-	assert.Zero(t, d.calls)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: command rejected by allowlist ([]interface{} form)
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerCommandRejectedByAllowlistSliceForm(t *testing.T) {
-	store := newMockStore()
-	d := &fakeDispatcher{}
-	// "bash" doesn't match "node " or "python3 " prefixes.
-	_, isErr := callRunHandler(t, store, d, map[string]any{
-		"provider": "sentry",
-		"command":  []interface{}{"bash", "-c", "env"},
-	})
-	assert.True(t, isErr, "banned command (slice form) must produce an error result")
-	assert.Zero(t, d.calls)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: missing command key (hits empty-command guard)
-// ---------------------------------------------------------------------------
-
 func TestRunHandlerMissingCommandKey(t *testing.T) {
-	store := newMockStore()
-	d := &fakeDispatcher{}
-	// No "command" key — args["command"] is nil, hits default case in type switch,
-	// command stays nil, len(command)==0 → "run: 'command' argument required".
-	_, isErr := callRunHandler(t, store, d, map[string]any{
-		"provider": "sentry",
-	})
+	provider, _ := shellProvider(t, "mcp-run-nocmd", "sh ")
+	d := &stubDispatcher{}
+	_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{"provider": provider})
 	assert.True(t, isErr, "missing command must produce an error result")
 	assert.Zero(t, d.calls)
 }
 
-// ---------------------------------------------------------------------------
-// makeRunHandler: relative command rejected
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerRejectsRelativeCommand(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{}
-	// "sentry" allows "node "; the command passes the allowlist but is not absolute.
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": "sentry",
-		"command":  "node script.js",
-	})
+func TestRunRefusesWithoutADispatcher(t *testing.T) {
+	provider, _ := shellProvider(t, "mcp-run-nodispatch", "sh ")
+	text, isErr := callRunHandler(t, newMockStore(), nil, map[string]any{"provider": provider, "command": []interface{}{"sh", "-c", "true"}})
 	assert.True(t, isErr)
-	assert.Contains(t, text, "absolute path")
-	assert.Zero(t, d.calls)
+	assert.Contains(t, text, "no runtime")
 }
 
 // ---------------------------------------------------------------------------
-// makeRunHandler: nil dispatcher
+// The allowlist matches the executable exactly, never by string prefix.
 // ---------------------------------------------------------------------------
 
-func TestRunHandlerNilDispatcher(t *testing.T) {
-	registerRunTestTemplate(t)
-	text, isErr := callRunHandler(t, newMockStore(), nil, map[string]any{
-		"provider": runTestProvider,
-		"command":  runTestTool + " script.js",
-	})
-	assert.True(t, isErr, "nil dispatcher must produce an error result")
-	assert.Contains(t, text, "runtime dispatch unavailable")
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: provider without runtime support
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerProviderWithoutRuntimeSupport(t *testing.T) {
-	_ = registry.Register(registry.ConnectionTemplate{
-		Provider:               "mcp-run-no-runtime",
-		DisplayName:            "MCP Run No Runtime",
-		Category:               "test",
-		AuthFlow:               "api_key",
-		StoragePathTpl:         "default/test/mcp-run-no-runtime/default",
-		TrustLevel:             registry.TrustLocalOnly,
-		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
-		AllowedCommandPrefixes: []string{runTestTool + " "},
-		TestStrategy:           registry.TestStrategy{Kind: "http_get", Endpoint: "https://example.com/health", Expect: registry.TestExpectation{StatusCode: 200}},
-	})
-	d := &fakeDispatcher{}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": "mcp-run-no-runtime",
-		"command":  runTestTool + " script.js",
-	})
-	assert.True(t, isErr)
-	assert.Contains(t, text, "no supported runtime")
-	assert.Zero(t, d.calls)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: dispatch error
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerDispatchError(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{stdout: "must not appear", err: errors.New("gateway is not running")}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": runTestProvider,
-		"command":  runTestTool + " script.js",
-	})
-	assert.True(t, isErr, "dispatch error must produce an error result")
-	assert.Contains(t, text, "gateway is not running")
-	assert.NotContains(t, text, "must not appear")
-	assert.Equal(t, 1, d.calls)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: successful execution (string command)
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerSuccessStringCommand(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{stdout: "hello output"}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": runTestProvider,
-		"command":  runTestTool + " script.js",
-	})
-	assert.False(t, isErr, "valid command must not be an error result")
-	var result map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(text), &result))
-	assert.Contains(t, result, "receipt")
-	assert.Equal(t, "hello output", result["stdout"])
-
-	assert.Equal(t, []string{runTestTool, "script.js"}, d.got.Command)
-	assert.Equal(t, runTestProvider, d.got.ConnectionSlug)
-	assert.Equal(t, "mcp", d.got.Actor)
-	assert.Equal(t, string(registry.RuntimeGatewayTyped), d.got.Runtime)
-	assert.NotNil(t, d.got.Stdin)
-	assert.NotNil(t, d.got.Stdout)
-	assert.NotNil(t, d.got.Stderr)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: successful execution ([]interface{} command)
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerSuccessSliceCommand(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{stdout: "slice output"}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": runTestProvider,
-		"command":  []interface{}{runTestTool, "script.js"},
-	})
-	assert.False(t, isErr)
-	var result map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(text), &result))
-	assert.Contains(t, result, "receipt")
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: receipt contains expected fields
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerReceiptFields(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{stdout: "output"}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider":  runTestProvider,
-		"account":   "myaccount",
-		"namespace": "prod",
-		"command":   runTestTool + " script.js",
-	})
-	assert.False(t, isErr)
-	var result map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(text), &result))
-	receipt, ok := result["receipt"].(map[string]interface{})
-	require.True(t, ok, "receipt must be an object")
-	assert.Equal(t, runTestProvider, receipt["provider"])
-	assert.Contains(t, receipt["connection"], "myaccount")
-	assert.Equal(t, string(registry.RuntimeGatewayTyped), receipt["runtime"])
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: non-zero exit code recorded in receipt
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerNonZeroExitCode(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{stderr: "error output", exitCode: 1}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": runTestProvider,
-		"command":  runTestTool + " script.js",
-	})
-	assert.False(t, isErr)
-	var result map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(text), &result))
-	receipt := result["receipt"].(map[string]interface{})
-	assert.Equal(t, float64(1), receipt["exit_code"])
-	assert.Equal(t, "error output", result["stderr"])
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: leading space bypass prevention
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerLeadingSpaceBypass(t *testing.T) {
-	store := newMockStore()
-	d := &fakeDispatcher{}
-	// "  bash -c env" trimmed to "bash -c env" which doesn't match "node " or "python3 ".
-	_, isErr := callRunHandler(t, store, d, map[string]any{
-		"provider": "sentry",
-		"command":  "  bash -c env",
-	})
-	assert.True(t, isErr, "leading-space bypass must be rejected")
-	assert.Zero(t, d.calls)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: default account and namespace
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerDefaultsAccountNamespace(t *testing.T) {
-	registerRunTestTemplate(t)
-	d := &fakeDispatcher{stdout: "ok"}
-	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
-		"provider": runTestProvider,
-		"command":  runTestTool + " script.js",
-		// no account, no namespace — defaults to "default"
-	})
-	assert.False(t, isErr)
-	var result map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(text), &result))
-	receipt := result["receipt"].(map[string]interface{})
-	assert.Equal(t, "default/"+runTestProvider+"/default", receipt["connection"])
-}
-
-// ---------------------------------------------------------------------------
-// applyRedaction
-// ---------------------------------------------------------------------------
-
-func TestApplyRedactionNoRules(t *testing.T) {
-	result := applyRedaction("secret token here", nil)
-	assert.Equal(t, "secret token here", result)
-}
-
-func TestApplyRedactionMatchesPattern(t *testing.T) {
-	rules := []registry.RedactionRule{
-		{Pattern: `sntrys_[A-Za-z0-9\-_]{32,}`, Replacement: "****"},
+func TestMCPExactAllowlist(t *testing.T) {
+	provider, sh := shellProvider(t, "mcp-run-exact", "sh -c", "sh scripts/")
+	for name, cmd := range map[string]any{
+		"prefix of another binary":           []interface{}{"shell", "-c", "true"},
+		"leading space":                      "  bash -c env",
+		"other executable":                   []interface{}{"bash", "-c", "env"},
+		"sibling name":                       []interface{}{sh + "evil", "-c", "true"},
+		"argument pattern not met":           []interface{}{"sh", "-s"},
+		"scripts escape":                     []interface{}{"sh", "scripts/../evil.sh"},
+		"string form, name is a prefix":      "shx -c true",
+		"allowed name with a path elsewhere": []interface{}{filepath.Join(t.TempDir(), "sh"), "-c", "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := &stubDispatcher{}
+			_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{"provider": provider, "command": cmd})
+			assert.True(t, isErr, "%v must be refused", cmd)
+			assert.Zero(t, d.calls, "a refused command must never reach the dispatcher")
+		})
 	}
-	input := "auth: sntrys_abcdefghijklmnopqrstuvwxyz1234567890"
-	result := applyRedaction(input, rules)
-	assert.NotContains(t, result, "sntrys_")
-	assert.Contains(t, result, "****")
-}
 
-func TestApplyRedactionInvalidPatternSkipped(t *testing.T) {
-	rules := []registry.RedactionRule{
-		{Pattern: `[invalid(`, Replacement: "****"},
+	for name, cmd := range map[string]any{
+		"slice form":  []interface{}{"sh", "-c", "true"},
+		"string form": "sh -c true",
+		"directory":   []interface{}{"sh", "scripts/ok.sh"},
+	} {
+		t.Run("allowed/"+name, func(t *testing.T) {
+			d := &stubDispatcher{}
+			_, isErr := callRunHandler(t, newMockStore(), d, map[string]any{"provider": provider, "command": cmd})
+			assert.False(t, isErr)
+			assert.Equal(t, 1, d.calls)
+			assert.True(t, filepath.IsAbs(d.req.Command[0]), "the dispatcher gets the resolved executable, got %q", d.req.Command[0])
+		})
 	}
-	input := "unchanged text"
-	result := applyRedaction(input, rules)
-	assert.Equal(t, "unchanged text", result)
-}
-
-func TestApplyRedactionMultipleRules(t *testing.T) {
-	rules := []registry.RedactionRule{
-		{Pattern: `TOKEN_[A-Z]+`, Replacement: "<token>"},
-		{Pattern: `SECRET_[0-9]+`, Replacement: "<secret>"},
-	}
-	input := "TOKEN_ABC and SECRET_123"
-	result := applyRedaction(input, rules)
-	assert.Equal(t, "<token> and <secret>", result)
 }
 
 // ---------------------------------------------------------------------------
-// sanitizeError
+// The run is a dispatcher request from an agent caller; refusals and results
+// come back as the dispatcher decided them.
 // ---------------------------------------------------------------------------
 
-func TestSanitizeErrorNil(t *testing.T) {
-	assert.Equal(t, "", sanitizeError(nil))
+func TestMCPRunUsesEnforce(t *testing.T) {
+	provider, _ := shellProvider(t, "mcp-run-dispatch", "sh ")
+	d := &stubDispatcher{
+		receipt: runner.RuntimeReceipt{Runtime: "gateway_typed", ExitCode: 3},
+		stdout:  "out leak-12345",
+		stderr:  "err",
+	}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": provider, "account": "myaccount", "namespace": "prod",
+		"command": []interface{}{"sh", "-c", "true"},
+	})
+	require.False(t, isErr, text)
+
+	assert.Equal(t, provider, d.req.ConnectionSlug)
+	assert.Equal(t, callerkind.Agent, d.req.Caller)
+	assert.Equal(t, "inject", d.req.Capability)
+	assert.Equal(t, []string{d.req.Command[0]}, d.req.ExtraAllowedPrefixes)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(text), &result))
+	receipt := result["receipt"].(map[string]any)
+	assert.Equal(t, "gateway_typed", receipt["runtime"])
+	assert.Equal(t, float64(3), receipt["exit_code"])
+	assert.Equal(t, "prod/"+provider+"/myaccount", receipt["connection"])
+	assert.Equal(t, "out ****", result["stdout"], "template redaction applies to the output")
+
+	for runErr, want := range map[error]string{
+		runner.ErrCommandNotAllowed:   "not allowed",
+		runner.ErrGuardDenied:         "session guard",
+		runner.ErrGatewayNotRunning:   "gateway is not running",
+		audit.ErrUnavailable:          "audit log",
+		errors.New("boom secret-123"): "execution error",
+	} {
+		denied := &stubDispatcher{err: runErr}
+		text, isErr := callRunHandler(t, newMockStore(), denied, map[string]any{
+			"provider": provider, "command": []interface{}{"sh", "-c", "true"},
+		})
+		assert.True(t, isErr)
+		assert.Contains(t, text, want)
+		assert.NotContains(t, text, "secret-123", "an error's text never reaches the caller")
+	}
 }
 
-func TestSanitizeErrorPlainMessage(t *testing.T) {
-	err := errors.New("connection refused")
-	result := sanitizeError(err)
-	assert.Equal(t, "connection refused", result)
+// ---------------------------------------------------------------------------
+// End to end through the real DispatchRunner and the gateway_typed driver.
+// ---------------------------------------------------------------------------
+
+type fakeGateway struct{}
+
+func (fakeGateway) Addr() string  { return "127.0.0.1:7878" }
+func (fakeGateway) Running() bool { return true }
+
+type recordingEmitter struct {
+	mu     sync.Mutex
+	events []audit.Event
 }
 
-func TestSanitizeErrorRedactsTokenShapedStrings(t *testing.T) {
-	// 32+ base64url chars get redacted
-	longToken := "abcdefghijklmnopqrstuvwxyz1234567890ABCD"
-	err := errors.New("invalid token: " + longToken)
-	result := sanitizeError(err)
-	assert.NotContains(t, result, longToken)
-	assert.Contains(t, result, "****")
+func (r *recordingEmitter) Emit(_ context.Context, e audit.Event) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, e)
+	return nil
 }
 
-func TestSanitizeErrorPreservesShortStrings(t *testing.T) {
-	err := errors.New("short err")
-	result := sanitizeError(err)
-	assert.Equal(t, "short err", result)
+func realDispatcher(t *testing.T, em audit.Emitter) runner.DispatchRunner {
+	t.Helper()
+	return runner.DispatchRunner{
+		Audit: em,
+		Drivers: map[string]runner.Driver{
+			string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriver(fakeGateway{}, make([]byte, 32), filepath.Join(t.TempDir(), "tokens.json")),
+		},
+	}
+}
+
+// A permitted run goes through the gateway_typed runtime with exactly one
+// audit event, and the child sees no backend credential.
+func TestMCPRunAudited(t *testing.T) {
+	provider, sh := shellProvider(t, "mcp-run-audited", "sh ")
+	em := &recordingEmitter{}
+	text, isErr := callRunHandler(t, newMockStore(), realDispatcher(t, em), map[string]any{
+		"provider": provider,
+		"command":  []interface{}{sh, "-c", "echo ran"},
+	})
+	require.False(t, isErr, text)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal([]byte(text), &result))
+	assert.Equal(t, "gateway_typed", result["receipt"].(map[string]any)["runtime"])
+	assert.Contains(t, result["stdout"], "ran")
+
+	require.Len(t, em.events, 1, "one audit event per run")
+	ev := em.events[0]
+	assert.Equal(t, audit.ActionRun, ev.Action)
+	assert.Equal(t, "agent", ev.Extra["caller_kind"])
+	assert.Equal(t, "gateway_typed", ev.Extra["runtime"])
+	assert.Equal(t, provider, ev.Extra["connection"])
+}
+
+// The child's environment is scrubbed of backend credentials and Keylatch
+// configuration, whatever the MCP server's own environment holds.
+func TestMCPChildEnvScrubbed(t *testing.T) {
+	provider, sh := shellProvider(t, "mcp-run-env", "sh ")
+	t.Setenv("BW_SESSION", "audit-synthetic-session-9284")
+	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "audit-synthetic-sa-1111")
+	t.Setenv("VAULT_TOKEN", "audit-synthetic-vault-2222")
+	t.Setenv("KEYLATCH_BACKEND", "audit-synthetic-backend")
+
+	body, isErr := callRunHandler(t, newMockStore(), realDispatcher(t, &recordingEmitter{}), map[string]any{
+		"provider": provider,
+		"command":  []interface{}{sh, "-c", "env"},
+	})
+	require.False(t, isErr, body)
+	for _, leaked := range []string{"audit-synthetic-session-9284", "audit-synthetic-sa-1111", "audit-synthetic-vault-2222", "audit-synthetic-backend"} {
+		assert.NotContains(t, body, leaked)
+	}
 }

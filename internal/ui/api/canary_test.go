@@ -42,12 +42,6 @@ func TestCanary_MetaWalk(t *testing.T) {
 			handler: &api.ApprovalsHandler{},
 		},
 		{
-			name:    "gateway status",
-			method:  http.MethodGet,
-			path:    "/api/gateway/status",
-			handler: &api.GatewayHandler{AllowTokenMinting: true},
-		},
-		{
 			name:    "status",
 			method:  http.MethodGet,
 			path:    "/api/status",

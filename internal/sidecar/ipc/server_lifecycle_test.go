@@ -103,21 +103,8 @@ func TestServer_SocketModeKeyCopyAndCleanup(t *testing.T) {
 		t.Errorf("unconfigured minter must fail without detail, got %+v", resp)
 	}
 
-	// Cancel while the connection is idle; the next request is still
-	// answered and then the server closes the connection.
+	// Cancelling closes idle connections: nothing is answered after shutdown.
 	cancel()
-	if err := fw.Write(Request{Method: MethodHealth}); err != nil {
-		t.Fatal(err)
-	}
-	resp = Response{}
-	if err := fr.Read(&resp); err != nil {
-		t.Fatalf("in-flight request after cancel: %v", err)
-	}
-	var extra Response
-	if err := fr.Read(&extra); err == nil {
-		t.Error("connection must be closed after shutdown")
-	}
-
 	select {
 	case err := <-done:
 		if err != nil {
@@ -125,6 +112,11 @@ func TestServer_SocketModeKeyCopyAndCleanup(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Listen did not return")
+	}
+	_ = fw.Write(Request{Method: MethodHealth})
+	var extra Response
+	if err := fr.Read(&extra); err == nil {
+		t.Error("connection must be closed after shutdown")
 	}
 	if _, err := os.Stat(sock); !os.IsNotExist(err) {
 		t.Error("socket file must be removed on shutdown")

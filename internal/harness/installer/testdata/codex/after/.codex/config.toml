@@ -1,0 +1,12 @@
+# my codex settings
+model = "gpt-5"   # keep this comment
+
+[mcp_servers.docs]
+command = "docs-server"
+args = ["--stdio"]
+
+# >>> keylatch >>>
+[mcp_servers.keylatch]
+command = "/opt/keylatch/bin/keylatch"
+args = ["mcp", "--stdio"]
+# <<< keylatch <<<

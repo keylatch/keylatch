@@ -22,7 +22,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // compile-time interface check.
@@ -94,13 +93,7 @@ func (b *ProtonPassBackend) Capabilities() []backend.Capability {
 
 // Get returns the plaintext bytes for a canonical path via `pass-cli item get`.
 // Uses a 60-second TTL cache and single-flight collapse for concurrent calls.
-//
-// Checks runner.OK before returning plaintext.
 func (b *ProtonPassBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	name := b.itemName(path)
 	const ttl = 60 * time.Second
 

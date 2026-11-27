@@ -63,7 +63,15 @@ func caOpenBackup(t *testing.T, archive, passphrase string) (backupHeader, map[s
 	return hdr, plain
 }
 
-func TestBackupCmdRestorableWithPassphraseFile(t *testing.T) {
+func caBackupTerminal(t *testing.T, passphrase string) {
+	t.Helper()
+	oldTTY, oldPrompt := backupStdinIsTTY, promptHiddenFn
+	backupStdinIsTTY = func() bool { return true }
+	promptHiddenFn = func() ([]byte, error) { return []byte(passphrase), nil }
+	t.Cleanup(func() { backupStdinIsTTY, promptHiddenFn = oldTTY, oldPrompt })
+}
+
+func TestBackupCmdRestorableWithTerminalPassphrase(t *testing.T) {
 	f := caNewVault(t, envelope.XChaCha20Poly1305)
 	store := newDispatchedStore(f.cfg, f.env)
 	ctx := context.Background()
@@ -77,12 +85,11 @@ func TestBackupCmdRestorableWithPassphraseFile(t *testing.T) {
 	require.NoError(t, store.Set(ctx, "default/ai/anthropic/meta", []byte(`{"provider":"anthropic"}`), backend.Meta{}))
 
 	dir := t.TempDir()
-	passFile := filepath.Join(dir, "pass")
 	const pass = "backup pass phrase"
-	require.NoError(t, os.WriteFile(passFile, []byte(pass+"\r\n"), 0o600))
+	caBackupTerminal(t, pass)
 	archive := filepath.Join(dir, "out.enc")
 
-	out, errOut, err := caRun(t, nil, "backup", "--output", archive, "--passphrase-file", passFile)
+	out, errOut, err := caRun(t, nil, "backup", "--output", archive)
 	require.NoError(t, err, errOut)
 	assert.Contains(t, out, "backed up 2 connection(s) to "+archive)
 	for _, v := range creds {
@@ -103,10 +110,9 @@ func TestBackupCmdDefaultOutputName(t *testing.T) {
 	caNewVault(t, envelope.XChaCha20Poly1305)
 	work := t.TempDir()
 	t.Chdir(work)
-	passFile := filepath.Join(t.TempDir(), "pass")
-	require.NoError(t, os.WriteFile(passFile, []byte("pw"), 0o600))
+	caBackupTerminal(t, "pw")
 
-	out, _, err := caRun(t, nil, "backup", "--passphrase-file", passFile)
+	out, _, err := caRun(t, nil, "backup")
 	require.NoError(t, err)
 	assert.Contains(t, out, "backed up 0 connection(s) to keylatch-backup-")
 	matches, err := filepath.Glob(filepath.Join(work, "keylatch-backup-*.enc"))
@@ -121,7 +127,7 @@ func TestBackupCmdBlockedInLLMSessionListsReasons(t *testing.T) {
 	caNewVault(t, envelope.XChaCha20Poly1305)
 	caSetLLMSession(t)
 	archive := filepath.Join(t.TempDir(), "out.enc")
-	_, _, err := caRun(t, nil, "backup", "--output", archive, "--passphrase-file", "/nonexistent")
+	_, _, err := caRun(t, nil, "backup", "--output", archive)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "blocked in LLM sessions")
 	assert.Contains(t, err.Error(), "detected via: ")

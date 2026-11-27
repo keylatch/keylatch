@@ -84,8 +84,6 @@ func TestAgentSessionBlocksTrustAdminCommands(t *testing.T) {
 		args []string
 		msg  string
 	}{
-		{"vault init", []string{"backend", "vault", "init", "--addr", "https://vault.invalid", "--transit-key", "k"}, "backend vault init is not permitted"},
-		{"vault test", []string{"backend", "vault", "test", "--addr", "https://vault.invalid"}, "backend vault test is not permitted"},
 		{"upgrade-trust", []string{"backend", "upgrade-trust", "--keyring", krPath}, "backend upgrade-trust is not permitted"},
 	}
 	for _, tc := range cases {
@@ -108,7 +106,7 @@ func TestAgentSessionBlocksTrustAdminCommands(t *testing.T) {
 	}
 }
 
-func TestAgentSessionBlocksSandboxedRuntimeRule(t *testing.T) {
+func TestPolicyAllowRejectsUnknownRuntime(t *testing.T) {
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "policy.json")
 	if err := policy.Save(policyPath, policy.Policy{SchemaVersion: 1, Mode: policy.ModeEnforcing, DefaultDeny: true}); err != nil {
@@ -117,11 +115,11 @@ func TestAgentSessionBlocksSandboxedRuntimeRule(t *testing.T) {
 	before, _ := os.ReadFile(policyPath)
 	code, _, errOut := cdRunChild(t, true, []string{"KEYLATCH_POLICY_PATH=" + policyPath},
 		"policy", "allow", "claude", "openai", "--runtime", "direct_classic_sandboxed")
-	if code != exitcode.SecurityBlock {
-		t.Fatalf("exit = %d, want %d (stderr %q)", code, exitcode.SecurityBlock, errOut)
+	if code == exitcode.OK {
+		t.Fatalf("policy allow with a removed runtime must fail (stderr %q)", errOut)
 	}
-	if !strings.Contains(errOut, "not permitted inside an LLM session") {
-		t.Fatalf("stderr %q missing refusal", errOut)
+	if !strings.Contains(errOut, "not a valid runtime mode") {
+		t.Fatalf("stderr %q missing runtime rejection", errOut)
 	}
 	after, _ := os.ReadFile(policyPath)
 	if !bytes.Equal(before, after) {

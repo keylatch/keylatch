@@ -58,6 +58,10 @@ type Route struct {
 	// Custom is set for user-defined secrets, whose upstream path and method
 	// come from the request instead of a fixed action.
 	Custom *registry.CustomEndpoint
+	// DenyRoutes and ForwardHeaders are the template's deny_routes and
+	// forward_headers.
+	DenyRoutes     []string
+	ForwardHeaders []string
 }
 
 // Request is the incoming gateway request relevant to routing.
@@ -173,6 +177,8 @@ func Compile(templates []registry.ConnectionTemplate) (*Router, error) {
 				MaxBodyBytes:     defaultMaxBodyBytes,
 				LLMSessionDeny:   llmDeny,
 				SecretRef:        vaultSecretRef(tmpl),
+				DenyRoutes:       tmpl.DenyRoutes,
+				ForwardHeaders:   tmpl.ForwardHeaders,
 			}
 			if action.UntrustedContentSource {
 				route.UntrustedContentSource = tmpl.Provider
@@ -216,6 +222,8 @@ func Compile(templates []registry.ConnectionTemplate) (*Router, error) {
 					MaskingProfile:   "basic",
 					MaxBodyBytes:     defaultMaxBodyBytes,
 					SecretRef:        vaultSecretRef(tmpl),
+					DenyRoutes:       tmpl.DenyRoutes,
+					ForwardHeaders:   tmpl.ForwardHeaders,
 				}
 				r.routes["POST "+path] = rt
 

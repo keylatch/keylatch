@@ -41,7 +41,7 @@ export default {
 
     // Forward to Tinybird Events API (NDJSON).
     const ndjson = events.map((e) => JSON.stringify(e)).join("\n");
-    const tinybirdUrl = (env.TINYBIRD_URL || "https://api.tinybird.co").replace(/\/+$/, "");
+    const tinybirdUrl = trimTrailingSlashes(env.TINYBIRD_URL || "https://api.tinybird.co");
     const datasource = encodeURIComponent(env.TINYBIRD_DATASOURCE || "keylatch_events");
     const tb = await fetch(
       `${tinybirdUrl}/v0/events?name=${datasource}`,
@@ -63,3 +63,11 @@ export default {
     return new Response("OK", { status: 200 });
   },
 };
+
+// trimTrailingSlashes drops trailing "/" without a regex, so a long run of
+// slashes cannot make the match quadratic.
+function trimTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
+  return url.slice(0, end);
+}

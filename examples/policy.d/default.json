@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "description": "Fallback for every connection without a document of its own: a human at a terminal may use it, every other caller kind is denied.",
+  "connection": "*",
+  "default": "deny",
+  "callers": {
+    "human": { "allow": true },
+    "agent": "deny",
+    "host": "deny",
+    "service": "deny"
+  }
+}

@@ -101,7 +101,7 @@ func runSecretAdd(c *cobra.Command, in secretAddInput) error {
 		sec.RefScheme = scheme
 		value = []byte(strings.TrimSpace(in.ref))
 	default:
-		value, err = readSecretValue(c)
+		value, err = readCustomSecretValue(c)
 		if err != nil {
 			return withExitCode(exitcode.UserError, fmt.Errorf("[keylatch] error: %w", err))
 		}

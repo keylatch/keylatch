@@ -1,0 +1,26 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "tokyonight",
+  "plugin": [
+    "my-plugin"
+  ],
+  "mcp": {
+    "other-server": {
+      "type": "local",
+      "command": [
+        "npx",
+        "other-server"
+      ],
+      "enabled": true
+    },
+    "keylatch": {
+      "type": "local",
+      "command": [
+        "/opt/keylatch/bin/keylatch",
+        "mcp",
+        "--stdio"
+      ],
+      "enabled": true
+    }
+  }
+}

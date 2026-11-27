@@ -16,6 +16,8 @@ use std::path::PathBuf;
 pub struct LaunchAtLogin {
     config_path: PathBuf,
     app_path: PathBuf,
+    #[cfg(target_os = "windows")]
+    run_key_path: String,
 }
 
 impl LaunchAtLogin {
@@ -23,7 +25,12 @@ impl LaunchAtLogin {
     /// `config_path` is the path to app-config.json.
     /// `app_path` is the path to the keylatch-app binary (for XDG/registry).
     pub fn new(config_path: PathBuf, app_path: PathBuf) -> Self {
-        Self { config_path, app_path }
+        Self {
+            config_path,
+            app_path,
+            #[cfg(target_os = "windows")]
+            run_key_path: "Software\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(),
+        }
     }
 
     /// Enable launch-at-login for the current user. Idempotent.
@@ -147,14 +154,18 @@ impl LaunchAtLogin {
     fn platform_enable(&self) -> Result<(), String> {
         use winreg::{enums::HKEY_CURRENT_USER, RegKey};
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let run_key = hkcu
-            .open_subkey_with_flags(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                winreg::enums::KEY_WRITE,
-            )
+        let app = self
+            .app_path
+            .to_str()
+            .ok_or("application path is not valid Unicode")?;
+        if app.contains('"') || app.contains('\0') {
+            return Err("application path contains an invalid character".to_string());
+        }
+        let (run_key, _) = hkcu
+            .create_subkey_with_flags(&self.run_key_path, winreg::enums::KEY_SET_VALUE)
             .map_err(|e| e.to_string())?;
         run_key
-            .set_value("Keylatch", &self.app_path.to_string_lossy().to_string())
+            .set_value("Keylatch", &format!("\"{app}\""))
             .map_err(|e| e.to_string())
     }
 
@@ -162,21 +173,24 @@ impl LaunchAtLogin {
     fn platform_disable(&self) -> Result<(), String> {
         use winreg::{enums::HKEY_CURRENT_USER, RegKey};
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let run_key = hkcu
-            .open_subkey_with_flags(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                winreg::enums::KEY_WRITE,
-            )
-            .map_err(|e| e.to_string())?;
-        let _ = run_key.delete_value("Keylatch");
-        Ok(())
+        let run_key =
+            match hkcu.open_subkey_with_flags(&self.run_key_path, winreg::enums::KEY_SET_VALUE) {
+                Ok(key) => key,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(error) => return Err(error.to_string()),
+            };
+        match run_key.delete_value("Keylatch") {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
     }
 
     #[cfg(target_os = "windows")]
     fn platform_is_enabled(&self) -> bool {
         use winreg::{enums::HKEY_CURRENT_USER, RegKey};
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+        hkcu.open_subkey(&self.run_key_path)
             .and_then(|k| k.get_value::<String, _>("Keylatch"))
             .is_ok()
     }
@@ -187,9 +201,13 @@ impl LaunchAtLogin {
         Err("launch-at-login not supported on this platform".to_string())
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    fn platform_disable(&self) -> Result<(), String> { Ok(()) }
+    fn platform_disable(&self) -> Result<(), String> {
+        Ok(())
+    }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    fn platform_is_enabled(&self) -> bool { false }
+    fn platform_is_enabled(&self) -> bool {
+        false
+    }
 
     // ── Config helpers ────────────────────────────────────────────────────────
 
@@ -212,32 +230,86 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_launch_at_login_default_is_false() {
-        // Per DD-7: default is disabled.
+    fn config_records_disabled_without_changing_os_registration() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("app-config.json");
         let app = PathBuf::from("/usr/local/bin/keylatch-app");
-        let lal = LaunchAtLogin::new(config, app);
-
-        // On the test system, launch-at-login should be disabled by default.
-        // We just verify the config write works.
-        // Actual OS state is tested in integration tests.
-        assert!(lal.disable().is_ok());
+        let lal = LaunchAtLogin::new(config.clone(), app);
+        lal.write_config(false).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(config).unwrap()).unwrap();
+        assert_eq!(saved["launch_at_login"], false);
     }
 
     #[test]
-    fn test_enable_disable_idempotent() {
+    fn repeated_config_updates_preserve_other_settings() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("app-config.json");
         let app = dir.path().join("fake-keylatch-app");
         fs::write(&app, b"").unwrap();
-        let lal = LaunchAtLogin::new(config, app);
+        fs::write(&config, br#"{"theme":"dark"}"#).unwrap();
+        let lal = LaunchAtLogin::new(config.clone(), app);
+        lal.write_config(false).unwrap();
+        lal.write_config(false).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(config).unwrap()).unwrap();
+        assert_eq!(saved["launch_at_login"], false);
+        assert_eq!(saved["theme"], "dark");
+    }
 
-        // Two disable calls should be safe.
-        let _ = lal.disable();
-        let _ = lal.disable();
+    #[cfg(target_os = "windows")]
+    struct IsolatedRegistration {
+        manager: LaunchAtLogin,
+        _dir: tempfile::TempDir,
+    }
+
+    #[cfg(target_os = "windows")]
+    impl Drop for IsolatedRegistration {
+        fn drop(&mut self) {
+            let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+            let _ = hkcu.delete_subkey_all(&self.manager.run_key_path);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn isolated_registration() -> IsolatedRegistration {
+        let dir = tempfile::tempdir().unwrap();
+        let mut manager = LaunchAtLogin::new(
+            dir.path().join("app-config.json"),
+            dir.path().join("App With Spaces").join("keylatch-app.exe"),
+        );
+        manager.run_key_path = format!(
+            "Software\\Keylatch\\Tests\\{}",
+            dir.path().file_name().unwrap().to_str().unwrap()
+        );
+        IsolatedRegistration { manager, _dir: dir }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_registration_handles_absent_key_and_value_idempotently() {
+        let fixture = isolated_registration();
+        let manager = &fixture.manager;
+        assert!(!manager.is_enabled());
+        manager.disable().unwrap();
+        manager.disable().unwrap();
+        manager.enable().unwrap();
+        manager.enable().unwrap();
+        assert!(manager.is_enabled());
+        let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+        let key = hkcu.open_subkey(&manager.run_key_path).unwrap();
+        let command: String = key.get_value("Keylatch").unwrap();
+        assert_eq!(command, format!("\"{}\"", manager.app_path.display()));
+        drop(key);
+        manager.disable().unwrap();
+        manager.disable().unwrap();
+        assert!(!manager.is_enabled());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_registration_rejects_embedded_command_quotes() {
+        let mut fixture = isolated_registration();
+        fixture.manager.app_path = PathBuf::from("bad\" --argument");
+        assert!(fixture.manager.enable().is_err());
+        assert!(!fixture.manager.is_enabled());
     }
 }
-
-use serde_json;
-use tempfile;

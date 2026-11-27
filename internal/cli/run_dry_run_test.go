@@ -225,7 +225,7 @@ func TestRuntimeError_CanonicalFormat(t *testing.T) {
 			err: runner.NewRuntimeError(
 				"SecretNotFound",
 				"openrouter",
-				"direct_brokered",
+				"minted",
 				"no credential found",
 				"",
 				nil,
@@ -233,7 +233,7 @@ func TestRuntimeError_CanonicalFormat(t *testing.T) {
 			contains: []string{
 				"SecretNotFound",
 				"openrouter",
-				"direct_brokered",
+				"minted",
 				"no credential found",
 			},
 		},

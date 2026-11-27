@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -224,28 +223,6 @@ func TestProxyDownCmd_NotRunning(t *testing.T) {
 	}
 	if !bytes.Contains(out.Bytes(), []byte("not running")) {
 		t.Errorf("expected 'not running' in output, got %q", out.String())
-	}
-}
-
-// TestBuildSandboxDoctorOutput_Windows verifies windows reports unavailable.
-func TestBuildSandboxDoctorOutput_Windows(t *testing.T) {
-	out := buildSandboxDoctorOutput("windows")
-	if out.Available {
-		t.Error("windows sandbox should be unavailable")
-	}
-	if out.Platform != "windows" {
-		t.Errorf("platform = %q, want windows", out.Platform)
-	}
-}
-
-// TestBuildSandboxDoctorOutput_Darwin verifies macOS reports available.
-func TestBuildSandboxDoctorOutput_Darwin(t *testing.T) {
-	out := buildSandboxDoctorOutput("darwin")
-	if !out.Available {
-		t.Error("darwin sandbox should be available")
-	}
-	if out.Tool != "sandbox-exec" {
-		t.Errorf("tool = %q, want sandbox-exec", out.Tool)
 	}
 }
 
@@ -543,66 +520,13 @@ func TestProxyStatus_Stale(t *testing.T) {
 	}
 }
 
-// --- gateway up --with-proxy tests ---
-
-// mockProxyStarter is a helper that records whether startProxyWithGateway was called.
-// Since startProxyWithGateway is a package-level function we test the integration via
-// gateway_cmd flags + a pre-existing PID file.
-
-// TestGatewayUp_WithProxy_ProxyAlreadyRunning verifies that --with-proxy is a no-op
-// when the proxy is already running.
-func TestGatewayUp_WithProxy_ProxyAlreadyRunning(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
-
-	// Write a proxy PID file pointing to the current process (simulates running proxy).
-	proxyPID := proxyPIDPathFromDir(dir)
-	if err := gateway.WritePID(proxyPID, os.Getpid()); err != nil {
-		t.Fatalf("WritePID proxy: %v", err)
-	}
-	t.Cleanup(func() { _ = gateway.RemovePID(proxyPID) })
-
-	// We cannot fully run gateway up in a unit test (needs signing key, etc.)
-	// Instead, we verify the proxy liveness check and the no-op path by calling
-	// the relevant helpers directly.
-	env := envForDir(dir)
-	running, _, err := proxyLiveness(env)
-	if err != nil {
-		t.Fatalf("proxyLiveness: %v", err)
-	}
-	if !running {
-		t.Error("expected proxy to be running before gateway up --with-proxy")
-	}
-	// The gateway up RunE checks IsRunning before calling startProxyWithGateway.
-	// If running=true, it prints "already running — skipping" and continues.
-	// This is the no-op path.
-}
-
-// TestSecurityRegression_GatewayWithProxyRejectsUnsupported verifies
-// that startProxyWithGateway (the `gateway up --with-proxy` startup form)
-// refuses immediately — gateway_proxy is unavailable — without binding
-// a listener or writing a PID file.
-func TestSecurityRegression_GatewayWithProxyRejectsUnsupported(t *testing.T) {
-	dir := t.TempDir()
-	port := freePort(t)
-	pidPath := proxyPIDPathFromDir(dir)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	done, err := startProxyWithGateway(ctx, port, pidPath)
-	if !errors.Is(err, ErrProxyUnsupported) {
-		t.Fatalf("expected ErrProxyUnsupported, got: %v", err)
-	}
-	if done != nil {
-		t.Error("expected nil done channel on refusal")
-	}
-
-	if _, statErr := os.Stat(pidPath); !os.IsNotExist(statErr) {
-		t.Error("expected no PID file to be written when proxy is unsupported")
-	}
-	if conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond); dialErr == nil {
-		conn.Close()
-		t.Error("expected no listener; connection to proxy port unexpectedly succeeded")
+// TestGatewayUp_HasNoProxyFlags verifies `gateway up` no longer starts a
+// drop-all proxy listener.
+func TestGatewayUp_HasNoProxyFlags(t *testing.T) {
+	up := newGatewayUpCmd()
+	for _, flag := range []string{"with-proxy", "proxy-port"} {
+		if up.Flags().Lookup(flag) != nil {
+			t.Errorf("gateway up must not define --%s", flag)
+		}
 	}
 }

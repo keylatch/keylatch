@@ -10,7 +10,7 @@ const (
 	// ActionBrokerCacheHit is emitted on a cache hit (no exchange performed).
 	ActionBrokerCacheHit = "broker.cache_hit"
 
-	// ActionDirectRunCredentialAccess is emitted at credential-delivery in direct_classic_sandboxed mode.
+	// ActionDirectRunCredentialAccess is emitted at credential-delivery in a direct run.
 	ActionDirectRunCredentialAccess = "broker.direct_run_credential_access"
 
 	// ActionDirectRunBlocked is emitted when the LLM-session gate blocks a direct run.
@@ -42,7 +42,7 @@ type BrokerCacheHitEvent struct {
 }
 
 // DirectRunCredentialAccessEvent describes a credential-delivery audit event
-// for direct_classic_sandboxed mode. Emitted at the credential-delivery point only.
+// for a direct run. Emitted at the credential-delivery point only.
 type DirectRunCredentialAccessEvent struct {
 	Provider              string `json:"provider"`
 	ActorHMAC             string `json:"actor_hmac"`

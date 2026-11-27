@@ -36,7 +36,10 @@ var forwardedHeaderPrefixes = []string{"anthropic-", "openai-", "x-stainless-"}
 // under an allowed prefix; the gateway injects credentials itself.
 var credentialHeaderWords = []string{"key", "token", "auth", "secret", "cookie", "session", "signature", "password"}
 
-func forwardHeader(name string) bool {
+// forwardHeader reports whether the inbound header name is passed upstream:
+// the built-in allowlist plus the names the template declared in
+// forward_headers. A name that looks like a credential is never passed.
+func forwardHeader(name string, declared []string) bool {
 	lower := strings.ToLower(name)
 	for _, w := range credentialHeaderWords {
 		if strings.Contains(lower, w) {
@@ -45,6 +48,11 @@ func forwardHeader(name string) bool {
 	}
 	if forwardedHeaders[lower] {
 		return true
+	}
+	for _, d := range declared {
+		if strings.EqualFold(d, lower) {
+			return true
+		}
 	}
 	for _, p := range forwardedHeaderPrefixes {
 		if strings.HasPrefix(lower, p) {
@@ -56,9 +64,9 @@ func forwardHeader(name string) bool {
 
 // copyForwardedHeaders copies the allowed inbound headers onto the upstream
 // request.
-func copyForwardedHeaders(dst, src http.Header) {
+func copyForwardedHeaders(dst, src http.Header, declared []string) {
 	for k, vv := range src {
-		if !forwardHeader(k) {
+		if !forwardHeader(k, declared) {
 			continue
 		}
 		for _, v := range vv {

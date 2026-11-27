@@ -2,7 +2,6 @@
 //
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
-//   - runner.OK is checked before returning plaintext.
 package awssm
 
 import (
@@ -18,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -104,10 +102,6 @@ func (b *AWSSecretsManagerBackend) ID() string {
 
 // Get retrieves a secret value from AWS Secrets Manager.
 func (b *AWSSecretsManagerBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	out, err := b.client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(path),
 	})

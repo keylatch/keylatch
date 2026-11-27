@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "keylatch": {
+      "command": "/opt/keylatch/bin/keylatch",
+      "args": [
+        "mcp",
+        "--stdio"
+      ]
+    }
+  }
+}

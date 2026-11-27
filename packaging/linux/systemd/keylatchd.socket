@@ -1,0 +1,17 @@
+[Unit]
+Description=Keylatch broker socket
+Documentation=https://github.com/keylatch/keylatch/blob/main/docs/guides/broker-linux.md
+
+[Socket]
+ListenStream=/run/keylatch/broker.sock
+# Any local user may connect. The daemon identifies each peer through the
+# kernel (SO_PEERCRED and a pidfd) and admits or refuses it itself.
+SocketMode=0666
+DirectoryMode=0755
+SocketUser=keylatch
+SocketGroup=keylatch
+Accept=no
+Service=keylatchd.service
+
+[Install]
+WantedBy=sockets.target

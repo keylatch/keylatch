@@ -10,6 +10,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +19,9 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
+	"github.com/keylatch/keylatch/internal/crypto/kek"
 	"github.com/keylatch/keylatch/internal/llmcontext"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -145,16 +148,47 @@ func TestSetupUnlockBW_PasswordProvided_UnlocksAndCachesSession(t *testing.T) {
 	dispatch.ClearCached()
 	t.Cleanup(dispatch.ClearCached)
 
+	k := testutil.NewKEK(t)
+	orig := bwSessionKEK
+	bwSessionKEK = func(llmcontext.Lookup) (kek.KEK, error) { return k, nil }
+	t.Cleanup(func() { bwSessionKEK = orig })
+
 	var stdout bytes.Buffer
 	c := &cobra.Command{}
 	c.SetOut(&stdout)
 
 	err := setupUnlockBW(c, context.Background(), llmcontext.DefaultLookup)
 	require.NoError(t, err)
-	assert.Contains(t, stdout.String(), "Bitwarden vault unlocked; session cached")
+	assert.Contains(t, stdout.String(), "Bitwarden vault unlocked; session kept sealed")
 
-	cached, ok, loadErr := bw.LoadSession(llmcontext.DefaultLookup)
+	cached, ok, loadErr := bw.LoadSession(llmcontext.DefaultLookup, k)
 	require.NoError(t, loadErr)
-	require.True(t, ok, "session must be cached after a successful unlock")
+	require.True(t, ok, "session must be kept after a successful unlock")
 	assert.Equal(t, "s.fake-session-token-abc123", cached)
+
+	onDisk, err := os.ReadFile(bw.SessionCachePath(llmcontext.DefaultLookup))
+	require.NoError(t, err)
+	assert.NotContains(t, string(onDisk), "s.fake-session-token-abc123", "the stored session is sealed")
+	assert.NoFileExists(t, bw.LegacySessionPath(llmcontext.DefaultLookup))
+}
+
+func TestSetupUnlockBW_VaultKeyUnavailable_FailsWithoutStoringAnything(t *testing.T) {
+	writeFakeBWUnlock(t, "s.fake-session-token-def456")
+	withFakePromptHidden(t, []byte("correct-horse-battery-staple"), nil)
+
+	configDir := t.TempDir()
+	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
+	t.Setenv("KEYLATCH_BW_SESSION_DIR", filepath.Join(configDir, "sessions"))
+	dispatch.ClearCached()
+	t.Cleanup(dispatch.ClearCached)
+	orig := bwSessionKEK
+	bwSessionKEK = func(llmcontext.Lookup) (kek.KEK, error) { return nil, errors.New("no keyring") }
+	t.Cleanup(func() { bwSessionKEK = orig })
+
+	c := &cobra.Command{}
+	err := setupUnlockBW(c, context.Background(), llmcontext.DefaultLookup)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "vault key")
+	assert.NoFileExists(t, bw.SessionCachePath(llmcontext.DefaultLookup))
+	assert.NoFileExists(t, bw.LegacySessionPath(llmcontext.DefaultLookup))
 }

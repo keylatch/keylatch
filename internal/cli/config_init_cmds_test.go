@@ -73,7 +73,7 @@ func TestSetField_RejectsUnsupportedKinds(t *testing.T) {
 
 	err = setField(&cfg, "telemetry", "on")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "type not supported")
+	assert.Contains(t, err.Error(), `unknown config key "telemetry"`)
 
 	err = setField(&cfg, "nope", "x")
 	require.Error(t, err)

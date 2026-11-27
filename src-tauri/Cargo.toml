@@ -1,6 +1,6 @@
 [package]
 name = "keylatch-app"
-version = "0.9.9"
+version = "0.0.0"
 edition = "2021"
 description = "Keylatch desktop shell — Tauri v2 thin shell over the Go sidecar"
 authors = ["Keylatch Contributors"]
@@ -30,6 +30,9 @@ tokio = { version = "1", features = ["full"] }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Parse broker approval expiry timestamps.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 # HMAC-SHA256 IPC authentication
 hmac = "0.12"
@@ -74,6 +77,8 @@ libc = "0.2"
 # Windows registry access (launch-at-login)
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+uds_windows = "1.2.1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Pipes"] }
 
 [features]
 default = ["custom-protocol"]

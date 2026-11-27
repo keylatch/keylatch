@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package trust provides the `trust` and `shared-secret` CLI subcommand groups.
 //
 // This is the beachhead extraction from internal/cli, implementing

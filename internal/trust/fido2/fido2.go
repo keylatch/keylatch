@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package fido2 implements a trust.RootOfTrust adapter backed by a FIDO2/WebAuthn token.
 // Integration tests require a real FIDO2 device and are gated by KEYLATCH_E2E_FIDO2=1.
 //

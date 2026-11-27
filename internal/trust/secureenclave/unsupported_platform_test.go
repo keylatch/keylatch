@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build experimental && !darwin
 
 package secureenclave
 

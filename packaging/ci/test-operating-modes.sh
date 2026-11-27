@@ -64,6 +64,7 @@ export KEYLATCH_CONFIG_DIR="$TMPDIR/config"
 mkdir -p "$KEYLATCH_CONFIG_DIR"
 
 log "Bootstrapping test config (file backend)..."
+bash "$(dirname "${BASH_SOURCE[0]}")/../../scripts/ci-operator-config.sh"
 "$KEYLATCH_BIN" bootstrap --backend file --data-dir "$TMPDIR/vault" 2>/dev/null || true
 
 # Write a minimal config with the anthropic provider set up as a stub.

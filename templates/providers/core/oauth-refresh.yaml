@@ -1,0 +1,57 @@
+provider: oauth-refresh
+display_name: OAuth 2.0 refresh token
+category: identity
+description: "Any OAuth 2.0 provider with a refresh-token grant (Google, Microsoft, Slack and others). keylatch run --runtime minted refreshes an access token limited to the scopes in the connection's mint.oauth policy; the refresh token and client secret stay in Keylatch."
+docs_url: https://datatracker.ietf.org/doc/html/rfc6749#section-6
+
+secret_fields:
+  - name: refresh_token
+    label: Refresh token
+    description: "Supply with -f refresh_token=@- ; never on the command line."
+    required: true
+    sensitive: true
+    secret_kind: refresh_token
+  - name: client_secret
+    label: OAuth client secret
+    description: "Supply with -f client_secret=@- ; never on the command line."
+    required: true
+    sensitive: true
+    secret_kind: client_secret
+
+config_fields:
+  - name: client_id
+    label: OAuth client ID
+    required: true
+
+auth_flow: custom
+
+storage_path_tpl: "{{.Namespace}}/identity/oauth-refresh/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: minted
+  supported:
+    - minted
+  runtime_reason: "The command receives an access token limited to the scopes in the connection's mint.oauth policy. The provider decides the token lifetime; a token longer than the policy's max_ttl is refused. The refresh token and client secret never reach the command."
+  gateway_supported: false
+
+minted_fields:
+  - access_token
+
+injection_rules:
+  - env_var: OAUTH_ACCESS_TOKEN
+    source: access_token
+
+allowed_command_prefixes:
+  - "curl"
+  - "python3"
+  - "node"
+
+capabilities:
+  - name: tokens.mint
+    description: Refresh an access token limited to a scope subset
+
+deny_routes:
+  - "/token"
+  - "/oauth2/**"
+  - "/*/oauth2/**"

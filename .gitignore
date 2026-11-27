@@ -1,6 +1,6 @@
 # Go build artifacts
-keylatch
-keylatchd
+/keylatch
+/keylatchd
 release-manifest
 *.test
 *.out

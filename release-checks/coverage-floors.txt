@@ -21,7 +21,6 @@ internal/llmcontext 85
 internal/backend/... 85
 internal/gateway/... 85
 internal/broker/... 85
-internal/team/approval 85
 internal/policy/... 85
 internal/crypto/... 85
 internal/audit/... 85
@@ -33,3 +32,10 @@ internal/ui/csrf 85
 cmd/keylatch exempt main package
 cmd/keylatchd exempt main package
 packaging/release-manifest exempt main package
+cmd/docker-credential-keylatch exempt main package
+cmd/keylatch-relay exempt main package
+
+# Test helpers: fakes imported only by other packages' tests.
+internal/ci/citest exempt test helper
+internal/mintsession/mintsessiontest exempt test helper
+internal/presence/presencetest exempt test helper

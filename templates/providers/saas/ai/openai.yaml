@@ -87,6 +87,24 @@ redaction:
   - pattern: 'sk-[A-Za-z0-9_\-]{32,}'
     replacement: "****"
 
+hosts:
+  - "api.openai.com"
+
+slots:
+  - field: api_key
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "api.openai.com"
+
+placeholder_shape:
+  prefix: "sk-proj-"
+  min_length: 51
+
+env_class:
+  default: prod
+
 test_strategy:
   kind: http_get
   endpoint: https://api.openai.com/v1/models

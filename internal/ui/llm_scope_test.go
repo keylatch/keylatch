@@ -72,7 +72,6 @@ func TestLLMSession_WriteEndpoints404(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/connections"},
 		{http.MethodDelete, "/api/connections/test"},
-		{http.MethodPost, "/api/gateway/tokens"},
 	}
 
 	for _, ep := range writeEndpoints {

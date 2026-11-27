@@ -18,6 +18,7 @@ import (
 	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/policy"
+	"github.com/keylatch/keylatch/internal/policy/enforce"
 )
 
 // writeTestPolicy writes p to a fresh temp file with the 0600 permissions
@@ -47,107 +48,66 @@ func policyEventsSince(t *testing.T, l *audit.Logger) []audit.Event {
 	return out
 }
 
-// TestHandler_Policy_NotConfigured_PassThrough verifies that when
-// ServerOptions.PolicyPath is unset, Step 6 stays pass-through: the request
-// proceeds past the policy check to the vault lookup exactly as it did
-// before wiring (surfacing credential_not_found, not policy_denied).
-func TestHandler_Policy_NotConfigured_PassThrough(t *testing.T) {
-	key := make([]byte, 32)
-	rand.Read(key) //nolint:errcheck
-	dir := t.TempDir()
-	storePath := filepath.Join(dir, "tokens.json")
+// TestMissingPolicyDenies verifies that a gateway with no policy denies every
+// request, whether PolicyPath is unset (the process's own policy locations
+// apply) or points at a file that does not exist, and says how to fix it.
+func TestMissingPolicyDenies(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		policyPath func(dir string) string
+	}{
+		{"policy path unset", func(string) string { return "" }},
+		{"policy file missing", func(dir string) string { return filepath.Join(dir, "does-not-exist", "policy.json") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := make([]byte, 32)
+			rand.Read(key) //nolint:errcheck
+			dir := t.TempDir()
+			storePath := filepath.Join(dir, "tokens.json")
+			// The unset case falls back to the process default, which reads
+			// the config directory; point it at an empty one.
+			t.Setenv("KEYLATCH_CONFIG_DIR", dir)
+			t.Setenv("KEYLATCH_POLICY_PATH", "")
+			t.Cleanup(enforce.SetDefault(nil))
 
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        "actor",
-		Capabilities: []string{"openrouter.chat.completion"},
-		TTL:          1 * time.Hour,
-		SigningKey:   key,
-		StorePath:    storePath,
-	})
-	if err != nil {
-		t.Fatalf("Mint: %v", err)
+			jwtStr, _, err := token.Mint(token.TokenSpec{
+				Actor:        "actor",
+				Capabilities: []string{"openrouter.chat.completion"},
+				TTL:          1 * time.Hour,
+				SigningKey:   key,
+				StorePath:    storePath,
+			})
+			if err != nil {
+				t.Fatalf("Mint: %v", err)
+			}
+
+			port := freePort(t)
+			srv, err := gateway.New(gateway.ServerOptions{
+				Bind:           fmt.Sprintf("127.0.0.1:%d", port),
+				SigningKey:     key,
+				ApprovalsDir:   filepath.Join(dir, "approvals"),
+				TokenStorePath: storePath,
+				Env:            llmcontext.DefaultLookup,
+				Vault:          &stubVaultReader{values: map[string][]byte{}},
+				PolicyPath:     tc.policyPath(dir),
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go srv.Serve(ctx) //nolint:errcheck
+			time.Sleep(100 * time.Millisecond)
+
+			resp := doGatewayRequest(t, port, jwtStr, "/api/openrouter/chat.completion", "{}")
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "policy_denied") ||
+				!strings.Contains(string(body), "no policy for openrouter: run `keylatch policy init`") {
+				t.Fatalf("expected 403 policy_denied with the init hint, got %d (body: %s)", resp.StatusCode, body)
+			}
+		})
 	}
-
-	// An empty (always-ErrNotFound) vault stub. Without this, s.vault is nil
-	// and the handler falls through to a REAL upstream HTTP call — Vault
-	// must always be set in gateway tests to keep them offline.
-	vault := &stubVaultReader{values: map[string][]byte{}}
-
-	port := freePort(t)
-	srv, err := gateway.New(gateway.ServerOptions{
-		Bind:           fmt.Sprintf("127.0.0.1:%d", port),
-		SigningKey:     key,
-		ApprovalsDir:   filepath.Join(dir, "approvals"),
-		TokenStorePath: storePath,
-		Env:            llmcontext.DefaultLookup,
-		Vault:          vault,
-		// PolicyPath intentionally unset.
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go srv.Serve(ctx) //nolint:errcheck
-	time.Sleep(100 * time.Millisecond)
-
-	resp := doGatewayRequest(t, port, jwtStr, "/api/openrouter/chat.completion", "{}")
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 401 credential_not_found (policy pass-through), got %d (body: %s)", resp.StatusCode, body)
-	}
-	assertErrorCode(t, resp, "credential_not_found")
-}
-
-// TestHandler_Policy_MissingFile_PassThrough verifies that a PolicyPath
-// pointing at a not-yet-created file is treated the same as "not
-// configured" — the server starts and Step 6 stays pass-through, rather
-// than failing to start or defaulting to deny.
-func TestHandler_Policy_MissingFile_PassThrough(t *testing.T) {
-	key := make([]byte, 32)
-	rand.Read(key) //nolint:errcheck
-	dir := t.TempDir()
-	storePath := filepath.Join(dir, "tokens.json")
-
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        "actor",
-		Capabilities: []string{"openrouter.chat.completion"},
-		TTL:          1 * time.Hour,
-		SigningKey:   key,
-		StorePath:    storePath,
-	})
-	if err != nil {
-		t.Fatalf("Mint: %v", err)
-	}
-
-	vault := &stubVaultReader{values: map[string][]byte{}}
-
-	port := freePort(t)
-	srv, err := gateway.New(gateway.ServerOptions{
-		Bind:           fmt.Sprintf("127.0.0.1:%d", port),
-		SigningKey:     key,
-		ApprovalsDir:   filepath.Join(dir, "approvals"),
-		TokenStorePath: storePath,
-		Env:            llmcontext.DefaultLookup,
-		Vault:          vault,
-		PolicyPath:     filepath.Join(dir, "does-not-exist", "policy.json"),
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go srv.Serve(ctx) //nolint:errcheck
-	time.Sleep(100 * time.Millisecond)
-
-	resp := doGatewayRequest(t, port, jwtStr, "/api/openrouter/chat.completion", "{}")
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 401 credential_not_found (policy pass-through), got %d (body: %s)", resp.StatusCode, body)
-	}
-	assertErrorCode(t, resp, "credential_not_found")
 }
 
 // TestGatewayNew_PolicyLoad_MalformedFails verifies that a configured

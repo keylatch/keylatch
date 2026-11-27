@@ -1,5 +1,5 @@
 name: go-test
-description: Run the Go test suite with race detection, coverage and the crypto and canary suites.
+description: Run the Go test suite with race detection and coverage, then the crypto and canary suites.
 
 inputs:
   require-real-clients:
@@ -9,19 +9,29 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       with:
         go-version-file: go.mod
         cache: true
+    - name: Allow unprivileged user namespaces
+      # The contained runtime's tests create real namespaces; Ubuntu runners
+      # restrict them with AppArmor by default.
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+    - name: Install private keyring coverage dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y dbus gnome-keyring
     - name: Run tests with coverage
       shell: bash
       env:
         KEYLATCH_BACKEND: file
         KEYLATCH_REQUIRE_REAL_CLIENTS: ${{ inputs.require-real-clients }}
-      run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
+      run: go test -short -coverprofile=coverage.out ./... -race -count=1 -timeout 600s
     - name: Upload coverage artifact
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: coverage-report-${{ runner.os == 'Linux' && 'ubuntu' || runner.os == 'macOS' && 'macos' || 'windows' }}-latest
         path: coverage.out

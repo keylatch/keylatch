@@ -42,11 +42,9 @@ func TestInjectCommandNotRegistered(t *testing.T) {
 }
 
 // TestDirectClassicNotInAllModes verifies that direct_classic is absent from
-// runtime.AllModes. direct_classic_sandboxed is intentionally
-// present — it was reinstated as a new sibling mode.
+// runtime.AllModes, as is direct_classic_sandboxed.
 func TestDirectClassicNotInAllModes(t *testing.T) {
-	// Only direct_classic is permanently removed; direct_classic_sandboxed is active.
-	forbidden := []runtime.RuntimeMode{"direct_classic"}
+	forbidden := []runtime.RuntimeMode{"direct_classic", "direct_classic_sandboxed"}
 	for _, mode := range forbidden {
 		for _, m := range runtime.AllModes {
 			if m == mode {

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "kind": "policy",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": false,
+    "rule_count": 0
+  },
+  "callers": [
+    {
+      "actor": "human-shell",
+      "caller_kind": "human",
+      "connections": [
+        {
+          "connection": "nope",
+          "known": false,
+          "hosts": [],
+          "tiers": [
+            {
+              "tier": "D1",
+              "tier_name": "typed_action",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "connection is not known"
+            },
+            {
+              "tier": "D2",
+              "tier_name": "gateway_session",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "connection is not known"
+            },
+            {
+              "tier": "D3",
+              "tier_name": "placeholder_substitution",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "connection is not known"
+            },
+            {
+              "tier": "D4",
+              "tier_name": "protocol_adapter",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "connection is not known"
+            },
+            {
+              "tier": "D5",
+              "tier_name": "contained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "connection is not known"
+            },
+            {
+              "tier": "D6",
+              "tier_name": "uncontained_raw",
+              "status": "unavailable",
+              "runtime": "",
+              "restricted": false,
+              "why": "connection is not known"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": []
+}

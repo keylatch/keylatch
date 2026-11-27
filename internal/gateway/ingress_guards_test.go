@@ -104,7 +104,7 @@ func TestStripPort(t *testing.T) {
 
 func TestAuthBlocker_AllowSelfAuthPassesCredentialParams(t *testing.T) {
 	var called bool
-	h := authBlockerMiddleware(scOKHandler(&called), true)
+	h := authBlockerMiddleware(scOKHandler(&called), true, 0)
 	req := httptest.NewRequest(http.MethodGet, "/api/x?api_key=abc", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -113,7 +113,7 @@ func TestAuthBlocker_AllowSelfAuthPassesCredentialParams(t *testing.T) {
 	}
 
 	called = false
-	h = authBlockerMiddleware(scOKHandler(&called), false)
+	h = authBlockerMiddleware(scOKHandler(&called), false, 0)
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/x?api_key=abc", nil))
 	if called || rr.Code != http.StatusForbidden {
@@ -156,7 +156,7 @@ func TestUntrustedWriteGate_PathHeuristicOnSafeMethod(t *testing.T) {
 }
 
 func scGate(allow map[string][]string, deny ...string) *SSRFGate {
-	g := &SSRFGate{allowedBaseURLs: allow}
+	g := &SSRFGate{allowedBaseURLs: allow, lookup: net.LookupHost}
 	for _, cidr := range deny {
 		_, n, err := net.ParseCIDR(cidr)
 		if err != nil {

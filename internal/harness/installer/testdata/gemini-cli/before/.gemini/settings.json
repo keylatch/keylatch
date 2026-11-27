@@ -1,0 +1,22 @@
+{
+  "theme": "dark",
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "write_file",
+        "hooks": [
+          {"type": "command", "name": "my-audit", "command": "/home/dev/bin/my-audit.sh", "timeout": 5000}
+        ]
+      },
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {"type": "command", "command": "/home/dev/.keylatch/hooks/block-keylatch-exfiltration.sh --harness gemini"}
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "other-server": {"command": "npx", "args": ["other-server"]}
+  }
+}

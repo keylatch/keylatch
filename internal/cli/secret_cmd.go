@@ -133,8 +133,8 @@ func injectionFromFlags(header, query, basic string) (customsecret.Injection, er
 	return customsecret.Injection{Kind: customsecret.InjectBasic, Name: basic}, nil
 }
 
-// readSecretValue reads the value from a pipe, or prompts without echo on a terminal.
-func readSecretValue(c *cobra.Command) ([]byte, error) {
+// readCustomSecretValue reads the value from a pipe, or prompts without echo on a terminal.
+func readCustomSecretValue(c *cobra.Command) ([]byte, error) {
 	if stdinIsTTY() {
 		return promptHidden("Enter secret value")
 	}

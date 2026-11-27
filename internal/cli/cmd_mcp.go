@@ -11,7 +11,6 @@ import (
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	keylatchmcp "github.com/keylatch/keylatch/internal/mcp"
-	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/spf13/cobra"
 )
 
@@ -42,6 +41,7 @@ func newMCPCmd() *cobra.Command {
 				Transport: transport,
 				Bind:      bind,
 				StderrLog: true,
+				Explain:   mcpExplain,
 			})
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
@@ -58,14 +58,16 @@ func newMCPCmd() *cobra.Command {
 				syscall.SIGTERM, os.Interrupt)
 			defer cancel()
 
-			drivers, err := newGatewayDrivers(llmcontext.DefaultLookup, "")
-			if err != nil {
-				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
-				os.Exit(exitcode.UserError)
+			// keylatch_run needs a runtime and a writable audit log; without
+			// them the tool refuses and the rest of the server still works.
+			dispatch, closeDispatch, dispatchErr := newMCPDispatcher()
+			if dispatchErr != nil {
+				fmt.Fprintf(c.ErrOrStderr(), "keylatch mcp: keylatch_run is disabled: %v\n", dispatchErr)
+			} else {
+				defer closeDispatch()
 			}
-			dispatcher := runner.DispatchRunner{Guard: runtimeGuard(), Drivers: drivers}
 
-			if err := s.Serve(ctx, store, dispatcher); err != nil {
+			if err := s.Serve(ctx, store, dispatch); err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
 				os.Exit(exitcode.OperationFailed)
 			}
@@ -75,5 +77,6 @@ func newMCPCmd() *cobra.Command {
 	// --unsafe-bind-all is explicitly NOT registered here.
 	cmd.Flags().Bool("stdio", false, "use stdio transport (default)")
 	cmd.Flags().Int("port", 0, "TCP port to listen on (127.0.0.1 only)")
+	cmd.AddCommand(newMCPProxyCmd())
 	return cmd
 }

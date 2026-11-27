@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package review implements access review workflows.
 package review
 

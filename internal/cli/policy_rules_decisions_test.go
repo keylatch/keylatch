@@ -164,7 +164,7 @@ func TestPolicyCheck_Decisions(t *testing.T) {
 	rules := []policy.Rule{
 		{ID: "plain", Actor: "ci", Connections: []string{"openai"}, Capabilities: []string{"inject"}},
 		{ID: "needs-approval", Actor: "ci", Connections: []string{"github"}, Capabilities: []string{"inject"}, Approval: true},
-		{ID: "cmd", Actor: "ci", Connections: []string{"stripe"}, Capabilities: []string{"inject"}, Commands: []string{"curl"}},
+		{ID: "cmd", Actor: "ci", Connections: []string{"stripe"}, Capabilities: []string{"inject"}, Commands: []string{"curl *"}},
 	}
 
 	t.Run("default deny when nothing matches", func(t *testing.T) {

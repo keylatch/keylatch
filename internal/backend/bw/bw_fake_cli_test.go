@@ -31,6 +31,7 @@ func bkBWFakeCLI(t *testing.T) (dir, argvLog, envLog string) {
 printf '%s\n' "$@" >> "` + argvLog + `"
 printf '%s\n' "${BW_SESSION:-<unset>}" >> "` + envLog + `"
 case "$1" in
+  config) printf 'https://vw.example.test\n' ;;
   get) printf '{"id":"it-9","name":"%s","fields":[{"name":"api_key","value":"from-fake-cli","type":1}]}' "$3" ;;
   *) echo "unexpected" >&2; exit 2 ;;
 esac
@@ -69,7 +70,7 @@ func TestBWFactory_FakeCLIOnPath_SessionViaEnvOnly(t *testing.T) {
 
 			argv, err := os.ReadFile(argvLog)
 			require.NoError(t, err)
-			assert.Equal(t, "get\nitem\nsvc\n", string(argv))
+			assert.Equal(t, "config\nserver\nget\nitem\nsvc\n", string(argv))
 			assert.NotContains(t, string(argv), session)
 			assert.NotContains(t, string(argv), "--session")
 		})

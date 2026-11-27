@@ -105,13 +105,22 @@ func mergeJSON(path, content string) error {
 	// Deep-merge JSON.
 	var existingMap, newMap map[string]interface{}
 	if err := json.Unmarshal(existing, &existingMap); err != nil {
-		// Existing file is not valid JSON; overwrite.
-		return os.WriteFile(path, []byte(content), 0o600)
+		// Preserve existing settings and account state on malformed input.
+		return fmt.Errorf("agent: parse existing config: %w", err)
 	}
 	if err := json.Unmarshal([]byte(content), &newMap); err != nil {
 		return fmt.Errorf("agent: parse new content: %w", err)
 	}
 
+	// A server registration is an atomic transport configuration. Retaining
+	// an old URL/type/env alongside a new stdio command can break or redirect it.
+	if incoming, ok := newMap["mcpServers"].(map[string]interface{}); ok {
+		if _, replacing := incoming["keylatch"]; replacing {
+			if existing, ok := existingMap["mcpServers"].(map[string]interface{}); ok {
+				delete(existing, "keylatch")
+			}
+		}
+	}
 	merged := deepMerge(existingMap, newMap)
 	mergedData, err := json.MarshalIndent(merged, "", " ")
 	if err != nil {

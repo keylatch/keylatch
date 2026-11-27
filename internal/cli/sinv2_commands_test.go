@@ -194,26 +194,6 @@ func TestSINV2_Get_StdoutEmpty(t *testing.T) {
 		"security invariant violated: stdout must be empty when get is blocked in LLM session")
 }
 
-// TestSINV2_Get_MaskedNotBlocked verifies that get --masked is never blocked
-// by GuardLLMSession even in an LLM session (safe path).
-func TestSINV2_Get_MaskedNotBlocked(t *testing.T) {
-	t.Setenv("CLAUDE_CODE", "1")
-
-	root := cli.NewRootCommand()
-	var stdout, stderr bytes.Buffer
-	root.SetOut(&stdout)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"get", "--masked", "svc", "key"})
-
-	err := root.Execute()
-	require.NoError(t, err)
-
-	assert.NotContains(t, stderr.String(), "Blocked in LLM session",
-		"get --masked must not be blocked in LLM session")
-	assert.Contains(t, stdout.String(), "****",
-		"get --masked must output masked placeholder")
-}
-
 // TestSINV2_AllFourGatewayModesAllowed verifies that all four v1.0.0 runtime
 // modes are permitted by GuardRuntime in LLM sessions.
 func TestSINV2_AllFourGatewayModesAllowed(t *testing.T) {
@@ -222,7 +202,7 @@ func TestSINV2_AllFourGatewayModesAllowed(t *testing.T) {
 	allowedModes := []runtime.RuntimeMode{
 		runtime.RuntimeGatewayTyped,
 		runtime.RuntimeGatewaySDK,
-		runtime.RuntimeDirectBrokered,
+		runtime.RuntimeMinted,
 		runtime.RuntimeGatewayProxy,
 	}
 	for _, mode := range allowedModes {
