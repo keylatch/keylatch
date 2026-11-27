@@ -41,10 +41,10 @@ import (
 // One client is created per provider at server startup (gap P1): this enables
 // TLS session reuse and connection pooling across requests to the same host.
 //
-// Redirects are never followed: the injected credential belongs to the
-// validated host, so a 3xx answer is returned to the caller unchanged instead
-// of being chased with the credential attached. The dialer connects only to
-// the addresses the SSRF gate checked for the request.
+// Only same-origin HTTPS redirects are followed: the injected credential
+// belongs to the validated host, so any other 3xx answer is returned to the
+// caller unchanged instead of being chased with the credential attached. The
+// dialer connects only to the addresses the SSRF gate checked for the request.
 func newProviderHTTPClient() *http.Client {
 	transport := &http.Transport{
 		DialContext: pinnedDialContext((&net.Dialer{
@@ -55,11 +55,19 @@ func newProviderHTTPClient() *http.Client {
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	return &http.Client{
-		Transport:     transport,
-		Timeout:       25 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	return &http.Client{Transport: transport, Timeout: 25 * time.Second, CheckRedirect: providerRedirectPolicy}
+}
+
+// providerRedirectPolicy follows only same-origin HTTPS redirects so injected credentials never leave the SSRF-validated host.
+func providerRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("gateway: stopped after 10 redirects")
 	}
+	orig := via[0].URL
+	if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Host, orig.Host) {
+		return http.ErrUseLastResponse
+	}
+	return nil
 }
 
 // Mode describes how the gateway runs.

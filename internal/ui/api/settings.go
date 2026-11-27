@@ -192,6 +192,17 @@ func (s *SettingsStore) SetApprovalPolicy(policy ApprovalPolicyValue) (ApprovalP
 // SettingsHandler handles GET /api/settings and PUT /api/settings.
 type SettingsHandler struct {
 	Store *SettingsStore
+	once  sync.Once
+}
+
+// store returns Store, creating one that lives as long as the handler when unset.
+func (h *SettingsHandler) store() *SettingsStore {
+	h.once.Do(func() {
+		if h.Store == nil {
+			h.Store = NewSettingsStore()
+		}
+	})
+	return h.Store
 }
 
 // settingsResponse is the JSON shape returned by GET and PUT.
@@ -214,11 +225,7 @@ type settingsPutRequest struct {
 }
 
 func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	store := h.Store
-	if store == nil {
-		// Fallback: ephemeral in-handler store (never shared; useful in tests).
-		store = NewSettingsStore()
-	}
+	store := h.store()
 
 	switch r.Method {
 	case http.MethodGet:
@@ -245,6 +252,14 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request: at least one settings field is required", http.StatusBadRequest)
 			return
 		}
+		if req.OperatingMode != nil && !validOperatingModes[*req.OperatingMode] {
+			http.Error(w, "bad request: invalid operating_mode value", http.StatusBadRequest)
+			return
+		}
+		if req.ApprovalPolicy != nil && !validApprovalPolicies[*req.ApprovalPolicy] {
+			http.Error(w, "bad request: invalid approval_policy value", http.StatusBadRequest)
+			return
+		}
 		ttl, max := store.GetTTL()
 		if req.ApprovalTTLSeconds != nil {
 			ttl, max = store.SetTTL(*req.ApprovalTTLSeconds)
@@ -255,12 +270,7 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		operatingMode := store.GetOperatingMode()
 		if req.OperatingMode != nil {
-			stored, ok := store.SetOperatingMode(*req.OperatingMode)
-			if !ok {
-				http.Error(w, "bad request: invalid operating_mode value", http.StatusBadRequest)
-				return
-			}
-			operatingMode = stored
+			operatingMode, _ = store.SetOperatingMode(*req.OperatingMode)
 		}
 		experimental := store.GetExperimental()
 		if req.Experimental != nil {
@@ -268,12 +278,7 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		approvalPolicy := store.GetApprovalPolicy()
 		if req.ApprovalPolicy != nil {
-			stored, ok := store.SetApprovalPolicy(*req.ApprovalPolicy)
-			if !ok {
-				http.Error(w, "bad request: invalid approval_policy value", http.StatusBadRequest)
-				return
-			}
-			approvalPolicy = stored
+			approvalPolicy, _ = store.SetApprovalPolicy(*req.ApprovalPolicy)
 		}
 		writeJSON(w, settingsResponse{
 			ApprovalTTLSeconds:    ttl,

@@ -11,25 +11,40 @@ type stubRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// The production gateway HTTP client never follows a redirect, so a custom
-// auth header is not forwarded to a different host.
+// Redirects are followed only within the same HTTPS origin, so a custom auth
+// header is never forwarded to a different host or a downgraded scheme.
 func TestSecurityRegression_GatewayRedirect(t *testing.T) {
-	c := newProviderHTTPClient()
-	escaped := false
-	c.Transport = stubRoundTripper(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host == "allowed.invalid" {
-			return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{"http://outside.invalid/leak"}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
-		}
-		escaped = r.Header.Get("X-Api-Key") == "synthetic-audit-key"
-		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
-	})
-	r, _ := http.NewRequest("GET", "https://allowed.invalid/", nil)
-	r.Header.Set("X-Api-Key", "synthetic-audit-key")
-	resp, e := c.Do(r)
-	if e == nil {
-		resp.Body.Close()
+	tests := []struct {
+		name       string
+		location   string
+		wantFollow bool
+	}{
+		{name: "cross-host https to https", location: "https://outside.invalid/leak"},
+		{name: "cross-host https to http", location: "http://outside.invalid/leak"},
+		{name: "same-host https to http downgrade", location: "http://allowed.invalid/leak"},
+		{name: "same-host https to https", location: "https://allowed.invalid/next", wantFollow: true},
 	}
-	if escaped {
-		t.Fatal("production gateway HTTP client forwarded custom credential on cross-host HTTPS-to-HTTP redirect")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newProviderHTTPClient()
+			followed := false
+			c.Transport = stubRoundTripper(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/" {
+					return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{tc.location}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+				}
+				followed = r.Header.Get("X-Api-Key") == "synthetic-audit-key"
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
+			})
+			r, _ := http.NewRequest("GET", "https://allowed.invalid/", nil)
+			r.Header.Set("X-Api-Key", "synthetic-audit-key")
+			resp, err := c.Do(r)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			resp.Body.Close()
+			if followed != tc.wantFollow {
+				t.Fatalf("redirect followed with credential = %v, want %v", followed, tc.wantFollow)
+			}
+		})
 	}
 }

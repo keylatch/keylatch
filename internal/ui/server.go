@@ -58,7 +58,7 @@ type ServerOptions struct {
 	// If empty, the no-secret variant is used (test/demo mode only).
 	IPCSecret string
 
-	// SettingsStore holds server-validated settings (optional; nil → ephemeral default per-request).
+	// SettingsStore holds server-validated settings (optional; nil → one store for the server's lifetime).
 	// approval TTL is server-validated and clamped server-side.
 	SettingsStore *api.SettingsStore
 
@@ -215,14 +215,14 @@ func (s *Server) registerRoutes() {
 	}
 	s.mux.HandleFunc("/api/status", s.requireSession(statusHandler.ServeHTTP))
 
-	// Settings endpoint: approval TTL with server-side clamping.
-	// Session required; CSRF required for PUT (mutations).
-	settingsHandler := &api.SettingsHandler{Store: s.opts.SettingsStore}
-	s.mux.HandleFunc("/api/settings", s.requireSession(csrf.Middleware(settingsHandler).ServeHTTP))
-
-	// LLM-scope ceiling: write endpoints are NOT mounted when scope is ScopeStatusOnly.
+	// LLM-scope ceiling: settings and write endpoints are NOT mounted when scope is ScopeStatusOnly.
 	// They return 404 (not 403) to avoid leaking route information to LLM sessions.
 	if s.opts.Scope > ScopeStatusOnly {
+		// Settings endpoint: approval TTL with server-side clamping.
+		// Session required; CSRF required for PUT (mutations).
+		settingsHandler := &api.SettingsHandler{Store: s.opts.SettingsStore}
+		s.mux.HandleFunc("/api/settings", s.requireSession(csrf.Middleware(settingsHandler).ServeHTTP))
+
 		// Connections (read + write, CSRF-protected).
 		connectionsHandler := &api.ConnectionsHandler{
 			Store:       s.opts.Store,

@@ -291,6 +291,24 @@ func TestSettings_InvalidApprovalPolicyReturns400(t *testing.T) {
 	}
 }
 
+// TestSettings_RejectedPutLeavesStoreUnchanged verifies that a PUT rejected
+// for an invalid field does not apply its valid fields.
+func TestSettings_RejectedPutLeavesStoreUnchanged(t *testing.T) {
+	store := api.NewSettingsStore()
+	h := &api.SettingsHandler{Store: store}
+
+	body, _ := json.Marshal(map[string]interface{}{"approval_policy": "always_yes", "experimental": true})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", rec.Code)
+	}
+	if store.GetExperimental() {
+		t.Error("store changed by rejected PUT")
+	}
+}
+
 // TestSettings_ExperimentalRoundTrip verifies that the experimental field
 // persists correctly.
 func TestSettings_ExperimentalRoundTrip(t *testing.T) {
