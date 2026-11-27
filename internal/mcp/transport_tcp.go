@@ -16,7 +16,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/keylatch/keylatch/internal/connections"
-	"github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // maxBearerTokenTTL is the maximum TTL for bearer legacy tokens (1 hour).
@@ -134,7 +134,7 @@ func generateNonce() (string, error) {
 // not yet speak the MCP protocol over them. The official SDK server is
 // constructed for RegisterTools but no SDK transport is attached to the
 // net.Listener. Full MCP-over-TCP is deferred to a future phase.
-func (s *Server) ServeTCP(ctx context.Context, store connections.Store, runner exec.CommandRunner) error {
+func (s *Server) ServeTCP(ctx context.Context, store connections.Store, d runner.Dispatcher) error {
 	if s.opts.Transport != TransportTCP {
 		return fmt.Errorf("mcp: ServeTCP called with transport %q", s.opts.Transport)
 	}
@@ -159,7 +159,7 @@ func (s *Server) ServeTCP(ctx context.Context, store connections.Store, runner e
 		},
 		nil,
 	)
-	RegisterTools(srv, store, runner)
+	RegisterTools(srv, store, d)
 
 	// Assert exactly five tools are registered (mirrors ServeStdio).
 	if len(registeredTools) != 5 {

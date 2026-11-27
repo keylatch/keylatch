@@ -12,7 +12,6 @@ import (
 
 	"github.com/keylatch/keylatch/internal/audit"
 	"github.com/keylatch/keylatch/internal/canary"
-	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/registry"
 	"github.com/keylatch/keylatch/internal/runtime"
 )
@@ -107,18 +106,12 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 		cap = tmpl.Provider + ".*"
 	}
 
-	jwtStr, _, err := token.Mint(token.TokenSpec{
-		Actor:        actor,
-		Capabilities: []string{cap},
-		TTL:          ttl,
-		LLMSession:   false,
-		SigningKey:   d.key,
-		StorePath:    d.store,
-	})
+	jwtStr, revoke, err := mintChildToken(req, actor, cap, ttl, d.key, d.store)
 	if err != nil {
 		receipt.PolicyDecision = "token_mint_failed"
 		return receipt, fmt.Errorf("gateway_sdk driver: mint token: %w", err)
 	}
+	defer revoke()
 
 	// Step 2: Build child env: base URL + session token. No provider key.
 	// Rules:

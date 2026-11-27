@@ -198,6 +198,23 @@ jobs:
           # must run there, not skip.
           require-real-clients: "1"
 
+  coverage:
+    # Floors are measured on the Linux profile so OS-specific files do not
+    # move a package between runners.
+    needs: [changes, go-test-linux]
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-ubuntu-latest
+      - name: coverage script tests
+        run: bash release-checks/release-checks.test.sh
+      - name: coverage floors
+        run: bash release-checks/coverage-threshold.sh --report coverage.out
+
   linux-e2e:
     # End-to-end scripts and canaries; each builds its own binary, so they do
     # not wait for the unit tests.
