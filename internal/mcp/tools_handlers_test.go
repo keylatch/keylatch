@@ -159,24 +159,9 @@ func TestRunHandlerSliceCommandWithNonStringItems(t *testing.T) {
 		"provider": "sentry",
 		"command":  []interface{}{123, true, nil}, // non-string items
 	}
-	_, isErr := callRunHandler(t, store, nil, args)
+	_, isErr := callRunHandler(t, store, &fakeDispatcher{}, args)
 	// command stays empty → "run: 'command' argument required" error
 	assert.True(t, isErr)
-}
-
-// ---------------------------------------------------------------------------
-// makeRunHandler: nil runner defaults to exec.DefaultRunner
-// ---------------------------------------------------------------------------
-
-func TestRunHandlerNilRunnerDefaulted(t *testing.T) {
-	store := newMockStore()
-	// With nil runner, makeRunHandler sets it to exec.DefaultRunner.
-	// The command is rejected by allowlist before reaching the runner.
-	_, isErr := callRunHandler(t, store, nil, map[string]any{
-		"provider": "sentry",
-		"command":  "bash -c env", // rejected by allowlist
-	})
-	assert.True(t, isErr, "allowlist rejection must occur before runner is called")
 }
 
 // ---------------------------------------------------------------------------

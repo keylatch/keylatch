@@ -1,0 +1,3 @@
+# Embedded and executable scripts must keep LF endings on every platform.
+*.sh text eol=lf
+internal/guard/scripts/* text eol=lf

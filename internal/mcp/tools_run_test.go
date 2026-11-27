@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -11,13 +12,71 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/registry"
+	"github.com/keylatch/keylatch/internal/runner"
 )
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// fakeDispatcher records the ExecRequest it receives and writes canned output
+// to the request's writers.
+type fakeDispatcher struct {
+	stdout   string
+	stderr   string
+	exitCode int
+	err      error
+
+	calls int
+	got   runner.ExecRequest
+}
+
+func (f *fakeDispatcher) Run(_ context.Context, req runner.ExecRequest) (runner.RuntimeReceipt, error) {
+	f.calls++
+	f.got = req
+	if f.err != nil {
+		return runner.RuntimeReceipt{Provider: req.ConnectionSlug}, f.err
+	}
+	if req.Stdout != nil {
+		_, _ = req.Stdout.Write([]byte(f.stdout))
+	}
+	if req.Stderr != nil {
+		_, _ = req.Stderr.Write([]byte(f.stderr))
+	}
+	return runner.RuntimeReceipt{Provider: req.ConnectionSlug, Runtime: req.Runtime, ExitCode: f.exitCode}, nil
+}
+
+// runTestProvider is a registered template whose allowlist accepts absolute paths.
+const runTestProvider = "mcp-run-test"
+
+// runTestTool is absolute on the host OS; "/opt/tool" is not absolute on Windows.
+var runTestTool = func() string {
+	if goruntime.GOOS == "windows" {
+		return `C:\opt\tool`
+	}
+	return "/opt/tool"
+}()
+
+func registerRunTestTemplate(t *testing.T) {
+	t.Helper()
+	// Duplicate registration across tests is expected and harmless.
+	_ = registry.Register(registry.ConnectionTemplate{
+		Provider:               runTestProvider,
+		DisplayName:            "MCP Run Test",
+		Category:               "test",
+		AuthFlow:               "api_key",
+		StoragePathTpl:         "default/test/" + runTestProvider + "/default",
+		TrustLevel:             registry.TrustLocalOnly,
+		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
+		AllowedCommandPrefixes: []string{runTestTool + " "},
+		RuntimeSupport: registry.RuntimeSupport{
+			Preferred: registry.RuntimeGatewayTyped,
+			Supported: []registry.RuntimeMode{registry.RuntimeGatewayTyped},
+		},
+		TestStrategy: registry.TestStrategy{Kind: "http_get", Endpoint: "https://example.com/health", Expect: registry.TestExpectation{StatusCode: 200}},
+	})
+}
 
 // buildRunRequest builds a CallToolRequest from an args map.
 func buildRunRequest(t *testing.T, args map[string]any) *sdkmcp.CallToolRequest {
@@ -34,10 +93,10 @@ func buildRunRequest(t *testing.T, args map[string]any) *sdkmcp.CallToolRequest 
 }
 
 // callRunHandler invokes makeRunHandler and returns text + isError.
-func callRunHandler(t *testing.T, store *mockStore, runner exec.CommandRunner, args map[string]any) (string, bool) {
+func callRunHandler(t *testing.T, store *mockStore, d runner.Dispatcher, args map[string]any) (string, bool) {
 	t.Helper()
 	ctx := context.Background()
-	handler := makeRunHandler(store, runner)
+	handler := makeRunHandler(store, d)
 	req := buildRunRequest(t, args)
 	result, err := handler(ctx, req)
 	require.NoError(t, err, "handler must not return a Go error")
@@ -57,9 +116,10 @@ func callRunHandler(t *testing.T, store *mockStore, runner exec.CommandRunner, a
 
 func TestRunHandlerMissingProvider(t *testing.T) {
 	store := newMockStore()
-	runner := &exec.MockRunner{}
-	_, isErr := callRunHandler(t, store, runner, map[string]any{})
+	d := &fakeDispatcher{}
+	_, isErr := callRunHandler(t, store, d, map[string]any{})
 	assert.True(t, isErr, "missing provider must produce an error result")
+	assert.Zero(t, d.calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -68,12 +128,13 @@ func TestRunHandlerMissingProvider(t *testing.T) {
 
 func TestRunHandlerUnknownProvider(t *testing.T) {
 	store := newMockStore()
-	runner := &exec.MockRunner{}
-	_, isErr := callRunHandler(t, store, runner, map[string]any{
+	d := &fakeDispatcher{}
+	_, isErr := callRunHandler(t, store, d, map[string]any{
 		"provider": "nonexistent-provider-xyz-12345",
 		"command":  []interface{}{"/bin/echo", "hello"},
 	})
 	assert.True(t, isErr, "unknown provider must produce an error result")
+	assert.Zero(t, d.calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -82,13 +143,14 @@ func TestRunHandlerUnknownProvider(t *testing.T) {
 
 func TestRunHandlerCommandRejectedByAllowlistStringForm(t *testing.T) {
 	store := newMockStore()
-	runner := &exec.MockRunner{}
+	d := &fakeDispatcher{}
 	// "sentry" has AllowedCommandPrefixes ["node ", "python3 "]; "bash" is not allowed.
-	_, isErr := callRunHandler(t, store, runner, map[string]any{
+	_, isErr := callRunHandler(t, store, d, map[string]any{
 		"provider": "sentry",
 		"command":  "bash -c env",
 	})
 	assert.True(t, isErr, "banned command (string form) must produce an error result")
+	assert.Zero(t, d.calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -97,13 +159,14 @@ func TestRunHandlerCommandRejectedByAllowlistStringForm(t *testing.T) {
 
 func TestRunHandlerCommandRejectedByAllowlistSliceForm(t *testing.T) {
 	store := newMockStore()
-	runner := &exec.MockRunner{}
+	d := &fakeDispatcher{}
 	// "bash" doesn't match "node " or "python3 " prefixes.
-	_, isErr := callRunHandler(t, store, runner, map[string]any{
+	_, isErr := callRunHandler(t, store, d, map[string]any{
 		"provider": "sentry",
 		"command":  []interface{}{"bash", "-c", "env"},
 	})
 	assert.True(t, isErr, "banned command (slice form) must produce an error result")
+	assert.Zero(t, d.calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -112,34 +175,88 @@ func TestRunHandlerCommandRejectedByAllowlistSliceForm(t *testing.T) {
 
 func TestRunHandlerMissingCommandKey(t *testing.T) {
 	store := newMockStore()
-	runner := &exec.MockRunner{}
+	d := &fakeDispatcher{}
 	// No "command" key — args["command"] is nil, hits default case in type switch,
 	// command stays nil, len(command)==0 → "run: 'command' argument required".
-	_, isErr := callRunHandler(t, store, runner, map[string]any{
+	_, isErr := callRunHandler(t, store, d, map[string]any{
 		"provider": "sentry",
 	})
 	assert.True(t, isErr, "missing command must produce an error result")
+	assert.Zero(t, d.calls)
 }
 
 // ---------------------------------------------------------------------------
-// makeRunHandler: execution error from runner
+// makeRunHandler: relative command rejected
 // ---------------------------------------------------------------------------
 
-func TestRunHandlerExecutionError(t *testing.T) {
-	store := newMockStore()
-	runner := &exec.MockRunner{
-		Responses: map[string]exec.MockResponse{
-			"node|script.js": {
-				Err: errors.New("exec: binary not found"),
-			},
-		},
-	}
-	// "sentry" allows "node "; command starts with "node ".
-	_, isErr := callRunHandler(t, store, runner, map[string]any{
+func TestRunHandlerRejectsRelativeCommand(t *testing.T) {
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{}
+	// "sentry" allows "node "; the command passes the allowlist but is not absolute.
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
 		"provider": "sentry",
 		"command":  "node script.js",
 	})
-	assert.True(t, isErr, "runner error must produce an error result")
+	assert.True(t, isErr)
+	assert.Contains(t, text, "absolute path")
+	assert.Zero(t, d.calls)
+}
+
+// ---------------------------------------------------------------------------
+// makeRunHandler: nil dispatcher
+// ---------------------------------------------------------------------------
+
+func TestRunHandlerNilDispatcher(t *testing.T) {
+	registerRunTestTemplate(t)
+	text, isErr := callRunHandler(t, newMockStore(), nil, map[string]any{
+		"provider": runTestProvider,
+		"command":  runTestTool + " script.js",
+	})
+	assert.True(t, isErr, "nil dispatcher must produce an error result")
+	assert.Contains(t, text, "runtime dispatch unavailable")
+}
+
+// ---------------------------------------------------------------------------
+// makeRunHandler: provider without runtime support
+// ---------------------------------------------------------------------------
+
+func TestRunHandlerProviderWithoutRuntimeSupport(t *testing.T) {
+	_ = registry.Register(registry.ConnectionTemplate{
+		Provider:               "mcp-run-no-runtime",
+		DisplayName:            "MCP Run No Runtime",
+		Category:               "test",
+		AuthFlow:               "api_key",
+		StoragePathTpl:         "default/test/mcp-run-no-runtime/default",
+		TrustLevel:             registry.TrustLocalOnly,
+		SecretFields:           []registry.SecretField{{Name: "api_key", Required: true, Sensitive: true}},
+		AllowedCommandPrefixes: []string{runTestTool + " "},
+		TestStrategy:           registry.TestStrategy{Kind: "http_get", Endpoint: "https://example.com/health", Expect: registry.TestExpectation{StatusCode: 200}},
+	})
+	d := &fakeDispatcher{}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": "mcp-run-no-runtime",
+		"command":  runTestTool + " script.js",
+	})
+	assert.True(t, isErr)
+	assert.Contains(t, text, "no supported runtime")
+	assert.Zero(t, d.calls)
+}
+
+// ---------------------------------------------------------------------------
+// makeRunHandler: dispatch error
+// ---------------------------------------------------------------------------
+
+func TestRunHandlerDispatchError(t *testing.T) {
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{stdout: "must not appear", err: errors.New("gateway is not running")}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": runTestProvider,
+		"command":  runTestTool + " script.js",
+	})
+	assert.True(t, isErr, "dispatch error must produce an error result")
+	assert.Contains(t, text, "gateway is not running")
+	assert.NotContains(t, text, "must not appear")
+	assert.Equal(t, 1, d.calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -147,24 +264,25 @@ func TestRunHandlerExecutionError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerSuccessStringCommand(t *testing.T) {
-	store := newMockStore()
-	runner := &exec.MockRunner{
-		Responses: map[string]exec.MockResponse{
-			"node|script.js": {
-				Stdout:   []byte("hello output"),
-				ExitCode: 0,
-			},
-		},
-	}
-	text, isErr := callRunHandler(t, store, runner, map[string]any{
-		"provider": "sentry",
-		"command":  "node script.js",
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{stdout: "hello output"}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": runTestProvider,
+		"command":  runTestTool + " script.js",
 	})
 	assert.False(t, isErr, "valid command must not be an error result")
 	var result map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(text), &result))
 	assert.Contains(t, result, "receipt")
-	assert.Contains(t, result, "stdout")
+	assert.Equal(t, "hello output", result["stdout"])
+
+	assert.Equal(t, []string{runTestTool, "script.js"}, d.got.Command)
+	assert.Equal(t, runTestProvider, d.got.ConnectionSlug)
+	assert.Equal(t, "mcp", d.got.Actor)
+	assert.Equal(t, string(registry.RuntimeGatewayTyped), d.got.Runtime)
+	assert.NotNil(t, d.got.Stdin)
+	assert.NotNil(t, d.got.Stdout)
+	assert.NotNil(t, d.got.Stderr)
 }
 
 // ---------------------------------------------------------------------------
@@ -172,18 +290,11 @@ func TestRunHandlerSuccessStringCommand(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerSuccessSliceCommand(t *testing.T) {
-	store := newMockStore()
-	runner := &exec.MockRunner{
-		Responses: map[string]exec.MockResponse{
-			"node|script.js": {
-				Stdout:   []byte("slice output"),
-				ExitCode: 0,
-			},
-		},
-	}
-	text, isErr := callRunHandler(t, store, runner, map[string]any{
-		"provider": "sentry",
-		"command":  []interface{}{"node", "script.js"},
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{stdout: "slice output"}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": runTestProvider,
+		"command":  []interface{}{runTestTool, "script.js"},
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
@@ -196,25 +307,22 @@ func TestRunHandlerSuccessSliceCommand(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerReceiptFields(t *testing.T) {
-	store := newMockStore()
-	runner := &exec.MockRunner{
-		Responses: map[string]exec.MockResponse{
-			"node|script.js": {Stdout: []byte("output"), ExitCode: 0},
-		},
-	}
-	text, isErr := callRunHandler(t, store, runner, map[string]any{
-		"provider":  "sentry",
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{stdout: "output"}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider":  runTestProvider,
 		"account":   "myaccount",
 		"namespace": "prod",
-		"command":   "node script.js",
+		"command":   runTestTool + " script.js",
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(text), &result))
 	receipt, ok := result["receipt"].(map[string]interface{})
 	require.True(t, ok, "receipt must be an object")
-	assert.Equal(t, "sentry", receipt["provider"])
+	assert.Equal(t, runTestProvider, receipt["provider"])
 	assert.Contains(t, receipt["connection"], "myaccount")
+	assert.Equal(t, string(registry.RuntimeGatewayTyped), receipt["runtime"])
 }
 
 // ---------------------------------------------------------------------------
@@ -222,24 +330,18 @@ func TestRunHandlerReceiptFields(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerNonZeroExitCode(t *testing.T) {
-	store := newMockStore()
-	runner := &exec.MockRunner{
-		Responses: map[string]exec.MockResponse{
-			"node|script.js": {
-				Stderr:   []byte("error output"),
-				ExitCode: 1,
-			},
-		},
-	}
-	text, isErr := callRunHandler(t, store, runner, map[string]any{
-		"provider": "sentry",
-		"command":  "node script.js",
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{stderr: "error output", exitCode: 1}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": runTestProvider,
+		"command":  runTestTool + " script.js",
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(text), &result))
 	receipt := result["receipt"].(map[string]interface{})
 	assert.Equal(t, float64(1), receipt["exit_code"])
+	assert.Equal(t, "error output", result["stderr"])
 }
 
 // ---------------------------------------------------------------------------
@@ -248,13 +350,14 @@ func TestRunHandlerNonZeroExitCode(t *testing.T) {
 
 func TestRunHandlerLeadingSpaceBypass(t *testing.T) {
 	store := newMockStore()
-	runner := &exec.MockRunner{}
+	d := &fakeDispatcher{}
 	// "  bash -c env" trimmed to "bash -c env" which doesn't match "node " or "python3 ".
-	_, isErr := callRunHandler(t, store, runner, map[string]any{
+	_, isErr := callRunHandler(t, store, d, map[string]any{
 		"provider": "sentry",
 		"command":  "  bash -c env",
 	})
 	assert.True(t, isErr, "leading-space bypass must be rejected")
+	assert.Zero(t, d.calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -262,22 +365,18 @@ func TestRunHandlerLeadingSpaceBypass(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunHandlerDefaultsAccountNamespace(t *testing.T) {
-	store := newMockStore()
-	runner := &exec.MockRunner{
-		Responses: map[string]exec.MockResponse{
-			"node|script.js": {Stdout: []byte("ok"), ExitCode: 0},
-		},
-	}
-	text, isErr := callRunHandler(t, store, runner, map[string]any{
-		"provider": "sentry",
-		"command":  "node script.js",
+	registerRunTestTemplate(t)
+	d := &fakeDispatcher{stdout: "ok"}
+	text, isErr := callRunHandler(t, newMockStore(), d, map[string]any{
+		"provider": runTestProvider,
+		"command":  runTestTool + " script.js",
 		// no account, no namespace — defaults to "default"
 	})
 	assert.False(t, isErr)
 	var result map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(text), &result))
 	receipt := result["receipt"].(map[string]interface{})
-	assert.Equal(t, "default/sentry/default", receipt["connection"])
+	assert.Equal(t, "default/"+runTestProvider+"/default", receipt["connection"])
 }
 
 // ---------------------------------------------------------------------------
