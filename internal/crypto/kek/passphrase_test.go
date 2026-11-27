@@ -23,7 +23,17 @@ func init() {
 	}
 }
 
+// skipIfShort skips tests that run a memory-hard Argon2id derivation; they
+// dominate the package runtime under -race and run in full in the nightly job.
+func skipIfShort(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("memory-hard key derivation; skipped with -short")
+	}
+}
+
 func TestPassphraseKEKRoundTrip(t *testing.T) {
+	skipIfShort(t)
 	passphrase := []byte("test-passphrase-12345")
 	salt := make([]byte, 32)
 	for i := range salt {
@@ -56,6 +66,7 @@ func TestPassphraseKEKRoundTrip(t *testing.T) {
 }
 
 func TestPassphraseKEKWrongPassphraseUnwrapFails(t *testing.T) {
+	skipIfShort(t)
 	salt := make([]byte, 32)
 
 	k1, err := kek.PassphraseKEK([]byte("correct-pass"), salt, testParams)
@@ -84,6 +95,7 @@ func TestPassphraseKEKWrongPassphraseUnwrapFails(t *testing.T) {
 }
 
 func TestPassphraseKEKType(t *testing.T) {
+	skipIfShort(t)
 	k, err := kek.PassphraseKEK([]byte("pass"), testSalt, testParams)
 	if err != nil {
 		t.Fatalf("PassphraseKEK: %v", err)
@@ -97,6 +109,7 @@ func TestPassphraseKEKType(t *testing.T) {
 }
 
 func TestPassphraseZeroedAfterDerive(t *testing.T) {
+	skipIfShort(t)
 	// Passphrase must be zeroed after PassphraseKEK returns.
 	passphrase := []byte("zero-me-after-derive")
 	salt := make([]byte, 32)

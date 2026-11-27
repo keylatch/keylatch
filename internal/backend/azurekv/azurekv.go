@@ -2,7 +2,6 @@
 //
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
-//   - runner.OK is checked before returning plaintext.
 package azurekv
 
 import (
@@ -18,7 +17,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -146,10 +144,6 @@ func (b *AzureKeyVaultBackend) ID() string {
 
 // Get retrieves the latest version of a secret from Azure Key Vault.
 func (b *AzureKeyVaultBackend) Get(ctx context.Context, name string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	resp, err := b.client.GetSecret(ctx, name, "", nil)
 	if err != nil {
 		if isAzureNotFound(err) {

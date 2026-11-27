@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package runner
 
 import (
@@ -12,14 +10,7 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
-type auditGateway struct{}
-
-func (auditGateway) Addr() string  { return "127.0.0.1:7878" }
-func (auditGateway) Running() bool { return true }
-
-// A child that inherits the manager's own session can read every secret
-// directly, so neither the default nor the clean environment may carry it,
-// even when the caller asks to preserve the name.
+// The gateway child environment carries no manager authentication.
 func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) {
 	t.Setenv("BW_SESSION", "synthetic-manager-session")
 	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "synthetic-service-account")
@@ -39,19 +30,15 @@ func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) 
 	}
 }
 
-// KNOWN-FAILING: gatewayTypedDriver.Run hardcodes
-// token.TokenSpec.LLMSession = false and never sets MaxUses or revokes on
-// child exit, so gateway tokens misclassify agent runs as human runs with
-// unbounded, unrevoked leases.
 func TestSecurityRegression_GatewayTokenMustPreserveLLMClassification(t *testing.T) {
-	t.Setenv("CREDENTIALS_LLM_SESSION", "audit")
+	t.Setenv("CREDENTIALS_LLM_SESSION", "1")
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	d := NewGatewayTypedDriver(auditGateway{}, make([]byte, 32), path)
-	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "audit"})
+	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "child-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	records, err := token.List(token.ListOpts{}, path)
+	records, err := token.List(token.ListOpts{IncludeRevoked: true}, path)
 	if err != nil || len(records) != 1 {
 		t.Fatalf("token list: %v, count %d", err, len(records))
 	}

@@ -1,0 +1,37 @@
+provider: pypi
+display_name: PyPI
+category: packages
+description: "Upload Python distributions using a placeholder Basic password with username __token__."
+docs_url: https://docs.pypi.org/publishing/publishing-to-pypi/
+secret_fields:
+  - name: token
+    label: Project API Token
+    required: true
+    sensitive: true
+    env_var: TWINE_PASSWORD
+    secret_kind: personal_token
+env_mappings:
+  token: TWINE_PASSWORD
+auth_flow: basic
+auth_placement:
+  in: header
+  name: Authorization
+  scheme: Basic
+storage_path_tpl: "{{.Namespace}}/packages/pypi/{{.Account}}"
+trust_level: 2
+runtime_support:
+  preferred: gateway_proxy
+  supported: [gateway_proxy]
+injection_rules:
+  - env_var: TWINE_PASSWORD
+    source: token
+hosts: [upload.pypi.org]
+slots:
+  - field: token
+    in: basic
+    part: password
+    hosts: [upload.pypi.org]
+placeholder_shape:
+  min_length: 32
+env_class:
+  default: prod

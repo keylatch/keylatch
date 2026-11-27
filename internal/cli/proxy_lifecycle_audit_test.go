@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -188,20 +187,4 @@ func TestProxyStateFile_ErrorPaths(t *testing.T) {
 	if err := writeProxyState(filepath.Join(dir, "missing", "s"), proxyState{}); err == nil || !strings.Contains(err.Error(), "write state tmp") {
 		t.Fatalf("write into missing dir: %v", err)
 	}
-}
-
-func TestStartProxyWithGateway_UnavailableBuildReleasesNothing(t *testing.T) {
-	pidPath := filepath.Join(t.TempDir(), "proxy.pid")
-	port := freePort(t)
-	if _, err := startProxyWithGateway(context.Background(), port, pidPath); !errors.Is(err, ErrProxyUnsupported) {
-		t.Fatalf("err = %v", err)
-	}
-	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
-		t.Fatalf("PID file written for an unavailable proxy: %v", err)
-	}
-	ln, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
-	if err != nil {
-		t.Fatalf("port must stay free: %v", err)
-	}
-	_ = ln.Close()
 }

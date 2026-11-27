@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/grant"
+	"github.com/keylatch/keylatch/internal/presence/presencetest"
 )
 
 func cdReadActors(t *testing.T, dir string) []actorEntry {
@@ -150,11 +151,12 @@ func TestGrant_CreateListRevoke(t *testing.T) {
 	dir := cdIsolate(t)
 	withInteractiveStdin(t, true)
 
-	withInteractiveStdin(t, false)
+	presencetest.NoTerminal(t)
 	r := cdExec(t, newGrantCmd(), nil, "create", "openai", "--actor", "ci")
-	if r.e == nil || !strings.Contains(r.e.Error(), "requires an interactive terminal") {
+	if r.e == nil || !strings.Contains(r.e.Error(), "needs a human at an interactive terminal") {
 		t.Fatalf("non-interactive create: err=%v", r.e)
 	}
+	presencetest.Approve(t)
 	withInteractiveStdin(t, true)
 	r = cdExec(t, newGrantCmd(), nil, "create", "openai")
 	if r.e == nil || !strings.Contains(r.e.Error(), "--actor is required") {

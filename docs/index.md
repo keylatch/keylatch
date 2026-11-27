@@ -60,7 +60,7 @@ keylatch run openrouter -- my-ai-tool
 
 | Page | Description |
 |------|-------------|
-| [Operating Modes](./operating-modes.md) | `standard`, `telemetry`, `canary`, `custom` — controlling subsystems |
+| [Operating Modes](./operating-modes.md) | `standard`, `canary`, `custom` — controlling subsystems |
 | [Proxy](./proxy.md) | CONNECT proxy for tools that only speak `HTTP_PROXY` |
 | [Call](./call.md) | Dispatch single provider actions with `keylatch call` |
 | [Scripting Guide](./scripting.md) | Python, Bash, and Node.js examples using `keylatch run` as a secure envelope |
@@ -93,7 +93,6 @@ How to integrate Keylatch with agents, languages, and CI systems. Start at the [
 | [Claude Code agent guide](./integration/agents/claude-code.md) | Hooks, detection, `CREDENTIALS_LLM_SESSION` |
 | [Cursor agent guide](./integration/agents/cursor.md) | Auto-detection, PreToolUse hook |
 | [Gemini CLI agent guide](./integration/agents/gemini.md) | `GEMINI_CLI`, BeforeTool hook |
-| [Windsurf agent guide](./integration/agents/windsurf.md) | Shell rc, `CREDENTIALS_LLM_SESSION` |
 | [Generic agent guide](./integration/agents/generic.md) | Universal recipe, detection heuristics |
 
 ### Integrations (platform)
@@ -102,5 +101,5 @@ How to integrate Keylatch with agents, languages, and CI systems. Start at the [
 |------|-------------|
 | [Desktop App](./desktop-app.md) | Desktop app (Tauri) — tray icon, approval inbox, first-run wizard. Ships for Linux; macOS/Windows deferred post-MVP (use the CLI's `keylatch ui`) |
 | [Desktop Parity](./desktop-parity.md) | Feature parity matrix between CLI and desktop app |
-| [Telemetry](./telemetry.md) | What is collected, opt-in/opt-out, and data policy |
+| [Telemetry](./telemetry.md) | Keylatch sends no telemetry |
 | [Experimental Features](./experimental.md) | Features behind the experimental gate |

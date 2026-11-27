@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "backend": "bw",
+  "default_namespace": "default",
+  "bw": {
+    "server": "https://vault.example.com",
+    "collection": "keylatch",
+    "organization_id": "00000000-0000-0000-0000-000000000000",
+    "bin": ""
+  },
+  "audit": {
+    "enabled": true,
+    "max_size_bytes": 5242880,
+    "retention_days": 30,
+    "sweep_interval_hours": 24
+  },
+  "ui": {
+    "bind": "127.0.0.1"
+  }
+}

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/bootstrap"
-	"github.com/keylatch/keylatch/internal/crypto/kek"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/keylatch/keylatch/internal/testutil"
@@ -18,9 +17,7 @@ import (
 
 // makeEnv returns a Lookup that confines all default paths under home.
 // KEYLATCH_CONFIG_DIR is set explicitly because os.UserHomeDir follows
-// platform-specific variables such as USERPROFILE on Windows. The plaintext
-// KEK opt-in is cleared so a runner that sets it cannot change what a test
-// exercises; tests that want it pass it in overrides.
+// platform-specific variables such as USERPROFILE on Windows.
 func makeEnv(home string, overrides map[string]string) llmcontext.Lookup {
 	return func(k string) string {
 		if v, ok := overrides[k]; ok {
@@ -31,7 +28,7 @@ func makeEnv(home string, overrides map[string]string) llmcontext.Lookup {
 			return home
 		case "KEYLATCH_CONFIG_DIR":
 			return filepath.Join(home, ".keylatch")
-		case "XDG_CONFIG_HOME", kek.InsecureFileKEKEnv:
+		case "XDG_CONFIG_HOME":
 			return ""
 		}
 		return os.Getenv(k)

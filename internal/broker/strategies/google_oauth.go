@@ -15,6 +15,7 @@ type GoogleOAuthStrategy struct {
 func NewGoogleOAuthStrategy(
 	clientID, clientSecret string,
 	getRefreshToken func(actor, namespace string) ([]byte, error),
+	opts ...OAuthOption,
 ) *GoogleOAuthStrategy {
 	return &GoogleOAuthStrategy{
 		OAuthRefreshStrategy: NewOAuthRefreshStrategy(
@@ -23,6 +24,7 @@ func NewGoogleOAuthStrategy(
 			clientID,
 			clientSecret,
 			getRefreshToken,
+			opts...,
 		),
 	}
 }

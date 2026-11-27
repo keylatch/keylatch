@@ -1,0 +1,49 @@
+{
+  "description": "uncontained delivery for a human needs presence",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {
+        "id": "r1",
+        "actor": "human-shell",
+        "connections": [
+          "openai"
+        ],
+        "capabilities": [
+          "inject"
+        ],
+        "runtime": "direct_classic"
+      }
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "openai",
+    "hosts": [
+      "api.openai.com"
+    ],
+    "runtimes": [
+      "gateway_typed",
+      "direct_classic"
+    ],
+    "typed_actions": true
+  },
+  "enabled_runtimes": [
+    "gateway_typed",
+    "direct_classic"
+  ],
+  "request": {
+    "actor": "human-shell",
+    "llm_session": false,
+    "connection": "openai",
+    "argv": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": "/work/app",
+    "tier": ""
+  }
+}

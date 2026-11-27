@@ -4,38 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/keylatch/keylatch/internal/registry"
-	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/spf13/cobra"
 )
-
-// ccReceiptSink is a fake keylatchd UI endpoint collecting pushed receipts.
-func ccReceiptSink(t *testing.T) chan runner.RuntimeReceipt {
-	t.Helper()
-	got := make(chan runner.RuntimeReceipt, 4)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/receipts" || r.Header.Get("Content-Type") != "application/json" {
-			http.Error(w, "unexpected", http.StatusBadRequest)
-			return
-		}
-		var rr runner.RuntimeReceipt
-		if err := json.NewDecoder(r.Body).Decode(&rr); err == nil {
-			got <- rr
-		}
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	t.Cleanup(srv.Close)
-	t.Setenv("KEYLATCH_UI_ADDR", srv.Listener.Addr().String())
-	return got
-}
 
 func ccConnectNoTest(t *testing.T, provider, secret string) {
 	t.Helper()
@@ -44,11 +19,10 @@ func ccConnectNoTest(t *testing.T, provider, secret string) {
 	}
 }
 
-func TestCCCall_TextRedactsAndPushesReceipt(t *testing.T) {
+func TestCCCall_TextRedactsResponse(t *testing.T) {
 	up := ccProvider(t, "cccall")
 	secret := ccSecret("call")
 	ccConnectNoTest(t, "cccall", secret)
-	sink := ccReceiptSink(t)
 
 	leaked := "s" + "k-" + strings.Repeat("Ab1Cd2", 6)
 	up.body = `{"data":[{"id":"m1"}],"echo":"` + leaked + `"}`
@@ -66,16 +40,6 @@ func TestCCCall_TextRedactsAndPushesReceipt(t *testing.T) {
 	ccAssertNoLeak(t, secret, out, errOut)
 	if auths, paths := up.seen(); len(auths) != 1 || auths[0] != "Bearer "+secret || paths[0] != "/v1/models" {
 		t.Fatalf("upstream saw auth=%q paths=%q", auths, paths)
-	}
-
-	select {
-	case rr := <-sink:
-		if rr.Provider != "cccall" || rr.Capability != "list-models" || rr.PolicyDecision != "approved" ||
-			rr.Runtime != "gateway_typed" || rr.CredentialShape != "provider_root" || rr.TTL != time.Hour {
-			t.Fatalf("receipt = %+v", rr)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no receipt pushed to UI endpoint")
 	}
 }
 
@@ -260,35 +224,5 @@ func TestCCEmitCallMetaLog_OnlyAllowlistedFields(t *testing.T) {
 	}
 	if meta["action"] != "chat" || meta["exchange_strategy"] != "static_gateway_only" || meta["masking_profile"] != "strict" || meta["llm_session_deny"] != true {
 		t.Fatalf("metadata = %v", meta)
-	}
-}
-
-func TestCCPushReceiptToUI_BestEffort(t *testing.T) {
-	sink := ccReceiptSink(t)
-	sinkAddr := os.Getenv("KEYLATCH_UI_ADDR")
-
-	// A port outside 1..65535 is rejected before any request is built.
-	t.Setenv("KEYLATCH_UI_ADDR", "127.0.0.1:70000")
-	pushReceiptToUI(t.Context(), runner.RuntimeReceipt{Provider: "malformed"})
-
-	// A valid address with nothing listening is a silent no-op.
-	closed, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	addr := closed.Addr().String()
-	_ = closed.Close()
-	t.Setenv("KEYLATCH_UI_ADDR", addr)
-	pushReceiptToUI(t.Context(), runner.RuntimeReceipt{Provider: "unreachable"})
-
-	t.Setenv("KEYLATCH_UI_ADDR", sinkAddr)
-	pushReceiptToUI(t.Context(), runner.RuntimeReceipt{Provider: "pushed", Capability: "c"})
-	select {
-	case rr := <-sink:
-		if rr.Provider != "pushed" || rr.Capability != "c" {
-			t.Fatalf("receipt = %+v; only the valid address may receive a push", rr)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("receipt not delivered")
 	}
 }

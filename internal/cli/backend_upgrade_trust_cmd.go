@@ -13,12 +13,6 @@ import (
 	"github.com/keylatch/keylatch/internal/paths"
 )
 
-func init() {
-	// Register upgrade-trust under the backend command group via the newBackendCmd
-	// function which is called from root.go. This is accomplished by the
-	// newBackendUpgradeTrustCmd() function being added in newBackendCmd.
-}
-
 // newBackendUpgradeTrustCmd returns `keylatch backend upgrade-trust`.
 // Idempotent: upgrades a schema v1 keyring to the current root-of-trust schema (v2).
 // Blocked in LLM sessions.
@@ -166,15 +160,6 @@ This command MUST be run as the keyring owner. It is blocked in LLM sessions.`,
 	cmd.Flags().Bool("dry-run", false, "print what would be changed without writing")
 	cmd.Flags().Bool("json", false, "output result in JSON format")
 	return cmd
-}
-
-// legacyKEKTypeToRootTypeCLI is now delegated to keyring.LegacyKEKTypeToRootType (Mi-4).
-// This function is retained only to avoid breaking callers during transition; it is
-// no longer the canonical source. Use keyring.LegacyKEKTypeToRootType directly.
-//
-//nolint:unused
-func legacyKEKTypeToRootTypeCLI(kekType string) string {
-	return string(keyring.LegacyKEKTypeToRootType(kekType))
 }
 
 func printUpgradeResult(c *cobra.Command, jsonOut bool, res any, msg string) error {

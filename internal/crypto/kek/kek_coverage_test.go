@@ -20,6 +20,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestPassphraseKEK_Unwrap_TooShort(t *testing.T) {
+	skipIfShort(t)
 	t.Parallel()
 	k, err := kek.PassphraseKEK([]byte("pass"), testSalt, testParams)
 	require.NoError(t, err)
@@ -31,6 +32,7 @@ func TestPassphraseKEK_Unwrap_TooShort(t *testing.T) {
 }
 
 func TestPassphraseKEK_Unwrap_Corrupted(t *testing.T) {
+	skipIfShort(t)
 	t.Parallel()
 	salt := make([]byte, 32)
 	for i := range salt {

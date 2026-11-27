@@ -13,7 +13,7 @@ import (
 )
 
 // DefaultRetentionDays is the fallback when no retention is configured.
-const DefaultRetentionDays = 30
+const DefaultRetentionDays = 365
 
 // DefaultSweepIntervalHours is the fallback sweep interval.
 const DefaultSweepIntervalHours = 24
@@ -21,11 +21,23 @@ const DefaultSweepIntervalHours = 24
 // LoadRetentionDays returns the configured audit retention days from cfg.
 // Falls back to DefaultRetentionDays when the field is zero or out of range.
 func LoadRetentionDays(cfg config.AuditConfig) int {
-	d := cfg.RetentionDays
+	d := cfg.RetainDays
+	if d == 0 {
+		d = cfg.RetentionDays
+	}
 	if d < 1 || d > 3650 {
 		return DefaultRetentionDays
 	}
 	return d
+}
+
+// LoadRetainFiles returns the configured number of rotated files to keep,
+// DefaultRetainFiles when unset.
+func LoadRetainFiles(cfg config.AuditConfig) int {
+	if cfg.RetainFiles < 1 {
+		return DefaultRetainFiles
+	}
+	return cfg.RetainFiles
 }
 
 // LoadSweepIntervalHours returns the configured sweep interval from cfg.

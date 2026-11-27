@@ -17,7 +17,7 @@ func TestSecurityRegression_UnverifiedTicketMustNotAuthorizeDirectRuntime(t *tes
 		return ""
 	}
 	err := RequireRawCredentialOptIn(true, false)
-	blocked, _ := GuardRuntime(runtime.RuntimeDirectBrokered, "", env, nil)
+	blocked, _ := GuardRuntime(runtime.RuntimeMinted, "", env, nil)
 	if err == nil && !blocked {
 		t.Error("arbitrary ticket text passes both raw-exposure gates")
 	}

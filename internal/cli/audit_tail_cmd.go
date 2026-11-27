@@ -91,7 +91,7 @@ func newAuditTailCmd() *cobra.Command {
 Without -f: print the last N lines (default 20) and exit, like tail(1).
 With -f: live-follow and print new events as they arrive. Press Ctrl-C to stop.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			l, cleanup, err := openAuditLogger()
+			l, cleanup, err := OpenAuditLogger()
 			if err != nil {
 				return err
 			}
@@ -201,7 +201,7 @@ Filter flags:
 				}
 			}
 
-			l, cleanup, err := openAuditLogger()
+			l, cleanup, err := OpenAuditLogger()
 			if err != nil {
 				return err
 			}
@@ -257,7 +257,7 @@ func runAuditRetentionSweep(retentionDays int) (int, error) {
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		return 0, err
 	}
@@ -277,11 +277,11 @@ func newAuditRetentionCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove audit entries older than retention_days",
+		Short: "Remove audit entries older than retain_days",
 		Long: `Remove audit log entries older than the configured retention period.
 
-The default retention is 30 days. Override with --days or set
-audit.retention_days in keylatch.yaml.
+The default retention is 365 days. Override with --days or set
+audit.retain_days in the keylatch config.
 
 This command is also run automatically at daemon start and daily thereafter.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -303,19 +303,16 @@ This command is also run automatically at daemon start and daily thereafter.`,
 		},
 	}
 
-	cmd.Flags().IntVar(&days, "days", 0, "retention period in days (default: config audit.retention_days or 30)")
+	cmd.Flags().IntVar(&days, "days", 0, "retention period in days (default: config audit.retain_days or 365)")
 	return cmd
 }
 
-// loadRetentionDays reads audit.retention_days from the keylatch config file.
-// Falls back to 30 on any error (file missing, parse error, zero value).
+// loadRetentionDays reads audit.retain_days (or retention_days) from the
+// keylatch config file. Falls back to the default on any error.
 func loadRetentionDays(configPath string) int {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return 30
+		return audit.DefaultRetentionDays
 	}
-	if cfg.Audit.RetentionDays <= 0 {
-		return 30
-	}
-	return cfg.Audit.RetentionDays
+	return audit.LoadRetentionDays(cfg.Audit)
 }

@@ -124,7 +124,7 @@ func TestValidateRequest_Valid(t *testing.T) {
 
 	// Build a fake response to set cookie, then read it on a request
 	rec := httptest.NewRecorder()
-	s.SetCookie(rec, cookieVal)
+	s.SetCookie(rec, httptest.NewRequest(http.MethodGet, "/", nil), cookieVal)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	for _, c := range rec.Result().Cookies() {
@@ -165,11 +165,26 @@ func TestSetCookie_IsHttpOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
-	s.SetCookie(rec, "testval")
+	s.SetCookie(rec, httptest.NewRequest(http.MethodGet, "/", nil), "testval")
 
 	cookies := rec.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.True(t, cookies[0].HttpOnly, "session cookie must be HttpOnly")
+	assert.False(t, cookies[0].Secure, "plain-HTTP session cookie must not be Secure")
+}
+
+func TestSetCookie_SecureOverTLS(t *testing.T) {
+	t.Parallel()
+	k := signingKey(t)
+	s, err := session.New(k)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	s.SetCookie(rec, httptest.NewRequest(http.MethodGet, "https://127.0.0.1/", nil), "testval")
+
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.True(t, cookies[0].Secure, "session cookie over TLS must be Secure")
 }
 
 // parseBootstrapURL extracts token and mac from a bootstrap URL.

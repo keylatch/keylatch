@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -20,31 +21,21 @@ import (
 func assertUnlockACLTArgEquals(t *testing.T, runner *kexec.MockRunner, want string) {
 	t.Helper()
 	for _, call := range runner.CallsCopy() {
-		if len(call.Args) == 0 || call.Args[0] != "add-generic-password" {
+		if call.Subcommand() != "add-generic-password" {
 			continue
 		}
-		isUnlockItem := false
-		for _, a := range call.Args {
-			if a == "keylatch-keychain" {
-				isUnlockItem = true
-				break
-			}
-		}
-		if !isUnlockItem {
+		line := securityLine(call)
+		if !strings.Contains(line, `"keylatch-keychain"`) {
 			continue
 		}
-		for i, a := range call.Args {
-			if a == "-T" {
-				if i+1 >= len(call.Args) {
-					t.Fatalf("add-generic-password: -T flag has no following value: %v", call.Args)
-				}
-				if got := call.Args[i+1]; got != want {
-					t.Errorf("add-generic-password -T value: got %q, want %q (must always be a filesystem path, never codesign dump text)", got, want)
-				}
-				return
-			}
+		got, ok := scriptFlagValue(line, "-T")
+		if !ok {
+			t.Fatalf("add-generic-password to unlock item missing -T flag: %s", line)
 		}
-		t.Fatalf("add-generic-password to unlock item missing -T flag: %v", call.Args)
+		if got != want {
+			t.Errorf("add-generic-password -T value: got %q, want %q (must always be a filesystem path, never codesign dump text)", got, want)
+		}
+		return
 	}
 	t.Fatal("no add-generic-password call to the unlock item was recorded")
 }
@@ -188,8 +179,6 @@ func TestRepairACL_PathOnly(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("test-pw\n"),
 			},
-			// Re-issue with -T path.
-			secBin + "|add-generic-password|-U|-s|keylatch-keychain|-a|unlock|-w|test-pw": {},
 		},
 	}
 
@@ -212,11 +201,9 @@ func TestRepairACL_PathOnly(t *testing.T) {
 	// Verify that add-generic-password was called with -T flag.
 	addCalled := false
 	for _, call := range runner.CallsCopy() {
-		if len(call.Args) > 0 && call.Args[0] == "add-generic-password" {
-			for _, arg := range call.Args {
-				if arg == "-T" {
-					addCalled = true
-				}
+		if call.Subcommand() == "add-generic-password" {
+			if _, ok := scriptFlagValue(securityLine(call), "-T"); ok {
+				addCalled = true
 			}
 		}
 	}
@@ -318,8 +305,6 @@ func TestRepairItemACLs_NoValueReads(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-openrouter|-a|api_key|-w|-k|" + testKeychainPath: {
 				Stdout: []byte("val\n"),
 			},
-			// Re-write with -T ACL.
-			secBin + "|add-generic-password|-U|-s|keylatch-openrouter|-a|api_key|-w|val|-T": {},
 			// Manifest item repair.
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + testKeychainPath: {
 				Stdout: []byte(`{"version":1,"items":[{"connection":"openrouter","fields":["api_key"]}]}`),

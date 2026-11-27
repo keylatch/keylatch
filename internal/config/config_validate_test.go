@@ -88,6 +88,30 @@ func TestBWConfig_Validate_OnlyCollection_OK(t *testing.T) {
 	require.NoError(t, c.Validate())
 }
 
+func TestBWConfig_Validate_Namespaces(t *testing.T) {
+	ok := &config.BWConfig{OrganizationID: "org-1", Namespaces: map[string]string{"work": "Work/infra"}}
+	require.NoError(t, ok.Validate())
+
+	for name, c := range map[string]*config.BWConfig{
+		"no organization":  {Namespaces: map[string]string{"work": "Work"}},
+		"with folder":      {OrganizationID: "org-1", Folder: "f", Namespaces: map[string]string{"work": "Work"}},
+		"with collection":  {OrganizationID: "org-1", Collection: "c", Namespaces: map[string]string{"work": "Work"}},
+		"empty collection": {OrganizationID: "org-1", Namespaces: map[string]string{"work": " "}},
+		"empty namespace":  {OrganizationID: "org-1", Namespaces: map[string]string{"": "Work"}},
+	} {
+		assert.Error(t, c.Validate(), name)
+	}
+}
+
+func TestBWConfig_Validate_SessionTTL(t *testing.T) {
+	for _, good := range []string{"", "30m", "1h", "8h"} {
+		assert.NoError(t, (&config.BWConfig{SessionTTL: good}).Validate(), good)
+	}
+	for _, bad := range []string{"soon", "-1h", "0s", "8h1s", "24h"} {
+		assert.Error(t, (&config.BWConfig{SessionTTL: bad}).Validate(), bad)
+	}
+}
+
 func TestBWConfig_Validate_TeamModeFieldsPassThrough(t *testing.T) {
 	c := &config.BWConfig{
 		ServiceAccountTokenRef: "ref://some-vault/token",

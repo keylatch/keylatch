@@ -1,22 +1,20 @@
 // Package runtime defines RuntimeMode for keylatch credential access control.
-// v1.0.0 base set: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy.
-// direct_classic_sandboxed reinstated as a new sibling mode backed by
-// bwrap (Linux) / sandbox-exec (macOS). direct_classic remains permanently removed.
+// The runtime modes are gateway_typed, gateway_sdk, minted and gateway_proxy.
+// gateway_proxy is not available in this release.
 package runtime
 
 import "errors"
 
 // RuntimeMode identifies how the CLI interacts with credentials.
-// v1.0.0 set: gateway_typed, gateway_sdk, direct_brokered, gateway_proxy,
-// plus direct_classic_sandboxed.
 type RuntimeMode string
 
 const (
-	RuntimeGatewayTyped           RuntimeMode = "gateway_typed"
-	RuntimeGatewaySDK             RuntimeMode = "gateway_sdk"
-	RuntimeDirectBrokered         RuntimeMode = "direct_brokered"
-	RuntimeGatewayProxy           RuntimeMode = "gateway_proxy"
-	RuntimeDirectClassicSandboxed RuntimeMode = "direct_classic_sandboxed"
+	RuntimeGatewayTyped RuntimeMode = "gateway_typed"
+	RuntimeGatewaySDK   RuntimeMode = "gateway_sdk"
+	RuntimeGatewayProxy RuntimeMode = "gateway_proxy"
+	// RuntimeMinted runs the command with a short-lived credential minted for
+	// it and revoked when it exits.
+	RuntimeMinted RuntimeMode = "minted"
 )
 
 // AllModes is the closed set used by the matrix builder in tests.
@@ -24,17 +22,16 @@ const (
 var AllModes = []RuntimeMode{
 	RuntimeGatewayTyped,
 	RuntimeGatewaySDK,
-	RuntimeDirectBrokered,
+	RuntimeMinted,
 	RuntimeGatewayProxy,
-	RuntimeDirectClassicSandboxed,
 }
 
 // removedModes maps removed mode names to actionable hint strings.
 // Resolve() checks this before the supported set so removed modes return
 // ErrModeRemoved (exit 5) with a clear hint.
-// Note: direct_classic_sandboxed is NOT in this map — it is active.
 var removedModes = map[string]string{
-	"direct_classic": "mode removed in v1.0.0. Use: --runtime gateway_typed",
+	"direct_classic":  "mode removed in v1.0.0. Use: --runtime gateway_typed",
+	"direct_brokered": "mode renamed. Use: --runtime minted",
 }
 
 // ErrModeRemoved is returned when the caller requests a runtime mode that was
@@ -69,7 +66,7 @@ func IsRemovedMode(mode string) (hint string, removed bool) {
 // --runtime value instead of a confusing security-block message.
 func IsRawCredentialMode(m RuntimeMode) bool {
 	switch m {
-	case RuntimeDirectBrokered, RuntimeDirectClassicSandboxed:
+	case RuntimeMinted:
 		return true
 	default:
 		return false

@@ -255,36 +255,6 @@ func TestCheckExternalRefs_ScanVaultForSchemes(t *testing.T) {
 	assert.False(t, st.Warn)
 }
 
-func TestCheckHookPreToolUse(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	check := checkHookPreToolUse(func(string) string { return "" })
-
-	st := check(context.Background())
-	assert.True(t, st.Warn)
-	assert.Contains(t, st.Detail, "not found")
-
-	claude := filepath.Join(home, ".claude")
-	require.NoError(t, os.MkdirAll(claude, 0o700))
-	settings := filepath.Join(claude, "settings.json")
-
-	require.NoError(t, os.WriteFile(settings, []byte("{nope"), 0o600))
-	assert.Contains(t, check(context.Background()).Detail, "could not be parsed")
-
-	require.NoError(t, os.WriteFile(settings, []byte(`{"hooks":{}}`), 0o600))
-	assert.Contains(t, check(context.Background()).Detail, "keylatch hook not found")
-
-	require.NoError(t, os.WriteFile(settings, []byte(`{"hooks":{"PreToolUse":[{"command":"keylatch hook"}]}}`), 0o600))
-	st = check(context.Background())
-	assert.False(t, st.Warn)
-	assert.Contains(t, st.Detail, "hook detected")
-
-	require.NoError(t, os.Remove(settings))
-	require.NoError(t, os.MkdirAll(settings, 0o700))
-	assert.Contains(t, check(context.Background()).Detail, "could not read")
-}
-
 func TestCheckNoConnections(t *testing.T) {
 	dir, env := mxDoctorEnv(t, nil)
 	st := checkNoConnections(env)(context.Background())

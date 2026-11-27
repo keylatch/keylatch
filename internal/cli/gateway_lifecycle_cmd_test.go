@@ -20,22 +20,24 @@ import (
 func cbGatewayInit(t *testing.T) string {
 	t.Helper()
 	cfgDir := cbIsolate(t)
-	_, _, err := cbRun(t, "gateway", "init")
+	_, _, err := cbRun(t, "setup", "--headless", "--backend", "file")
 	require.NoError(t, err)
-	_, _, err = cbRun(t, "setup", "--headless", "--backend", "file")
+	_, _, err = cbRun(t, "gateway", "init")
 	require.NoError(t, err)
 	return cfgDir
 }
 
 func TestGatewayInit_WritesKeyAndConfigWithPrivatePerms(t *testing.T) {
 	cfgDir := cbIsolate(t)
+	_, _, err := cbRun(t, "setup", "--headless", "--backend", "file")
+	require.NoError(t, err)
 
 	out, _, err := cbRun(t, "gateway", "init")
 	require.NoError(t, err)
 	assert.Contains(t, out, "gateway: signing key generated")
 
 	gwDir := filepath.Join(cfgDir, "gateway")
-	keyPath := filepath.Join(gwDir, "signing.key")
+	keyPath := filepath.Join(gwDir, "signing.key.enc")
 	cfgPath := filepath.Join(gwDir, "config.json")
 	cbAssertMode(t, gwDir, 0o700)
 	cbAssertMode(t, keyPath, 0o600)
@@ -43,7 +45,14 @@ func TestGatewayInit_WritesKeyAndConfigWithPrivatePerms(t *testing.T) {
 
 	key, err := os.ReadFile(keyPath)
 	require.NoError(t, err)
-	assert.Len(t, key, 32)
+	assert.Greater(t, len(key), 32)
+	_, err = os.Stat(filepath.Join(gwDir, "signing.key"))
+	assert.True(t, os.IsNotExist(err), "plaintext signing key must not be persisted")
+	plain, err := LoadGatewaySigningKey(os.Getenv, false)
+	require.NoError(t, err)
+	assert.Len(t, plain, 32)
+	assert.NotContains(t, string(key), string(plain))
+	clear(plain)
 
 	var cfg map[string]any
 	data, err := os.ReadFile(cfgPath)
@@ -64,6 +73,8 @@ func TestGatewayInit_WritesKeyAndConfigWithPrivatePerms(t *testing.T) {
 
 func TestGatewayInit_DockerWritesCompose(t *testing.T) {
 	cfgDir := cbIsolate(t)
+	_, _, err := cbRun(t, "setup", "--headless", "--backend", "file")
+	require.NoError(t, err)
 	out, _, err := cbRun(t, "gateway", "init", "--docker")
 	require.NoError(t, err)
 	composePath := filepath.Join(cfgDir, "gateway", "docker-compose.yml")
@@ -85,8 +96,10 @@ func TestGatewayInit_GatewayDirIsFile(t *testing.T) {
 
 func TestGatewayInit_ConfigWriteFails(t *testing.T) {
 	cbIsolate(t)
+	_, _, err := cbRun(t, "setup", "--headless", "--backend", "file")
+	require.NoError(t, err)
 	t.Setenv("KEYLATCH_GATEWAY_CONFIG", filepath.Join(t.TempDir(), "missing", "config.json"))
-	_, _, err := cbRun(t, "gateway", "init")
+	_, _, err = cbRun(t, "gateway", "init")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gateway init: write config")
 }
@@ -293,6 +306,8 @@ func TestGatewayUp_SigningKeyProblems(t *testing.T) {
 	_, _, err := cbRun(t, "gateway", "up")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read signing key")
+	_, _, err = cbRun(t, "setup", "--headless", "--backend", "file")
+	require.NoError(t, err)
 
 	gwDir := filepath.Join(cfgDir, "gateway")
 	require.NoError(t, os.MkdirAll(gwDir, 0o700))
@@ -316,12 +331,13 @@ func TestGatewayUp_ForegroundBindFailureCleansPID(t *testing.T) {
 }
 
 func TestGatewayUp_RefusesWithoutAuditLog(t *testing.T) {
-	cbIsolate(t)
-	_, _, err := cbRun(t, "gateway", "init")
-	require.NoError(t, err)
+	cbGatewayInit(t)
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
+	t.Setenv("KEYLATCH_AUDIT_PATH", filepath.Join(blocker, "audit.log"))
 	port := cbBusyPort(t)
 
-	_, _, err = cbRun(t, "gateway", "up", "--port", strconv.Itoa(port))
+	_, _, err := cbRun(t, "gateway", "up", "--port", strconv.Itoa(port))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "audit log cannot be opened")
 }
@@ -339,49 +355,6 @@ func TestGatewayUp_LLMSessionForcesLoopback(t *testing.T) {
 	assert.Contains(t, stderr, "--listen/KEYLATCH_GATEWAY_LISTEN ignored")
 	assert.Contains(t, out, fmt.Sprintf("listening on 127.0.0.1:%d", port))
 	assert.NotContains(t, out, "0.0.0.0")
-}
-
-func TestGatewayUp_WithProxyUnavailableRollsBack(t *testing.T) {
-	cfgDir := cbGatewayInit(t)
-	gwPort := cbBusyPort(t)
-	proxyPort := freePort(t)
-
-	out, stderr, err := cbRun(t, "gateway", "up", "--port", strconv.Itoa(gwPort),
-		"--with-proxy", "--proxy-port", strconv.Itoa(proxyPort))
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrProxyUnsupported)
-	assert.NotContains(t, out, "proxy started")
-	assert.Contains(t, stderr, "rolling back gateway")
-	_, statErr := os.Stat(filepath.Join(cfgDir, "proxy.pid"))
-	assert.True(t, os.IsNotExist(statErr), "an unavailable proxy must not leave a PID file")
-}
-
-func TestGatewayUp_WithProxyPortBusyFails(t *testing.T) {
-	cbGatewayInit(t)
-	gwPort := freePort(t)
-	proxyPort := cbBusyPort(t)
-
-	_, stderr, err := cbRun(t, "gateway", "up", "--port", strconv.Itoa(gwPort),
-		"--with-proxy", "--proxy-port", strconv.Itoa(proxyPort))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "gateway up --with-proxy")
-	assert.Contains(t, stderr, "rolling back gateway")
-}
-
-func TestGatewayUp_WithProxyAlreadyRunningSkipsStart(t *testing.T) {
-	cfgDir := cbGatewayInit(t)
-	gwPort := cbBusyPort(t)
-	proxyPort := 18888
-	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "proxy.pid"), []byte(strconv.Itoa(os.Getpid())), 0o600))
-	st, err := json.Marshal(proxyState{PID: os.Getpid(), Port: proxyPort})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "proxy.state"), st, 0o600))
-
-	out, _, err := cbRun(t, "gateway", "up", "--port", strconv.Itoa(gwPort),
-		"--with-proxy", "--proxy-port", strconv.Itoa(proxyPort))
-	require.Error(t, err)
-	assert.Contains(t, out, "proxy already running on the same port")
-	assert.NotContains(t, out, "proxy started")
 }
 
 func TestGatewayUp_DetachRelaunchesSelf(t *testing.T) {

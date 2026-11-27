@@ -7,6 +7,14 @@ import (
 	"github.com/keylatch/keylatch/internal/audit/fields"
 )
 
+func TestPolicyPresenceDigestSurvivesRedaction(t *testing.T) {
+	digest := strings.Repeat("ab", 32)
+	out := fields.Redact([]byte("salt"), "key.policy_change", map[string]any{"presence_digest": digest, "secret_value": "hidden"})
+	if out["presence_digest"] != digest || out["secret_value"] == "hidden" {
+		t.Fatalf("policy proof redaction: %v", out)
+	}
+}
+
 func TestAllActionsHaveSafeLogFieldsEntry(t *testing.T) {
 	// The init() function in fields.go already panics if any Action is missing.
 	// This test documents and explicitly checks the same invariant at test time.

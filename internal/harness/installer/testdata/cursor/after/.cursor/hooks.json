@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "/home/dev/bin/my-audit.sh",
+        "timeout": 5
+      },
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness cursor",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "/home/dev/bin/format.sh"
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness cursor",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "\"/opt/keylatch/bin/keylatch\" guard hook --harness cursor",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ]
+  }
+}

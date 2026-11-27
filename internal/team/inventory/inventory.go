@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package inventory implements team resource inventory management.
 package inventory
 

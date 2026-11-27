@@ -1,215 +1,108 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApprovalCard } from '../components/ApprovalCard'
 import type { Approval } from '../lib/types'
 import { api, ApiError, DEV_MOCK } from '../lib/api'
-import { Button } from '@/components/ui/button'
-import { DEFAULT_APPROVAL_TTL_S } from './Settings'
 
-/** Auto-deny banner entry — one per expired request. */
-interface AutoDenyBanner {
-  id: string
-  agentHmac: string
-  ttlSeconds: number
-}
-
-/**
- * ApprovalInbox — SSE primary, polling fallback.
- *
- * Extensions over the original:
- * - 3c: Auto-deny TTL — when a request TTL hits 0, call /deny automatically
- * and show a sticky (non-dismissable-until-acknowledged) banner.
- * - Banner stacks per expired request, each with its own dismiss button.
- */
 export function ApprovalInbox() {
   const [approvals, setApprovals] = useState<Approval[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [autoDenyBanners, setAutoDenyBanners] = useState<AutoDenyBanner[]>([])
-  const [approvalTtlSeconds, setApprovalTtlSeconds] = useState<number>(DEFAULT_APPROVAL_TTL_S)
-  const eventSourceRef = useRef<EventSource | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Track tokens that have already been auto-denied so we don't double-call.
-  const autoDeniedRef = useRef<Set<string>>(new Set())
+  const mounted = useRef(false)
+  const generation = useRef(0)
+  const deciding = useRef(new Map<string, AbortController>())
 
-  const fetchApprovals = () => {
-    api.get<{ approvals: Approval[] }>('/api/approvals')
-      .then((d) => setApprovals(d.approvals ?? []))
-      .catch(() => {})
-  }
-
-  // Load approval TTL from server on mount (TTL is server-validated).
-  useEffect(() => {
-    api.get<{ approval_ttl_seconds: number }>('/api/settings')
-      .then((d) => setApprovalTtlSeconds(d.approval_ttl_seconds))
-      .catch(() => {})
+  const fetchApprovals = useCallback(async () => {
+    const current = ++generation.current
+    try {
+      const entries = await api.get<Approval[]>('/api/approvals')
+      if (!mounted.current || current !== generation.current || deciding.current.size > 0) return
+      setApprovals(entries.filter((entry) => entry.status === 'pending'))
+      setLoaded(true)
+      setListError(null)
+    } catch (err) {
+      if (!mounted.current || current !== generation.current) return
+      setListError(err instanceof ApiError ? err.message : 'Cannot load approval requests')
+    }
   }, [])
 
   useEffect(() => {
-    // SSE primary — skip in mock mode, poll only.
+    mounted.current = true
+    let events: EventSource | undefined
+    let poll: ReturnType<typeof setInterval> | undefined
+    const startPolling = () => {
+      if (!poll) poll = setInterval(() => { void fetchApprovals() }, 5000)
+    }
     if (!DEV_MOCK) {
       try {
-        const es = new EventSource('/api/approvals/stream')
-        eventSourceRef.current = es
-        es.addEventListener('approval', () => { fetchApprovals() })
-        es.onopen = () => {
+        events = new EventSource('/api/approvals/stream')
+        events.addEventListener('approval', () => { void fetchApprovals() })
+        events.onopen = () => {
           setConnected(true)
-          // Clear any polling fallback when SSE reconnects successfully.
-          if (pollRef.current) {
-            clearInterval(pollRef.current)
-            pollRef.current = null
-          }
+          clearInterval(poll)
+          poll = undefined
         }
-        es.onerror = () => {
+        events.onerror = () => {
           setConnected(false)
-          // Start polling only if not already polling (prevents stacked intervals).
-          if (!pollRef.current) {
-            pollRef.current = setInterval(fetchApprovals, 5000)
-          }
+          startPolling()
         }
       } catch {
-        // SSE not supported; fall back to polling.
-        if (!pollRef.current) {
-          pollRef.current = setInterval(fetchApprovals, 5000)
-        }
+        startPolling()
       }
+    } else {
+      startPolling()
     }
-
-    fetchApprovals()
-
+    void fetchApprovals()
     return () => {
-      eventSourceRef.current?.close()
-      eventSourceRef.current = null
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-        pollRef.current = null
-      }
+      mounted.current = false
+      generation.current++
+      events?.close()
+      clearInterval(poll)
+      for (const controller of deciding.current.values()) controller.abort()
     }
-  }, [])
+  }, [fetchApprovals])
 
-  // ── Auto-deny TTL monitor ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (approvals.length === 0) return
-
-    const id = setInterval(() => {
-      const now = Date.now()
-      const expired = approvals.filter((a) => {
-        const expiresMs = new Date(a.expiresAt).getTime()
-        return expiresMs <= now && !autoDeniedRef.current.has(a.token)
-      })
-
-      for (const approval of expired) {
-        autoDeniedRef.current.add(approval.token)
-
-        const ttlSeconds = approvalTtlSeconds
-
-        api.post(`/api/approvals/${approval.token}/deny`)
-          .catch(() => {})
-
-        setApprovals((prev) => prev.filter((a) => a.token !== approval.token))
-
-        setAutoDenyBanners((prev) => [
-          ...prev,
-          {
-            id: approval.token,
-            agentHmac: approval.actorHmac.slice(0, 8),
-            ttlSeconds,
-          },
-        ])
-      }
-    }, 1000)
-
-    return () => clearInterval(id)
-  }, [approvals, approvalTtlSeconds])
-
-  const handleApprove = async (token: string) => {
+  const decide = async (approval: Approval, action: 'approve' | 'deny') => {
+    if (deciding.current.has(approval.token)) return
+    const controller = new AbortController()
+    deciding.current.set(approval.token, controller)
+    generation.current++
     setActionError(null)
     try {
-      await api.post(`/api/approvals/${token}/approve`)
-      setApprovals((prev) => prev.filter((a) => a.token !== token))
+      await api.post(`/api/approvals/${approval.token}/${action}`, { digest: approval.digest }, { signal: controller.signal })
+      if (mounted.current) setApprovals((prev) => prev.filter((entry) => entry.token !== approval.token))
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Failed to approve request'
-      setActionError(msg)
+      if (mounted.current) setActionError(err instanceof ApiError ? err.message : `Failed to ${action} request`)
+      throw err
+    } finally {
+      deciding.current.delete(approval.token)
+      generation.current++
+      if (mounted.current && deciding.current.size === 0) void fetchApprovals()
     }
-  }
-
-  const handleDeny = async (token: string) => {
-    setActionError(null)
-    try {
-      await api.post(`/api/approvals/${token}/deny`)
-      setApprovals((prev) => prev.filter((a) => a.token !== token))
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Failed to deny request'
-      setActionError(msg)
-    }
-  }
-
-  const dismissBanner = (id: string) => {
-    setAutoDenyBanners((prev) => prev.filter((b) => b.id !== id))
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">
-        Pending Approvals
-      </h1>
-
-      {!connected && (
-        <p className="sr-only" aria-live="polite">Using polling mode (SSE unavailable)</p>
+      <h1 className="text-2xl font-bold tracking-tight text-foreground">Pending Approvals</h1>
+      {!connected && <p className="sr-only" aria-live="polite">Using polling mode (SSE unavailable)</p>}
+      {(listError || actionError) && (
+        <p className="text-sm text-destructive" role="alert" aria-live="assertive">{actionError ?? listError}</p>
       )}
-
-      {/* Auto-deny sticky banners — stack above action errors */}
-      {autoDenyBanners.map((banner) => (
-        <div
-          key={banner.id}
-          className="flex items-start justify-between gap-4 rounded-md border border-warning bg-amber-100 dark:bg-amber-950/40 p-3 text-sm text-amber-700 dark:text-amber-300"
-          role="alert"
-          aria-live="assertive"
-        >
-          <span>
-            Request from <strong>{banner.agentHmac}…</strong> was auto-denied after{' '}
-            {banner.ttlSeconds}s.{' '}
-            <a
-              href="/settings"
-              className="font-medium underline underline-offset-2 hover:no-underline"
-            >
-              Adjust TTL in Settings.
-            </a>
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => dismissBanner(banner.id)}
-            aria-label="Dismiss auto-deny notification"
-            className="shrink-0 border-amber-500 text-amber-700 hover:bg-warning hover:text-primary-foreground"
-          >
-            Dismiss
-          </Button>
-        </div>
-      ))}
-
-      {actionError && (
-        <p className="text-sm text-destructive" role="alert" aria-live="assertive">
-          {actionError}
-        </p>
+      {!loaded && !listError && <p className="text-sm text-muted-foreground">Loading approvals…</p>}
+      {loaded && !listError && approvals.length === 0 && (
+        <p className="text-sm text-muted-foreground">No pending approvals.</p>
       )}
-
-      {approvals.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No pending approvals. You&apos;re all caught up.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {approvals.map((a) => (
-            <ApprovalCard
-              key={a.token}
-              approval={a}
-              onApprove={handleApprove}
-              onDeny={handleDeny}
-            />
-          ))}
-        </div>
-      )}
+      <div className="space-y-3">
+        {approvals.map((approval) => (
+          <ApprovalCard
+            key={`${approval.token}:${approval.digest}`}
+            approval={approval}
+            onApprove={(entry) => decide(entry, 'approve')}
+            onDeny={(entry) => decide(entry, 'deny')}
+          />
+        ))}
+      </div>
     </div>
   )
 }

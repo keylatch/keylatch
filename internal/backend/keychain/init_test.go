@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -20,17 +21,10 @@ import (
 func countUnlockItemWrites(calls []kexec.MockCall) int {
 	n := 0
 	for _, call := range calls {
-		if len(call.Args) == 0 || call.Args[0] != "add-generic-password" {
+		if call.Subcommand() != "add-generic-password" {
 			continue
 		}
-		isUnlockItem := false
-		for _, a := range call.Args {
-			if a == "keylatch-keychain" {
-				isUnlockItem = true
-				break
-			}
-		}
-		if isUnlockItem {
+		if strings.Contains(securityLine(call), `"keylatch-keychain"`) {
 			n++
 		}
 	}
@@ -57,8 +51,7 @@ func TestInit_Idempotent_SecondRunReusesPasswordAndKeepsSecretsReadable(t *testi
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("existing-unlock-pw\n"),
 			},
-			secBin + "|unlock-keychain|-p|existing-unlock-pw|" + keychainPath: {},
-			secBin + "|lock-keychain|" + keychainPath:                         {},
+			secBin + "|lock-keychain|" + keychainPath: {},
 			// Manifest starts empty (no items yet).
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + keychainPath: {
 				ExitCode: 44,
@@ -172,7 +165,7 @@ func TestInit_RefusesToRegeneratePassword_WhenExistingItemDoesNotUnlockDB(t *tes
 				Stdout: []byte("stale-pw\n"),
 			},
 			// The stale password fails to unlock the existing db.
-			secBin + "|unlock-keychain|-p|stale-pw|" + keychainPath: {
+			secBin + "|-i|unlock-keychain": {
 				ExitCode: 51, // errSecAuthFailed
 				Stderr:   []byte("errSecAuthFailed"),
 			},
@@ -227,8 +220,7 @@ func TestInit_ChmodsKeychainDBTo0600(t *testing.T) {
 			secBin + "|find-generic-password|-s|keylatch-keychain|-a|unlock|-w": {
 				Stdout: []byte("existing-unlock-pw\n"),
 			},
-			secBin + "|unlock-keychain|-p|existing-unlock-pw|" + keychainPath: {},
-			secBin + "|lock-keychain|" + keychainPath:                         {},
+			secBin + "|lock-keychain|" + keychainPath: {},
 			// No manifest yet.
 			secBin + "|find-generic-password|-s|keylatch-_manifest|-a|manifest|-w|-k|" + keychainPath: {
 				ExitCode: 44,

@@ -12,7 +12,9 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/bw"
+	"github.com/keylatch/keylatch/internal/crypto/kek"
 	kexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -117,13 +119,14 @@ func TestOpen_NoAmbientSession_InjectsFromCache(t *testing.T) {
 		}
 		return "" // no ambient BW_SESSION
 	}
-	require.NoError(t, bw.SaveSession(env, "cached-token-999", time.Hour))
+	k := testutil.NewKEK(t)
+	require.NoError(t, bw.SaveSession(env, k, "cached-token-999", time.Hour))
 
 	fixture := testdataBytes(t, "item_get_openrouter.json")
 	key := argKey(fakeBWBin, "get", "item", "openrouter")
 	runner := makeRunner(key, kexec.MockResponse{Stdout: fixture, ExitCode: 0})
 
-	b, err := bw.Open(bw.Options{Bin: fakeBWBin, Runner: runner, Env: env})
+	b, err := bw.Open(bw.Options{Bin: fakeBWBin, Runner: runner, Env: env, KEKLoader: func() (kek.KEK, error) { return k, nil }})
 	require.NoError(t, err)
 
 	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
@@ -146,7 +149,7 @@ func TestOpen_AmbientSessionTakesPriorityOverCache(t *testing.T) {
 		}
 		return ""
 	}
-	require.NoError(t, bw.SaveSession(env, "cached-token-should-be-ignored", time.Hour))
+	require.NoError(t, bw.SaveSession(env, testutil.NewKEK(t), "cached-token-should-be-ignored", time.Hour))
 
 	fixture := testdataBytes(t, "item_get_openrouter.json")
 	key := argKey(fakeBWBin, "get", "item", "openrouter")
@@ -177,7 +180,8 @@ func TestLockedFailure_CacheSourcedSession_InvalidatesCache(t *testing.T) {
 		}
 		return "" // no ambient BW_SESSION -> session comes from cache
 	}
-	require.NoError(t, bw.SaveSession(env, "now-invalid-cached-token", time.Hour))
+	k := testutil.NewKEK(t)
+	require.NoError(t, bw.SaveSession(env, k, "now-invalid-cached-token", time.Hour))
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{
@@ -188,7 +192,7 @@ func TestLockedFailure_CacheSourcedSession_InvalidatesCache(t *testing.T) {
 		},
 	}
 
-	b, err := bw.Open(bw.Options{Bin: fakeBWBin, Runner: runner, Env: env})
+	b, err := bw.Open(bw.Options{Bin: fakeBWBin, Runner: runner, Env: env, KEKLoader: func() (kek.KEK, error) { return k, nil }})
 	require.NoError(t, err)
 
 	_, _, err = b.Get(context.Background(), "default/openrouter/api_key")
@@ -215,7 +219,7 @@ func TestLockedFailure_AmbientSession_DoesNotInvalidateUnrelatedCache(t *testing
 	}
 	// A cache entry exists from a previous `bw unlock`, unrelated to this
 	// ambient BW_SESSION.
-	require.NoError(t, bw.SaveSession(env, "unrelated-cached-token", time.Hour))
+	require.NoError(t, bw.SaveSession(env, testutil.NewKEK(t), "unrelated-cached-token", time.Hour))
 
 	runner := &kexec.MockRunner{
 		Responses: map[string]kexec.MockResponse{

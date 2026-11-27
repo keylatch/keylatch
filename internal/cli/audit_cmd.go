@@ -61,13 +61,15 @@ func newAuditCmd() *cobra.Command {
 	cmd.AddCommand(newAuditTailCmd())
 	cmd.AddCommand(newAuditSinceCmd())
 	cmd.AddCommand(newAuditRetentionCmd())
+	cmd.AddCommand(newAuditExportCmd(), newAuditHeadCmd(), newAuditVerifyCmd())
 
 	return cmd
 }
 
-// openAuditLogger opens the audit logger using the environment config.
-// auditDEK is loaded from the keyring via TTY or stdin pipe (not env var).
-func openAuditLogger() (*audit.Logger, func(), error) {
+// OpenAuditLogger opens the audit logger using the environment config.
+// auditDEK is loaded from the keyring via TTY or stdin pipe (not env var). The
+// returned function closes the log and zeroes the key.
+func OpenAuditLogger() (*audit.Logger, func(), error) {
 	auditPath := paths.Audit(os.Getenv)
 	saltPath := paths.AuditSalt(os.Getenv)
 
@@ -82,31 +84,30 @@ func openAuditLogger() (*audit.Logger, func(), error) {
 		return nil, nil, fmt.Errorf("audit: load salt: %w", err)
 	}
 
-	auditDEK, olderDEKs, err := loadAuditKeys()
+	keys, err := loadAuditKeyMaterial(saltBytes, true)
 	if err != nil {
-		return nil, nil, fmt.Errorf("audit: load DEK: %w", err)
+		return nil, nil, fmt.Errorf("audit: load keys: %w", err)
 	}
 
-	l, err := audit.Open(auditPath, saltBytes, auditDEK)
+	l, err := audit.Open(auditPath, keys.seed, keys.dek)
 	if err != nil {
+		keys.zero()
 		return nil, nil, fmt.Errorf("audit: open: %w", err)
 	}
-	l.AddReadKeys(olderDEKs...)
+	l.AddReadKeys(keys.older...)
+	l.SetRetainFiles(auditRetainFiles())
+	l.SetAnchorSink(audit.OSLogAnchor)
 
 	cleanup := func() {
 		_ = l.Close()
-		// Zero the auditDEK.
-		clear(auditDEK)
-		for _, k := range olderDEKs {
-			clear(k)
-		}
+		keys.zero()
 	}
 	return l, cleanup, nil
 }
 
 // openAuditLoggerFn opens the audit log for commands that serve or change
 // secrets; replaced in tests.
-var openAuditLoggerFn = openAuditLogger
+var openAuditLoggerFn = OpenAuditLogger
 
 // requireAuditLogger opens the audit log for a command that serves or
 // changes secrets. Such commands refuse to run without an audit trail.
@@ -122,37 +123,6 @@ func requireAuditLogger(command string) (*audit.Logger, func(), error) {
 	return l, cleanup, nil
 }
 
-// loadAuditKeys returns the DEK new audit events are sealed with and the
-// older DEKs earlier events may be sealed with: retired terms of the same
-// keyring and, where an install still has the legacy keyring beside the
-// bootstrap one, that keyring's DEKs.
-func loadAuditKeys() ([]byte, [][]byte, error) {
-	kr, _, krPath, err := openKeyringFromEnv()
-	if err != nil {
-		return nil, nil, err
-	}
-	defer kr.Zero()
-	dek, term, err := kr.ActiveDEK()
-	if err != nil {
-		return nil, nil, err
-	}
-	active := bytes.Clone(dek)
-	older := retiredDEKs(kr, term)
-
-	if legacy := paths.LegacyKeyringPath(os.Getenv); legacy != krPath {
-		if _, statErr := os.Stat(legacy); statErr == nil {
-			if lkr, _, _, openErr := openKeyringAt(legacy, false); openErr == nil {
-				if ldek, lterm, dekErr := lkr.ActiveDEK(); dekErr == nil {
-					older = append(older, bytes.Clone(ldek))
-					older = append(older, retiredDEKs(lkr, lterm)...)
-				}
-				lkr.Zero()
-			}
-		}
-	}
-	return active, older, nil
-}
-
 func retiredDEKs(kr *keyring.Keyring, activeTerm int) [][]byte {
 	var out [][]byte
 	for t := activeTerm - 1; t >= 1; t-- {
@@ -165,7 +135,7 @@ func retiredDEKs(kr *keyring.Keyring, activeTerm int) [][]byte {
 
 // runAuditSummary implements `keylatch audit [--summary]`.
 func runAuditSummary(cmd *cobra.Command) error {
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		return err
 	}
@@ -238,20 +208,15 @@ func runAuditRaw(cmd *cobra.Command) error {
 		return fmt.Errorf("audit: load salt: %w", err)
 	}
 
-	auditDEK, olderDEKs, err := loadAuditKeys()
+	keys, err := loadAuditKeyMaterial(saltBytes, false)
 	if err != nil {
-		return fmt.Errorf("audit: load DEK: %w", err)
+		return fmt.Errorf("audit: load keys: %w", err)
 	}
-	defer func() {
-		clear(auditDEK)
-		for _, k := range olderDEKs {
-			clear(k)
-		}
-	}()
+	defer keys.zero()
 
 	// Delegate to VerifyChain with full AEAD mode but stream the events.
 	// Use a raw file read + decrypt loop.
-	report, err := audit.VerifyChain(auditPath, saltBytes, auditDEK, olderDEKs...)
+	report, err := audit.VerifyChain(auditPath, keys.seed, keys.dek, keys.older...)
 	if err != nil {
 		return fmt.Errorf("audit --raw: %w", err)
 	}
@@ -269,7 +234,7 @@ func runAuditRaw(cmd *cobra.Command) error {
 
 // runAuditRotate implements `keylatch audit --rotate`.
 func runAuditRotate(cmd *cobra.Command) error {
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	if err != nil {
 		return err
 	}
@@ -293,10 +258,14 @@ func runAuditVerifyChain(cmd *cobra.Command) error {
 		return fmt.Errorf("audit --verify-chain: load salt: %w", err)
 	}
 
-	// Use header-only mode (no DEK) by default.
-	// Full mode is available internally but not exposed here to avoid
-	// requiring the keyring password just for chain integrity checks.
-	report, err := audit.VerifyChain(auditPath, saltBytes, nil)
+	keys, err := loadAuditKeyMaterial(saltBytes, false)
+	if err != nil {
+		return fmt.Errorf("audit --verify-chain: load keys: %w", err)
+	}
+	defer keys.zero()
+
+	// Header-only mode: the chain is checked without opening event bodies.
+	report, err := audit.VerifyChain(auditPath, keys.seed, nil)
 	if err != nil {
 		return fmt.Errorf("audit --verify-chain: %w", err)
 	}

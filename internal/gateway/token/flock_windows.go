@@ -1,43 +1,23 @@
 //go:build windows
 
-// Package token — Windows best-effort consumption log implementation.
-// On Windows, flock is not available; we use O_CREATE|O_EXCL retry loop.
 package token
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-// consumeTokenUseLog implements best-effort atomic use counting on Windows.
+// consumeTokenUseLog records one use under an exclusive lock and reports
+// whether the token had a use left. Any failure counts as no use left.
 func consumeTokenUseLog(t *Token) bool {
 	logPath := t.ConsumptionLogPath
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
-		return false
-	}
-
-	lockPath := logPath + ".lock"
-
-	// Acquire lock via exclusive create (best-effort, up to 50 retries).
-	var lockFile *os.File
-	var err error
-	for i := 0; i < 50; i++ {
-		lockFile, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
-		if err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	unlock, err := lockExclusive(logPath + ".lock")
 	if err != nil {
 		return false
 	}
-	defer func() {
-		lockFile.Close()
-		os.Remove(lockPath)
-	}()
+	defer unlock()
 
 	// Count existing uses.
 	count, err := countTokenLogLines(logPath)
@@ -53,7 +33,7 @@ func consumeTokenUseLog(t *Token) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // Sync below reports write failures
 
 	rec := consumeTokenLogEntry{
 		TokenID: t.ID,

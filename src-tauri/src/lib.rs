@@ -1,14 +1,18 @@
-mod redaction;
-mod sidecar;
-mod ipc;
-mod webview;
-mod session;
-mod tray;
-mod notify;
-mod deeplink;
-mod update;
-mod launch;
 mod approval_watcher;
+mod bundled;
+mod csp;
+mod deeplink;
+mod desktop_http;
+mod desktop_runtime;
+mod ipc;
+mod launch;
+mod notify;
+mod redaction;
+mod session;
+mod sidecar;
+mod tray;
+mod update;
+mod webview;
 mod wizard;
 
 use std::sync::{Arc, Mutex};
@@ -57,36 +61,46 @@ pub fn run() {
                 std::process::exit(0);
             }
 
-            log::info!("keylatch-app: cold-start (version={})", env!("CARGO_PKG_VERSION"));
+            log::info!(
+                "keylatch-app: cold-start (version={})",
+                env!("CARGO_PKG_VERSION")
+            );
 
             // Step 5: SidecarSupervisor::start().
-            let app_dir = app.path().app_data_dir().unwrap_or_else(|_| "/tmp/keylatch".into());
-            let sidecar_path = app.path()
-                .resource_dir()
-                .unwrap_or_else(|_| ".".into())
-                .join("binaries/keylatchd");
+            let app_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&app_dir)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&app_dir, std::fs::Permissions::from_mode(0o700))?;
+            }
+            let sidecar_path = bundled::sidecar(&tauri::utils::platform::current_exe()?)?;
             let ipc_socket = app_dir.join("ipc.sock");
 
             let (mut supervisor, _status_rx) = sidecar::SidecarSupervisorImpl::new(
-                sidecar_path.to_string_lossy().to_string(),
-                ipc_socket.to_string_lossy().to_string(),
+                sidecar_path
+                    .to_str()
+                    .ok_or("sidecar path is not UTF-8")?
+                    .to_string(),
+                ipc_socket
+                    .to_str()
+                    .ok_or("IPC path is not UTF-8")?
+                    .to_string(),
             );
 
             let localhost_url = match supervisor.start() {
-                Ok(url) => url,
+                Ok(url) => {
+                    if let Err(error) = csp::verify_sidecar(&url) {
+                        supervisor.stop();
+                        return Err(error.into());
+                    }
+                    url
+                }
                 Err(e) => {
                     log::error!("keylatch-app: sidecar failed to start: {}", redact(&e));
                     "tauri://localhost/error.html".to_string()
                 }
             };
-
-            let hmac_key = supervisor.hmac_key();
-
-            // Step 6a: Wire IPC client.
-            let ipc = ipc::IpcClient::new(
-                ipc_socket.to_string_lossy().to_string(),
-                hmac_key,
-            );
 
             // Step 6a-ext: Wire TrayController and NotifierImpl.
             let tray_ctrl_opt = tray::TrayController::new(app.handle().clone())
@@ -103,54 +117,65 @@ pub fn run() {
                 .last()
                 .and_then(|p| p.split('/').next())
                 .and_then(|p| p.parse().ok())
-                .unwrap_or(7890);
+                .unwrap_or(0);
             let webview_host = Arc::new(webview::WebViewHost::new(port));
             let nav_guard = Arc::new(webview::NavigationGuard::new(webview_host.clone()));
 
             // Step 6c: Wire DesktopSession.
-            let session = session::DesktopSession::new(ipc);
+            let bootstrap_target = session::bootstrap_url(&localhost_url).ok();
+            let initial_url = match &bootstrap_target {
+                Some(url) => tauri::WebviewUrl::External(url.clone()),
+                None => tauri::WebviewUrl::App("error.html".into()),
+            };
+            let active: desktop_runtime::ActiveConnection =
+                Arc::new(Mutex::new(bootstrap_target.as_ref().map(|_| {
+                    Arc::new(desktop_runtime::Connection {
+                        base: localhost_url.clone(),
+                        session: Arc::new(session::DesktopSession::new(supervisor.ipc_client())),
+                    })
+                })));
+            let active_for_load = active.clone();
 
             // Build the main window with the navigation hook wired.
             let guard_for_nav = nav_guard.clone();
-            let window = tauri::WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::App("/".into()),
-            )
-            .title("Keylatch")
-            .inner_size(1200.0, 800.0)
-            .resizable(true)
-            .visible(false)
-            .on_navigation(move |url| {
-                guard_for_nav.on_navigate(url.as_str())
-            })
-            .build()
-            .map_err(|e| format!("build main window: {e}"))?;
+            let _window = tauri::WebviewWindowBuilder::new(app, "main", initial_url)
+                .title("Keylatch")
+                .inner_size(1200.0, 800.0)
+                .resizable(true)
+                .visible(false)
+                .on_navigation(move |url| guard_for_nav.on_navigate(url.as_str()))
+                .on_page_load(move |window, payload| {
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                        let current = active_for_load.lock().unwrap().clone();
+                        if let Some(current) = current {
+                            if session::bootstrap_url(&current.base).ok().as_ref()
+                                == Some(payload.url())
+                            {
+                                if let Err(e) =
+                                    current.session.complete_bootstrap(&window, &current.base)
+                                {
+                                    log::error!(
+                                        "keylatch-app: bootstrap exchange failed: {}",
+                                        redact(&e)
+                                    );
+                                }
+                            }
+                        }
+                        let _ = window.show();
+                    }
+                })
+                .build()
+                .map_err(|e| format!("build main window: {e}"))?;
 
-            let _ = webview_host.assert_csp(&window);
-
-            // Step 7: Bootstrap token + WebView navigation.
-            if let Err(e) = session.navigate_with_bootstrap(&window, &localhost_url) {
-                log::error!("keylatch-app: bootstrap navigation failed: {e}");
-            }
-
-            // Step 6a-ext2: Start approval watcher.
-            if let Some(tray_ctrl) = tray_ctrl_opt {
-                approval_watcher::start(
-                    app.handle().clone(),
-                    localhost_url.clone(),
-                    tray_ctrl,
-                    notifier.clone(),
-                );
-            } else {
-                approval_watcher::start_notify_only(
-                    app.handle().clone(),
-                    localhost_url.clone(),
-                    notifier.clone(),
-                );
-            }
-
-            app.manage(Arc::new(Mutex::new(supervisor)));
+            let runtime = desktop_runtime::start(
+                app.handle().clone(),
+                supervisor,
+                active,
+                webview_host,
+                tray_ctrl_opt,
+                notifier,
+            )?;
+            app.manage(Mutex::new(runtime));
 
             log::info!("keylatch-app: startup complete, URL={localhost_url}");
             Ok(())
@@ -167,8 +192,9 @@ pub fn run() {
     app.run(|app_handle, event| {
         if let RunEvent::ExitRequested { .. } = event {
             log::info!("keylatch-app: exit requested — stopping sidecar");
-            if let Some(sup) = app_handle.try_state::<Arc<Mutex<sidecar::SidecarSupervisorImpl>>>() {
-                sup.lock().unwrap().stop();
+            if let Some(runtime) = app_handle.try_state::<Mutex<desktop_runtime::DesktopRuntime>>()
+            {
+                runtime.lock().unwrap().stop();
             }
         }
     });

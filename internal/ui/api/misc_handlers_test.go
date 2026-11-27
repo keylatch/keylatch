@@ -80,34 +80,6 @@ func TestAgentHandler_Routes(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code)
 }
 
-func TestGatewayHandler_RouteTable(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		mint         bool
-		method, path string
-		want         int
-	}{
-		{false, http.MethodPost, "/api/gateway/up", http.StatusNotImplemented},
-		{false, http.MethodPost, "/api/gateway/down", http.StatusNotImplemented},
-		{false, http.MethodGet, "/api/gateway/up", http.StatusNotFound},
-		{false, http.MethodGet, "/api/gateway/tokens", http.StatusNotFound},
-		{false, http.MethodPost, "/api/gateway/tokens", http.StatusForbidden},
-		{true, http.MethodPost, "/api/gateway/tokens", http.StatusNotImplemented},
-	}
-	for _, tc := range cases {
-		rec := httptest.NewRecorder()
-		(&api.GatewayHandler{AllowTokenMinting: tc.mint}).ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
-		assert.Equal(t, tc.want, rec.Code, "%s %s mint=%v", tc.method, tc.path, tc.mint)
-		if tc.want == http.StatusNotImplemented {
-			assert.Contains(t, rec.Body.String(), "not_implemented")
-		}
-	}
-
-	rec := httptest.NewRecorder()
-	(&api.BrokerHandler{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/broker/dry-run", nil))
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-}
-
 func TestReceiptsHandler_LimitValidation(t *testing.T) {
 	t.Parallel()
 	// Capacity <= 0 falls back to the default ring size of 100.

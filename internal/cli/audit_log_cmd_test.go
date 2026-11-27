@@ -20,7 +20,7 @@ import (
 // logger the CLI uses.
 func caLogEvents(t *testing.T, events ...audit.Event) {
 	t.Helper()
-	l, cleanup, err := openAuditLogger()
+	l, cleanup, err := OpenAuditLogger()
 	require.NoError(t, err)
 	defer cleanup()
 	for _, e := range events {
@@ -83,7 +83,7 @@ func TestAuditCommandsNeedKeyring(t *testing.T) {
 	} {
 		_, _, err := caRun(t, nil, args...)
 		require.Error(t, err, args)
-		assert.Contains(t, err.Error(), "load DEK", args)
+		assert.Contains(t, err.Error(), "load keys", args)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestAuditLoggerFailsWhenConfigDirIsAFile(t *testing.T) {
 	blocker := filepath.Join(f.root, "blocker")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
 	t.Setenv("KEYLATCH_CONFIG_DIR", filepath.Join(blocker, "sub"))
-	_, _, err := openAuditLogger()
+	_, _, err := OpenAuditLogger()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "audit: mkdir config dir")
 }
@@ -152,6 +152,8 @@ func TestAuditVerifyChainDetectsTampering(t *testing.T) {
 
 func TestAuditVerifyChainMissingLog(t *testing.T) {
 	caNewVault(t, envelope.XChaCha20Poly1305)
+	caLogEvents(t)
+	require.NoError(t, os.Remove(caAuditPath()))
 	_, _, err := caRun(t, nil, "audit", "--verify-chain")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "audit --verify-chain:")
@@ -257,11 +259,11 @@ func TestAuditPruneRemovesOldEntries(t *testing.T) {
 		audit.Event{Action: audit.ActionWrite, Outcome: audit.OutcomeOK},
 	)
 
-	out, _, err := caRun(t, nil, "audit", "prune")
+	out, _, err := caRun(t, nil, "audit", "prune", "--days", "30")
 	require.NoError(t, err)
 	assert.Contains(t, out, "audit prune: removed 1 entries older than 30 days")
 
-	out, _, err = caRun(t, nil, "audit", "prune")
+	out, _, err = caRun(t, nil, "audit", "prune", "--days", "30")
 	require.NoError(t, err)
 	assert.Contains(t, out, "audit prune: nothing to prune")
 

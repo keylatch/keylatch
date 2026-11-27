@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package bundlesig signs and verifies team bundles (invites, org policy,
 // internal registry) with Ed25519 over a domain-separated message.
 //

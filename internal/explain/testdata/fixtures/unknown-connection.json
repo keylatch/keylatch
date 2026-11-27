@@ -1,0 +1,28 @@
+{
+  "description": "connection facts are unknown",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": false,
+    "rules": []
+  },
+  "connection": {
+    "known": false
+  },
+  "enabled_runtimes": [
+    "gateway_typed",
+    "gateway_sdk"
+  ],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "nope",
+    "argv": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": "/work/app",
+    "tier": ""
+  }
+}

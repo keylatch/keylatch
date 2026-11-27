@@ -1,0 +1,8 @@
+{
+  "my-audit": {
+    "enabled": true,
+    "PreToolUse": [
+      {"matcher": "run_command", "hooks": [{"type": "command", "command": "/home/dev/bin/my-audit.sh"}]}
+    ]
+  }
+}

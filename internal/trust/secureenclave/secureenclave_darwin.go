@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build experimental && darwin
 
 // Package secureenclave implements a trust.RootOfTrust adapter backed by Apple Secure Enclave.
 package secureenclave

@@ -23,11 +23,21 @@ func TestIssueToken_UniqueEachCall(t *testing.T) {
 func TestSetCookie_NotHttpOnly(t *testing.T) {
 	t.Parallel()
 	rec := httptest.NewRecorder()
-	csrf.SetCookie(rec, "testtoken")
+	csrf.SetCookie(rec, httptest.NewRequest(http.MethodGet, "/", nil), "testtoken")
 	cookies := rec.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.False(t, cookies[0].HttpOnly, "CSRF cookie must NOT be HttpOnly (JS needs to read it)")
 	assert.Equal(t, csrf.CookieName, cookies[0].Name)
+	assert.False(t, cookies[0].Secure, "plain-HTTP CSRF cookie must not be Secure")
+}
+
+func TestSetCookie_SecureOverTLS(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	csrf.SetCookie(rec, httptest.NewRequest(http.MethodGet, "https://127.0.0.1/", nil), "testtoken")
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.True(t, cookies[0].Secure, "CSRF cookie over TLS must be Secure")
 }
 
 func TestValidate_Success(t *testing.T) {

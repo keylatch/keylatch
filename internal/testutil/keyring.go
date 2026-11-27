@@ -29,6 +29,9 @@ import (
 func SetupHermeticConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // G302: a directory needs the execute bit
+		t.Fatalf("testutil.SetupHermeticConfig: secure config directory: %v", err)
+	}
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
 	return dir
 }

@@ -1,0 +1,5 @@
+{
+  "name": "keylatch-bitwarden-test-client",
+  "private": true,
+  "dependencies": {"@bitwarden/cli": "2026.10.0"}
+}

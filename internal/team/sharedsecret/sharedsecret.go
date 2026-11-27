@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package sharedsecret implements shared-secret distribution using
 // AGE-compatible X25519+ChaCha20-Poly1305 encryption.
 //

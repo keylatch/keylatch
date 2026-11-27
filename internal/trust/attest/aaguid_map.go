@@ -1,3 +1,5 @@
+//go:build experimental
+
 package attest
 
 // aaguidEntry holds known information about an authenticator device model.

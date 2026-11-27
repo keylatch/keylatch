@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {"command": "/home/dev/bin/my-audit.sh", "timeout": 5}
+    ],
+    "afterFileEdit": [
+      {"command": "/home/dev/bin/format.sh"}
+    ]
+  }
+}

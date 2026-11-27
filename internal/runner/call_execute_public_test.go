@@ -106,10 +106,14 @@ func TestBuildActionURL_RequiredPathParamMissing(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `path param "id" is required`)
 
-	u, err := buildActionURL("http://h", "/x/{id}", map[string]string{"id": "a b/c", "q": "1"}, map[string]template.ParamSpec{
+	specs := map[string]template.ParamSpec{
 		"id": {In: "path", Required: true},
 		"q":  {In: "query"},
-	})
+	}
+	u, err := buildActionURL("http://h", "/x/{id}", map[string]string{"id": "a b", "q": "1"}, specs)
 	require.NoError(t, err)
-	assert.Equal(t, "http://h/x/a%20b%2Fc?q=1", u, "path params are escaped so they cannot add segments")
+	assert.Equal(t, "http://h/x/a%20b?q=1", u)
+
+	_, err = buildActionURL("http://h", "/x/{id}", map[string]string{"id": "a/b"}, specs)
+	require.Error(t, err, "a path param cannot add segments")
 }

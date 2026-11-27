@@ -265,7 +265,7 @@ func TestReadiness_AllGreen(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".codex", "config.json"), []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte(""), 0o600))
 
 	gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "other-server": {"type": "local", "command": "npx", "args": ["other-server"], "tools": ["*"]}
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "other-server": {"command": "npx", "args": ["-y", "other-server"]}
+  }
+}

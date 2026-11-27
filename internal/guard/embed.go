@@ -1,48 +1,16 @@
-// Package guard embeds the agent guard scripts shipped with keylatch.
-// The embedded scripts are written to disk and wired into agent tool-call hooks
-// by the `keylatch install-guard` command.
+// Package guard installs the agent exfiltration guard. The guard itself is the
+// Go decider in internal/guard/hook, which each harness runs as
+// `keylatch guard hook --harness <id>`; internal/harness knows where every
+// harness keeps its hook, MCP and rules files. The shell script embedded here
+// is the standalone variant under contrib/agent-guards: the installers read the
+// credential locations it protects, and Claude Code's uninstall removes the
+// copies earlier releases wrote.
 package guard
 
 import _ "embed"
 
-// ClaudeCodeScript is the pre-tool-use hook script that blocks credential
-// exfiltration attempts originating from a Claude Code LLM session.
+// GuardScript is the shell variant of the guard; the hook command selects the
+// payload and deny contract with --harness.
 //
 //go:embed scripts/block-keylatch-exfiltration.sh
-var ClaudeCodeScript []byte
-
-// CursorScript is the pre-tool-use hook script for Cursor.
-//
-//go:embed scripts/cursor-guard.sh
-var CursorScript []byte
-
-// AiderScript is the pre-tool-use hook script for Aider.
-//
-//go:embed scripts/aider-guard.sh
-var AiderScript []byte
-
-// WindsurfScript is the guard script for Windsurf (manual use only;
-// Windsurf does not yet expose a hook API).
-//
-//go:embed scripts/windsurf-guard.sh
-var WindsurfScript []byte
-
-// CodexScript is the PreToolUse hook script for Codex CLI.
-//
-//go:embed scripts/codex-guard.sh
-var CodexScript []byte
-
-// CopilotScript is the guard script for GitHub Copilot CLI.
-//
-//go:embed scripts/copilot-guard.sh
-var CopilotScript []byte
-
-// GeminiScript is the BeforeTool hook script for Gemini CLI.
-//
-//go:embed scripts/gemini-guard.sh
-var GeminiScript []byte
-
-// OpenCodeScript is the TypeScript plugin for OpenCode.
-//
-//go:embed scripts/opencode-guard.ts
-var OpenCodeScript []byte
+var GuardScript []byte

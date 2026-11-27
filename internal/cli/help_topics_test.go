@@ -29,7 +29,7 @@ func TestHelpTopicModes(t *testing.T) {
 	out := runHelpTopic(t, "modes")
 	assert.NotEmpty(t, out, "modes topic must produce output")
 	assert.Contains(t, out, "gateway_typed", "modes output must include gateway_typed mode")
-	assert.Contains(t, out, "direct_classic", "modes output must include direct_classic mode")
+	assert.NotContains(t, out, "classic", "modes output must not list the removed classic runtimes")
 }
 
 // TestHelpTopicBackends verifies the backends topic prints the capabilities matrix.

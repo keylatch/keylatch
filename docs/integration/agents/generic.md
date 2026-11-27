@@ -61,7 +61,6 @@ detect_agent() {
   local markers=(
     ".claude/settings.json"
     ".cursor/settings.json"
-    ".windsurf/hooks"
     "AGENTS.md"
     "CLAUDE.md"
     ".gemini/settings.json"
@@ -130,4 +129,3 @@ keylatch run --clean-env --runtime gateway_typed <provider> -- my-ai-tool
 - [docs/integration/agents/claude-code.md](claude-code.md) — Claude Code specifics
 - [docs/integration/agents/cursor.md](cursor.md) — Cursor specifics
 - [docs/integration/agents/gemini.md](gemini.md) — Gemini CLI specifics
-- [docs/integration/agents/windsurf.md](windsurf.md) — Windsurf specifics

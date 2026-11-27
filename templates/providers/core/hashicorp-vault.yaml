@@ -1,0 +1,73 @@
+provider: hashicorp-vault
+display_name: HashiCorp Vault dynamic secrets
+category: cloud
+description: "Vault dynamic secrets (database, AWS and similar engines). keylatch run --runtime minted reads one lease, gives the command its credentials and revokes the lease when the command exits; the Vault token stays in Keylatch."
+docs_url: https://developer.hashicorp.com/vault/docs/concepts/lease
+docs:
+  credentials_url: https://developer.hashicorp.com/vault/docs/auth/token
+
+secret_fields:
+  - name: vault_token
+    label: Vault token that may read the dynamic-secret path and revoke its leases
+    description: "Supply with -f vault_token=@- ; never on the command line."
+    required: true
+    sensitive: true
+    secret_kind: bearer_token
+
+config_fields:
+  - name: vault_addr
+    label: Vault address (https://vault.example.com:8200)
+    required: true
+
+auth_flow: custom
+
+storage_path_tpl: "{{.Namespace}}/cloud/hashicorp-vault/{{.Account}}"
+trust_level: 2
+
+runtime_support:
+  preferred: minted
+  supported:
+    - minted
+  runtime_reason: "The command receives the credentials of one lease read from the path in the connection's mint.vault policy. The lease is at most an hour long and is revoked when the command exits; the Vault token never reaches the command."
+  gateway_supported: false
+
+minted_fields:
+  - username
+  - password
+  - access_key
+  - secret_key
+  - security_token
+
+injection_rules:
+  - env_var: VAULT_SECRET_USERNAME
+    source: username
+  - env_var: VAULT_SECRET_PASSWORD
+    source: password
+  - env_var: AWS_ACCESS_KEY_ID
+    source: access_key
+  - env_var: AWS_SECRET_ACCESS_KEY
+    source: secret_key
+  - env_var: AWS_SESSION_TOKEN
+    source: security_token
+
+allowed_command_prefixes:
+  - "psql"
+  - "pg_dump"
+  - "mysql"
+  - "mongosh"
+  - "aws"
+  - "terraform"
+  - "tofu"
+  - "python3"
+  - "node"
+
+capabilities:
+  - name: tokens.mint
+    description: Read a dynamic secret under a lease that is revoked on exit
+
+# Routes that read secrets, tokens and leases beyond the one path the policy names.
+deny_routes:
+  - "/v1/sys/**"
+  - "/v1/auth/token/create"
+  - "/v1/auth/token/create/**"
+  - "/v1/secret/**"

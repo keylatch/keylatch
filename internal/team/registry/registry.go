@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package registry implements internal provider registry management.
 // Internal registry takes precedence over community registry on namespace conflicts.
 //

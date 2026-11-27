@@ -26,19 +26,21 @@ const (
 type RuntimeMode string
 
 const (
-	RuntimeGatewayTyped   RuntimeMode = "gateway_typed"
-	RuntimeGatewaySDK     RuntimeMode = "gateway_sdk"
-	RuntimeDirectBrokered RuntimeMode = "direct_brokered"
-	RuntimeGatewayProxy   RuntimeMode = "gateway_proxy"
+	RuntimeGatewayTyped RuntimeMode = "gateway_typed"
+	RuntimeGatewaySDK   RuntimeMode = "gateway_sdk"
+	RuntimeGatewayProxy RuntimeMode = "gateway_proxy"
+	// RuntimeMinted hands the child a short-lived, scoped credential that
+	// Keylatch mints with the template's mint strategy and revokes on exit.
+	RuntimeMinted RuntimeMode = "minted"
 )
 
 // validRuntimeModes is the closed set of valid RuntimeMode values.
 // Any RuntimeSupport.Supported entry must be in this set.
 var validRuntimeModes = map[RuntimeMode]struct{}{
-	RuntimeGatewayTyped:   {},
-	RuntimeGatewaySDK:     {},
-	RuntimeDirectBrokered: {},
-	RuntimeGatewayProxy:   {},
+	RuntimeGatewayTyped: {},
+	RuntimeGatewaySDK:   {},
+	RuntimeMinted:       {},
+	RuntimeGatewayProxy: {},
 }
 
 // IsValidRuntimeMode returns true if m is one of the four valid RuntimeMode values.
@@ -268,8 +270,42 @@ type ConnectionTemplate struct {
 	OverbroadScopes        []string        `json:"overbroad_scopes,omitempty"         yaml:"overbroad_scopes,omitempty"`
 	RateLimit              RateLimitSpec   `json:"rate_limit,omitempty"               yaml:"rate_limit,omitempty"`
 
+	// Secret substitution bindings
+	Hosts            []string         `json:"hosts,omitempty"             yaml:"hosts,omitempty"`
+	Slots            []Slot           `json:"slots,omitempty"             yaml:"slots,omitempty"`
+	PlaceholderShape PlaceholderShape `json:"placeholder_shape,omitempty" yaml:"placeholder_shape,omitempty"`
+	Adapter          Adapter          `json:"adapter,omitempty"           yaml:"adapter,omitempty"`
+	EnvClass         EnvClassSpec     `json:"env_class,omitempty"         yaml:"env_class,omitempty"`
+	MintedFields     []string         `json:"minted_fields,omitempty"     yaml:"minted_fields,omitempty"`
+	// DenyRoutes lists provider routes that create, read or list credentials
+	// or keys; the gateway refuses them (see ValidateDenyRoutes).
+	DenyRoutes []string `json:"deny_routes,omitempty" yaml:"deny_routes,omitempty"`
+	// ForwardHeaders names extra inbound headers the gateway forwards to the
+	// provider, beyond its built-in allowlist.
+	ForwardHeaders []string `json:"forward_headers,omitempty" yaml:"forward_headers,omitempty"`
+
 	// Test strategy
 	TestStrategy TestStrategy `json:"test_strategy" yaml:"test_strategy"`
+}
+
+// GatewayCapabilities lists the capabilities a gateway session for t may hold:
+// one per declared gateway action, or per advertised capability when the
+// template declares no actions. A template that declares neither gets the
+// whole provider.
+func (t ConnectionTemplate) GatewayCapabilities() []string {
+	var caps []string
+	for _, a := range t.GatewayActions {
+		caps = append(caps, t.Provider+"."+a.Name)
+	}
+	if len(caps) == 0 {
+		for _, c := range t.Capabilities {
+			caps = append(caps, t.Provider+"."+c.Name)
+		}
+	}
+	if len(caps) == 0 {
+		caps = []string{t.Provider + ".*"}
+	}
+	return caps
 }
 
 // Get looks up a provider template by slug.
