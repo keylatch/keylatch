@@ -46,6 +46,9 @@ type Grant struct {
 	RevokedAt            *time.Time `json:"revoked_at,omitempty"`
 	Parent               string     `json:"parent,omitempty"`
 	IssuedFromLLMSession bool       `json:"issued_from_llm_session"`
+	// PresenceDigest binds the grant to the human approval it was issued
+	// under. Only a grant that carries one can override a policy deny.
+	PresenceDigest string `json:"presence_digest,omitempty"`
 	// team member who issued this grant (HMACd — value-free invariant).
 	MemberID string `json:"member_id,omitempty"`
 	// Legacy compat — round-trip unchanged.
@@ -61,6 +64,8 @@ type GrantSpec struct {
 	CWD        string
 	TTL        time.Duration
 	MaxUses    int
+	// PresenceDigest is the digest of the presence proof the human gave.
+	PresenceDigest string
 	// MemberID is the HMACd member ID from team context (value-free).
 	MemberID string
 }
@@ -79,6 +84,9 @@ type FindRequest struct {
 	Capability string
 	Command    []string
 	CWD        string
+	// RequirePresence skips grants issued without a presence proof, before any
+	// use is consumed.
+	RequirePresence bool
 }
 
 // MaxTTL is the longest lifetime a grant can be issued with.
@@ -236,6 +244,7 @@ func Create(_ context.Context, spec GrantSpec, env func(string) string) (*Grant,
 		MaxUses:              spec.MaxUses,
 		UsesRemaining:        spec.MaxUses,
 		IssuedFromLLMSession: llmcontext.IsLLMSession(env),
+		PresenceDigest:       spec.PresenceDigest,
 		MemberID:             spec.MemberID, // HMACd from team context
 	}
 
@@ -337,6 +346,9 @@ func Find(_ context.Context, path string, req FindRequest) (*Grant, bool) {
 			continue
 		}
 		if g.IssuedFromLLMSession {
+			continue
+		}
+		if req.RequirePresence && g.PresenceDigest == "" {
 			continue
 		}
 

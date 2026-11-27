@@ -208,7 +208,7 @@ func TestFileFactory_KEKTypeSelection_FailsClosed(t *testing.T) {
 		kf      keyring.KeyringFile
 		wantSub string
 	}{
-		{"passphrase needs interactive input", keyring.KeyringFile{SchemaVersion: keyring.SchemaVersion, KEKType: "passphrase"}, "passphrase KEK requires interactive input"},
+		{"passphrase needs interactive input", keyring.KeyringFile{SchemaVersion: keyring.SchemaVersion, KEKType: "passphrase"}, "asked for on a terminal only"},
 		{"unknown kek type", keyring.KeyringFile{SchemaVersion: keyring.SchemaVersion, KEKType: "carrier-pigeon"}, `unsupported KEK type "carrier-pigeon"`},
 		{"empty kek type", keyring.KeyringFile{SchemaVersion: keyring.SchemaVersion}, `unsupported KEK type ""`},
 		{"roots keyring uses first root type", keyring.KeyringFile{
@@ -251,7 +251,7 @@ func TestFileFactory_RootsKeyringPassphraseRoot(t *testing.T) {
 		Name:     "file",
 		Settings: map[string]interface{}{"data_dir": t.TempDir(), "keyring_path": krPath},
 	})
-	if !errors.Is(err, backend.ErrBootstrapRequired) || !strings.Contains(err.Error(), "passphrase KEK requires interactive input") {
+	if !errors.Is(err, backend.ErrBootstrapRequired) || !strings.Contains(err.Error(), "asked for on a terminal only") {
 		t.Fatalf("got %v, want passphrase bootstrap error derived from roots[0]", err)
 	}
 }

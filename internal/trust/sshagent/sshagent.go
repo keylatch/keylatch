@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package sshagent implements a trust.RootOfTrust adapter backed by an SSH agent.
 // It supports signing (all key types) and wrapping (Ed25519 only, via HKDF).
 //

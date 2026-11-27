@@ -2,7 +2,10 @@
 // in the doctor_test package. Only used during testing.
 package doctor
 
-import "github.com/keylatch/keylatch/internal/llmcontext"
+import (
+	"github.com/keylatch/keylatch/internal/harness/sandbox"
+	"github.com/keylatch/keylatch/internal/llmcontext"
+)
 
 // ExportCheckIntegrationMarkers exposes checkIntegrationMarkers for unit tests.
 func ExportCheckIntegrationMarkers() Check {
@@ -22,4 +25,29 @@ func ExportCheckPlaintextRetention(env llmcontext.Lookup) Check {
 // ExportCheckNoConnections exposes checkNoConnections for unit tests.
 func ExportCheckNoConnections(env llmcontext.Lookup) Check {
 	return checkNoConnections(env)
+}
+
+// ExportCheckHostSandboxKeylatchExcluded exposes checkHostSandboxKeylatchExcluded for unit tests.
+func ExportCheckHostSandboxKeylatchExcluded(lookup llmcontext.Lookup) Check {
+	return checkHostSandboxKeylatchExcluded(lookup)
+}
+
+// ExportMatchKeylatchExclusion exposes matchKeylatchExclusion for unit tests.
+func ExportMatchKeylatchExclusion(pattern string) (bool, bool) {
+	return matchKeylatchExclusion(pattern)
+}
+
+// ExportSetManagedSettingsDir points the managed settings lookup at dir and returns a restore func.
+func ExportSetManagedSettingsDir(dir string) func() {
+	return OverrideManagedSettingsDir(dir)
+}
+
+// ExportKeylatchSafeVerbs returns the subcommands the matcher treats as not spawning children.
+func ExportKeylatchSafeVerbs() []string {
+	return sandbox.SafeVerbs()
+}
+
+// ExportMatchKeylatchExclusionOn exposes matchKeylatchExclusionOn for unit tests.
+func ExportMatchKeylatchExclusionOn(goos, pattern string) (bool, bool) {
+	return matchKeylatchExclusionOn(goos, pattern)
 }

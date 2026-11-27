@@ -2,11 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/allow"
+	"github.com/keylatch/keylatch/internal/harness"
 	"github.com/spf13/cobra"
 )
 
@@ -36,10 +35,10 @@ The printed slugs can be passed directly to 'keylatch run --allow'.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if suggestEnv {
 				// Determine agent config path: default to ~/.claude/settings.json.
-				home, err := os.UserHomeDir()
 				agentConfigPath := ""
-				if err == nil {
-					agentConfigPath = filepath.Join(home, ".claude", "settings.json")
+				if env, err := harness.SystemEnv(); err == nil {
+					claude, _ := harness.Lookup("claude-code")
+					agentConfigPath = claude.Layout(env).Hook
 				}
 
 				suggestions := allow.Suggest(agentConfigPath)

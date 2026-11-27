@@ -7,14 +7,16 @@ import (
 
 // bwItem is the JSON shape returned by `bw get item <connection>`.
 type bwItem struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Type          int       `json:"type"` // 1=Login, 2=SecureNote, 3=Card, 4=Identity
-	FolderID      *string   `json:"folderId"`
-	CollectionIDs []string  `json:"collectionIds"`
-	Login         *bwLogin  `json:"login,omitempty"`
-	Fields        []bwField `json:"fields,omitempty"`
-	RevisionDate  string    `json:"revisionDate,omitempty"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Type           int       `json:"type"` // 1=Login, 2=SecureNote, 3=Card, 4=Identity
+	FolderID       *string   `json:"folderId"`
+	CollectionIDs  []string  `json:"collectionIds"`
+	OrganizationID string    `json:"organizationId,omitempty"`
+	Notes          string    `json:"notes,omitempty"`
+	Login          *bwLogin  `json:"login,omitempty"`
+	Fields         []bwField `json:"fields,omitempty"`
+	RevisionDate   string    `json:"revisionDate,omitempty"`
 }
 
 // updatedTime parses RevisionDate as time.Time, returning zero on error.
@@ -91,6 +93,12 @@ type bwLogin struct {
 func (b *bwLogin) zero() {
 	b.Password = ""
 	b.Username = ""
+}
+
+// bwNamed is the JSON shape shared by organizations and collections.
+type bwNamed struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // bwFolder is the JSON shape for a Bitwarden folder.

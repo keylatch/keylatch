@@ -11,9 +11,7 @@ import (
 )
 
 func init() {
-	Register(&CursorPreset{})
 	Register(&OpenHandsPreset{})
-	Register(&OpenCodePreset{})
 	Register(&OpenClawPreset{})
 	Register(&NanoClawPreset{})
 	Register(&HermesPreset{})
@@ -70,21 +68,25 @@ func (g *genericPreset) healthCheck(configPath string) Status {
 	return Status{Healthy: true, Detail: "config file exists"}
 }
 
-// CursorPreset implements Preset for Cursor.
-type CursorPreset struct{ genericPreset }
-
-func (p *CursorPreset) Name() string { return "cursor" }
-func (p *CursorPreset) Setup(ctx context.Context, opts SetupOptions, store connections.Store) (Receipt, error) {
-	return p.setupAgent(ctx, "cursor", opts, store)
-}
-func (p *CursorPreset) Diff(ctx context.Context, opts SetupOptions, store connections.Store) (Diff, error) {
-	return p.diffAgent(ctx, "cursor", opts, store)
-}
-func (p *CursorPreset) Uninstall(_ context.Context) error {
-	return removeFromMCPServers(expandHome("${HOME}/.cursor/settings.json"), "keylatch")
-}
-func (p *CursorPreset) HealthCheck(_ context.Context) Status {
-	return p.healthCheck("${HOME}/.cursor/settings.json")
+// removeFromMCPServers removes the given key from the mcpServers JSON object in configPath.
+func removeFromMCPServers(configPath, key string) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil // nothing to do
+	}
+	var m map[string]interface{}
+	if err := jsonUnmarshal(data, &m); err != nil {
+		return nil
+	}
+	if mcp, ok := m["mcpServers"].(map[string]interface{}); ok {
+		delete(mcp, key)
+		m["mcpServers"] = mcp
+	}
+	out, err := jsonMarshalIndent(m)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configPath, out, 0o600)
 }
 
 // OpenHandsPreset implements Preset for OpenHands.
@@ -106,23 +108,6 @@ func (p *OpenHandsPreset) HealthCheck(_ context.Context) Status {
 		return Status{Healthy: true, Detail: "openhands binary found"}
 	}
 	return p.healthCheck("${HOME}/.openhands/config.json")
-}
-
-// OpenCodePreset implements Preset for OpenCode.
-type OpenCodePreset struct{ genericPreset }
-
-func (p *OpenCodePreset) Name() string { return "opencode" }
-func (p *OpenCodePreset) Setup(ctx context.Context, opts SetupOptions, store connections.Store) (Receipt, error) {
-	return p.setupAgent(ctx, "opencode", opts, store)
-}
-func (p *OpenCodePreset) Diff(ctx context.Context, opts SetupOptions, store connections.Store) (Diff, error) {
-	return p.diffAgent(ctx, "opencode", opts, store)
-}
-func (p *OpenCodePreset) Uninstall(_ context.Context) error {
-	return removeFromMCPServers(expandHome("${HOME}/.opencode/config.json"), "keylatch")
-}
-func (p *OpenCodePreset) HealthCheck(_ context.Context) Status {
-	return p.healthCheck("${HOME}/.opencode/config.json")
 }
 
 // OpenClawPreset implements Preset for OpenClaw.

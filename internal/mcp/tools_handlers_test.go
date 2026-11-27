@@ -159,7 +159,7 @@ func TestRunHandlerSliceCommandWithNonStringItems(t *testing.T) {
 		"provider": "sentry",
 		"command":  []interface{}{123, true, nil}, // non-string items
 	}
-	_, isErr := callRunHandler(t, store, &fakeDispatcher{}, args)
+	_, isErr := callRunHandler(t, store, &stubDispatcher{}, args)
 	// command stays empty → "run: 'command' argument required" error
 	assert.True(t, isErr)
 }
@@ -231,6 +231,7 @@ func TestServeBearerLegacyTTLExceedsCap(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestServeTCPDefaultAuthModeDispatch(t *testing.T) {
+	skipWithoutSocketTransport(t)
 	// Create a server with no ConnectionAuth set, for a transport other than
 	// linux/darwin/windows. The defaultAuthMode returns AuthBearerLegacy for
 	// unknown GOOS. Since we can't override GOOS in tests, just use

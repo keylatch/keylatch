@@ -128,10 +128,10 @@ func TestHandleCSRF_IssuesTokenCookie(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
 
-func TestHandleBootstrap_RejectsNonGet(t *testing.T) {
+func TestHandleBootstrap_RejectsUnsupportedMethod(t *testing.T) {
 	t.Parallel()
 	srv := mxServer(t, nil)
-	req := httptest.NewRequest(http.MethodPost, "/__bootstrap?b=x&mac=y", nil)
+	req := httptest.NewRequest(http.MethodPut, "/__bootstrap?b=x&mac=y", nil)
 	req.RemoteAddr = "192.0.2.11:1"
 	rec := httptest.NewRecorder()
 	srv.TestServeHTTP(rec, req)

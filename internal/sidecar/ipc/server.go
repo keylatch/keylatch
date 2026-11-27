@@ -19,8 +19,8 @@ const (
 	invalidFrameAlertThreshold = 10
 )
 
-// Server is the IPC Unix-socket server. It accepts exactly one connection at
-// a time (single Tauri shell instance). On HMAC mismatch the
+// Server is the IPC Unix-socket server with bounded concurrent connections.
+// On HMAC mismatch the
 // connection is dropped silently without surfacing detail.
 type Server struct {
 	socketPath string
@@ -34,6 +34,7 @@ type Server struct {
 	windowMu          sync.Mutex
 
 	listener net.Listener
+	ready    chan struct{}
 	mu       sync.Mutex // guards listener
 }
 
@@ -50,12 +51,16 @@ func NewServer(socketPath string, hmacKey []byte) (*Server, error) {
 		key:         k,
 		registry:    NewMethodRegistry(),
 		windowStart: time.Now(),
+		ready:       make(chan struct{}),
 	}
 	return s, nil
 }
 
 // Registry returns the method registry so callers can register handlers.
 func (s *Server) Registry() *MethodRegistry { return s.registry }
+
+// Ready closes once the IPC listener has bound successfully.
+func (s *Server) Ready() <-chan struct{} { return s.ready }
 
 // Listen starts the Unix domain socket listener and serves connections.
 // It blocks until ctx is cancelled.
@@ -73,9 +78,15 @@ func (s *Server) Listen(ctx context.Context) error {
 	s.mu.Lock()
 	s.listener = ln
 	s.mu.Unlock()
+	close(s.ready)
+	ctx, cancel := context.WithCancel(ctx)
+	var clients sync.WaitGroup
+	slots := make(chan struct{}, 16)
 
 	defer func() {
+		cancel()
 		_ = ln.Close()
+		clients.Wait()
 		_ = os.Remove(s.socketPath)
 		// Zero the key when the server shuts down.
 		for i := range s.key {
@@ -84,14 +95,14 @@ func (s *Server) Listen(ctx context.Context) error {
 	}()
 
 	// Close the listener when ctx is cancelled so Accept unblocks.
-	go func() {
-		<-ctx.Done()
+	stop := context.AfterFunc(ctx, func() {
 		s.mu.Lock()
 		if s.listener != nil {
 			_ = s.listener.Close()
 		}
 		s.mu.Unlock()
-	}()
+	})
+	defer stop()
 
 	for {
 		conn, err := ln.Accept()
@@ -107,22 +118,31 @@ func (s *Server) Listen(ctx context.Context) error {
 			return fmt.Errorf("ipc: accept: %w", err)
 		}
 
-		// Serve this connection synchronously (one connection at a time —
-		// Single Tauri shell instance).
-		s.serveConn(ctx, conn)
+		select {
+		case slots <- struct{}{}:
+			clients.Go(func() {
+				defer func() { <-slots }()
+				s.serveConn(ctx, conn)
+			})
+		default:
+			_ = conn.Close()
+		}
 	}
 }
 
-// serveConn handles a single IPC connection. If a second connection arrives
-// while this one is active, the server will not reach Accept again until
-// serveConn returns — effectively rejecting the second connection.
+// serveConn authenticates each frame before dispatching it.
 func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close() //nolint:errcheck // defer close of IPC connection, error non-actionable on shutdown
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	fr := NewFrameReader(conn, s.key)
-	fw := NewFrameWriter(conn, s.key)
+	fw := NewFrameWriter(timedIPCWriter{conn}, s.key)
 
 	for {
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		var req Request
 		if err := fr.Read(&req); err != nil {
 			if errors.Is(err, ErrHMACMismatch) {
@@ -131,6 +151,21 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 				return
 			}
 			// EOF or connection reset — normal teardown.
+			return
+		}
+		_ = conn.SetReadDeadline(time.Time{})
+		if req.Method == MethodSubscribeEvents {
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				var extra [1]byte
+				_, _ = conn.Read(extra[:])
+				cancel()
+			}()
+			_ = s.registry.Dispatch(ctx, req, fw)
+			cancel()
+			_ = conn.Close()
+			<-done
 			return
 		}
 
@@ -145,6 +180,15 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 			return
 		}
 	}
+}
+
+type timedIPCWriter struct{ net.Conn }
+
+func (w timedIPCWriter) Write(p []byte) (int, error) {
+	if err := w.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return 0, err
+	}
+	return w.Conn.Write(p)
 }
 
 // recordInvalidFrame increments the per-window counter and triggers an audit

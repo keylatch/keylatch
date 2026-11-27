@@ -11,9 +11,9 @@ Set the active backend:
 
 ```bash
 keylatch config set backend <name>
-# or
-export KEYLATCH_BACKEND=<name>
 ```
+
+`KEYLATCH_BACKEND=<name>` selects a backend only while `backend` is unset in `config.json`; the config value wins. `keylatch backend list` prints every backend with its support tier.
 
 ---
 
@@ -35,6 +35,8 @@ export KEYLATCH_BACKEND=<name>
 | Azure Key Vault | `azure-kv` | All | Yes (cloud) | No | Yes | No | — (Azure SDK) |
 | Doppler | `doppler` | All | Yes (cloud) | No | Yes | No | — (HTTP) |
 | Infisical | `infisical` | All | Yes (cloud) | No | Yes | No | — (HTTP) |
+| Bitwarden Secrets Manager | `bws` | All | Yes (cloud) | No | Yes | No | `bws` |
+| SOPS (age) | `sops` | All | Yes (file) | No | Yes | Yes | — (built in) |
 
 ---
 
@@ -44,8 +46,8 @@ export KEYLATCH_BACKEND=<name>
 
 Stores credentials in `~/.keylatch/vault/` as XChaCha20-Poly1305 AEAD-encrypted blobs.
 The encryption key (DEK) is wrapped by a KEK derived from a vault identity held in the
-OS keyring (macOS Keychain or Secret Service). Hosts without a keyring need the explicit
-`--insecure-file-kek` opt-in, which keeps the identity in a plaintext file. See
+OS keyring (macOS Keychain or Secret Service). Hosts without a keyring use a passphrase
+asked on a terminal; only the operator's config can allow a plaintext identity file. See
 [File backend](file.md#where-the-vault-identity-lives).
 
 ```bash
@@ -67,16 +69,16 @@ invariants.
 
 ---
 
-### `keychain` — macOS Keychain
+### `keychain` — macOS Keychain (deprecated)
 
-Uses the macOS Security framework. Entries are protected by the login keychain and may require Touch ID or password. Survives reboots without re-entry.
+Deprecated: the macOS Keychain stays as a key store for the file backend's vault identity, not as a credential backend, and the backend will be removed. It is macOS only and reads the value from stdin, never from an argument.
 
 ```bash
 keylatch config set backend keychain
-keylatch connect openrouter api_key YOUR_KEY
+printf '%s' "$OPENROUTER_KEY" | keylatch connect openrouter -f api_key=@-
 ```
 
-macOS only. iCloud Keychain sync is not enabled — local keychain only.
+Migrate to `op`, `bw` or `file`. iCloud Keychain sync is not enabled — local keychain only.
 
 ---
 
@@ -102,7 +104,8 @@ keylatch connect openrouter api_key YOUR_KEY
 |---------|---------|
 | `KEYLATCH_OP_VAULT` | Vault name (default: `Keylatch`) |
 | `KEYLATCH_OP_BIN` | Path to `op` binary (default: PATH) |
-| `OP_SERVICE_ACCOUNT_TOKEN` | Service account token for CI |
+
+For CI, store the service account token with `keylatch backend login op` (see [Backend credentials](#backend-credentials)); an exported `OP_SERVICE_ACCOUNT_TOKEN` is refused unless `backends.op.allow_env_credentials` is `true`.
 
 ---
 
@@ -111,18 +114,38 @@ keylatch connect openrouter api_key YOUR_KEY
 Delegates storage to the Bitwarden CLI (`bw`). Works with hosted Bitwarden and self-hosted Vaultwarden instances.
 
 ```bash
-export BW_SESSION=$(bw unlock --raw)
+keylatch bw unlock
 keylatch config set backend bw
 keylatch connect openrouter api_key YOUR_KEY
 ```
 
 | Env var | Purpose |
 |---------|---------|
-| `BW_SESSION` | Session token from `bw unlock --raw` |
 | `KEYLATCH_BW_SERVER` | Vaultwarden server URL (`https://` required) |
 | `KEYLATCH_BW_BIN` | Path to `bw` binary (default: PATH) |
 | `KEYLATCH_BW_FOLDER` | Filter items by folder name |
 | `KEYLATCH_BW_COLLECTION` | Filter items by collection ID |
+
+**Folder.** With a folder configured, only items in that folder are listed or read; a new item is created in it.
+
+**Server check.** When a server is configured (`KEYLATCH_BW_SERVER` or `bw.server`), `bw config server` must name the same server or the backend refuses with `ErrServerMismatch` before it sends anything. Run `bw config server <url>` to fix it.
+
+**Organization collections.** To keep items in an organization's shared collections, give each namespace a collection:
+
+```bash
+keylatch setup --backend bw --organization-id <org-id> --server https://vault.example.com \
+  --namespace work=Work/infra --namespace ops=Ops
+```
+
+which stores, in `config.json`:
+
+```json
+{ "bw": { "organization_id": "<org-id>", "namespaces": { "work": "Work/infra", "ops": "Ops" } } }
+```
+
+A path `work/deploy/api_key` is then created with the organization ID and the ID of the collection named `Work/infra` (resolved once per process with `bw list collections --organizationid <org-id>`), and is looked up only in that collection. A namespace with no entry — including `default` — is refused with `ErrNamespaceUnmapped` before any `bw` call. `bw.namespaces` needs `bw.organization_id` and replaces `bw.folder` and `bw.collection`.
+
+**Session.** `keylatch bw unlock` seals the session token under the vault key (the same key that wraps the keyring) in `sessions/bw.session.enc`, keeps only its expiry beside it, and never writes it in plaintext. The session lasts 1 hour by default; `--ttl` or `bw.session_ttl` (a duration such as `30m`) sets it, up to 8 hours. The gateway holds the token in memory while it runs. `keylatch bw lock` deletes the sealed session and any `sessions/bw.session` plaintext file an earlier version left; `keylatch doctor` fails (`backend.bw_session_file`) while one is present.
 
 ---
 
@@ -142,14 +165,49 @@ For the remaining backends, set `KEYLATCH_BACKEND=<key>` and consult the provide
 | Azure Key Vault | `azure-kv` | [Azure docs](https://learn.microsoft.com/en-us/azure/key-vault/) |
 | Doppler | `doppler` | [doppler.com/docs](https://docs.doppler.com) |
 | Infisical | `infisical` | [infisical.com/docs](https://infisical.com/docs) |
+| Bitwarden Secrets Manager | `bws` | [bitwarden.com/help/secrets-manager-cli](https://bitwarden.com/help/secrets-manager-cli/) |
+| SOPS | `sops` | [getsops.io](https://getsops.io/docs/) |
+
+---
+
+## Read-only backends for machine secrets
+
+Two backends read secrets that a team already keeps elsewhere. Both are read-only: Keylatch never writes to them, and a `keylatch set` against them is refused.
+
+### `bws` — Bitwarden Secrets Manager
+
+A machine account's access token is held by Keylatch and given to the `bws` CLI in the CLI's environment, never on its command line. The CLI runs with a private home directory that is removed when the backend closes, so its state file does not land in your account.
+
+```bash
+keylatch backend login bws                       # stores the access token wrapped by the KEK
+keylatch config set backends.bws.credential_ref bws
+export KEYLATCH_BWS_PROJECT_ID=<project uuid>    # the project this backend reads
+```
+
+A path is the secret's key name (`stripe/api_key`), or the secret's UUID. A key shared by several secrets in the project is refused; use the UUID. `server_url` points the CLI at a self-hosted server and must use `https`.
+
+Writes are refused because `bws secret create` takes the value as an argument, which would show it in the process list. Create and rotate secrets in Bitwarden.
+
+### `sops` — SOPS files encrypted to age
+
+The daemon decrypts a SOPS file in memory with an age identity it holds, returns the one value asked for and wipes the rest. The plaintext is never written to disk and no `sops` or `age` binary is run. JSON, YAML and dotenv files are read.
+
+```bash
+keylatch backend login sops                      # stores the age identity (AGE-SECRET-KEY-1...)
+export KEYLATCH_SOPS_FILE=/srv/app/secrets.enc.yaml
+```
+
+A path is the key path in the file: `db/password` for nested files, `API_KEY` for dotenv, `hosts/0` for a list element. `list` shows the key paths without decrypting anything.
+
+Limits: only age recipients are read (not KMS, PGP, passphrase or plugin recipients). The whole-file MAC is verified, so a value that was removed, added or reordered after SOPS wrote the file is refused; files written with `sops --mac-only-encrypted` cannot be verified here and are refused unless `verify_mac` is set to `false`. Encrypted comments are accepted.
 
 ---
 
 ## Headless CI — using the encrypted vault without a prompt
 
 The `file` backend derives its KEK from a vault identity in the OS keyring, or from a
-plaintext identity file when bootstrapped with `--insecure-file-kek`, which is the usual
-choice on CI runners. No passphrase is required. In CI you have two options:
+plaintext identity file when the operator's config allows one (`scripts/ci-operator-config.sh`
+does that on CI runners). No passphrase is required then. In CI you have two options:
 
 ### Option 1 — `--provider-ref` (no local vault required)
 
@@ -167,16 +225,9 @@ keylatch connect openrouter --provider-ref api_key=aws-sm://us-east-1/openrouter
 keylatch connect openrouter --provider-ref api_key=hashivault://secret/openrouter#api_key
 ```
 
-### Option 2 — system keyring (macOS / Linux with libsecret)
+### Option 2 — file backend with `allow_insecure_file_kek`
 
-Switch to the `keychain` (macOS) backend so the OS keyring manages the secret.
-Most CI runners that target macOS support this out of the box via the login
-keychain unlocked at session start.
-
-```bash
-export KEYLATCH_BACKEND=keychain
-keylatch connect openrouter api_key "$OPENROUTER_KEY"
-```
+On a runner with no OS keyring and no terminal, `keylatch bootstrap` keeps the vault identity in a plaintext file next to the vault only when `allow_insecure_file_kek` is set in the operator's own config file (the default config path under the account's home); no flag or environment variable can set it. Any process on the runner can decrypt the vault, so use it only for throwaway runners, and expect `keylatch doctor` to fail on `backend.kek` there.
 
 ### Recommendation
 
@@ -185,8 +236,22 @@ For ephemeral CI pipelines (GitHub Actions, GitLab CI, CircleCI) the
 vault file in the runner at all — credentials are fetched from a managed secret
 store on demand and never written to disk by keylatch.
 
-**Note**: `KEYLATCH_PASSPHRASE` has no effect on the `file` backend (S-FIND-12).
+**Note**: `KEYLATCH_PASSPHRASE` has no effect on the `file` backend.
 The passphrase env var is not read during bootstrap or credential access.
+
+---
+
+## Backend credentials
+
+Remote backends (`op`, `opconnect`, `vault`, `awssm`, `gcpsm`, `azurekv`, `doppler`, `infisical`, `bws`, `sops`) authenticate with a credential: a service account or Connect token, a Vault token or AppRole, an AWS key pair, a Google credentials file, an Azure client secret, a Doppler token, an Infisical client ID and secret, a Secrets Manager machine-account token, an age identity. Keep it out of the environment:
+
+```bash
+keylatch backend login vault     # prompts on the terminal, stores it wrapped by the KEK
+```
+
+`backend login` is human-only: it needs an interactive terminal, refuses agent sessions, asks a human to approve the change before it prompts, and takes the value from the prompt, never from a flag or a pipe. It sets `backends.<id>.credential_ref` in the config. The backend reads the stored credential first; a stale variable in the environment does not override it.
+
+Credentials exported in the environment (`VAULT_TOKEN`, `AWS_ACCESS_KEY_ID`, `DOPPLER_TOKEN`, ...) are refused with an explanation unless the config sets `backends.<id>.allow_env_credentials` to `true`; `keylatch doctor` warns while it is on. Every command Keylatch runs for you (`keylatch run`, the gateway runtimes, the MCP `keylatch_run` tool) starts with these variables and all `KEYLATCH_*` variables removed from its environment, whatever the parent exported.
 
 ---
 

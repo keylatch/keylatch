@@ -1,0 +1,7 @@
+{
+  "numStartups": 12,
+  "mcpServers": {
+    "other-server": {"type": "stdio", "command": "npx", "args": ["other-server"]}
+  },
+  "projects": {}
+}

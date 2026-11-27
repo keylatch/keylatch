@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keylatch.dev/schemas/doctor.schema.json",
+  "title": "keylatch doctor --json",
+  "type": "object",
+  "required": [
+    "_schema",
+    "exit",
+    "summary",
+    "operating_mode",
+    "version",
+    "platform",
+    "llm_session",
+    "agent_session",
+    "checks",
+    "overall_ok",
+    "has_warnings",
+    "cipher_suite",
+    "fips_build"
+  ],
+  "properties": {
+    "_schema": { "const": "v1" },
+    "exit": {
+      "description": "Exit code of the command: 0 all passed, 1 warnings only, 2 at least one failure.",
+      "enum": [0, 1, 2]
+    },
+    "summary": {
+      "type": "object",
+      "required": ["ok", "warn", "fail", "skipped"],
+      "properties": {
+        "ok": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "operating_mode": { "type": "string" },
+    "version": { "type": "string" },
+    "platform": { "type": "string" },
+    "llm_session": { "type": "boolean" },
+    "llm_reasons": { "type": "array", "items": { "type": "string" } },
+    "agent_session": {
+      "type": "object",
+      "required": ["detected", "signals"],
+      "properties": {
+        "detected": { "type": "boolean" },
+        "signals": {
+          "description": "Environment variable names, \"ancestry:<harness>\" or \"ticket\" that fired.",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "harness": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "required": ["name", "section", "ok", "detail"],
+        "properties": {
+          "name": { "type": "string" },
+          "section": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "warn": { "type": "boolean" },
+          "skipped": {
+            "description": "True when the check did not run because the root cause it depends on failed.",
+            "type": "boolean"
+          },
+          "detail": { "type": "string" },
+          "fix": { "description": "A command to run, never a repository path.", "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sections": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "required": ["name", "ok", "has_warn", "check_count"],
+        "properties": {
+          "name": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "has_warn": { "type": "boolean" },
+          "check_count": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "overall_ok": { "type": "boolean" },
+    "has_warnings": { "type": "boolean" },
+    "cipher_suite": { "type": "string" },
+    "fips_build": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/keylatch/keylatch/internal/backend"
 	internalexec "github.com/keylatch/keylatch/internal/exec"
+	"github.com/keylatch/keylatch/internal/redactor"
 	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/store"
 	"github.com/keylatch/keylatch/internal/vault/meta"
@@ -155,13 +156,13 @@ func TestProcessRunner_CredentialEnvVarPresent(t *testing.T) {
 	_, err = pr.Run(
 		context.Background(),
 		conn,
-		[]string{"sh", "-c", "echo $OPENROUTER_API_KEY"},
+		[]string{"sh", "-c", "echo $OPENROUTER_API_KEY | tr a-z A-Z"},
 		runner.RunOptions{},
 	)
 	require.NoError(t, err)
 	assert.True(t,
-		strings.Contains(buf.String(), credValue),
-		"expected output to contain credential value %q, got: %q", credValue, buf.String(),
+		strings.Contains(buf.String(), strings.ToUpper(credValue)),
+		"expected output to contain credential value %q, got: %q", strings.ToUpper(credValue), buf.String(),
 	)
 }
 
@@ -283,7 +284,7 @@ func TestProcessRunner_RedactionAppliedToOutput(t *testing.T) {
 	output := outBuf.String()
 	assert.NotContains(t, output, credValue,
 		"raw credential value must not appear in subprocess output")
-	assert.Contains(t, output, "****",
+	assert.Contains(t, output, redactor.Marker,
 		"redacted placeholder must appear in subprocess output")
 }
 
@@ -370,13 +371,13 @@ func TestProcessRunner_URIResolution(t *testing.T) {
 	_, err = pr.Run(
 		context.Background(),
 		conn,
-		[]string{"sh", "-c", "printf '%s' \"$OPENROUTER_API_KEY\""},
+		[]string{"sh", "-c", "printf '%s' \"$OPENROUTER_API_KEY\" | tr a-z A-Z"},
 		runner.RunOptions{},
 	)
 	require.NoError(t, err)
 
 	got := outBuf.String()
-	assert.Equal(t, resolvedValue, got,
+	assert.Equal(t, strings.ToUpper(resolvedValue), got,
 		"subprocess must receive the resolved value, not the URI")
 	assert.NotContains(t, got, "op://",
 		"URI must not be injected verbatim into the subprocess environment")

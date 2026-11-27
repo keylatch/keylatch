@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"os"
-
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -22,7 +20,7 @@ func runtimeGuard() runner.GuardFunc {
 // A missing signing key is not fatal here: without one the gateway cannot have
 // been initialized, so the drivers fail at Run with the gateway-not-running error.
 func newGatewayDrivers(env llmcontext.Lookup, modeFlag string) (map[string]runner.Driver, error) {
-	signingKey, _ := os.ReadFile(paths.GatewaySigningKey(env))
+	signingKey, _ := LoadGatewaySigningKey(env, false)
 	tokenStorePath := paths.GatewayTokens(env)
 
 	gatewayAddr, err := gatewayRunAddr(env)

@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package token
 
 import (
@@ -9,7 +7,8 @@ import (
 	"time"
 )
 
-// Verify must reject a token whose persisted approval expiry has passed.
+// A record edited in place (here: an approval expiry in the past) is not
+// accepted, because the edit invalidates the record's MAC.
 func TestSecurityRegression_VerifyIgnoresStoredApprovalExpiry(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	d := filepath.Join(t.TempDir(), "tokens.json")
@@ -63,7 +62,7 @@ func TestSecurityRegression_RevokeDescendants(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = Revoke(parent.ID, d); e != nil {
+	if e = Revoke(parent.ID, d, key); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = Verify(childJWT, req, key, d); e == nil {
@@ -105,12 +104,13 @@ func TestSecurityRegression_RevokeReachesPastRevokedMiddle(t *testing.T) {
 	for i := range tokens {
 		if tokens[i].ID == middle.ID {
 			tokens[i].Revoked = true
+			sealRecord(key, &tokens[i])
 		}
 	}
 	if e = writeTokens(d, tokens); e != nil {
 		t.Fatal(e)
 	}
-	if e = Revoke(root.ID, d); e != nil {
+	if e = Revoke(root.ID, d, key); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = Verify(jwt, httptest.NewRequest("GET", "/", nil), key, d); e == nil {

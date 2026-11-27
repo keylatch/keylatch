@@ -10,8 +10,8 @@ import (
 func TestKnownCanonicalNames_SortedUniqueAndCanonical(t *testing.T) {
 	names := backend.KnownCanonicalNames()
 	want := []string{
-		"aws-sm", "azure-kv", "bw", "doppler", "file", "gcp-sm", "infisical",
-		"keeper", "keychain", "lastpass", "op", "op-connect", "proton-pass", "vault",
+		"aws-sm", "azure-kv", "bw", "bws", "doppler", "file", "gcp-sm", "infisical",
+		"keeper", "keychain", "lastpass", "op", "op-connect", "proton-pass", "sops", "vault",
 	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("KnownCanonicalNames() = %v, want %v", names, want)

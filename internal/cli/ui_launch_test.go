@@ -31,6 +31,14 @@ func cbFakeBrowser(t *testing.T) string {
 	return marker
 }
 
+// cbStdoutTTY makes the ui command treat stdout as a terminal or not.
+func cbStdoutTTY(t *testing.T, tty bool) {
+	t.Helper()
+	old := stdoutIsTTY
+	stdoutIsTTY = func() bool { return tty }
+	t.Cleanup(func() { stdoutIsTTY = old })
+}
+
 func TestUI_InvalidScope(t *testing.T) {
 	cbIsolate(t)
 	_, _, err := cbRun(t, "ui", "--scope", "root")
@@ -40,6 +48,7 @@ func TestUI_InvalidScope(t *testing.T) {
 
 func TestUI_PrintsBootstrapURLAndFailsOnBusyPort(t *testing.T) {
 	cbIsolate(t)
+	cbStdoutTTY(t, true)
 	port := cbBusyPort(t)
 
 	out, _, err := cbRun(t, "ui", "--no-open", "--demo", "--port", strconv.Itoa(port))
@@ -56,6 +65,7 @@ func TestUI_LLMSessionLocksScopeAndBind(t *testing.T) {
 	cbIsolate(t)
 	t.Setenv("CLAUDECODE", "1")
 	t.Setenv("KEYLATCH_UI_LISTEN", "0.0.0.0:9")
+	cbStdoutTTY(t, true)
 	port := cbBusyPort(t)
 
 	out, stderr, err := cbRun(t, "ui", "--no-open", "--scope", "admin", "--unsafe-bind-all",
@@ -70,6 +80,7 @@ func TestUI_LLMSessionLocksScopeAndBind(t *testing.T) {
 
 func TestUI_OpensBrowserWithBootstrapURL(t *testing.T) {
 	cbIsolate(t)
+	cbStdoutTTY(t, false)
 	marker := cbFakeBrowser(t)
 	port := cbBusyPort(t)
 
@@ -82,7 +93,19 @@ func TestUI_OpensBrowserWithBootstrapURL(t *testing.T) {
 	opened, err := os.ReadFile(marker)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(opened), fmt.Sprintf("http://127.0.0.1:%d/", port)))
-	assert.Contains(t, out, string(opened))
+	assert.NotContains(t, out, string(opened), "without a terminal the one-time URL goes only to the browser opener")
+	assert.Contains(t, out, "goes only to the browser opener")
+}
+
+func TestUI_NoOpenWithoutTerminalIsRefused(t *testing.T) {
+	cbIsolate(t)
+	cbStdoutTTY(t, false)
+	port := cbBusyPort(t)
+
+	out, _, err := cbRun(t, "ui", "--no-open", "--port", strconv.Itoa(port))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--no-open needs a terminal")
+	assert.NotContains(t, out, "__bootstrap")
 }
 
 func TestOpenBrowser_NoLauncherAvailable(t *testing.T) {

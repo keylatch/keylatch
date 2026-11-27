@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "deny",
+  "tier": null,
+  "tier_name": null,
+  "runtime": null,
+  "child_location": "none",
+  "containment": {
+    "verdict": "not_applicable",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "openai",
+    "executable": "pnpm",
+    "argc": 2,
+    "argv_sha256": "14be65cb19b07e66fb156242a8d423368865d03c65598f8a9a6fd5ae8839f731",
+    "cwd": "/work/app"
+  },
+  "hosts": [],
+  "scope": {
+    "rule_id": null,
+    "capabilities": [],
+    "connections": [],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "policy: no rule matches request; runtime gateway_sdk is not supported in this build",
+    "fix: run keylatch policy allow ... or run from a human shell",
+    "tier D6 is not eligible for this run",
+    "no delivery tier is eligible for this run"
+  ],
+  "rejected_tiers": [
+    {
+      "tier": "D1",
+      "tier_name": "typed_action",
+      "why": "typed actions run without a child process; use keylatch call"
+    },
+    {
+      "tier": "D2",
+      "tier_name": "gateway_session",
+      "why": "no rule matches request; runtime gateway_sdk is not supported in this build"
+    },
+    {
+      "tier": "D3",
+      "tier_name": "placeholder_substitution",
+      "why": "runtime placeholder is not supported in this build"
+    },
+    {
+      "tier": "D4",
+      "tier_name": "protocol_adapter",
+      "why": "runtime adapter is not supported in this build"
+    },
+    {
+      "tier": "D5",
+      "tier_name": "contained_raw",
+      "why": "runtime contained is not supported in this build"
+    },
+    {
+      "tier": "D6",
+      "tier_name": "uncontained_raw",
+      "why": "uncontained raw delivery is human-only"
+    }
+  ],
+  "residual_risk": "No secret is delivered and no child process is started.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true
+  },
+  "error": {
+    "code": "tier_unavailable",
+    "message": "requested tier D6 cannot be used for this run"
+  }
+}

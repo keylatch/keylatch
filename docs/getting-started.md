@@ -184,8 +184,8 @@ keylatch run openrouter -- node script.js
 # SDK-compatible gateway
 keylatch run openrouter --runtime gateway_sdk -- python main.py
 
-# Direct brokered injection (trusted broker process required)
-keylatch run aws-prod --runtime direct_brokered -- ./deploy.sh
+# Scoped credential minted for the command and revoked on exit
+keylatch run aws --runtime minted -- aws s3 ls
 ```
 
 See the [CLI reference](./cli-reference.md#runtime-modes) for the full runtime mode matrix.
@@ -213,7 +213,7 @@ In an LLM session, the UI starts in `status-only` scope — write endpoints retu
 The local gateway lets agent processes receive a scoped session token instead of a raw credential:
 
 ```bash
-# Initialize (generates signing key at ~/.keylatch/gateway/)
+# Initialize (generates the signing key, wrapped by your KEK, under ~/.keylatch/gateway/)
 keylatch gateway init
 
 # Start in foreground (binds to 127.0.0.1:7878)

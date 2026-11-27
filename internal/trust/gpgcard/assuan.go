@@ -1,3 +1,5 @@
+//go:build experimental
+
 // Package gpgcard implements a trust.RootOfTrust adapter backed by a GnuPG smartcard
 // via the scdaemon Assuan protocol.
 package gpgcard

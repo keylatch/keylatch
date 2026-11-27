@@ -22,10 +22,13 @@ const cipherSuiteDefault = "xchacha20-poly1305"
 
 // Status represents the result of a single diagnostic check.
 type Status struct {
-	Name    string   `json:"name"`
-	Section string   `json:"section"` // "environment" | "daemon" | "backends" | "providers"
-	OK      bool     `json:"ok"`
-	Warn    bool     `json:"warn,omitempty"`
+	Name    string `json:"name"`
+	Section string `json:"section"` // "environment" | "daemon" | "backends" | "providers"
+	OK      bool   `json:"ok"`
+	Warn    bool   `json:"warn,omitempty"`
+	// Skipped marks a check that did not run because the root cause it
+	// depends on already failed. Skipped checks count as neither pass nor fail.
+	Skipped bool     `json:"skipped,omitempty"`
 	Detail  string   `json:"detail"`
 	Fix     string   `json:"fix,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
@@ -142,11 +145,15 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	// Apply category filter before executing each check (W5): skip checks whose
 	// declared section does not match the requested categories.
 	var allStatuses []Status
+	failedCauses := map[string]bool{}
 	for _, nc := range allChecks {
 		if !categoryMatches(nc.section, normCategories) {
 			continue
 		}
-		s := nc.fn(ctx)
+		s := runCheck(ctx, nc, failedCauses)
+		if nc.provides != "" && !s.OK {
+			failedCauses[nc.provides] = true
+		}
 		if opts.RedactPaths {
 			s.Detail = redactPathsInString(s.Detail)
 			s.Fix = redactPathsInString(s.Fix)
@@ -204,6 +211,23 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 		CipherSuite: CipherSuite(),
 		FIPSBuild:   FIPSBuild(),
 	}, nil
+}
+
+// runCheck runs nc unless a root cause it needs has failed, in which case it
+// reports a skipped status instead of a second failure for the same cause.
+func runCheck(ctx context.Context, nc namedCheck, failedCauses map[string]bool) Status {
+	for _, cause := range nc.needs {
+		if failedCauses[cause] {
+			return Status{
+				Name:    nc.name,
+				Section: nc.section,
+				OK:      true,
+				Skipped: true,
+				Detail:  "skipped: " + cause + " check failed",
+			}
+		}
+	}
+	return nc.fn(ctx)
 }
 
 // sectionOrder defines the canonical display order for sections.

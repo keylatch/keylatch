@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package gateway
 
 import (
@@ -13,6 +11,8 @@ type stubRoundTripper func(*http.Request) (*http.Response, error)
 
 func (f stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// Redirects are followed only within the same HTTPS origin, so a custom auth
+// header is never forwarded to a different host or a downgraded scheme.
 func TestSecurityRegression_GatewayRedirect(t *testing.T) {
 	tests := []struct {
 		name       string

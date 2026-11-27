@@ -125,8 +125,8 @@ func TestSetup_WizardFlagsRegistered(t *testing.T) {
 		"setup must have --advanced flag")
 	assert.NotNil(t, setupCmd.Flags().Lookup("no-daemon-start"),
 		"setup must have --no-daemon-start flag")
-	assert.NotNil(t, setupCmd.Flags().Lookup("telemetry"),
-		"setup must have --telemetry flag")
+	assert.Nil(t, setupCmd.Flags().Lookup("telemetry"),
+		"setup must not have a --telemetry flag")
 	assert.NotNil(t, setupCmd.Flags().Lookup("config"),
 		"setup must have --config flag")
 }

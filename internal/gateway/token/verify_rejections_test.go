@@ -82,11 +82,11 @@ func TestMint_MaxUsesRequiresStorePath(t *testing.T) {
 	}
 }
 
-func TestMint_DefaultTTLIsOneHour(t *testing.T) {
+func TestMint_DefaultTTLIsTenMinutes(t *testing.T) {
 	_, tok := scMint(t, testSigningKey(t), testStorePath(t), func(s *token.TokenSpec) { s.TTL = 0 })
 	got := tok.ExpiresAt.Sub(tok.IssuedAt)
-	if got != time.Hour {
-		t.Fatalf("default TTL = %v, want 1h", got)
+	if got != 10*time.Minute {
+		t.Fatalf("default TTL = %v, want 10m", got)
 	}
 }
 
@@ -133,17 +133,18 @@ func TestMintAndRevokeHooksFire(t *testing.T) {
 	})
 
 	storePath := testStorePath(t)
-	_, tok := scMint(t, testSigningKey(t), storePath, nil)
+	key := testSigningKey(t)
+	_, tok := scMint(t, key, storePath, nil)
 	if minted.Load() != 1 {
 		t.Fatalf("mint hook calls = %d, want 1", minted.Load())
 	}
-	if err := token.Revoke(tok.ID, storePath); err != nil {
+	if err := token.Revoke(tok.ID, storePath, key); err != nil {
 		t.Fatal(err)
 	}
 	if revoked.Load() != 1 {
 		t.Fatalf("revoke hook calls = %d, want 1", revoked.Load())
 	}
-	if err := token.Revoke("missing", storePath); !errors.Is(err, token.ErrTokenNotFound) {
+	if err := token.Revoke("missing", storePath, key); !errors.Is(err, token.ErrTokenNotFound) {
 		t.Fatalf("want ErrTokenNotFound, got %v", err)
 	}
 	if revoked.Load() != 1 {
@@ -172,7 +173,7 @@ func TestVerify_RejectsExpiredJWT(t *testing.T) {
 	}
 }
 
-func TestVerify_RejectsExpiredStoreRecordWithLiveJWT(t *testing.T) {
+func TestVerify_RejectsModifiedExpiryWithLiveJWT(t *testing.T) {
 	key := testSigningKey(t)
 	storePath := testStorePath(t)
 	jwtStr, tok := scMint(t, key, storePath, nil)
@@ -184,8 +185,8 @@ func TestVerify_RejectsExpiredStoreRecordWithLiveJWT(t *testing.T) {
 		}
 		return ts
 	})
-	if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrTokenExpired) {
-		t.Fatalf("want ErrTokenExpired, got %v", err)
+	if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrStoreTampered) {
+		t.Fatalf("want ErrStoreTampered, got %v", err)
 	}
 }
 
@@ -291,7 +292,7 @@ func TestVerify_CorruptStoreFailsClosed(t *testing.T) {
 	if _, err := token.List(token.ListOpts{}, storePath); err == nil || !strings.Contains(err.Error(), "parse") {
 		t.Fatalf("List: want parse error, got %v", err)
 	}
-	if err := token.Revoke("anything", storePath); err == nil || !strings.Contains(err.Error(), "parse") {
+	if err := token.Revoke("anything", storePath, key); err == nil || !strings.Contains(err.Error(), "parse") {
 		t.Fatalf("Revoke: want parse error, got %v", err)
 	}
 }
@@ -326,7 +327,7 @@ func TestVerify_FDNonceBadBase64(t *testing.T) {
 	}
 }
 
-func TestVerify_InMemoryUseCounterWithoutLogPath(t *testing.T) {
+func TestVerify_RejectsModifiedUseCounter(t *testing.T) {
 	key := testSigningKey(t)
 	storePath := testStorePath(t)
 	jwtStr, tok := scMint(t, key, storePath, nil)
@@ -345,16 +346,8 @@ func TestVerify_InMemoryUseCounterWithoutLogPath(t *testing.T) {
 	}
 
 	setUses(2, 0)
-	if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrTokenExhausted) {
-		t.Fatalf("want ErrTokenExhausted, got %v", err)
-	}
-	setUses(2, 1)
-	got, err := token.Verify(jwtStr, nil, key, storePath)
-	if err != nil {
-		t.Fatalf("want success, got %v", err)
-	}
-	if got.UsesRemaining != 0 {
-		t.Fatalf("UsesRemaining = %d, want 0", got.UsesRemaining)
+	if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrStoreTampered) {
+		t.Fatalf("want ErrStoreTampered, got %v", err)
 	}
 }
 
@@ -364,25 +357,13 @@ func TestVerify_ConsumptionLogFailuresFailClosed(t *testing.T) {
 	}
 	key := testSigningKey(t)
 
-	setLog := func(t *testing.T, storePath, id, logPath string) {
-		scRewriteStore(t, storePath, func(ts []token.Token) []token.Token {
-			for i := range ts {
-				if ts[i].ID == id {
-					ts[i].ConsumptionLogPath = logPath
-				}
-			}
-			return ts
-		})
-	}
-
 	t.Run("log dir blocked by file", func(t *testing.T) {
 		storePath := testStorePath(t)
 		jwtStr, tok := scMint(t, key, storePath, func(s *token.TokenSpec) { s.MaxUses = 3 })
-		blocker := filepath.Join(t.TempDir(), "file")
+		blocker := filepath.Dir(tok.ConsumptionLogPath)
 		if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		setLog(t, storePath, tok.ID, filepath.Join(blocker, "sub", "x.log"))
 		if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrTokenExhausted) {
 			t.Fatalf("want ErrTokenExhausted, got %v", err)
 		}
@@ -391,11 +372,13 @@ func TestVerify_ConsumptionLogFailuresFailClosed(t *testing.T) {
 	t.Run("lock path is a directory", func(t *testing.T) {
 		storePath := testStorePath(t)
 		jwtStr, tok := scMint(t, key, storePath, func(s *token.TokenSpec) { s.MaxUses = 3 })
-		logPath := filepath.Join(t.TempDir(), "x.log")
+		logPath := tok.ConsumptionLogPath
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.Mkdir(logPath+".lock", 0o700); err != nil {
 			t.Fatal(err)
 		}
-		setLog(t, storePath, tok.ID, logPath)
 		if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrTokenExhausted) {
 			t.Fatalf("want ErrTokenExhausted, got %v", err)
 		}
@@ -404,11 +387,13 @@ func TestVerify_ConsumptionLogFailuresFailClosed(t *testing.T) {
 	t.Run("log path is a directory", func(t *testing.T) {
 		storePath := testStorePath(t)
 		jwtStr, tok := scMint(t, key, storePath, func(s *token.TokenSpec) { s.MaxUses = 3 })
-		logPath := filepath.Join(t.TempDir(), "x.log")
+		logPath := tok.ConsumptionLogPath
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.Mkdir(logPath, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		setLog(t, storePath, tok.ID, logPath)
 		if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrTokenExhausted) {
 			t.Fatalf("want ErrTokenExhausted, got %v", err)
 		}
@@ -432,7 +417,7 @@ func TestRevoke_WriteFailureLeavesTokenValid(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	err := token.Revoke(tok.ID, storePath)
+	err := token.Revoke(tok.ID, storePath, key)
 	if err == nil || !strings.Contains(err.Error(), "write tmp") {
 		t.Fatalf("want write tmp error, got %v", err)
 	}
@@ -441,21 +426,15 @@ func TestRevoke_WriteFailureLeavesTokenValid(t *testing.T) {
 	}
 }
 
-func TestStoreLock_DirectoryLockPathFallsBack(t *testing.T) {
+func TestStoreLock_DirectoryLockPathFailsClosed(t *testing.T) {
 	storePath := testStorePath(t)
 	if err := os.Mkdir(storePath+".lock", 0o700); err != nil {
 		t.Fatal(err)
 	}
 	key := testSigningKey(t)
-	jwtStr, tok := scMint(t, key, storePath, nil)
-	if _, err := token.Verify(jwtStr, nil, key, storePath); err != nil {
-		t.Fatalf("Verify: %v", err)
-	}
-	if err := token.Revoke(tok.ID, storePath); err != nil {
-		t.Fatalf("Revoke: %v", err)
-	}
-	if _, err := token.Verify(jwtStr, nil, key, storePath); !errors.Is(err, token.ErrTokenRevoked) {
-		t.Fatalf("want ErrTokenRevoked, got %v", err)
+	_, _, err := token.Mint(token.TokenSpec{SigningKey: key, StorePath: storePath})
+	if !errors.Is(err, token.ErrTokenPersistFailed) {
+		t.Fatalf("want ErrTokenPersistFailed, got %v", err)
 	}
 }
 

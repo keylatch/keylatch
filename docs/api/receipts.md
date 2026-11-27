@@ -40,7 +40,7 @@ Returns the last N receipts from the ring buffer as a JSON object.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `runtime` | string | Runtime mode (e.g. `gateway_typed`, `direct_brokered`) |
+| `runtime` | string | Runtime mode (e.g. `gateway_typed`, `minted`) |
 | `provider` | string | Provider identifier (e.g. `anthropic`, `openai`) |
 | `capability` | string | Capability requested (e.g. `messages`, `embed`) |
 | `policy_decision` | string | Policy outcome (`allowed`, `denied`, `grant:<id>`) |

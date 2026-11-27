@@ -23,7 +23,7 @@ func TestFetchItem_ExpiredEntryZeroedAndRefetched(t *testing.T) {
 
 	stale := []byte("stale-secret")
 	login := &bwLogin{Username: "u", Password: "p"}
-	b.cache.Store("myconn", cacheEntry{
+	b.cache.Store(cacheKey("", "myconn"), cacheEntry{
 		item: bwItem{
 			ID:     "id1",
 			Login:  login,
@@ -51,7 +51,7 @@ func TestFetchItem_ExpiredEntryZeroedAndRefetched(t *testing.T) {
 		t.Fatalf("expired login not cleared: %+v", login)
 	}
 
-	v, ok := b.cache.Load("myconn")
+	v, ok := b.cache.Load(cacheKey("", "myconn"))
 	if !ok {
 		t.Fatal("refetched item not cached")
 	}
@@ -63,12 +63,12 @@ func TestFetchItem_ExpiredEntryZeroedAndRefetched(t *testing.T) {
 func TestEvictCacheEntry_ClearsLogin(t *testing.T) {
 	b := &BitwardenBackend{}
 	login := &bwLogin{Username: "u", Password: "p"}
-	b.cache.Store("c", cacheEntry{item: bwItem{Login: login}, expiresAt: time.Now().Add(time.Hour)})
-	b.evictCacheEntry("c")
+	b.cache.Store(cacheKey("", "c"), cacheEntry{item: bwItem{Login: login}, expiresAt: time.Now().Add(time.Hour)})
+	b.evictCacheEntry("", "c")
 	if login.Password != "" || login.Username != "" {
 		t.Fatalf("login not cleared: %+v", login)
 	}
-	if _, ok := b.cache.Load("c"); ok {
+	if _, ok := b.cache.Load(cacheKey("", "c")); ok {
 		t.Fatal("entry still cached")
 	}
 }

@@ -1,8 +1,8 @@
 package api
 
 // Server-validated approval-ttl endpoint.
-// Extended with operating mode, telemetry kill-switch, experimental
-// opt-in, and approval policy default.
+// Extended with operating mode, experimental opt-in, and approval policy
+// default.
 //
 // GET /api/settings → full settings response
 // PUT /api/settings → partial update (any subset of fields)
@@ -27,24 +27,21 @@ const (
 
 // OperatingModeValue enumerates the valid operating modes.
 // standard — default production mode
-// telemetry — same as standard, plus usage telemetry
 // canary — opt-in pre-release features (advanced)
 // custom — fully custom configuration (advanced)
 type OperatingModeValue string
 
 const (
-	OperatingModeStandard  OperatingModeValue = "standard"
-	OperatingModeTelemetry OperatingModeValue = "telemetry"
-	OperatingModeCanary    OperatingModeValue = "canary"
-	OperatingModeCustom    OperatingModeValue = "custom"
+	OperatingModeStandard OperatingModeValue = "standard"
+	OperatingModeCanary   OperatingModeValue = "canary"
+	OperatingModeCustom   OperatingModeValue = "custom"
 )
 
 // validOperatingModes is the set of accepted mode strings.
 var validOperatingModes = map[OperatingModeValue]bool{
-	OperatingModeStandard:  true,
-	OperatingModeTelemetry: true,
-	OperatingModeCanary:    true,
-	OperatingModeCustom:    true,
+	OperatingModeStandard: true,
+	OperatingModeCanary:   true,
+	OperatingModeCustom:   true,
 }
 
 // ApprovalPolicyValue enumerates the valid approval policy defaults.
@@ -69,26 +66,24 @@ var validApprovalPolicies = map[ApprovalPolicyValue]bool{
 // SettingsStore holds the mutable settings state.
 // It is safe for concurrent use by multiple goroutines.
 type SettingsStore struct {
-	mu               sync.RWMutex
-	ttlSeconds       int
-	maxTTLSeconds    int
-	advancedMode     bool
-	operatingMode    OperatingModeValue
-	telemetryDisable bool
-	experimental     bool
-	approvalPolicy   ApprovalPolicyValue
+	mu             sync.RWMutex
+	ttlSeconds     int
+	maxTTLSeconds  int
+	advancedMode   bool
+	operatingMode  OperatingModeValue
+	experimental   bool
+	approvalPolicy ApprovalPolicyValue
 }
 
 // NewSettingsStore returns a SettingsStore with default values.
 func NewSettingsStore() *SettingsStore {
 	return &SettingsStore{
-		ttlSeconds:       DefaultApprovalTTLSeconds,
-		maxTTLSeconds:    DefaultApprovalTTLMaxSeconds,
-		advancedMode:     false,
-		operatingMode:    OperatingModeStandard,
-		telemetryDisable: false,
-		experimental:     false,
-		approvalPolicy:   ApprovalPolicyPrompt,
+		ttlSeconds:     DefaultApprovalTTLSeconds,
+		maxTTLSeconds:  DefaultApprovalTTLMaxSeconds,
+		advancedMode:   false,
+		operatingMode:  OperatingModeStandard,
+		experimental:   false,
+		approvalPolicy: ApprovalPolicyPrompt,
 	}
 }
 
@@ -149,30 +144,6 @@ func (s *SettingsStore) SetOperatingMode(mode OperatingModeValue) (OperatingMode
 	defer s.mu.Unlock()
 	s.operatingMode = mode
 	return s.operatingMode, true
-}
-
-// GetTelemetryDisable returns whether the telemetry kill-switch is active.
-func (s *SettingsStore) GetTelemetryDisable() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.telemetryDisable
-}
-
-// SetTelemetryDisable sets the telemetry kill-switch and returns the stored value.
-// In-process mutation: os.Setenv/os.Unsetenv is called so that internal/telemetry/sink.go
-// (which reads KEYLATCH_TELEMETRY_DISABLE directly) sees the change immediately.
-// Note: this mutates the current process environment. Set the environment variable
-// directly for persistence across restarts.
-func (s *SettingsStore) SetTelemetryDisable(disabled bool) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.telemetryDisable = disabled
-	if disabled {
-		_ = os.Setenv("KEYLATCH_TELEMETRY_DISABLE", "1")
-	} else {
-		_ = os.Unsetenv("KEYLATCH_TELEMETRY_DISABLE")
-	}
-	return s.telemetryDisable
 }
 
 // GetExperimental returns the experimental opt-in flag.
@@ -240,7 +211,6 @@ type settingsResponse struct {
 	ApprovalTTLMaxSeconds int                 `json:"approval_ttl_max_seconds"`
 	AdvancedMode          bool                `json:"advanced_mode"`
 	OperatingMode         OperatingModeValue  `json:"operating_mode"`
-	TelemetryDisable      bool                `json:"telemetry_disable"`
 	Experimental          bool                `json:"experimental"`
 	ApprovalPolicy        ApprovalPolicyValue `json:"approval_policy"`
 }
@@ -250,7 +220,6 @@ type settingsPutRequest struct {
 	ApprovalTTLSeconds *int                 `json:"approval_ttl_seconds"`
 	AdvancedMode       *bool                `json:"advanced_mode"`
 	OperatingMode      *OperatingModeValue  `json:"operating_mode"`
-	TelemetryDisable   *bool                `json:"telemetry_disable"`
 	Experimental       *bool                `json:"experimental"`
 	ApprovalPolicy     *ApprovalPolicyValue `json:"approval_policy"`
 }
@@ -266,7 +235,6 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ApprovalTTLMaxSeconds: max,
 			AdvancedMode:          store.GetAdvancedMode(),
 			OperatingMode:         store.GetOperatingMode(),
-			TelemetryDisable:      store.GetTelemetryDisable(),
 			Experimental:          store.GetExperimental(),
 			ApprovalPolicy:        store.GetApprovalPolicy(),
 		})
@@ -279,7 +247,7 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// At least one field must be present.
 		if req.ApprovalTTLSeconds == nil && req.AdvancedMode == nil &&
-			req.OperatingMode == nil && req.TelemetryDisable == nil &&
+			req.OperatingMode == nil &&
 			req.Experimental == nil && req.ApprovalPolicy == nil {
 			http.Error(w, "bad request: at least one settings field is required", http.StatusBadRequest)
 			return
@@ -304,10 +272,6 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if req.OperatingMode != nil {
 			operatingMode, _ = store.SetOperatingMode(*req.OperatingMode)
 		}
-		telemetryDisable := store.GetTelemetryDisable()
-		if req.TelemetryDisable != nil {
-			telemetryDisable = store.SetTelemetryDisable(*req.TelemetryDisable)
-		}
 		experimental := store.GetExperimental()
 		if req.Experimental != nil {
 			experimental = store.SetExperimental(*req.Experimental)
@@ -321,7 +285,6 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ApprovalTTLMaxSeconds: max,
 			AdvancedMode:          advancedMode,
 			OperatingMode:         operatingMode,
-			TelemetryDisable:      telemetryDisable,
 			Experimental:          experimental,
 			ApprovalPolicy:        approvalPolicy,
 		})

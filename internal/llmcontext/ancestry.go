@@ -20,6 +20,29 @@ type Process struct {
 // maxAncestry bounds the walk; real process trees are far shallower.
 const maxAncestry = 64
 
+func processChain() []Process { return chainFrom(os.Getpid()) }
+
+// ChainOf returns the process pid followed by its ancestors, up to the first
+// one that cannot be read. It is empty for a process that cannot be inspected.
+func ChainOf(pid int) []Process {
+	if pid <= 0 {
+		return nil
+	}
+	return chainFrom(pid)
+}
+
+// HarnessOf returns the first harness any process of chain runs as.
+func HarnessOf(chain []Process) (harness.Descriptor, bool) {
+	for _, p := range chain {
+		for _, name := range p.Names {
+			if d, ok := harness.ByExecutable(name); ok {
+				return d, true
+			}
+		}
+	}
+	return harness.Descriptor{}, false
+}
+
 // CurrentProcess describes the calling process.
 func CurrentProcess() (Process, error) {
 	return readProcessInfo(os.Getpid())

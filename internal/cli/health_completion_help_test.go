@@ -18,7 +18,7 @@ func TestHealthCmd_HealthyStates(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "config: not present (not bootstrapped)\nkeyring: not present (not bootstrapped)\nhealthy\n", out)
 
-	_, _, err = cbRun(t, "setup", "--headless")
+	_, _, err = cbRun(t, "setup", "--headless", "--backend", "file")
 	require.NoError(t, err)
 	out, _, err = cbRun(t, "health", "--probe-server")
 	require.NoError(t, err)

@@ -1,5 +1,3 @@
-//go:build securitysuite
-
 package runner
 
 import (
@@ -12,14 +10,7 @@ import (
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
-type auditGateway struct{}
-
-func (auditGateway) Addr() string  { return "127.0.0.1:7878" }
-func (auditGateway) Running() bool { return true }
-
-// A child that inherits the manager's own session can read every secret
-// directly, so neither the default nor the clean environment may carry it,
-// even when the caller asks to preserve the name.
+// The gateway child environment carries no manager authentication.
 func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) {
 	t.Setenv("BW_SESSION", "synthetic-manager-session")
 	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "synthetic-service-account")

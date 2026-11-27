@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.keylatch.broker</string>
+  <key>UserName</key>
+  <string>_keylatch</string>
+  <key>GroupName</key>
+  <string>_keylatch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/libexec/keylatch/keylatchd</string>
+    <string>broker</string>
+    <string>--state</string>
+    <string>/var/db/keylatch</string>
+    <string>--socket</string>
+    <string>/var/db/keylatch/run/broker.sock</string>
+    <string>--keylatch-bin</string>
+    <string>/usr/local/libexec/keylatch/keylatch</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>2</integer>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>Core</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>/var/db/keylatch/run/broker.log</string>
+</dict>
+</plist>

@@ -49,13 +49,13 @@ func TestEvictCacheEntry_ZerosField(t *testing.T) {
 		},
 	}
 	// Store with an already-expired TTL.
-	b.cache.Store("test-conn", cacheEntry{
+	b.cache.Store(cacheKey("", "test-conn"), cacheEntry{
 		item:      item,
 		expiresAt: time.Now().Add(-1 * time.Minute),
 	})
 
 	// evictCacheEntry should zero the field Value.
-	b.evictCacheEntry("test-conn")
+	b.evictCacheEntry("", "test-conn")
 
 	// Verify canary is zeroed (the local copy in item.Fields).
 	// Note: evictCacheEntry loads then zeros the stored entry.
@@ -74,7 +74,7 @@ func TestEvictCacheEntry_ZerosField(t *testing.T) {
 	}
 
 	// Also verify the entry was removed from the cache.
-	if _, ok := b.cache.Load("test-conn"); ok {
+	if _, ok := b.cache.Load(cacheKey("", "test-conn")); ok {
 		t.Error("cache entry still present after evictCacheEntry")
 	}
 }
@@ -99,7 +99,7 @@ func TestCacheEviction_OnTTLExpiry(t *testing.T) {
 		Value: []byte("canary-secret-bytes"),
 		Type:  1,
 	}
-	b.cache.Store("myconn", cacheEntry{
+	b.cache.Store(cacheKey("", "myconn"), cacheEntry{
 		item: bwItem{
 			ID:     "id1",
 			Name:   "myconn",
@@ -109,7 +109,7 @@ func TestCacheEviction_OnTTLExpiry(t *testing.T) {
 	})
 
 	// Record a pointer to the stored entry so we can check it was zeroed.
-	v, _ := b.cache.Load("myconn")
+	v, _ := b.cache.Load(cacheKey("", "myconn"))
 	storedEntry := v.(cacheEntry)
 
 	// Manually trigger TTL eviction path (replicate what fetchItem does).

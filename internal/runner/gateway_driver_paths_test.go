@@ -167,7 +167,9 @@ func TestGatewayDrivers_ChildEnvIsScrubbed(t *testing.T) {
 			assert.False(t, hasVault, "internal KEYLATCH_* config must be stripped")
 			assert.Equal(t, "kept", env["MX_KEEP_ME"])
 			assert.NotEmpty(t, env["KEYLATCH_GATEWAY_TOKEN"])
-			assert.True(t, strings.HasPrefix(env["KEYLATCH_CANARY_OPENAI"], "klc-canary-openai-"))
+			_, hasCanary := env["KEYLATCH_CANARY_OPENAI"]
+			assert.True(t, hasCanary, "canary is injected into the child")
+			assert.NotContains(t, out.String(), "klc-canary-openai-", "the canary value is redacted from child output")
 			resolvedWD, _ := filepath.EvalSymlinks(wd)
 			assert.Equal(t, resolvedWD, env["PWD_IS"])
 

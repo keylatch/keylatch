@@ -1,0 +1,49 @@
+{
+  "description": "rule demands approval",
+  "mode": "run",
+  "policy": {
+    "schema_version": 1,
+    "mode": "enforcing",
+    "default_deny": true,
+    "rules": [
+      {
+        "id": "r1",
+        "actor": "*",
+        "connections": [
+          "openai"
+        ],
+        "capabilities": [
+          "inject"
+        ],
+        "approval": true
+      }
+    ]
+  },
+  "connection": {
+    "known": true,
+    "provider": "openai",
+    "hosts": [
+      "api.openai.com"
+    ],
+    "runtimes": [
+      "gateway_typed",
+      "gateway_sdk"
+    ],
+    "typed_actions": true
+  },
+  "enabled_runtimes": [
+    "gateway_typed",
+    "gateway_sdk"
+  ],
+  "request": {
+    "actor": "claude-code",
+    "llm_session": true,
+    "connection": "openai",
+    "argv": [
+      "pnpm",
+      "test"
+    ],
+    "cwd": "/work/app",
+    "tier": ""
+  }
+}

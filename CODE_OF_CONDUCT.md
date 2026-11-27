@@ -43,7 +43,7 @@ is officially representing the project in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the
-project maintainers at **conduct@keylatch.io**. All complaints will be reviewed and
+project maintainers at **conduct@keylatch.dev**. All complaints will be reviewed and
 investigated promptly and fairly.
 
 ## Attribution

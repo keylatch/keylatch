@@ -3,7 +3,6 @@
 // Security invariants:
 //   - Never log plaintext secret values; use HMAC of path for audit.
 //   - AppRole tokens are revoked on Close.
-//   - runner.OK is checked before returning plaintext.
 package vault
 
 import (
@@ -17,7 +16,6 @@ import (
 	vaultapi "github.com/hashicorp/vault/api"
 
 	"github.com/keylatch/keylatch/internal/backend"
-	"github.com/keylatch/keylatch/internal/runner"
 	vmeta "github.com/keylatch/keylatch/internal/vault/meta"
 )
 
@@ -168,12 +166,8 @@ func (b *VaultBackend) secretPath(path string) string {
 	return fmt.Sprintf("%s/%s", b.opts.Mount, path)
 }
 
-// Get retrieves a secret from Vault. Plaintext is only returned when runner.OK.
+// Get retrieves a secret from Vault.
 func (b *VaultBackend) Get(ctx context.Context, path string) ([]byte, backend.Meta, error) {
-	if !runner.OK(ctx) {
-		return nil, backend.Meta{}, backend.ErrLocked
-	}
-
 	if b.opts.KVVersion == 1 {
 		return b.getV1(ctx, path)
 	}

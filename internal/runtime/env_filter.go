@@ -28,7 +28,7 @@ import (
 // Replaces the per-driver ad-hoc construction pattern with
 // a single options struct that is straightforward to extend without changing call sites.
 type FilterOpts struct {
-	// Mode identifies the runtime mode (gateway_typed, gateway_sdk, direct_brokered,
+	// Mode identifies the runtime mode (gateway_typed, gateway_sdk, minted,
 	// gateway_proxy). It is stored in audit events for attribution.
 	Mode RuntimeMode
 	// GatewayToken is the KEYLATCH_GATEWAY_TOKEN value to re-inject in gateway modes.

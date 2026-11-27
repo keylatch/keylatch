@@ -28,19 +28,6 @@ func TestKeychainStore_DeleteAndFailures(t *testing.T) {
 	assert.Error(t, s.Store("vault-aa", make([]byte, identitySize)))
 }
 
-func TestSecretServiceStore_DeleteAndFailures(t *testing.T) {
-	var calls []runnerCall
-	s := &secretServiceIdentityStore{bin: "secret-tool", run: recordingRunner(&calls, nil, nil, nil)}
-	require.NoError(t, s.Delete("vault-01"))
-	assert.Equal(t, []string{"clear", "application", "keylatch", "purpose", "kek", "account", "vault-01"}, calls[0].args)
-
-	s.run = recordingRunner(&calls, nil, []byte("no session"), exitErr(1))
-	err := s.Delete("vault-01")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no session")
-	assert.Error(t, s.Store("vault-01", make([]byte, identitySize)))
-}
-
 func TestExitCodeAndCommandError(t *testing.T) {
 	assert.Equal(t, 7, exitCode(exitErr(7)))
 	assert.Equal(t, -1, exitCode(errors.New("plain")))

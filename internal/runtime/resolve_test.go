@@ -38,13 +38,13 @@ func TestResolve_ExplicitModeMatch(t *testing.T) {
 }
 
 func TestResolve_UnsupportedModeReturnsError(t *testing.T) {
-	// Provider only supports gateway_typed; caller asks for direct_brokered.
+	// Provider only supports gateway_typed; caller asks for minted.
 	tmpl := buildTmpl(
 		registry.RuntimeGatewayTyped,
 		registry.RuntimeGatewayTyped,
 	)
 	req := runtime.ResolveRequest{
-		RequestedMode:  runtime.RuntimeDirectBrokered,
+		RequestedMode:  runtime.RuntimeMinted,
 		ConnectionSlug: "openrouter",
 	}
 	_, err := runtime.Resolve(context.Background(), req, tmpl)
@@ -88,40 +88,76 @@ func TestResolve_NoSupportedModesReturnsError(t *testing.T) {
 }
 
 func TestResolve_FallbackHierarchyOrder(t *testing.T) {
-	// Only direct_brokered and gateway_proxy are supported.
-	// Hierarchy prefers direct_brokered before gateway_proxy.
+	// Only minted and gateway_proxy are supported.
+	// Hierarchy prefers minted before gateway_proxy.
 	tmpl := buildTmpl(
 		"",
 		registry.RuntimeGatewayProxy,
-		registry.RuntimeDirectBrokered,
+		registry.RuntimeMinted,
 	)
 	req := runtime.ResolveRequest{ConnectionSlug: "aws"}
 	d, err := runtime.Resolve(context.Background(), req, tmpl)
 	require.NoError(t, err)
-	assert.Equal(t, runtime.RuntimeDirectBrokered, d.Mode,
-		"direct_brokered must be selected before gateway_proxy in the fallback hierarchy")
+	assert.Equal(t, runtime.RuntimeMinted, d.Mode,
+		"minted must be selected before gateway_proxy in the fallback hierarchy")
 }
 
-// TestResolve_ClassicSandboxedNotRemoved verifies that direct_classic_sandboxed
-// is no longer a removed mode.
-// Requesting it on a template that does not list it in Supported returns
-// ErrModeNotSupported (not ErrModeRemoved).
-func TestResolve_ClassicSandboxedNotRemoved(t *testing.T) {
+// TestRuntimeDefaultsToTemplate checks that an empty --runtime lets the
+// template's preferred mode apply.
+func TestRuntimeDefaultsToTemplate(t *testing.T) {
+	tmpl := buildTmpl(
+		registry.RuntimeMinted,
+		registry.RuntimeGatewayTyped,
+		registry.RuntimeMinted,
+	)
+	d, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{ConnectionSlug: "github-app"}, tmpl)
+	require.NoError(t, err)
+	assert.Equal(t, runtime.RuntimeMinted, d.Mode)
+	assert.Equal(t, "provider preferred", d.Reason)
+	assert.Equal(t, runtime.DeliveryProviderEphemeral, d.CredentialShape)
+}
+
+// TestDirectBrokeredIsRenamed checks that the old name is refused with a
+// pointer to the new one.
+func TestDirectBrokeredIsRenamed(t *testing.T) {
+	tmpl := buildTmpl(
+		registry.RuntimeMinted,
+		registry.RuntimeMinted,
+	)
+	_, err := runtime.Resolve(context.Background(), runtime.ResolveRequest{RequestedMode: runtime.RuntimeMode("direct_brokered")}, tmpl)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, runtime.ErrModeRemoved))
+	assert.Contains(t, err.Error(), "--runtime minted")
+}
+
+// TestClassicSandboxedRemoved verifies that direct_classic_sandboxed is gone
+// without an alias: it is not a runtime mode and a request for it is not served.
+func TestClassicSandboxedRemoved(t *testing.T) {
+	for _, m := range runtime.AllModes {
+		assert.NotEqual(t, "direct_classic_sandboxed", string(m))
+	}
 	tmpl := buildTmpl(
 		registry.RuntimeGatewayTyped,
 		registry.RuntimeGatewayTyped,
 	)
 	req := runtime.ResolveRequest{
-		RequestedMode:  runtime.RuntimeDirectClassicSandboxed,
+		RequestedMode:  runtime.RuntimeMode("direct_classic_sandboxed"),
 		ConnectionSlug: "legacy",
 	}
 	_, err := runtime.Resolve(context.Background(), req, tmpl)
 	require.Error(t, err)
-	// Must be ErrModeNotSupported (provider doesn't list it), NOT ErrModeRemoved.
-	assert.True(t, errors.Is(err, runtime.ErrModeNotSupported),
-		"direct_classic_sandboxed is active; template that omits it returns ErrModeNotSupported")
-	assert.False(t, errors.Is(err, runtime.ErrModeRemoved),
-		"direct_classic_sandboxed must not return ErrModeRemoved — it is no longer removed")
+	assert.True(t, errors.Is(err, runtime.ErrModeNotSupported))
+	assert.False(t, errors.Is(err, runtime.ErrModeRemoved), "no removal alias is kept")
+}
+
+// TestRuntimeList locks the runtime modes that exist.
+func TestRuntimeList(t *testing.T) {
+	assert.Equal(t, []runtime.RuntimeMode{
+		runtime.RuntimeGatewayTyped,
+		runtime.RuntimeGatewaySDK,
+		runtime.RuntimeMinted,
+		runtime.RuntimeGatewayProxy,
+	}, runtime.AllModes)
 }
 
 // TestResolve_RemovedDirectClassicReturnsErrModeRemoved verifies that

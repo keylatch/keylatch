@@ -52,7 +52,7 @@ func TestUsableReason_UnknownProvider_InLLMSession(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// install_guard_cmd.go — runInstallGuardList, runInstallGuard (windsurf/antigravity paths)
+// install_guard_cmd.go — runInstallGuardList, runInstallGuard
 // ---------------------------------------------------------------------------
 
 func TestRunInstallGuardList(t *testing.T) {
@@ -79,40 +79,6 @@ func TestRunInstallGuardList(t *testing.T) {
 	}
 }
 
-func TestRunInstallGuard_Windsurf_PrintsInstructions(t *testing.T) {
-	t.Parallel()
-	cmd := newInstallGuardCmd()
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	if err := runInstallGuard(cmd, "windsurf", false); err != nil {
-		t.Fatalf("runInstallGuard windsurf error: %v", err)
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "CREDENTIALS_LLM_SESSION=windsurf") {
-		t.Errorf("windsurf instructions must contain CREDENTIALS_LLM_SESSION=windsurf, got: %q", out)
-	}
-}
-
-func TestRunInstallGuard_Antigravity_PrintsInstructions(t *testing.T) {
-	t.Parallel()
-	cmd := newInstallGuardCmd()
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-
-	if err := runInstallGuard(cmd, "antigravity", false); err != nil {
-		t.Fatalf("runInstallGuard antigravity error: %v", err)
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "CREDENTIALS_LLM_SESSION=antigravity") {
-		t.Errorf("antigravity instructions must contain CREDENTIALS_LLM_SESSION=antigravity, got: %q", out)
-	}
-}
-
 func TestRunInstallGuard_UnknownAgent_Error(t *testing.T) {
 	t.Parallel()
 	cmd := newInstallGuardCmd()
@@ -120,17 +86,19 @@ func TestRunInstallGuard_UnknownAgent_Error(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := runInstallGuard(cmd, "totally-unknown-agent-xyz", false)
+	err := cmd.RunE(cmd, []string{"totally-unknown-agent-xyz"})
 	if err == nil {
-		t.Error("expected error for unknown agent")
+		t.Fatal("expected error for unknown agent")
 	}
-	if !strings.Contains(err.Error(), "unknown agent") {
-		t.Errorf("error must mention 'unknown agent', got: %v", err)
+	if !strings.Contains(err.Error(), "unknown harness") {
+		t.Errorf("error must mention 'unknown harness', got: %v", err)
 	}
 }
 
 func TestRunInstallGuard_AliasNormalisation_ClaudeCode(t *testing.T) {
-	t.Parallel()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	// "claude_code" should be normalised to "claude-code".
 	// We only verify the error doesn't say "unknown agent" — actual install
 	// may fail in test env but must not be rejected as unknown.
@@ -139,11 +107,11 @@ func TestRunInstallGuard_AliasNormalisation_ClaudeCode(t *testing.T) {
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
 
-	err := runInstallGuard(cmd, "claude_code", false)
+	err := cmd.RunE(cmd, []string{"claude_code"})
 	// In test env, actual file-system install may fail. But it should NOT
-	// fail with "unknown agent" — the alias normalisation must work.
-	if err != nil && strings.Contains(err.Error(), "unknown agent") {
-		t.Errorf("claude_code alias must be normalised to claude-code, got unknown-agent error: %v", err)
+	// fail with "unknown harness" — the alias normalisation must work.
+	if err != nil && strings.Contains(err.Error(), "unknown harness") {
+		t.Errorf("claude_code alias must be normalised to claude-code, got unknown-harness error: %v", err)
 	}
 }
 
@@ -283,7 +251,6 @@ func TestAgentDocSlug_KnownAgents(t *testing.T) {
 	}{
 		{"claude-code", "claude-code"},
 		{"gemini", "gemini"},
-		{"windsurf", "windsurf"},
 		{"cursor", "cursor"},
 		{"other-agent", "generic"},
 		{"", "generic"},

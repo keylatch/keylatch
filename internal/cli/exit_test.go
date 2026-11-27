@@ -108,6 +108,7 @@ func TestGatewayUpReportsInvalidSigningKey(t *testing.T) {
 	testutil.ClearLLMSessionEnv(t)
 	dir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", dir)
+	testutil.SetupTestKeyring(t)
 	t.Setenv("KEYLATCH_GATEWAY_PID", filepath.Join(dir, "gateway.pid"))
 	keyPath := filepath.Join(dir, "signing.key")
 	t.Setenv("KEYLATCH_GATEWAY_SIGNING_KEY", keyPath)

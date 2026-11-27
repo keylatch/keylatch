@@ -10,6 +10,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/bw"
 	"github.com/keylatch/keylatch/internal/backend/dispatch"
+	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/spf13/cobra"
@@ -40,17 +41,17 @@ func newBWUnlockCmd() *cobra.Command {
 		Use:   "unlock",
 		Short: "Unlock the Bitwarden/Vaultwarden vault and cache a session token",
 		Long: `bw unlock runs "bw unlock --raw" — the master password is piped to bw
-via stdin, never passed as an argument or printed — and caches the
-resulting session token under ~/.keylatch/sessions/ (mode 0600) for --ttl
-(default 8h). Subsequent keylatch commands using the bw backend pick the
-cached session up automatically (no BW_SESSION export required) via the
-env-injection seam in internal/backend/bw.
+via stdin, never passed as an argument or printed — and keeps the resulting
+session token for --ttl (default bw.session_ttl, else 1h; at most 8h). The
+token is stored only wrapped by the vault key, never in plaintext, and the
+bw backend picks it up automatically (no BW_SESSION export required).
+"keylatch bw lock" deletes it.
 
 Interactive terminals only: refuses to run inside an LLM-driven session and
 requires a TTY on stdin. The session token itself is NEVER printed, logged,
 or included in any error message.`,
 	}
-	cmd.Flags().Duration("ttl", bw.DefaultSessionTTL, "how long the cached session remains valid")
+	cmd.Flags().Duration("ttl", 0, "how long the session remains valid (default: bw.session_ttl, else 1h; at most 8h)")
 
 	cmd.RunE = func(c *cobra.Command, args []string) error {
 		ctx := c.Context()
@@ -65,9 +66,15 @@ or included in any error message.`,
 			return reported(exitcode.UserError, nil)
 		}
 
-		ttl, _ := c.Flags().GetDuration("ttl")
-
 		cfg := loadCLIConfig(c)
+		ttl, _ := c.Flags().GetDuration("ttl")
+		if ttl <= 0 {
+			ttl = configuredBWSessionTTL(cfg)
+		}
+		if ttl > bw.MaxSessionTTL {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: a session may last at most %s\n", bw.MaxSessionTTL)
+			return reported(exitcode.UserError, bw.ErrSessionTTLTooLong)
+		}
 		cfg.Backend = "bw"
 		dispatch.ClearCached()
 
@@ -104,16 +111,39 @@ or included in any error message.`,
 			return reported(exitcode.BackendUnavailable, nil)
 		}
 
-		if err := bw.SaveSession(env, token, ttl); err != nil {
-			fmt.Fprintf(c.ErrOrStderr(), "Error: unlocked but failed to cache session: %v\n", err)
+		if err := saveBWSession(env, token, ttl); err != nil {
+			fmt.Fprintf(c.ErrOrStderr(), "Error: unlocked but failed to keep the session: %v\n", err)
 			return reported(exitcode.OperationFailed, nil)
 		}
 
-		fmt.Fprintf(c.OutOrStdout(), "Bitwarden vault unlocked; session cached (expires in %s)\n", ttl)
+		fmt.Fprintf(c.OutOrStdout(), "Bitwarden vault unlocked; session kept sealed (expires in %s)\n", ttl)
 		return nil
 	}
 
 	return cmd
+}
+
+// configuredBWSessionTTL is bw.session_ttl, or the default when it is unset or
+// unreadable (config validation rejects a bad value).
+func configuredBWSessionTTL(cfg config.Config) time.Duration {
+	if cfg.BW != nil && cfg.BW.SessionTTL != "" {
+		if d, err := time.ParseDuration(cfg.BW.SessionTTL); err == nil && d > 0 {
+			return d
+		}
+	}
+	return bw.DefaultSessionTTL
+}
+
+// bwSessionKEK opens the vault key the session is sealed under; tests replace it.
+var bwSessionKEK = bw.DefaultKEK
+
+// saveBWSession seals the session token under the vault key.
+func saveBWSession(env llmcontext.Lookup, token string, ttl time.Duration) error {
+	k, err := bwSessionKEK(env)
+	if err != nil {
+		return fmt.Errorf("open the vault key: %w", err)
+	}
+	return bw.SaveSession(env, k, token, ttl)
 }
 
 // newBWLockCmd returns the `bw lock` command.
@@ -121,7 +151,8 @@ func newBWLockCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "lock",
 		Short: "Clear the cached Bitwarden session",
-		Long: `bw lock removes the session token cached by "keylatch bw unlock".
+		Long: `bw lock removes the session token kept by "keylatch bw unlock", and
+any plaintext session file an earlier version left under sessions/.
 
 It does NOT invoke "bw lock" against the Bitwarden CLI — the vault's actual
 lock state remains managed by bw itself. This only clears keylatch's local
@@ -150,6 +181,9 @@ func newBWStatusCmd() *cobra.Command {
 			if err != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "Error: %v\n", err)
 				return reported(exitcode.UserError, err)
+			}
+			if st.LegacyPlaintext {
+				fmt.Fprintln(c.ErrOrStderr(), "Warning: a plaintext Bitwarden session file is on disk; run: keylatch bw lock")
 			}
 			if !st.Present {
 				fmt.Fprintln(c.OutOrStdout(), "No cached Bitwarden session (run: keylatch bw unlock)")

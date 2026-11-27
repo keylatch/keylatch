@@ -62,6 +62,9 @@ func ccTermWhen(t *testing.T, ready func() bool) <-chan struct{} {
 
 func TestCCMCP_StdioStopsCleanlyOnSIGTERM(t *testing.T) {
 	ccEnv(t)
+	if _, stderr, err := ccRun(t, "", "gateway", "init"); err != nil {
+		t.Fatalf("initialize gateway: %v (%s)", err, stderr)
+	}
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("pipe: %v", err)

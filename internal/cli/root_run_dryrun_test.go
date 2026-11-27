@@ -66,7 +66,7 @@ func TestRunDryRunPerRuntime(t *testing.T) {
 	}{
 		{"gateway_typed", []string{"KEYLATCH_GATEWAY_URL=<resolved: http://127.0.0.1:9911>", "KEYLATCH_GATEWAY_TOKEN=<would-be-issued scope:openrouter.*, ttl:1h>", "KEYLATCH_RUNTIME=gateway_typed"}},
 		{"gateway_sdk", []string{"KEYLATCH_RUNTIME=gateway_sdk"}},
-		{"direct_brokered", []string{"=<would-be-brokered ephemeral token>", "KEYLATCH_RUNTIME=direct_brokered"}},
+		{"minted", []string{"=<would-be-minted scoped token>", "KEYLATCH_RUNTIME=minted"}},
 		{"gateway_proxy", []string{"KEYLATCH_GATEWAY_TOKEN=<would-be-issued scope:openrouter.*, ttl:1h>", "KEYLATCH_RUNTIME=gateway_proxy"}},
 	}
 	for _, tc := range tests {
@@ -89,8 +89,8 @@ func TestRunDryRunPerRuntime(t *testing.T) {
 		})
 	}
 
-	w := caDryRunJSON(t, "openrouter", "--runtime", "direct_classic_sandboxed", "--approval-jwt", "x.y.z", "--", "env")
-	assert.Empty(t, w.Plan.EnvAdded)
+	w := caDryRunJSON(t, "openrouter", "--runtime", "minted", "--approval-jwt", "x.y.z", "--", "env")
+	assert.NotContains(t, strings.Join(w.Plan.EnvAdded, "\n"), secret)
 	assert.True(t, w.Plan.Policy.ApprovalRequired)
 }
 
@@ -101,7 +101,7 @@ func TestRunDryRunHumanReadable(t *testing.T) {
 	out, _, err := caRun(t, nil, "run", "openrouter", "--dry-run", "--", "echo", "hi")
 	require.NoError(t, err)
 	for _, want := range []string{
-		"[dry-run] runtime:    gateway_typed",
+		"[dry-run] runtime:    gateway_sdk",
 		"[dry-run] provider:   openrouter",
 		"[dry-run] connection: openrouter",
 		"[dry-run] env_added:",
@@ -135,14 +135,14 @@ func TestRunDryRunCanaryOperatingMode(t *testing.T) {
 	assert.Contains(t, w.Plan.EnvAdded, canaryVar)
 }
 
-func TestRunDryRunDirectCallEmptyEnvStripped(t *testing.T) {
+func TestRunDryRunMintedShowsPlaceholder(t *testing.T) {
 	caNewEnv(t)
 	caInitRegistry(t)
 	c := &cobra.Command{}
 	var out bytes.Buffer
 	c.SetOut(&out)
-	runDryRun(c, "openrouter", []string{"ls"}, runtime.RuntimeDirectClassicSandboxed, "", "", false)
-	assert.NotContains(t, out.String(), "[dry-run] env_added:")
+	runDryRun(c, "openrouter", []string{"ls"}, runtime.RuntimeMinted, "", "", false)
+	assert.Contains(t, out.String(), "OPENROUTER_API_KEY=<would-be-minted scoped token>")
 	assert.Contains(t, out.String(), "[dry-run] argv:       ls")
 }
 
@@ -246,27 +246,21 @@ func TestRuntimeDoctorReport(t *testing.T) {
 	f := caNewEnv(t)
 	caInitRegistry(t)
 	caRegister(t, "ca-all", "ai", registry.RuntimeGatewayTyped,
-		registry.RuntimeGatewayTyped, registry.RuntimeGatewaySDK, registry.RuntimeDirectBrokered,
-		registry.RuntimeGatewayProxy, "direct_classic_sandboxed")
-	caRegister(t, "ca-brokered", "ai", registry.RuntimeDirectBrokered, registry.RuntimeDirectBrokered, "direct_classic_sandboxed")
-	caRegister(t, "ca-sandbox-pref", "ai", "direct_classic_sandboxed", "direct_classic_sandboxed")
+		registry.RuntimeGatewayTyped, registry.RuntimeGatewaySDK, registry.RuntimeMinted, registry.RuntimeGatewayProxy)
+	caRegister(t, "ca-minted", "ai", registry.RuntimeMinted, registry.RuntimeMinted)
 
 	byMode := func(r runtimeDoctorReport) map[string]runtimeModeStatus {
 		m := map[string]runtimeModeStatus{}
-		for _, s := range r.Modes {
-			m[s.Mode] = s
+		for _, status := range r.Modes {
+			m[status.Mode] = status
 		}
 		return m
 	}
-	sbAvail, sbReason, _ := sandboxModeAvailability()
-
 	r := byMode(buildRuntimeDoctorReport(os.Getenv, "ca-all"))
 	assert.False(t, r["gateway_typed"].Available)
 	assert.Equal(t, "gateway not running: run 'keylatch gateway up'", r["gateway_typed"].Reason)
-	assert.True(t, r["direct_brokered"].Available)
-	assert.Equal(t, "supported", r["direct_brokered"].Reason)
-	assert.Equal(t, sbAvail, r["direct_classic_sandboxed"].Available)
-	assert.Contains(t, r["direct_classic_sandboxed"].Reason, sbReason)
+	assert.True(t, r["minted"].Available)
+	assert.Equal(t, "supported", r["minted"].Reason)
 
 	gwDir := filepath.Join(f.root, "gateway")
 	require.NoError(t, os.MkdirAll(gwDir, 0o700))
@@ -276,17 +270,9 @@ func TestRuntimeDoctorReport(t *testing.T) {
 	assert.Equal(t, "gateway running (preferred mode)", r["gateway_typed"].Reason)
 	assert.Equal(t, "gateway running", r["gateway_sdk"].Reason)
 
-	r = byMode(buildRuntimeDoctorReport(os.Getenv, "ca-brokered"))
-	assert.Equal(t, "preferred mode — broker strategy available", r["direct_brokered"].Reason)
-	assert.Equal(t, "not in ca-brokered runtime_support", r["gateway_typed"].Reason)
-
-	r = byMode(buildRuntimeDoctorReport(os.Getenv, "ca-sandbox-pref"))
-	if sbAvail {
-		assert.True(t, strings.HasSuffix(r["direct_classic_sandboxed"].Reason, "(preferred mode)"))
-	} else {
-		assert.Contains(t, r["direct_classic_sandboxed"].Reason, "run 'keylatch sandbox doctor'")
-	}
-
+	r = byMode(buildRuntimeDoctorReport(os.Getenv, "ca-minted"))
+	assert.Equal(t, "preferred mode — mint strategy available", r["minted"].Reason)
+	assert.Equal(t, "not in ca-minted runtime_support", r["gateway_typed"].Reason)
 	assert.Empty(t, buildRuntimeDoctorReport(os.Getenv, "").Modes)
 	missing := buildRuntimeDoctorReport(os.Getenv, "ca-nope")
 	require.Len(t, missing.Modes, 1)
@@ -314,10 +300,10 @@ func TestRuntimeDoctorCmdOutput(t *testing.T) {
 	var rep runtimeDoctorReport
 	require.NoError(t, json.Unmarshal([]byte(run("ca-gw", "--json")), &rep))
 	assert.Equal(t, "ca-gw", rep.Provider)
-	assert.Len(t, rep.Modes, 5)
+	assert.Len(t, rep.Modes, 4)
 
-	caRegister(t, "ca-ok", "ai", registry.RuntimeDirectBrokered, registry.RuntimeDirectBrokered)
-	assert.Contains(t, run("ca-ok"), "  [ok  ] direct_brokered: preferred mode")
+	caRegister(t, "ca-ok", "ai", registry.RuntimeMinted, registry.RuntimeMinted)
+	assert.Contains(t, run("ca-ok"), "  [ok  ] minted: preferred mode")
 }
 
 func TestIsDoctorHintSuppressed(t *testing.T) {
@@ -357,9 +343,9 @@ func TestRootLogLevelFlag(t *testing.T) {
 		{"error", slog.LevelError, slog.LevelWarn},
 		{"bogus", slog.LevelInfo, slog.LevelDebug},
 	} {
-		out, _, err := caRun(t, nil, "--log-level", tc.level, "get-masked", "svc", "key")
+		out, _, err := caRun(t, nil, "--log-level", tc.level, "backend", "list")
 		require.NoError(t, err)
-		assert.Equal(t, "svc.key = ****\n", out)
+		assert.Contains(t, out, "file")
 		assert.True(t, slog.Default().Enabled(ctx, tc.enabled), tc.level)
 		assert.False(t, slog.Default().Enabled(ctx, tc.below), tc.level)
 	}
@@ -416,8 +402,7 @@ func TestRunHelpersAndAdapters(t *testing.T) {
 	assert.ErrorContains(t, err, "KEYLATCH_GATEWAY_ADDR")
 
 	assert.Nil(t, mapCustomConfig(nil))
-	got := mapCustomConfig(&config.CustomModeConfig{TelemetryEnabled: true, ExperimentalGated: true})
-	assert.Equal(t, &runtime.CustomModeConfig{TelemetryEnabled: true, ExperimentalGated: true}, got)
+	got := mapCustomConfig(&config.CustomModeConfig{CanaryInjectionEnabled: true, ExperimentalGated: true})
+	assert.Equal(t, &runtime.CustomModeConfig{CanaryInjectionEnabled: true, ExperimentalGated: true}, got)
 
-	assert.NotNil(t, newCLIBroker(context.Background()))
 }

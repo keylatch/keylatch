@@ -294,7 +294,7 @@ func TestHandler_TokenErrorsMapToCodes(t *testing.T) {
 	if err != nil || len(toks) != 1 {
 		t.Fatalf("List: %v %d", err, len(toks))
 	}
-	if err := token.Revoke(toks[0].ID, h.store); err != nil {
+	if err := token.Revoke(toks[0].ID, h.store, h.key); err != nil {
 		t.Fatal(err)
 	}
 	if rr := h.post(t, revoked, "{}"); scErrCode(t, rr) != "token_revoked" {

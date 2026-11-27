@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "kind": "run",
+  "decision": "allow",
+  "tier": "D3",
+  "tier_name": "placeholder_substitution",
+  "runtime": "placeholder",
+  "child_location": "caller",
+  "containment": {
+    "verdict": "no_secret_in_child",
+    "secret_in_child": false
+  },
+  "approval": {
+    "required": false,
+    "mode": "none"
+  },
+  "request": {
+    "caller_kind": "agent",
+    "actor": "claude-code",
+    "connection": "billing-internal",
+    "executable": "node",
+    "argc": 2,
+    "argv_sha256": "5b716937b34c449d4b1dc2f5b20511a1918e5d0a3bdd7f218af9ea86d1cb38e0",
+    "cwd": "/work/app"
+  },
+  "hosts": [
+    "api.billing.example:443"
+  ],
+  "binding": {
+    "source": "custom",
+    "hosts": [
+      "api.billing.example:443"
+    ],
+    "slots": [
+      {
+        "field": "token",
+        "in": "header",
+        "name": "Authorization",
+        "hosts": [
+          "api.billing.example:443"
+        ]
+      },
+      {
+        "field": "token",
+        "in": "query",
+        "name": "key",
+        "hosts": [
+          "api.billing.example:443"
+        ]
+      }
+    ]
+  },
+  "scope": {
+    "rule_id": "r1",
+    "capabilities": [
+      "inject"
+    ],
+    "connections": [
+      "billing-internal"
+    ],
+    "ttl_seconds": null
+  },
+  "reasons": [
+    "allowed by policy rule r1",
+    "strongest eligible tier D3 (placeholder_substitution) via runtime placeholder"
+  ],
+  "rejected_tiers": [
+    {
+      "tier": "D1",
+      "tier_name": "typed_action",
+      "why": "typed actions run without a child process; use keylatch call"
+    },
+    {
+      "tier": "D2",
+      "tier_name": "gateway_session",
+      "why": "runtime gateway_typed is not supported in this build; runtime gateway_sdk is not supported in this build"
+    },
+    {
+      "tier": "D4",
+      "tier_name": "protocol_adapter",
+      "why": "runtime adapter is not supported in this build"
+    },
+    {
+      "tier": "D5",
+      "tier_name": "contained_raw",
+      "why": "eligible but a stronger tier was selected"
+    },
+    {
+      "tier": "D6",
+      "tier_name": "uncontained_raw",
+      "why": "uncontained raw delivery is human-only"
+    }
+  ],
+  "residual_risk": "The child holds a placeholder that Keylatch swaps for the real value only toward the connection's own hosts. A misused capability on those hosts is bounded by scope and audit, not prevented.",
+  "policy": {
+    "mode": "enforcing",
+    "default_deny": true
+  }
+}

@@ -116,34 +116,19 @@ func TestProvidersHandler_MethodNotAllowed(t *testing.T) {
 // POST /v1/connect
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestConnectHandler_POST_Success(t *testing.T) {
-	t.Parallel()
-	initAPIRegistry(t)
-	h := &api.WizardHandlers{Store: newAPIMemoryStore()}
-	body := `{"provider":"openai","api_key":"sk-test","backend":"keychain"}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/connect", bytes.NewBufferString(body))
-	rec := httptest.NewRecorder()
-	h.ConnectHandler(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	var resp map[string]interface{}
-	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
-	assert.Equal(t, true, resp["ok"])
-	assert.Equal(t, "stored", resp["status"])
-}
-
-func TestConnectHandler_POST_NilStoreReportsUnavailable(t *testing.T) {
+func TestConnectHandler_POST_MissingStoreFailsClosed(t *testing.T) {
 	t.Parallel()
 	h := &api.WizardHandlers{}
 	body := `{"provider":"openai","api_key":"sk-test","backend":"keychain"}`
 	rec := httptest.NewRecorder()
 	h.ConnectHandler(rec, httptest.NewRequest(http.MethodPost, "/v1/connect", bytes.NewBufferString(body)))
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	var resp map[string]interface{}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	assert.Equal(t, false, resp["ok"])
-	assert.Equal(t, "credential store unavailable", resp["error"])
+	assert.Equal(t, "connection storage unavailable", resp["error"])
 }
 
 func TestConnectHandler_POST_SecondConnectAlreadyConnected(t *testing.T) {

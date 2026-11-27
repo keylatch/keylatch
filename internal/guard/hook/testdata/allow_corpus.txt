@@ -1,0 +1,171 @@
+# Every line is a Bash command the guard must allow. "\n" is a newline.
+
+# env with a command
+env -C /abs/dir make test
+env -C /abs/dir -i FOO=bar go test ./...
+env FOO=bar go test ./...
+env -u HOME go build
+env -i PATH=/usr/bin make
+env -- make
+/usr/bin/env python3 script.py
+sudo make install
+sudo -u deploy ./restart.sh
+nice -n 5 make
+nohup ./server &
+time make
+timeout 10 go test ./...
+xargs -n1 echo
+command -v git
+exec ./run.sh
+watch -n 2 'ls -la'
+find . -name '*.go' -exec gofmt -l {} \;
+find . -type f -exec grep -l foo {} +
+mise exec -- node -v
+mise x node@22 -- npm test
+direnv exec . npm test
+direnv exec /abs/project make build
+watchexec -- go test ./...
+
+# commands that merely mention dangerous words
+cat README.md
+cat .env.example
+cat .env.sample
+cat .env.template
+echo 'keylatch run -- env'
+echo "printenv"
+echo atuin search
+grep -n direnv README.md
+grep -rn 'printenv' docs
+git commit -m 'document env and printenv'
+cat <<'EOF'\nkeylatch run -- env\nEOF
+cat <<EOF > notes.txt\ndirenv export bash\nmise env\nEOF
+cat > test.sh <<'EOF'\n#!/bin/sh\nenv\nprintenv\nEOF
+man printenv
+echo $HOME
+echo "$PATH"
+ls -la
+git status
+git log --oneline
+touch .env
+ls .env
+rm .env.example
+echo FOO=bar > .env.example
+git add .env.example
+
+# shell variables set, not listed
+set -e
+set -euo pipefail
+set +x
+export FOO=bar
+export PATH=$PATH:/x
+export KUBECONFIG=$HOME/.kube/config
+declare -x FOO=bar
+declare -a arr=(1 2)
+local x=1
+FOO=bar make
+
+# interpreters running scripts
+python3 script.py
+python3 -c 'print(1+1)'
+node script.js
+node -e 'console.log(1)'
+ruby -e 'puts 1'
+perl -e 'print 1'
+jq .env package.json
+jq '.scripts' package.json
+jq -r '.name' package.json
+awk '{print $1}' file
+awk -F: '{print $1}' /etc/passwd
+
+# tool use that does not print secrets
+mise install
+mise use node@22
+mise run build
+mise set FOO=bar
+direnv allow
+direnv reload
+atuin sync
+atuin status
+op --version
+op whoami
+bw status
+bw --version
+aws s3 ls
+aws sts get-caller-identity
+aws ssm get-parameter --name x
+gcloud config list
+gcloud auth list
+az login
+vault status
+gh auth status
+gh pr list
+git config --get user.name
+git credentials
+kubectl config view
+kubectl get pods
+docker ps
+docker ps --filter name=ssh
+sops -e secrets.yaml
+sops --encrypt --kms arn secrets.yaml
+age -e -r key file
+age-keygen -o key.txt
+secret-tool store --label x service foo
+hf auth login
+systemd-creds encrypt in out
+keylatch run -- go test ./...
+keylatch run github-app -- gh pr list
+keylatch list
+keylatch status
+keylatch doctor
+keylatch get --masked clockify api_key
+keylatch mint conn --repo a/b
+bash script.sh
+bash -c 'echo hello'
+sh -c "ls -la"
+bash -lc 'go build ./...'
+zsh -c 'make'
+cd /tmp && ls
+cd /work && make test
+tmux new -s x
+tmux ls
+echo x | tee out.txt
+cat file | grep x | wc -l
+
+# credential locations used without printing them
+kubectl config view
+ls ~/.ssh
+stat ~/.ssh/id_rsa
+ls ~/.kube
+cat .npmrc
+cat ./.netrc.example
+cd ~ && ls
+cd ~/code/project && cat .npmrc
+cat ~/code/project/.kubeconfig-template
+echo ~/code/ssh-notes
+echo hello > /dev/null
+ssh -i ~/.ssh/deploy_key host uptime
+ssh -o IdentityFile=~/.ssh/deploy_key host uptime
+ssh -oIdentityFile=~/.ssh/deploy_key host uptime
+ssh -F ~/.ssh/config host
+ssh-add ~/.ssh/id_ed25519
+ssh-keygen -t ed25519 -f ~/.ssh/id_new
+scp -i ~/.ssh/deploy_key build.tar host:/tmp
+chmod 600 ~/.ssh/config
+chown $USER ~/.ssh/config
+mkdir -p ~/.ssh
+touch ~/.npmrc
+git clone git@host:org/repo.git ~/code/repo
+helm --kubeconfig ~/.kube/config list
+kubectl --kubeconfig ~/.kube/config get pods
+kubectl --kubeconfig $HOME/.kube/config get pods
+kubectl get pods --kubeconfig=~/.kube/config
+KUBECONFIG=~/.kube/config kubectl get pods
+gh --config ~/.config/gh/hosts.yml auth status
+cd ~ && echo .npmrc
+ls ~/.ssh 2>/dev/null
+ls ~/.ssh 2>&1
+
+# harness settings and the binary, read or run
+cat ~/.claude/settings.json
+ls ~/.claude
+/usr/local/bin/keylatch --version

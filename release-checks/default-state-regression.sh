@@ -13,6 +13,7 @@ trap cleanup EXIT
 
 TMPDIR="$(mktemp -d)"
 
+bash "$(dirname "${BASH_SOURCE[0]}")/../scripts/ci-operator-config.sh"
 HOME="$TMPDIR" "$BINARY" bootstrap --mode=file 2>/dev/null || true
 
 OUTPUT="$(HOME="$TMPDIR" "$BINARY" doctor --json 2>/dev/null || echo '{}')"

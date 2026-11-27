@@ -1,7 +1,7 @@
 package cli
 
 // guard_approval_root.go — hardware approval JWT validation
-// for direct_classic_sandboxed runtime mode.
+// for runtime modes that require approval.
 //
 // Security invariants:
 //   - Approval root IDs in the JWT are HMAC'd; they are never raw.
@@ -58,8 +58,8 @@ type approvalJWTClaims struct {
 	ApprovalRootHMACs []string `json:"apv_root_hmacs"`
 }
 
-// ValidateApprovalRootJWT parses and validates an approval JWT for
-// direct_classic_sandboxed mode (E14 T3).
+// ValidateApprovalRootJWT parses and validates an approval JWT for runtime
+// modes that require approval.
 //
 // It verifies:
 //  1. JWT signature and expiry using signingKey.

@@ -19,6 +19,17 @@ secret_fields:
     sensitive: true
     env_var: SUPABASE_ANON_KEY
     secret_kind: bearer_token
+  - name: access_token
+    label: Management API Access Token
+    required: false
+    sensitive: true
+    env_var: SUPABASE_ACCESS_TOKEN
+    secret_kind: personal_token
+  - name: db_password
+    label: Database Password
+    required: false
+    sensitive: true
+    env_var: SUPABASE_DB_PASSWORD
   - name: url
     label: Project URL
     required: true
@@ -28,6 +39,8 @@ secret_fields:
 env_mappings:
   service_role_key: SUPABASE_SERVICE_ROLE_KEY
   anon_key: SUPABASE_ANON_KEY
+  access_token: SUPABASE_ACCESS_TOKEN
+  db_password: SUPABASE_DB_PASSWORD
   url: SUPABASE_URL
 
 auth_flow: bearer
@@ -61,8 +74,74 @@ injection_rules:
     source: service_role_key
   - env_var: SUPABASE_ANON_KEY
     source: anon_key
+  - env_var: SUPABASE_ACCESS_TOKEN
+    source: access_token
+  - env_var: SUPABASE_DB_PASSWORD
+    source: db_password
   - env_var: SUPABASE_URL
     source: url
+
+hosts:
+  - "*.supabase.co"
+  - "*.supabase.co:5432"
+  - "api.supabase.com"
+  - "*.pooler.supabase.com:5432"
+  - "*.pooler.supabase.com:6543"
+
+slots:
+  - field: service_role_key
+    in: header
+    name: apikey
+    hosts:
+      - "*.supabase.co"
+  - field: service_role_key
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "*.supabase.co"
+  - field: service_role_key
+    in: query
+    name: apikey
+    hosts:
+      - "*.supabase.co"
+  - field: anon_key
+    in: header
+    name: apikey
+    hosts:
+      - "*.supabase.co"
+  - field: anon_key
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "*.supabase.co"
+  - field: anon_key
+    in: query
+    name: apikey
+    hosts:
+      - "*.supabase.co"
+  - field: access_token
+    in: header
+    name: Authorization
+    scheme: Bearer
+    hosts:
+      - "api.supabase.com"
+
+placeholder_shape:
+  prefix: "sb_secret_"
+  min_length: 32
+
+env_class:
+  default: prod
+
+adapter:
+  kind: postgres
+  field: db_password
+  hosts:
+    - "*.supabase.co:5432"
+    - "*.pooler.supabase.com:5432"
+    - "*.pooler.supabase.com:6543"
 
 test_strategy:
   kind: http_get

@@ -12,13 +12,13 @@ import (
 func TestCCAgentSetup_ClaudeCodeWritesSettings(t *testing.T) {
 	ccEnv(t)
 	home := os.Getenv("HOME")
-	settings := filepath.Join(home, ".claude", "settings.json")
+	settings := filepath.Join(home, ".claude.json")
 
 	diffOut, _, err := ccRun(t, "", "agent", "setup", "claude-code", "--diff")
 	if err != nil {
 		t.Fatalf("agent setup --diff: %v", err)
 	}
-	if !strings.Contains(diffOut, "[NEW]") {
+	if !strings.Contains(diffOut, "+++ "+settings+" (after install)") {
 		t.Fatalf("diff before setup should announce new files: %q", diffOut)
 	}
 	if _, err := os.Stat(settings); !os.IsNotExist(err) {
@@ -40,7 +40,7 @@ func TestCCAgentSetup_ClaudeCodeWritesSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agent setup: %v", err)
 	}
-	if !strings.Contains(out, "Written: ") {
+	if !strings.Contains(out, "MCP server written to: "+settings) {
 		t.Fatalf("setup output = %q", out)
 	}
 	data, err := os.ReadFile(settings)
@@ -64,8 +64,8 @@ func TestCCAgentSetup_ClaudeCodeWritesSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agent setup --diff after setup: %v", err)
 	}
-	if strings.Contains(again, "[NEW]") {
-		t.Fatalf("diff after setup still reports new files: %q", again)
+	if !strings.Contains(again, "MCP server already installed in: "+settings) {
+		t.Fatalf("diff after setup reports changes: %q", again)
 	}
 }
 

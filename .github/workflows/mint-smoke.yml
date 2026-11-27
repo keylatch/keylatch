@@ -1,0 +1,51 @@
+name: mint-smoke
+
+# Mints a contents:read token for one test repository with a freshly built
+# keylatch and checks the JSON shape and the scope. It needs a GitHub App
+# installed on that repository only; without the MINT_SMOKE_* secrets the run
+# ends with a notice and no failure.
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: check for the smoke credentials
+        id: gate
+        env:
+          MINT_SMOKE_APP_ID: ${{ secrets.MINT_SMOKE_APP_ID }}
+          MINT_SMOKE_INSTALLATION_ID: ${{ secrets.MINT_SMOKE_INSTALLATION_ID }}
+          MINT_SMOKE_PRIVATE_KEY: ${{ secrets.MINT_SMOKE_PRIVATE_KEY }}
+          MINT_SMOKE_REPO: ${{ secrets.MINT_SMOKE_REPO }}
+        run: |
+          if [ -n "$MINT_SMOKE_APP_ID" ] && [ -n "$MINT_SMOKE_INSTALLATION_ID" ] && [ -n "$MINT_SMOKE_PRIVATE_KEY" ] && [ -n "$MINT_SMOKE_REPO" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::mint smoke skipped: the MINT_SMOKE_* secrets are not set"
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build
+        if: steps.gate.outputs.run == 'true'
+        run: go build -o "$RUNNER_TEMP/keylatch" ./cmd/keylatch
+      - name: mint and check the scope
+        if: steps.gate.outputs.run == 'true'
+        env:
+          MINT_SMOKE_APP_ID: ${{ secrets.MINT_SMOKE_APP_ID }}
+          MINT_SMOKE_INSTALLATION_ID: ${{ secrets.MINT_SMOKE_INSTALLATION_ID }}
+          MINT_SMOKE_PRIVATE_KEY: ${{ secrets.MINT_SMOKE_PRIVATE_KEY }}
+          MINT_SMOKE_REPO: ${{ secrets.MINT_SMOKE_REPO }}
+        run: bash scripts/mint-smoke.sh "$RUNNER_TEMP/keylatch"

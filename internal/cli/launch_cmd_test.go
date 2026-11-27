@@ -145,7 +145,7 @@ func TestLaunchRefusesInsideAgent(t *testing.T) {
 	withInteractiveStdin(t, true)
 	require.ErrorAs(t, run("--", "vim"), &cliErr)
 	require.Equal(t, exitcode.UserError, cliErr.Code)
-	require.ErrorAs(t, run("--harness", "windsurf", "--", "claude"), &cliErr)
+	require.ErrorAs(t, run("--harness", "emacs", "--", "claude"), &cliErr)
 	require.Equal(t, exitcode.UserError, cliErr.Code)
 
 	_, err = os.Stat(paths.SessionTicketKey(llmcontext.DefaultLookup))

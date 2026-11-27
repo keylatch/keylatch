@@ -1,3 +1,5 @@
+//go:build experimental
+
 package all_test
 
 import (

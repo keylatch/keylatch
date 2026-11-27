@@ -15,7 +15,6 @@ import (
 var supportedIntegrationAgents = []string{
 	"claude-code",
 	"gemini",
-	"windsurf",
 	"cursor",
 	"generic",
 }
@@ -168,8 +167,6 @@ func agentDocSlug(agent string) string {
 		return "claude-code"
 	case "gemini":
 		return "gemini"
-	case "windsurf":
-		return "windsurf"
 	case "cursor":
 		return "cursor"
 	default:

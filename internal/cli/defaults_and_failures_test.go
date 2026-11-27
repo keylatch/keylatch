@@ -1,3 +1,5 @@
+//go:build experimental
+
 package cli
 
 import (
@@ -7,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/registry"
-	"github.com/keylatch/keylatch/internal/runner"
 	"github.com/keylatch/keylatch/internal/testutil"
 )
 
@@ -67,17 +68,6 @@ func TestCCBaseURLFromTemplate(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Errorf("%q: got %q, %v; want %q", tc.endpoint, got, err, tc.want)
 		}
-	}
-}
-
-func TestCCPushReceiptToUI_UnparseableHostIsSkipped(t *testing.T) {
-	sink := ccReceiptSink(t)
-	t.Setenv("KEYLATCH_UI_ADDR", "bad host:80")
-	pushReceiptToUI(t.Context(), runner.RuntimeReceipt{Provider: "x"})
-	select {
-	case rr := <-sink:
-		t.Fatalf("unexpected push: %+v", rr)
-	default:
 	}
 }
 

@@ -23,7 +23,6 @@ var graduatedCommandNames = []string{
 	"broker",
 	"call",
 	"proxy",
-	"sandbox",
 	"approve",
 	"deny",
 }
@@ -47,7 +46,7 @@ func TestExperimentalGate_CommandsAbsentWhenUnset(t *testing.T) {
 }
 
 // TestExperimentalGate_CommandsPresentWhenEnabled asserts that graduated
-// commands (proxy, sandbox, call, broker, approve, deny) are always present.
+// commands (proxy, call, broker, approve, deny) are always present.
 func TestExperimentalGate_CommandsPresentWhenEnabled(t *testing.T) {
 	t.Setenv("KEYLATCH_EXPERIMENTAL", "1")
 	root := cli.NewRootCommand()

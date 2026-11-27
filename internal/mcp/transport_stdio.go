@@ -19,7 +19,7 @@ import (
 // Transport note: the official SDK's StdioTransport is hardwired to
 // os.Stdin / os.Stdout. For injecting custom streams in tests, use
 // sdkmcp.IOTransport{Reader: r, Writer: w} instead of StdioTransport.
-func (s *Server) ServeStdio(ctx context.Context, store connections.Store, d runner.Dispatcher) error {
+func (s *Server) ServeStdio(ctx context.Context, store connections.Store, dispatch runner.Dispatcher) error {
 	if s.opts.Transport != TransportStdio {
 		return fmt.Errorf("mcp: ServeStdio called with transport %q", s.opts.Transport)
 	}
@@ -32,12 +32,11 @@ func (s *Server) ServeStdio(ctx context.Context, store connections.Store, d runn
 		nil,
 	)
 
-	RegisterTools(srv, store, d)
+	RegisterTools(srv, store, dispatch, s.opts.Explain)
 
-	// Assert exactly five tools are registered.
 	s.registeredTools = len(registeredTools)
-	if s.registeredTools != 5 {
-		return fmt.Errorf("mcp: tool registration invariant violated: expected 5 tools, got %d", s.registeredTools)
+	if s.registeredTools != toolCount {
+		return fmt.Errorf("mcp: tool registration invariant violated: expected %d tools, got %d", toolCount, s.registeredTools)
 	}
 
 	// No token printed to stderr.
@@ -60,12 +59,12 @@ func (s *Server) ServeStdio(ctx context.Context, store connections.Store, d runn
 }
 
 // Serve dispatches to the appropriate transport handler based on ServerOptions.Transport.
-func (s *Server) Serve(ctx context.Context, store connections.Store, d runner.Dispatcher) error {
+func (s *Server) Serve(ctx context.Context, store connections.Store, dispatch runner.Dispatcher) error {
 	switch s.opts.Transport {
 	case TransportStdio:
-		return s.ServeStdio(ctx, store, d)
+		return s.ServeStdio(ctx, store, dispatch)
 	case TransportTCP:
-		return s.ServeTCP(ctx, store, d)
+		return s.ServeTCP(ctx, store, dispatch)
 	default:
 		return fmt.Errorf("mcp: unknown transport %q", s.opts.Transport)
 	}

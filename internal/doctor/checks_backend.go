@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,37 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 )
+
+// checkBackendEnvCredentials warns for every backend whose config accepts
+// credentials from the environment instead of a stored credential_ref.
+func checkBackendEnvCredentials(env llmcontext.Lookup) Check {
+	return func(_ context.Context) Status {
+		cfg, err := config.Load(paths.Config(env))
+		if err != nil {
+			cfg = config.Default()
+		}
+		var ids []string
+		for id, b := range cfg.Backends {
+			if b.AllowEnvCredentials && b.CredentialRef == "" {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+		if len(ids) == 0 {
+			return Status{
+				Name: "backend.env_credentials", Section: "backends", OK: true,
+				Detail: "no backend accepts credentials from the environment",
+				Tags:   []string{"backend", "credentials"},
+			}
+		}
+		return Status{
+			Name: "backend.env_credentials", Section: "backends", OK: true, Warn: true,
+			Detail: "backends reading credentials from environment variables: " + strings.Join(ids, ", "),
+			Fix:    "Run 'keylatch backend login <id>', set backends.<id>.credential_ref, and remove allow_env_credentials",
+			Tags:   []string{"backend", "credentials"},
+		}
+	}
+}
 
 // checkBackendSelected checks that the configured backend is valid and
 // supported on the current platform. The allowed set is derived from
@@ -598,13 +630,13 @@ func checkPlaintextKEK(env llmcontext.Lookup) Check {
 		case loc == kek.IdentityInKeyring:
 			st.Detail = "KEK held in the OS keyring"
 		case loc == kek.IdentityInFileAcknowledged:
-			st.Warn = true
-			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s (--insecure-file-kek); any process running as this user can decrypt the vault offline", vi.Path)
-			st.Fix = migrateFix
+			st.OK = false
+			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s (allowed by allow_insecure_file_kek in the operator config); any process running as this user can decrypt the vault offline", vi.Path)
+			st.Fix = migrateFix + " Then remove allow_insecure_file_kek from the config file."
 		case loc == kek.IdentityInFileUnacknowledged:
 			st.OK = false
 			st.Detail = fmt.Sprintf("plaintext KEK on disk: %s; any process running as this user can decrypt the vault offline", vi.Path)
-			st.Fix = migrateFix + " Without a keyring, run `keylatch bootstrap --insecure-file-kek` to accept the risk."
+			st.Fix = migrateFix + " Without a keyring, run `keylatch bootstrap` in a terminal to protect the key with a passphrase."
 		default:
 			st.Detail = "no vault identity found"
 		}

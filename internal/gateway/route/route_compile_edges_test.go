@@ -11,8 +11,8 @@ func TestCompile_SupportedListEnablesGatewayAndSDK(t *testing.T) {
 	tmpl := registry.ConnectionTemplate{
 		Provider: "mixed",
 		RuntimeSupport: registry.RuntimeSupport{
-			Preferred: registry.RuntimeDirectBrokered,
-			Supported: []registry.RuntimeMode{registry.RuntimeDirectBrokered, registry.RuntimeGatewaySDK},
+			Preferred: registry.RuntimeMinted,
+			Supported: []registry.RuntimeMode{registry.RuntimeMinted, registry.RuntimeGatewaySDK},
 		},
 		InjectionRules: []registry.InjectionRule{{EnvVar: "MIXED_KEY", Source: "api_key"}},
 		GatewayActions: []registry.GatewayAction{

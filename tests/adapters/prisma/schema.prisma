@@ -1,0 +1,14 @@
+generator client {
+  provider = "prisma-client"
+  output = "./generated"
+  generatedFileExtension = "ts"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Conformance {
+  id Int @id
+}
