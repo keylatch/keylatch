@@ -58,20 +58,16 @@ func LoadOrCreate(path string) ([]byte, error) {
 		}
 	}()
 
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return nil, fmt.Errorf("%w: chmod temp: %v", ErrSaltUnavailable, err)
+	// CreateTemp opens the file with mode 0600.
+	_, err = tmp.Write(saltBytes)
+	if err == nil {
+		err = tmp.Sync()
 	}
-	if _, err := tmp.Write(saltBytes); err != nil {
-		_ = tmp.Close()
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		return nil, fmt.Errorf("%w: write temp: %v", ErrSaltUnavailable, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return nil, fmt.Errorf("%w: fsync temp: %v", ErrSaltUnavailable, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return nil, fmt.Errorf("%w: close temp: %v", ErrSaltUnavailable, err)
 	}
 
 	if err := os.Rename(tmpName, path); err != nil {
