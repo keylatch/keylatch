@@ -396,17 +396,24 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Step 9: Build upstream request.
-	upstreamURL := url.URL{Scheme: "https", Host: rt.UpstreamHost, Path: rt.UpstreamPath}
+	var target string
 	if rt.Custom != nil {
 		// Custom secrets forward the caller's query; any credential-shaped
 		// parameter was already refused by substitution.CheckRequest.
-		upstreamURL.RawQuery = r.URL.RawQuery
+		var urlErr error
+		target, urlErr = customUpstreamURL(rt, r.URL.RawQuery)
+		if urlErr != nil {
+			writeError(w, http.StatusBadRequest, "upstream_url_rejected", "request path is not allowed for this secret")
+			return
+		}
+	} else {
+		target = (&url.URL{Scheme: "https", Host: rt.UpstreamHost, Path: rt.UpstreamPath}).String()
 	}
 	upstreamMethod := rt.Method
 	if upstreamMethod == "" {
 		upstreamMethod = "POST"
 	}
-	upstreamReq, err := http.NewRequestWithContext(ctx, upstreamMethod, upstreamURL.String(), strings.NewReader(string(body))) //nolint:gosec // G704: upstreamURL built from SSRF-gate-validated UpstreamHost
+	upstreamReq, err := http.NewRequestWithContext(ctx, upstreamMethod, target, strings.NewReader(string(body))) //nolint:gosec // G704: the host is the SSRF-gate-validated UpstreamHost
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "upstream_build_error", "failed to build upstream request")
 		return
