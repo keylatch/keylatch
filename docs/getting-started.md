@@ -95,11 +95,9 @@ keylatch connect anthropic --provider-ref api_key=op://Private/Anthropic/api_key
 
 ### 3. Choose a backend
 
-Set `KEYLATCH_BACKEND` in your shell profile, or run:
+There is no default backend: pick one of the supported managers, `op` or `bw`. Run `keylatch setup`, set `KEYLATCH_BACKEND` in your shell profile, or run:
 
 ```bash
-keylatch config set backend file       # encrypted local file (default, works everywhere)
-keylatch config set backend keychain   # macOS Keychain (macOS only)
 keylatch config set backend op         # 1Password CLI
 keylatch config set backend bw         # Bitwarden / Vaultwarden
 ```

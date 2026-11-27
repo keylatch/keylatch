@@ -96,14 +96,14 @@ A step-by-step walk-through lives in [docs/guides/secure-agent-setup.md](docs/gu
 |---------|------|-------|
 | `bw` | supported | Bitwarden CLI, including Vaultwarden servers |
 | `op` | supported | 1Password CLI |
-| `file` | preview | encrypted in-user file store; works and is the default, not certified yet (recovery, integrity and migration checks pending) |
+| `file` | unavailable | Keylatch own encrypted store, not a password manager: a test fixture and an opt-in for existing installs; recovery, integrity and migration are unproven |
 | `vault` | community | HashiCorp Vault KV; Go SDK, no live suite yet |
-| `awssm` | community | AWS Secrets Manager; no live suite yet |
-| `gcpsm` | community | Google Cloud Secret Manager; no live suite |
-| `azurekv` | community | Azure Key Vault; no live suite |
+| `aws-sm` | community | AWS Secrets Manager; no live suite yet |
+| `gcp-sm` | community | Google Cloud Secret Manager; no live suite |
+| `azure-kv` | community | Azure Key Vault; no live suite |
 | `doppler` | community | Doppler; no live suite |
 | `infisical` | community | Infisical; no live suite |
-| `opconnect` | community | 1Password Connect server; no live suite |
+| `op-connect` | community | 1Password Connect server; no live suite |
 | `bws` | community | Bitwarden Secrets Manager, read-only; machine-account token held by Keylatch; no live suite |
 | `sops` | community | SOPS files encrypted to age, read-only; decrypted in memory by the daemon |
 | `keychain` | deprecated | macOS Keychain secrets; reads the value from stdin; the Keychain stays a key store, not a backend |
@@ -111,7 +111,7 @@ A step-by-step walk-through lives in [docs/guides/secure-agent-setup.md](docs/gu
 | `lastpass` | deprecated | vendor CLI sessions are directly callable by an agent |
 | `proton-pass` | deprecated | vendor CLI sessions are directly callable by an agent |
 
-Set the backend with `keylatch config set backend <name>`. `KEYLATCH_BACKEND` is read only when `backend` is unset in `config.json`: the config value wins. The configuration directory is `~/.config/keylatch` on Linux and `~/.keylatch` on macOS and Windows; `keylatch paths` prints the locations, and [docs/configuration.md](docs/configuration.md) lists every key.
+Set the backend with `keylatch config set backend <name>`; there is no default. Only `op` and `bw` open without `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=<name>`. `KEYLATCH_BACKEND` is read only when `backend` is unset in `config.json`: the config value wins. The configuration directory is `~/.config/keylatch` on Linux and `~/.keylatch` on macOS and Windows; `keylatch paths` prints the locations, and [docs/configuration.md](docs/configuration.md) lists every key.
 
 ### Runtime modes
 

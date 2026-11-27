@@ -53,7 +53,7 @@ Run `keylatch setup agent` (or `keylatch agent setup` via the daemon API) to wri
 
 **6. Does this work in CI / headless environments?**
 
-Yes, with the right backend. The `file` backend works everywhere with no UI. For 1Password in CI, set `OP_SERVICE_ACCOUNT_TOKEN` and `KEYLATCH_BACKEND=op` — no interactive unlock required. For Bitwarden, set `BW_SESSION` from `bw unlock --raw`. The `file` backend is the simplest headless option. See [Backends](backends/index.md) for CI-specific notes per backend.
+Yes, with the right backend. For 1Password in CI, set `OP_SERVICE_ACCOUNT_TOKEN` and `KEYLATCH_BACKEND=op` — no interactive unlock required. For Bitwarden, set `BW_SESSION` from `bw unlock --raw`. See [Backends](backends/index.md) for CI-specific notes per backend.
 
 ---
 
