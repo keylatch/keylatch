@@ -53,7 +53,7 @@ func TestSessionTokenDefaultsAndScope(t *testing.T) {
 		GatewayActions: []registry.GatewayAction{{Name: "read_one"}, {Name: "write_one"}},
 	}
 	key := make([]byte, 32)
-	_, revoke, err := sessionToken(key, path, "actor", "", sessionCapabilities(tmpl, "inject"), 0)
+	_, revoke, err := sessionToken(key, path, "actor", "", nil, sessionCapabilities(tmpl, "inject"), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

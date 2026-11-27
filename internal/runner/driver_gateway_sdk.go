@@ -95,7 +95,7 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	if actor == "" {
 		actor = "sdk_driver"
 	}
-	jwtStr, revoke, err := sessionToken(d.key, d.store, actor, req.Caller, sessionCapabilities(tmpl, req.Capability), req.TTL)
+	jwtStr, revoke, err := sessionToken(d.key, d.store, actor, req.Caller, req.Command, sessionCapabilities(tmpl, req.Capability), req.TTL)
 	if err != nil {
 		receipt.PolicyDecision = "token_mint_failed"
 		return receipt, fmt.Errorf("gateway_sdk driver: mint token: %w", err)

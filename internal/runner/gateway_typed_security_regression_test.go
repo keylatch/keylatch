@@ -1,9 +1,12 @@
 package runner
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/gateway/token"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -24,5 +27,28 @@ func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) 
 				t.Errorf("%s env: manager authentication inherited: %s", mode, name)
 			}
 		}
+	}
+}
+
+func TestSecurityRegression_GatewayTokenMustPreserveLLMClassification(t *testing.T) {
+	t.Setenv("CREDENTIALS_LLM_SESSION", "1")
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	d := NewGatewayTypedDriver(auditGateway{}, make([]byte, 32), path)
+	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "child-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := token.List(token.ListOpts{IncludeRevoked: true}, path)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("token list: %v, count %d", err, len(records))
+	}
+	if !records[0].LLMSession {
+		t.Error("LLM child received token marked non-LLM")
+	}
+	if records[0].MaxUses == 0 {
+		t.Error("token has unlimited uses")
+	}
+	if !records[0].Revoked {
+		t.Error("token remains active after child exits")
 	}
 }

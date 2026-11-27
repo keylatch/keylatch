@@ -713,31 +713,17 @@ func newRunCmd() *cobra.Command {
 			// LLM session guard. GuardRuntime already ran above and either
 			// exited or allowed the request — the guard here provides defence-in-depth
 			// for the per-request path inside the runner pipeline.
-			guardFn := runner.GuardFunc(func(m runtime.RuntimeMode, jwt string) bool {
-				blocked, _ := GuardRuntime(m, jwt, llmcontext.DefaultLookup, nil)
-				return blocked
-			})
-
-			// Load gateway signing key and token store for gateway/SDK drivers.
-			// A missing key is not fatal at registration time — the gateway_typed
-			// and gateway_sdk drivers will fail at Run() with a token-mint error
-			// if the key is absent. This is acceptable: without a signing key the
-			// gateway cannot have been initialized so gateway_is_running returns false.
 			env := llmcontext.DefaultLookup
-			signingKey, _ := LoadGatewaySigningKey(env, false)
-			tokenStorePath := paths.GatewayTokens(env)
-			pidPath := paths.GatewayPID(env)
-
-			// gatewayAdapter implements GatewayTypedServerStarter / GatewaySDKServerStarter.
-			gatewayAddr, addrErr := gatewayRunAddr(env)
+			drivers, addrErr := newGatewayDrivers(env, modeFlag)
 			if addrErr != nil {
 				fmt.Fprintf(c.ErrOrStderr(), "keylatch run: %v\n", addrErr)
 				os.Exit(exitcode.UserError)
 			}
-			gatewaySrv := &gatewayServerAdapter{
-				addr:    gatewayAddr,
-				pidPath: pidPath,
-			}
+
+			// Gateway/SDK drivers fail at Run() when the signing key is absent.
+			signingKey, _ := LoadGatewaySigningKey(env, false)
+			tokenStorePath := paths.GatewayTokens(env)
+			pidPath := paths.GatewayPID(env)
 
 			// Proxy server address for gateway_proxy mode.
 			proxyAddr, proxyAddrErr := proxyRunAddr(env)
@@ -752,15 +738,6 @@ func newRunCmd() *cobra.Command {
 				return running
 			}
 
-			// resolve operating mode from flag, env var, and config file.
-			cfgPath := paths.Config(env)
-			opCfg, cfgLoadErr := config.Load(cfgPath)
-			if cfgLoadErr != nil {
-				opCfg = config.Default()
-			}
-			opMode, _ := runtime.ResolveMode(modeFlag, runtime.OperatingMode(opCfg.Mode))
-			opSettings := runtime.EffectiveSettingsForMode(opMode, mapCustomConfig(opCfg.Custom))
-
 			// The support manifest excludes gateway_proxy from the supported
 			// runtime set
 			// — WithManifestGuard makes each unreachable regardless
@@ -773,20 +750,16 @@ func newRunCmd() *cobra.Command {
 				return auditErr
 			}
 			defer auditCleanup()
+			drivers[string(runtime.RuntimeMinted)] = runner.WithManifestGuard(
+				runner.NewMintedDriver(mintedOpener(loadCLIConfig(c), audit.AsEmitter(auditLog))), supported, "minted")
+			drivers[string(runtime.RuntimeGatewayProxy)] = runner.WithManifestGuard(
+				runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
+				supported, "gateway_proxy")
 			dr := runner.DispatchRunner{
-				Guard:   guardFn,
+				Guard:   runtimeGuard(),
 				Enforce: ciScopedEnforce(enforce.Decide),
 				Audit:   audit.AsEmitter(auditLog),
-				Drivers: map[string]runner.Driver{
-					// v1.0.0 mode set.
-					string(runtime.RuntimeGatewayTyped): runner.NewGatewayTypedDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeGatewaySDK):   runner.NewGatewaySDKDriverWithSettings(gatewaySrv, signingKey, tokenStorePath, opSettings, nil),
-					string(runtime.RuntimeMinted): runner.WithManifestGuard(
-						runner.NewMintedDriver(mintedOpener(loadCLIConfig(c), audit.AsEmitter(auditLog))), supported, "minted"),
-					string(runtime.RuntimeGatewayProxy): runner.WithManifestGuard(
-						runner.WithLivenessGuard(runner.NewProxyDriver(proxySrv, signingKey, tokenStorePath, ""), proxyLiveness, runner.ErrProxyNotRunning),
-						supported, "gateway_proxy"),
-				},
+				Drivers: drivers,
 			}
 
 			// Build the extra allowlist for the --allow flag (CLI human-only override).

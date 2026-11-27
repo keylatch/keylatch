@@ -87,7 +87,7 @@ func (d *proxyDriver) Run(ctx context.Context, req ExecRequest, _ registry.Conne
 	// proxy caller-auth check, below): the JWT records who/what was authorized to run this capability;
 	// the caller-auth token is what the child must present back to the proxy
 	// listener to prove it is the process we intended to authorize.
-	_, revoke, err := sessionToken(d.signingKey, d.storePath, actor, req.Caller, []string{capability}, req.TTL)
+	_, revoke, err := sessionToken(d.signingKey, d.storePath, actor, req.Caller, req.Command, []string{capability}, req.TTL)
 	if err != nil {
 		return receipt, fmt.Errorf("gateway_proxy: mint session token: %w", err)
 	}

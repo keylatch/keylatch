@@ -15,12 +15,15 @@ func TestSecurityRegression_MCPMustExecuteAllowedCommandViaRuntime(t *testing.T)
 	t.Setenv("BW_SESSION", "audit-synthetic-session-9284")
 	body, isErr := callRunHandler(t, newMockStore(), realDispatcher(t, &recordingEmitter{}), map[string]any{
 		"provider": provider,
-		"command":  []any{sh, "-c", "echo \"$BW_SESSION\""},
+		"command":  []any{sh, "-c", "echo \"$BW_SESSION:$KEYLATCH_RUNTIME\""},
 	})
 	if isErr {
 		t.Fatalf("unexpected handler failure: %s", body)
 	}
 	if strings.Contains(body, "audit-synthetic-session-9284") {
 		t.Error("synthetic password-manager session returned in MCP tool output")
+	}
+	if !strings.Contains(body, "gateway_typed") {
+		t.Errorf("command did not run through runtime dispatch: %s", body)
 	}
 }
