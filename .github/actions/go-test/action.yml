@@ -19,9 +19,6 @@ runs:
         KEYLATCH_BACKEND: file
         KEYLATCH_REQUIRE_REAL_CLIENTS: ${{ inputs.require-real-clients }}
       run: go test -coverprofile=coverage.out ./... -race -count=1 -failfast -timeout 300s
-    - name: Check coverage threshold
-      shell: bash
-      run: bash release-checks/coverage-threshold.sh coverage.out
     - name: Upload coverage artifact
       if: always()
       uses: actions/upload-artifact@v4

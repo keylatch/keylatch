@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,8 +15,9 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/keylatch/keylatch/internal/connections"
-	"github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/registry"
+	"github.com/keylatch/keylatch/internal/runner"
+	"github.com/keylatch/keylatch/internal/runtime"
 )
 
 // registeredTools is the canonical list of tool names.
@@ -69,11 +72,7 @@ var objectSchema = json.RawMessage(`{"type":"object"}`)
 var tokenRedactRE = regexp.MustCompile(`[A-Za-z0-9\-_\.]{32,}`)
 
 // RegisterTools adds all five tool handlers to the MCP Server.
-func RegisterTools(s *sdkmcp.Server, store connections.Store, runner exec.CommandRunner) {
-	if runner == nil {
-		runner = exec.DefaultRunner
-	}
-
+func RegisterTools(s *sdkmcp.Server, store connections.Store, d runner.Dispatcher) {
 	s.AddTool(
 		&sdkmcp.Tool{
 			Name:        "keylatch_status",
@@ -116,7 +115,7 @@ func RegisterTools(s *sdkmcp.Server, store connections.Store, runner exec.Comman
 			Description: "Run a command using a connection's credentials. Command must match the provider's allowed_command_prefixes allowlist.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"provider":{"type":"string"},"account":{"type":"string"},"namespace":{"type":"string"},"command":{}},"required":["provider","command"]}`),
 		},
-		makeRunHandler(store, runner),
+		makeRunHandler(store, d),
 	)
 }
 
@@ -229,8 +228,11 @@ func makeTestHandler(store connections.Store) sdkmcp.ToolHandler {
 
 // makeRunHandler implements keylatch_run.
 // Applies allowlist pre-flight before execution.
-func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.ToolHandler {
+func makeRunHandler(store connections.Store, d runner.Dispatcher) sdkmcp.ToolHandler {
 	return func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+		if d == nil {
+			return newToolResultError("run: runtime dispatch unavailable"), nil
+		}
 		args := getArguments(req)
 		provider := getString(args, "provider", "")
 		account := getString(args, "account", "")
@@ -285,25 +287,40 @@ func makeRunHandler(store connections.Store, runner exec.CommandRunner) sdkmcp.T
 			}
 		}
 
-		// Resolve binary — must be an absolute path.
-		binary := command[0]
-		cmdArgs := command[1:]
+		if !filepath.IsAbs(command[0]) {
+			return newToolResultError("run: command must be an absolute path"), nil
+		}
 
-		// Execute via runner.
-		stdout, stderr, exitCode, execErr := runner.Run(ctx, binary, cmdArgs, nil)
-		if execErr != nil {
-			return newToolResultError("run: execution error"), nil
+		// The dispatcher's guard rejects an unset mode in agent sessions, so resolve it here.
+		decision, err := runtime.Resolve(ctx, runtime.ResolveRequest{ConnectionSlug: provider}, tmpl)
+		if err != nil {
+			return newToolResultError("run: provider has no supported runtime"), nil
+		}
+
+		var out, errb bytes.Buffer
+		dispatched, err := d.Run(ctx, runner.ExecRequest{
+			ConnectionSlug: provider,
+			Command:        command,
+			Actor:          "mcp",
+			Runtime:        string(decision.Mode),
+			// In stdio mode os.Stdin is the MCP protocol stream, so the child gets an empty reader.
+			Stdin:  bytes.NewReader(nil),
+			Stdout: &out,
+			Stderr: &errb,
+		})
+		if err != nil {
+			return newToolResultErrorf("run: %s", sanitizeError(err)), nil
 		}
 
 		// Apply redaction patterns to stdout/stderr before returning.
-		cleanedStdout := applyRedaction(string(stdout), tmpl.Redaction)
-		cleanedStderr := applyRedaction(string(stderr), tmpl.Redaction)
+		cleanedStdout := applyRedaction(out.String(), tmpl.Redaction)
+		cleanedStderr := applyRedaction(errb.String(), tmpl.Redaction)
 
 		receipt := RuntimeReceipt{
 			Provider:   provider,
 			Connection: fmt.Sprintf("%s/%s/%s", namespace, provider, account), // HMAC'd in a future revision
-			Runtime:    string(tmpl.RuntimeSupport.Preferred),
-			ExitCode:   exitCode,
+			Runtime:    dispatched.Runtime,
+			ExitCode:   dispatched.ExitCode,
 		}
 
 		result := map[string]interface{}{
