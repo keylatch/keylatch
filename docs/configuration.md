@@ -21,7 +21,7 @@ prints the resolved locations.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | string | none | Password manager Keylatch brokers. Supported: `op`, `bw`. Any other value (`file`, `keychain`, `proton-pass`, `keeper`, `lastpass`, `vault`, `aws-sm`, `op-connect`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`, `bws`, `sops`) opens only with `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` naming it; see [moving off the file backend](backends/moving-off-file.md). |
+| `backend` | string | none | Password manager Keylatch brokers. Supported: `op`, `bw`. `file`, `lastpass`, `vault`, `aws-sm`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`, `bws` and `sops` open only with `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` naming them; `keychain`, `proton-pass`, `keeper` and `op-connect` cannot be enabled at all; see [moving off the file backend](backends/moving-off-file.md). |
 | `mode` | string | `standard` | **Operating mode** — controls canary injection and experimental gates. One of `standard`, `canary`, `custom`. See [Operating Modes](./operating-modes.md) for the full reference. |
 | `audit.enabled` | bool | `true` | Whether to write a tamper-evident audit log. Disabling is not recommended in production. |
 | `audit.retain_days` | int | `365` | Number of days to retain rotated audit log files. Valid range: 1–3650. Rotated files older than this threshold are deleted by the retention sweep. `audit.retention_days` is the older name for the same setting and is still read; `retain_days` wins when both are set. |

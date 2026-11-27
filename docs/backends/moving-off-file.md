@@ -23,7 +23,7 @@ Name the backend in the opt-in variable in the environment of every Keylatch pro
 export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file
 ```
 
-The value is a comma-separated list of backend names. Each process prints one notice to stderr saying what is unproven. `keylatch doctor` reports the backend as a warning while the opt-in is on and as a failure without it. Agent sessions never inherit the variable (`KEYLATCH_*` variables are stripped from child environments).
+The value is a comma-separated list of backend names. It works only for backends the manifest marks as opt-in (`file`, `lastpass`, `vault`, `aws-sm`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`, `bws`, `sops`); `keychain`, `proton-pass`, `keeper` and `op-connect` stay refused whatever the environment says. Each process prints one notice to stderr saying what is unproven. `keylatch doctor` reports the backend as a warning while the opt-in is on and as a failure without it. Agent sessions never inherit the variable (`KEYLATCH_*` variables are stripped from child environments).
 
 ## Move to `op` or `bw`
 
