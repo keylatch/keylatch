@@ -12,9 +12,6 @@ import (
 	"github.com/keylatch/keylatch/internal/ui/api"
 )
 
-// KNOWN-FAILING: the settings route is mounted before the
-// ScopeStatusOnly write ceiling, so a status-only session can still mutate
-// the shared settings store through an authenticated, CSRF-valid PUT.
 func TestSecurityRegression_StatusOnlyScopeCannotMutateSettings(t *testing.T) {
 	store := api.NewSettingsStore()
 	s, err := ui.New(ui.ServerOptions{
@@ -45,12 +42,11 @@ func TestSecurityRegression_StatusOnlyScopeCannotMutateSettings(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	s.TestServeHTTP(rec, req)
-	if rec.Code != 200 && rec.Code != 403 && rec.Code != 404 {
-		t.Fatalf("unexpected response: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != 404 {
+		t.Fatalf("expected 404, got %d %s", rec.Code, rec.Body.String())
 	}
 
-	ttl, _ := store.GetTTL()
-	if rec.Code == 200 && ttl == 120 {
+	if ttl, _ := store.GetTTL(); ttl == 120 {
 		t.Fatal("status-only session successfully mutated shared settings")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/ui/api"
@@ -288,6 +289,29 @@ func TestSettings_InvalidApprovalPolicyReturns400(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("invalid approval_policy: want 400, got %d", rec.Code)
+	}
+}
+
+// TestSettings_RejectedPutLeavesTelemetryEnvUnchanged verifies that a PUT rejected
+// for an invalid field does not apply its valid fields or touch the process env.
+func TestSettings_RejectedPutLeavesTelemetryEnvUnchanged(t *testing.T) {
+	t.Setenv("KEYLATCH_TELEMETRY_DISABLE", "baseline")
+
+	store := api.NewSettingsStore()
+	h := &api.SettingsHandler{Store: store}
+
+	body, _ := json.Marshal(map[string]interface{}{"approval_policy": "always_yes", "telemetry_disable": true})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", rec.Code)
+	}
+	if got := os.Getenv("KEYLATCH_TELEMETRY_DISABLE"); got != "baseline" {
+		t.Errorf("env changed by rejected PUT: %q", got)
+	}
+	if store.GetTelemetryDisable() {
+		t.Error("store changed by rejected PUT")
 	}
 }
 
