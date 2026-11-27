@@ -47,7 +47,19 @@ func newProviderHTTPClient() *http.Client {
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-	return &http.Client{Transport: transport, Timeout: 25 * time.Second}
+	return &http.Client{Transport: transport, Timeout: 25 * time.Second, CheckRedirect: providerRedirectPolicy}
+}
+
+// providerRedirectPolicy follows only same-origin HTTPS redirects so injected credentials never leave the SSRF-validated host.
+func providerRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("gateway: stopped after 10 redirects")
+	}
+	orig := via[0].URL
+	if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Host, orig.Host) {
+		return http.ErrUseLastResponse
+	}
+	return nil
 }
 
 // Mode describes how the gateway runs.
