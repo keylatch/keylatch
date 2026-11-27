@@ -255,6 +255,27 @@ See [External Store References](./backends/external-references.md) for full docu
 
 ---
 
+### `keylatch secret`
+
+Manage custom secrets: an API key (or an `op://`, `aws-sm://` or `hashivault://` reference)
+for a service that has no provider template, with the hosts, paths and methods it may be
+sent to and how it is injected.
+
+```bash
+keylatch secret add <name> (--value-stdin | --ref <uri>) --host <host> [--host ...] \
+  [--path <prefix> ...] [--method <M> ...] \
+  (--header "<Name>: <format with {value}>" | --query <param> | --basic <user>) \
+  [--base-url-env <ENV>]
+keylatch secret list [--json]
+keylatch secret show <name> [--json]
+keylatch secret rm <name> [--force]
+```
+
+`add` and `rm` are blocked in LLM sessions (exit 2). The value is never accepted as an
+argument. `list` and `show` print metadata only. See [custom-secrets.md](./custom-secrets.md).
+
+---
+
 ### `keylatch backup`
 
 Export an AEAD-encrypted backup of all enrolled connections (T-12-02).

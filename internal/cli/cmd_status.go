@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/keylatch/keylatch/internal/connections"
+	"github.com/keylatch/keylatch/internal/customsecret"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -81,25 +82,30 @@ func newStatusCmd() *cobra.Command {
 				os.Exit(exitcode.OperationFailed)
 			}
 
+			custom := loadCustomSecretsForDisplay(c, env)
+
 			if useJSON {
 				type jsonOut struct {
-					Backend     string                         `json:"backend"`
-					Connections []connections.ConnectionStatus `json:"connections"`
-					Gateway     gatewayStatusInfo              `json:"gateway"`
-					LLMSession  bool                           `json:"llm_session"`
+					Backend       string                         `json:"backend"`
+					Connections   []connections.ConnectionStatus `json:"connections"`
+					CustomSecrets []customsecret.Secret          `json:"custom_secrets"`
+					Gateway       gatewayStatusInfo              `json:"gateway"`
+					LLMSession    bool                           `json:"llm_session"`
 				}
 				gw := detectGatewayStatus(env)
 				data, _ := json.Marshal(jsonOut{
-					Backend:     cfg.Backend,
-					Connections: statuses,
-					Gateway:     gw,
-					LLMSession:  llmcontext.IsLLMSession(env),
+					Backend:       cfg.Backend,
+					Connections:   statuses,
+					CustomSecrets: custom,
+					Gateway:       gw,
+					LLMSession:    llmcontext.IsLLMSession(env),
 				})
 				fmt.Fprintln(c.OutOrStdout(), string(data))
 				return nil
 			}
 
 			printStatusDashboard(c, cfg.Backend, statuses, env)
+			printCustomSecrets(c, custom)
 			return nil
 		},
 	}
@@ -107,6 +113,34 @@ func newStatusCmd() *cobra.Command {
 	cmd.Flags().Bool("test", false, "run health test for each connection")
 	cmd.Flags().Bool("json", false, "output as JSON")
 	return cmd
+}
+
+// loadCustomSecretsForDisplay reads the custom-secret rules; they hold no value.
+// A broken file is reported on stderr so the rest of the dashboard still renders.
+func loadCustomSecretsForDisplay(c *cobra.Command, env llmcontext.Lookup) []customsecret.Secret {
+	secrets, err := customsecret.Load(paths.CustomSecrets(env))
+	if err != nil {
+		fmt.Fprintf(c.ErrOrStderr(), "warning: custom secrets unreadable: %v\n", err)
+		return []customsecret.Secret{}
+	}
+	if secrets == nil {
+		return []customsecret.Secret{}
+	}
+	return secrets
+}
+
+// printCustomSecrets lists custom secrets by name, hosts, injection kind and source.
+func printCustomSecrets(c *cobra.Command, secrets []customsecret.Secret) {
+	if len(secrets) == 0 {
+		return
+	}
+	w := tabwriter.NewWriter(c.OutOrStdout(), 0, 0, 3, ' ', 0)
+	fmt.Fprintf(w, "\nCustom secrets\t\t\t\n")
+	fmt.Fprintf(w, "  NAME\tHOSTS\tINJECTION\tSOURCE\n")
+	for _, s := range secrets {
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", s.Name, strings.Join(s.Hosts, ","), s.Kind(), s.Source())
+	}
+	w.Flush() //nolint:errcheck // output errors are non-critical here
 }
 
 // gatewayStatusInfo holds gateway running state for the dashboard.

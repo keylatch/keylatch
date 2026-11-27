@@ -15,6 +15,7 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/backend/keychain"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/customsecret"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/guard"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -234,6 +235,39 @@ func checkKeychainDBPermissions() Check {
 			Detail:  "keychain-db permissions: ok (0600)",
 			Tags:    []string{"acl", "permissions"},
 		}
+	}
+}
+
+// checkCustomSecrets lists custom secrets by name, hosts, injection kind and
+// source (stored or reference scheme). It never reads a value.
+func checkCustomSecrets(env llmcontext.Lookup) Check {
+	return func(_ context.Context) Status {
+		const checkName = "custom_secrets"
+		tags := []string{"custom-secrets"}
+		secrets, err := customsecret.Load(paths.CustomSecrets(env))
+		if err != nil {
+			return Status{Name: checkName, Section: "providers", OK: true, Warn: true,
+				Detail: fmt.Sprintf("custom secrets file unreadable: %v", err),
+				Fix:    "repair or remove " + paths.CustomSecrets(env), Tags: tags}
+		}
+		if len(secrets) == 0 {
+			return Status{Name: checkName, Section: "providers", OK: true, Detail: "no custom secrets", Tags: tags}
+		}
+		var parts, invalid []string
+		for _, s := range secrets {
+			parts = append(parts, fmt.Sprintf("%s (%s, %s, %s)", s.Name, strings.Join(s.Hosts, ","), s.Kind(), s.Source()))
+			if verr := s.Normalize(); verr != nil {
+				invalid = append(invalid, fmt.Sprintf("%s: %v", s.Name, verr))
+			}
+		}
+		st := Status{Name: checkName, Section: "providers", OK: true, Tags: tags,
+			Detail: fmt.Sprintf("%d custom secret(s): %s", len(secrets), strings.Join(parts, "; "))}
+		if len(invalid) > 0 {
+			st.Warn = true
+			st.Detail += " — invalid and skipped by the gateway: " + strings.Join(invalid, "; ")
+			st.Fix = "keylatch secret rm <name>, then add it again"
+		}
+		return st
 	}
 }
 
@@ -768,6 +802,7 @@ func gatherChecks(env llmcontext.Lookup, probe kexec.Probe, runner kexec.Command
 		{"environment", checkCosignInstalled(probe)},
 		// Soft checks.
 		{"providers", checkNoConnections(env)},
+		{"providers", checkCustomSecrets(env)},
 		{"daemon", checkGatewayRunning(env)},
 		// Plaintext retention after run.
 		{"daemon", checkPlaintextRetention(env)},
