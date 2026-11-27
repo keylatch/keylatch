@@ -426,9 +426,13 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	if rt.Custom != nil {
 		scrub = newCredentialScrubber(rt.AuthPlacement, accessToken.Value)
 	}
-	respBody, err := readUpstreamBody(resp, rt.MaxBodyBytes)
+	respBody, err := readUpstreamBody(resp, rt.MaxBodyBytes, rt.Custom != nil)
 	if errors.Is(err, errUnsupportedEncoding) {
 		writeError(w, http.StatusBadGateway, "upstream_encoding_unsupported", "upstream response uses a content encoding the gateway cannot redact")
+		return
+	}
+	if errors.Is(err, errBodyTooLarge) {
+		writeError(w, http.StatusBadGateway, "upstream_too_large", "upstream response exceeds the size limit")
 		return
 	}
 	if err != nil {

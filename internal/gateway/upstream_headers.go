@@ -75,11 +75,21 @@ var (
 // readUpstreamBody returns the upstream body decoded to plain bytes, at most
 // limit of them, so redaction always sees the content the client gets.
 // gzip and deflate are decoded; any other encoding is refused.
-func readUpstreamBody(resp *http.Response, limit int64) ([]byte, error) {
+//
+// With strict set, a body longer than limit is an error instead of being cut
+// short, because a truncated body could hide part of an echoed credential from
+// the scrubber.
+func readUpstreamBody(resp *http.Response, limit int64, strict bool) ([]byte, error) {
 	enc := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		if strict {
+			return nil, errBodyTooLarge
+		}
+		raw = raw[:limit]
 	}
 	var r io.ReadCloser
 	switch enc {

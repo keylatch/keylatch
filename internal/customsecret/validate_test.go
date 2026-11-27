@@ -1,6 +1,7 @@
 package customsecret
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -166,7 +167,8 @@ func TestValidateBaseURLEnv(t *testing.T) {
 
 func TestValidateValue(t *testing.T) {
 	assert.NoError(t, ValidateValue([]byte("sk-abc 123")))
-	for _, v := range []string{"", "a\nb", "a\rb", "a\x00b", "a\x7fb"} {
+	assert.NoError(t, ValidateValue([]byte("12345678")))
+	for _, v := range []string{"", "short", "1234567", "a\nb", "a\rb", "a\x00b", "a\x7fb"} {
 		assert.Error(t, ValidateValue([]byte(v)), "%q", v)
 	}
 }
@@ -198,6 +200,15 @@ func TestNormalizeSecret(t *testing.T) {
 	require.NoError(t, s.Normalize())
 	assert.Equal(t, []string{"/health", "/v1"}, s.Paths)
 	assert.Equal(t, []string{"GET", "POST"}, s.Methods)
+
+	many := base()
+	many.Hosts = nil
+	for i := 0; i < MaxHosts+1; i++ {
+		many.Hosts = append(many.Hosts, fmt.Sprintf("h%02d.acme.example", i))
+	}
+	assert.Error(t, many.Normalize(), "more than MaxHosts hosts")
+	many.Hosts = many.Hosts[:MaxHosts]
+	assert.NoError(t, many.Normalize())
 
 	cases := map[string]func(*Secret){
 		"no hosts":         func(s *Secret) { s.Hosts = nil },

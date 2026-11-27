@@ -128,6 +128,9 @@ func (s *Secret) Normalize() error {
 	if len(s.Hosts) == 0 {
 		return errors.New("at least one --host is required")
 	}
+	if len(s.Hosts) > MaxHosts {
+		return fmt.Errorf("at most %d hosts are allowed", MaxHosts)
+	}
 	hosts := make([]string, 0, len(s.Hosts))
 	seen := map[string]bool{}
 	for _, h := range s.Hosts {

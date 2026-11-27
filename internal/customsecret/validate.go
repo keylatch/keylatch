@@ -204,10 +204,16 @@ func ValidateBaseURLEnv(name string) error {
 	return nil
 }
 
+// MinValueLength keeps the response scrubber from masking unrelated short text.
+const MinValueLength = 8
+
+// MaxHosts caps the hosts one secret may be sent to.
+const MaxHosts = 16
+
 // ValidateValue rejects values that cannot be sent as an HTTP credential.
 func ValidateValue(v []byte) error {
-	if len(v) == 0 {
-		return errors.New("value is empty")
+	if len(v) < MinValueLength {
+		return fmt.Errorf("value must be at least %d characters", MinValueLength)
 	}
 	for _, b := range v {
 		if b < 0x20 || b == 0x7f {
