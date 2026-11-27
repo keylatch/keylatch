@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -108,10 +109,12 @@ func TestFileRoundTripAndPermissions(t *testing.T) {
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	dirInfo, err := os.Stat(filepath.Dir(path))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
+	if runtime.GOOS != "windows" { // Windows reports 0666/0777; access follows the ACL
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+		assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
+	}
 
 	got, err = Load(path)
 	require.NoError(t, err)

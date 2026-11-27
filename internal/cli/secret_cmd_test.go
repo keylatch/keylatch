@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/audit"
@@ -61,7 +62,9 @@ func TestSecretAddStoresValueAndMetadataSeparately(t *testing.T) {
 	file := paths.CustomSecrets(llmcontext.DefaultLookup)
 	info, err := os.Stat(file)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" { // Windows reports 0666; access follows the ACL
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), secretTestValue, "the metadata file never holds the value")

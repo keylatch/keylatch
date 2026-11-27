@@ -66,7 +66,7 @@ func Save(path string, secrets []Secret) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return replaceFile(tmp.Name(), path)
 }
 
 // Tx is a locked view of the rules file. Every read-modify-write that spans

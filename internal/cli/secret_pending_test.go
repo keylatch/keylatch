@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -456,9 +457,14 @@ func TestFailedProposalPutsThePreviousPendingValueBack(t *testing.T) {
 	_, errOut, err := caRun(t, caStdinFile(t, first), secretAddArgs("--value-stdin")...)
 	require.NoError(t, err, errOut)
 
-	// The rules directory becomes unwritable, so saving the second proposal fails.
-	require.NoError(t, os.Chmod(rules, 0o500))
-	t.Cleanup(func() { _ = os.Chmod(rules, 0o700) })
+	// Saving the second proposal fails: a read-only rules file blocks the rename on
+	// Windows, an unwritable rules directory elsewhere.
+	block, blocked, unblock := rules, os.FileMode(0o500), os.FileMode(0o700)
+	if runtime.GOOS == "windows" {
+		block, blocked, unblock = filepath.Join(rules, "custom-secrets.json"), 0o400, 0o600
+	}
+	require.NoError(t, os.Chmod(block, blocked))
+	t.Cleanup(func() { _ = os.Chmod(block, unblock) })
 	_, _, err = caRun(t, caStdinFile(t, second), secretAddArgs("--replace", "--value-stdin")...)
 	require.Error(t, err)
 
