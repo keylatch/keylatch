@@ -23,6 +23,7 @@ These variables configure the Keylatch runtime. They are read by the CLI process
 | `KEYLATCH_CONFIG_DIR` | Override the configuration directory (`~/.keylatch/`) | No | Never |
 | `KEYLATCH_DATA_DIR` | Override the vault data directory (`~/.keylatch/vault/`) | No | Never |
 | `KEYLATCH_VAULT_PATH` | Override the file backend vault path | No | Never |
+| `KEYLATCH_CUSTOM_SECRETS_PATH` | Override the custom-secret rules file (`~/.keylatch/custom-secrets.json`); holds hosts, paths and injection rules, never values | No | Never |
 | `KEYLATCH_NAMESPACE` | Override the default namespace (`default`) | No | Never |
 | `KEYLATCH_LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) | No | Never |
 | `KEYLATCH_CI_SESSION` | Path to the session record `keylatch ci exchange` wrote. While set, `run`, `call` and the MCP server refuse connections outside the record and stop at its expiry. | No | Never |
