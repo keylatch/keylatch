@@ -31,7 +31,7 @@ keylatch secret reject acme       # owner: discard it
 | Flag | Meaning |
 |------|---------|
 | `--value-stdin` / `--ref <uri>` | Exactly one. The value comes from stdin (or a hidden prompt on a terminal); a reference is validated locally and not resolved at add time. |
-| `--host <host>` | Allowed upstream host, repeatable. HTTPS only, exact DNS names (no wildcards). The first host receives `/sdk/<name>/v1/` requests; every listed host is reachable at `/sdk/<name>/h/<host>/`. |
+| `--host <host>` | Allowed upstream host, repeatable, at most 16. HTTPS only, exact DNS names (no wildcards). The first host receives `/sdk/<name>/v1/` requests; every listed host is reachable at `/sdk/<name>/h/<host>/`. |
 | `--path <prefix>` | Allowed upstream path prefix, repeatable. Default `/`. A prefix matches whole segments: `/v1` allows `/v1` and `/v1/x`, not `/v1beta`. |
 | `--method <M>` | Allowed HTTP method, repeatable. Default: GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS. TRACE and CONNECT are never allowed. |
 | `--header "<Name>: <format>"` | Put the value in a header. `{value}` marks the place, e.g. `Authorization: Bearer {value}` or `X-Api-Key: {value}`. |
@@ -61,7 +61,8 @@ The gateway serves a custom secret at `/sdk/<name>/v1/<path>`, which it forwards
 `/sdk/<name>/h/<host>/<path>`; the host segment must equal a listed host exactly
 (no case change, trailing dot, port, `user@`, encoded slash or IP form), otherwise
 the answer is 404 and nothing is sent upstream. `keylatch secret show` prints the
-gateway path for each host. Paths, methods and the injection rule apply to every host.
+gateway path for each host. Paths, methods and the injection rule apply to every
+listed host, and the key is sent to all of them: list only hosts that should receive it.
 
 - the path must match an allowed prefix and the method an allowed method, or the
   gateway answers 404 and nothing is sent upstream. A percent-encoded `%2F` in the
@@ -74,8 +75,11 @@ gateway path for each host. Paths, methods and the injection rule apply to every
 - every listed host passes the same SSRF check as provider hosts, on each request:
   it must be on the secret's host list and resolve to a public address;
 - if the upstream echoes the credential back (in the body, any header or a
-  `Location`), the gateway replaces it with `****`, including its URL-encoded and
-  base64 basic-auth forms;
+  `Location`), the gateway replaces it with `****`, including its URL-encoded
+  (either hex case), JSON-escaped, HTML-escaped and base64 basic-auth forms. A
+  response larger than the size limit is answered with 502 rather than cut short, so
+  a truncated body cannot hide an echo. Values must be at least 8 characters, so the
+  masking cannot hit unrelated text;
 - every request writes the usual gateway audit event, with the secret's
   capability (`<name>.request`), host, method and path. The query string and the
   value are never logged.
@@ -92,7 +96,10 @@ Restart the gateway after adding or removing a secret; it reads the rules at sta
 
 The value (or reference) is stored in the configured backend at
 `default/custom/<name>/value`. The rules are kept in `custom-secrets.json` in the
-keylatch config directory (mode 0600, edited under a file lock); the file never
+keylatch config directory (mode 0600, edited under an advisory file lock that a command waits for at most 30
+seconds, then fails naming the lock file; on platforms without file locks, currently
+anything but Linux, macOS and the BSDs, there is no lock and two simultaneous
+commands can lose each other's change); the file never
 contains the value. Anyone who can write to the config directory can change the rules,
 or an agent's pending proposal, without the approver passphrase: approval protects
 against agent sessions, not against write access to your own config directory.
@@ -130,8 +137,8 @@ An agent may also propose secrets, but they stay unusable until you approve them
   `gateway up` logs that a pending secret is skipped.
 - `keylatch secret approve <name>` (outside an LLM session, at a terminal) prints what
   will activate: every host, paths, methods, injection rule (and the basic-auth
-  user), the base-URL env var, and the reference URI or "stored value" with a short
-  hash (never the value). The pending value is read once for that summary; after the
+  user), the base-URL env var, and the reference URI or "stored value" with its size
+  in bytes (never the value). The pending value is read once for that summary; after the
   passphrase prompt the entry and value are read again, and if either changed while
   the prompt was open nothing is done. It then asks for the approver passphrase set with
   `keylatch approve init`, moves the pending value to its active path and activates the

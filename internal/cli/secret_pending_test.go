@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -302,7 +303,7 @@ func TestApprovalPromptListsEveryHostAndTheBaseURLEnv(t *testing.T) {
 
 	_, errOut, err = caRun(t, nil, "secret", "approve", "acme")
 	require.NoError(t, err, errOut)
-	for _, want := range []string{"api.acme.example", "eu.acme.example", "ACME_BASE_URL", "svc-user", "sha256 "} {
+	for _, want := range []string{"api.acme.example", "eu.acme.example", "ACME_BASE_URL", "svc-user", fmt.Sprintf("stored value, %d bytes", len(secretTestValue))} {
 		assert.Contains(t, errOut, want)
 	}
 	assert.NotContains(t, errOut, secretTestValue)
@@ -414,4 +415,73 @@ func TestAddWaitsForTheRulesLock(t *testing.T) {
 
 func backendMeta(path string) backend.Meta {
 	return backend.Meta{Path: path, Backend: "file", Version: 1}
+}
+
+func TestApproveAcceptsANonCanonicalStoredProposal(t *testing.T) {
+	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	secretApprover(t, f)
+	t.Cleanup(func() { _ = registry.InitFromConfig(context.Background(), llmcontext.DefaultLookup) })
+	file := paths.CustomSecrets(llmcontext.DefaultLookup)
+
+	// A proposal as an older build or a hand edit could have stored it: not yet canonical.
+	proposal := customsecret.Secret{
+		Name: "acme", Hosts: []string{"API.Acme.example"}, Paths: []string{"/v1/"}, Methods: []string{"get"},
+		Injection: customsecret.Injection{Kind: customsecret.InjectQuery, Name: "k"},
+	}
+	require.NoError(t, customsecret.Add(file, customsecret.Secret{
+		Name: "acme", Status: customsecret.StatusPending, CreatedAt: time.Now(), Proposed: &proposal,
+	}))
+
+	_, errOut, err := caRun(t, nil, "secret", "approve", "acme")
+	require.NoError(t, err, errOut)
+	e, err := customsecret.Find(file, "acme")
+	require.NoError(t, err)
+	assert.True(t, e.Active())
+	assert.Equal(t, []string{"api.acme.example"}, e.Hosts, "the activated rules are canonical")
+	assert.Equal(t, []string{"/v1"}, e.Paths)
+	assert.Equal(t, []string{"GET"}, e.Methods)
+}
+
+func TestFailedProposalPutsThePreviousPendingValueBack(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("directory permissions do not bind root")
+	}
+	f := caNewVault(t, envelope.XChaCha20Poly1305)
+	secretApprover(t, f)
+	rules := filepath.Join(t.TempDir(), "rules")
+	t.Setenv("KEYLATCH_CUSTOM_SECRETS_PATH", filepath.Join(rules, "custom-secrets.json"))
+	caSetLLMSession(t)
+
+	const first, second = "first-pending-0123456789", "second-pending-0123456789"
+	_, errOut, err := caRun(t, caStdinFile(t, first), secretAddArgs("--value-stdin")...)
+	require.NoError(t, err, errOut)
+
+	// The rules directory becomes unwritable, so saving the second proposal fails.
+	require.NoError(t, os.Chmod(rules, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(rules, 0o700) })
+	_, _, err = caRun(t, caStdinFile(t, second), secretAddArgs("--replace", "--value-stdin")...)
+	require.Error(t, err)
+
+	ctx := audit.WithEmitter(context.Background(), discardAudit{})
+	got, err := vault.Get(ctx, customsecret.PendingPath("acme"), f.cfg, f.env)
+	require.NoError(t, err)
+	assert.Equal(t, first, string(got), "the first proposal's value is back")
+}
+
+func TestShortValueIsRefused(t *testing.T) {
+	f := secretFixture(t)
+	_, _, err := caRun(t, caStdinFile(t, "short"), secretAddArgs("--value-stdin")...)
+	require.Error(t, err)
+	assert.False(t, valueExists(t, f, customsecret.ValuePath("acme")))
+}
+
+func TestMoreThanSixteenHostsAreRefused(t *testing.T) {
+	_ = secretFixture(t)
+	args := []string{"secret", "add", "acme", "--value-stdin", "--query", "k"}
+	for i := 0; i < 17; i++ {
+		args = append(args, "--host", fmt.Sprintf("h%02d.acme.example", i))
+	}
+	_, _, err := caRun(t, caStdinFile(t, secretTestValue), args...)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at most 16 hosts")
 }

@@ -101,7 +101,7 @@ Examples:
 	cmd.Flags().StringVar(&ref, "ref", "", "external-store reference (op://..., aws-sm://..., hashivault://...) instead of a value")
 	cmd.Flags().StringArrayVar(&hosts, "host", nil, "allowed upstream HTTPS host, an exact DNS name (repeatable; the first receives /sdk/<name>/v1/ requests)")
 	cmd.Flags().StringArrayVar(&pathFlags, "path", nil, "allowed upstream path prefix (repeatable; default /)")
-	cmd.Flags().StringArrayVar(&methods, "method", nil, "allowed HTTP method (repeatable; default any)")
+	cmd.Flags().StringArrayVar(&methods, "method", nil, "allowed HTTP method (repeatable; default GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS; TRACE and CONNECT are never allowed)")
 	cmd.Flags().StringVar(&header, "header", "", `inject as a header, e.g. "Authorization: Bearer {value}"`)
 	cmd.Flags().StringVar(&query, "query", "", "inject as this query parameter")
 	cmd.Flags().StringVar(&basic, "basic", "", "inject as HTTP basic auth with this user name")

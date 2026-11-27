@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -179,8 +178,15 @@ func opFailed(format string, args ...any) error {
 // path first, so the rules never point at a missing value. A proposal without a
 // value keeps the active value and drops any value an earlier proposal left.
 func proposeSecret(c *cobra.Command, st secretStore, tx customsecret.Tx, sec, existing customsecret.Secret, exists bool, value []byte, why string) error {
+	pendingPath := customsecret.PendingPath(sec.Name)
+	// Keep the value an earlier proposal left, so a failed save can put it back.
+	var previous []byte
+	if value != nil && exists && existing.NewValue {
+		previous, _ = vault.Get(st.ctx, pendingPath, st.cfg, st.env)
+		defer clear(previous)
+	}
 	if value != nil {
-		if err := st.set(customsecret.PendingPath(sec.Name), value); err != nil {
+		if err := st.set(pendingPath, value); err != nil {
 			return opFailed("store pending value: %v", err)
 		}
 	}
@@ -196,8 +202,12 @@ func proposeSecret(c *cobra.Command, st secretStore, tx customsecret.Tx, sec, ex
 		err = tx.Add(entry)
 	}
 	if err != nil {
-		if !exists && value != nil {
-			_ = st.delete(customsecret.PendingPath(sec.Name))
+		if value != nil {
+			if previous != nil {
+				_ = st.set(pendingPath, previous)
+			} else {
+				_ = st.delete(pendingPath)
+			}
 		}
 		return opFailed("save rule: %v", err)
 	}
@@ -246,8 +256,8 @@ func applySecret(c *cobra.Command, st secretStore, tx customsecret.Tx, sec, exis
 }
 
 // printProposal shows exactly what approving would activate. A stored value is
-// never printed, only a short hash that lets the approver notice a swap; a
-// reference is printed because it is a locator and not a credential.
+// never printed, only its size; a reference is printed because it is a locator
+// and not a credential.
 func printProposal(w io.Writer, e customsecret.Secret, pv []byte) {
 	p := *e.Proposed
 	fmt.Fprintf(w, "Custom secret %s: %s\n", displaySafe(e.Name), e.State())
@@ -268,8 +278,7 @@ func printProposal(w io.Writer, e customsecret.Secret, pv []byte) {
 	case p.RefScheme != "":
 		fmt.Fprintf(w, "  value:      reference %s\n", displaySafe(string(pv)))
 	default:
-		sum := sha256.Sum256(pv)
-		fmt.Fprintf(w, "  value:      stored value (sha256 %x)\n", sum[:6])
+		fmt.Fprintf(w, "  value:      stored value, %d bytes\n", len(pv))
 	}
 }
 
@@ -290,6 +299,11 @@ func decideSecret(c *cobra.Command, verb, name string, act func(tx customsecret.
 	if e.Proposed == nil {
 		return NewUsageError("custom secret %q has nothing pending", name)
 	}
+	// The stored form is what the recheck compares against; Normalize below
+	// rewrites the proposal in place, so keep a copy of it as read.
+	stored := e
+	storedProposal := *e.Proposed
+	stored.Proposed = &storedProposal
 	// A broken proposal must stay rejectable.
 	if verb != "reject" {
 		if err := e.Proposed.Normalize(); err != nil {
@@ -321,7 +335,7 @@ func decideSecret(c *cobra.Command, verb, name string, act func(tx customsecret.
 	return customsecret.WithLock(file, func(tx customsecret.Tx) error {
 		changed := NewSecurityBlock("secret %s: %q changed while the passphrase prompt was open; nothing was done. Review it again.", verb, name)
 		cur, err := tx.Find(name)
-		if err != nil || !sameEntry(cur, e) {
+		if err != nil || !sameEntry(cur, stored) {
 			return changed
 		}
 		if e.NewValue {
