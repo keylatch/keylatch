@@ -116,7 +116,6 @@ func TestProvidersHandler_MethodNotAllowed(t *testing.T) {
 // POST /v1/connect
 // ─────────────────────────────────────────────────────────────────────────────
 
-
 func TestConnectHandler_POST_MissingStoreFailsClosed(t *testing.T) {
 	t.Parallel()
 	h := &api.WizardHandlers{}
