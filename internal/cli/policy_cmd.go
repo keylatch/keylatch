@@ -145,6 +145,11 @@ func newPolicyAllowCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			actor := args[0]
 			connection := args[1]
+			if runtime != "" {
+				if err := policy.ValidateRuntimeMode(runtime); err != nil {
+					return NewUsageError("--runtime: %v", err)
+				}
+			}
 
 			proof, err := requirePolicyChange(c.Context(), presence.ActionPolicyChange, "allow", connection,
 				"Allow rule: actor %q may use %q (capability %s, runtime %q, command %q, cwd %q, approval %v)",
