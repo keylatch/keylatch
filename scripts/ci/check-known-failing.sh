@@ -3,7 +3,7 @@
 # fail may only go down. Fixing one means lowering EXPECTED in the same change.
 set -euo pipefail
 
-EXPECTED=16
+EXPECTED=11
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
