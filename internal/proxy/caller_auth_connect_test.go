@@ -79,7 +79,8 @@ func TestCallerAuth_RejectsBeforeAnyRoutingDecision(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 			srv.ServeHTTP(rec, req)
-			assert.Equal(t, http.StatusUnauthorized, rec.Code, "%s %s", name, method)
+			assert.Equal(t, http.StatusProxyAuthRequired, rec.Code, "%s %s", name, method)
+			assert.Equal(t, `Basic realm="keylatch"`, rec.Header().Get("Proxy-Authenticate"), "%s %s", name, method)
 			assert.NotContains(t, rec.Body.String(), "host_not_allowed", "unauthenticated callers learn nothing about the profile")
 		}
 	}
