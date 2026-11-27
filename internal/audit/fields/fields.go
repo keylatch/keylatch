@@ -43,8 +43,9 @@ var safeLogFields = map[string][]string{
 	"share":    {"recipient_hmac"},
 	"unshare":  {"recipient_hmac"},
 	"delegate": {"delegate_type"},
-	// Gateway proxy actions.
-	"gateway_call": {"reason", "host", "error", "capability"},
+	// Gateway proxy actions. path and method are recorded for custom secrets,
+	// whose upstream path comes from the request; the query string never is.
+	"gateway_call": {"reason", "host", "error", "capability", "path", "method"},
 	// Proxy lifecycle actions.
 	"proxy.started": {"port", "pid"},
 	"proxy.stopped": {"pid", "reason"},

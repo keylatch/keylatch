@@ -155,6 +155,10 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	// Applied after the clean-env extras so a preserved name cannot reintroduce one.
 	childEnv = runtime.StripManagerAuth(childEnv)
 	baseURL := "http://" + d.server.Addr()
+	if tmpl.Custom != nil {
+		// Custom services are reached under their own gateway prefix.
+		baseURL += "/sdk/" + tmpl.Provider + "/v1"
+	}
 	childEnv = appendOrReplace(childEnv, sdkBaseURLVar(tmpl), baseURL)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_GATEWAY_TOKEN", jwtStr)
 	childEnv = appendOrReplace(childEnv, "KEYLATCH_RUNTIME", gatewaySdkMode)
@@ -225,6 +229,9 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 // sdkBaseURLVar returns the SDK-specific environment variable name for the
 // gateway base URL. Defaults to OPENAI_BASE_URL for unknown providers.
 func sdkBaseURLVar(tmpl registry.ConnectionTemplate) string {
+	if tmpl.Custom != nil && tmpl.Custom.BaseURLEnv != "" {
+		return tmpl.Custom.BaseURLEnv
+	}
 	switch tmpl.Provider {
 	case "openai":
 		return "OPENAI_BASE_URL"

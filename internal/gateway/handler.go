@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -377,12 +378,17 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Step 9: Build upstream request.
-	upstreamURL := "https://" + rt.UpstreamHost + rt.UpstreamPath //nolint:gosec // G704: UpstreamHost is validated by ssrfGate.Validate above before this point
+	upstreamURL := url.URL{Scheme: "https", Host: rt.UpstreamHost, Path: rt.UpstreamPath}
+	if rt.Custom != nil {
+		// Custom secrets forward the caller's query; any credential-shaped
+		// parameter was already refused by substitution.CheckRequest.
+		upstreamURL.RawQuery = r.URL.RawQuery
+	}
 	upstreamMethod := rt.Method
 	if upstreamMethod == "" {
 		upstreamMethod = "POST"
 	}
-	upstreamReq, err := http.NewRequestWithContext(ctx, upstreamMethod, upstreamURL, strings.NewReader(string(body))) //nolint:gosec // G704: upstreamURL built from SSRF-gate-validated UpstreamHost
+	upstreamReq, err := http.NewRequestWithContext(ctx, upstreamMethod, upstreamURL.String(), strings.NewReader(string(body))) //nolint:gosec // G704: upstreamURL built from SSRF-gate-validated UpstreamHost
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "upstream_build_error", "failed to build upstream request")
 		return
@@ -398,6 +404,13 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	client := s.httpClients[rt.Provider]
 	if client == nil {
 		client = s.defaultHTTPClient
+	}
+	if rt.Custom != nil {
+		// A redirect would carry the injected credential to whatever origin the
+		// upstream names; hand the 3xx back to the caller instead of following it.
+		noRedirect := *client
+		noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &noRedirect
 	}
 	resp, err := client.Do(upstreamReq) //nolint:gosec // G704: upstreamReq URL was built from SSRF-gate-validated host above
 	if err != nil {
@@ -441,12 +454,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 12: Audit log and telemetry.
 	durationMS := time.Since(start).Milliseconds()
-	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, map[string]any{
+	okExtra := map[string]any{
 		"provider":    rt.Provider,
 		"capability":  rt.Capability,
 		"status_code": resp.StatusCode,
 		"duration_ms": durationMS,
-	})
+	}
+	if rt.Custom != nil {
+		okExtra["host"] = rt.UpstreamHost
+		okExtra["path"] = rt.UpstreamPath
+		okExtra["method"] = rt.Method
+	}
+	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, okExtra)
 	sink := s.telemetrySink
 	if sink == nil {
 		sink = telemetry.NoopSink{}
@@ -473,7 +492,9 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 
 	switch placement.In {
 	case "header":
-		if placement.Scheme != "" {
+		if placement.Format != "" {
+			req.Header.Set(placement.Name, strings.Replace(placement.Format, "{value}", tokenStr, 1))
+		} else if placement.Scheme != "" {
 			req.Header.Set(placement.Name, placement.Scheme+" "+tokenStr)
 		} else {
 			req.Header.Set(placement.Name, tokenStr)
@@ -482,6 +503,8 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 		q := req.URL.Query()
 		q.Set(placement.Name, tokenStr)
 		req.URL.RawQuery = q.Encode()
+	case "basic":
+		req.SetBasicAuth(placement.Name, tokenStr)
 	case "body":
 		// Body injection not yet implemented; use header fallback.
 		req.Header.Set("Authorization", "Bearer "+tokenStr)
