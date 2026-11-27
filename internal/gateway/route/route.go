@@ -249,8 +249,8 @@ func (r *Router) Match(method, path string) (*Route, bool) {
 	return r.matchCustom(method, path)
 }
 
-// customRoute is the route of a user-defined secret. It is deliberately
-// conservative: denied in LLM sessions and subject to the default body limit.
+// customRoute is the route of a user-defined secret. LLM sessions may use it
+// within the secret's hosts, paths and methods, like a built-in non-high-risk action.
 func customRoute(tmpl registry.ConnectionTemplate) *Route {
 	return &Route{
 		Capability:       tmpl.Provider + ".request",
@@ -262,7 +262,6 @@ func customRoute(tmpl registry.ConnectionTemplate) *Route {
 		ExchangeStrategy: registry.ExchangeStaticGatewayOnly,
 		MaskingProfile:   "basic",
 		MaxBodyBytes:     defaultMaxBodyBytes,
-		LLMSessionDeny:   true,
 		SecretRef:        vaultSecretRef(tmpl),
 		Custom:           tmpl.Custom,
 	}

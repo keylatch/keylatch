@@ -178,13 +178,27 @@ func TestCustomSecret_CapabilityIsPerSecret(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code, "the wildcard grant that keylatch run mints works")
 }
 
-func TestCustomSecret_DeniedInLLMSession(t *testing.T) {
+func TestCustomSecret_LLMSessionAllowedWithinRulesOnly(t *testing.T) {
 	h := customHarness(t, nil)
-	rr := h.customDo(t, h.customToken(t, func(s *token.TokenSpec) { s.LLMSession = true }), http.MethodGet, "/sdk/acme/v1/v1/models", "", nil)
+	llm := h.customToken(t, func(s *token.TokenSpec) { s.LLMSession = true })
 
-	assert.Equal(t, http.StatusForbidden, rr.Code)
-	assert.Equal(t, "llm_session_deny", scErrCode(t, rr))
-	assert.Empty(t, h.upstream)
+	rr := h.customDo(t, llm, http.MethodGet, "/sdk/acme/v1/v1/models", "", nil)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	require.Len(t, h.upstream, 1)
+	assert.Equal(t, "Bearer "+customValue, h.upstream[0].Header.Get("Authorization"))
+	assert.Equal(t, "api.acme.example", h.upstream[0].URL.Host)
+
+	for name, tc := range map[string]struct{ method, target string }{
+		"path outside the rule":   {http.MethodGet, "/sdk/acme/v1/admin"},
+		"method outside the rule": {http.MethodDelete, "/sdk/acme/v1/v1/models"},
+		"unknown secret":          {http.MethodGet, "/sdk/other/v1/v1/models"},
+	} {
+		rr = h.customDo(t, llm, tc.method, tc.target, "", nil)
+		assert.Equal(t, http.StatusNotFound, rr.Code, name)
+	}
+	rr = h.customDo(t, llm, http.MethodGet, "/sdk/acme/v1/v1/models", "", map[string]string{"X-Forwarded-Host": "evil.example"})
+	assert.Equal(t, http.StatusForbidden, rr.Code, "host override")
+	assert.Len(t, h.upstream, 1, "nothing outside the rule reaches the upstream")
 }
 
 func TestCustomSecret_RedirectToAnotherOriginIsNotFollowed(t *testing.T) {

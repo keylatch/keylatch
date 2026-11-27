@@ -39,7 +39,7 @@ func TestCustomRouteMatching(t *testing.T) {
 		assert.Equal(t, "api.acme.example", rt.UpstreamHost, "requests go to the first host only")
 		assert.Equal(t, tc.upstream, rt.UpstreamPath)
 		assert.Equal(t, tc.method, rt.Method)
-		assert.True(t, rt.LLMSessionDeny, "custom secrets are denied to LLM sessions by default")
+		assert.False(t, rt.LLMSessionDeny, "LLM sessions may use custom secrets within their rules")
 		assert.Equal(t, "default/custom/acme/value", rt.SecretRef)
 		assert.Equal(t, "X-Api-Key", rt.AuthPlacement.Name)
 	}
