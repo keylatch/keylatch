@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,10 +32,14 @@ func TestSecurityRegression_GatewayMustStripManagerAuthentication(t *testing.T) 
 }
 
 func TestSecurityRegression_GatewayTokenMustPreserveLLMClassification(t *testing.T) {
+	trueBin, err := exec.LookPath("true")
+	if err != nil {
+		t.Skip("no true on PATH")
+	}
 	t.Setenv("CREDENTIALS_LLM_SESSION", "1")
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	d := NewGatewayTypedDriver(auditGateway{}, make([]byte, 32), path)
-	_, err := d.Run(context.Background(), ExecRequest{Command: []string{"/bin/true"}}, registry.ConnectionTemplate{Provider: "child-token"})
+	_, err = d.Run(context.Background(), ExecRequest{Command: []string{trueBin}}, registry.ConnectionTemplate{Provider: "child-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
