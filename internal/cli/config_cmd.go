@@ -119,6 +119,10 @@ func newConfigSetCmd() *cobra.Command {
 					fmt.Fprintf(c.ErrOrStderr(), "config set: unknown backend %q; valid values: %s\n", value, strings.Join(backend.KnownCanonicalNames(), ", "))
 					os.Exit(1)
 				}
+				if err := backend.CheckSupported(canonical); err != nil {
+					fmt.Fprintf(c.ErrOrStderr(), "config set: %v\n", err)
+					os.Exit(1)
+				}
 				value = canonical
 			}
 

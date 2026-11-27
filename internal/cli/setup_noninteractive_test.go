@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/spf13/cobra"
@@ -131,9 +132,9 @@ func TestSetup_WizardFlagsRegistered(t *testing.T) {
 		"setup must have --config flag")
 }
 
-// TestSetup_Headless_DefaultBackend verifies that --headless without --backend
-// uses "file" as the default backend.
-func TestSetup_Headless_DefaultBackend(t *testing.T) {
+// TestSetup_Headless_NoDefaultBackend verifies that --backend has no default:
+// headless setup without it stops and lists the supported managers.
+func TestSetup_Headless_NoDefaultBackend(t *testing.T) {
 	t.Parallel()
 
 	root := cli.NewRootCommand()
@@ -152,7 +153,7 @@ func TestSetup_Headless_DefaultBackend(t *testing.T) {
 	require.NotNil(t, f)
 	assert.Equal(t, "false", f.DefValue, "--headless must default to false")
 
-	// Verify --backend defaults to empty string (falls back to "file" in headless mode).
+	// Verify --backend defaults to empty string (headless setup refuses to pick one).
 	bf := setupCmd.Flags().Lookup("backend")
 	require.NotNil(t, bf)
 	assert.Equal(t, "", bf.DefValue, "--backend must default to empty string")
@@ -163,6 +164,7 @@ func TestSetup_Headless_CanonicalizesBackendAlias(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
 	t.Setenv("KEYLATCH_DATA_DIR", dataDir)
+	t.Setenv(backend.AllowUnsupportedEnv, "aws-sm")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

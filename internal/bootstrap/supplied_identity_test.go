@@ -23,7 +23,7 @@ func TestBootstrap_SuppliedIdentityNeedsNoKeyringOrPlaintextFile(t *testing.T) {
 	store := testutil.NewMemoryIdentityStore()
 	store.StoreErr = testutil.ErrKeyringLocked
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 
 	assert.Empty(t, plan.Warnings)

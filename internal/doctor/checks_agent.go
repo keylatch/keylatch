@@ -307,15 +307,16 @@ func checkBackendTier(env llmcontext.Lookup) Check {
 			return st
 		}
 		st.Detail = fmt.Sprintf("backend %s is %s", name, entry.Status)
-		switch entry.Status {
-		case manifest.Community, manifest.Deprecated:
+		switch {
+		case manifest.Current().Enabled(name):
+		case backend.OptedIn(name):
 			st.Warn = true
-			st.Detail += ": " + entry.Note
-			st.Fix = "Run `keylatch backend list` to compare the supported backends."
-		case manifest.Supported, manifest.Preview:
+			st.Detail += ", in use through " + backend.AllowUnsupportedEnv + ": " + entry.Note
+			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + ": docs/backends/moving-off-file.md"
 		default:
 			st.OK = false
-			st.Fix = "Run `keylatch backend list` to see the supported backends."
+			st.Detail += ": " + entry.Note
+			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + " (docs/backends/moving-off-file.md), or set " + backend.AllowUnsupportedEnv + "=" + name + " for now."
 		}
 		return st
 	}

@@ -118,8 +118,9 @@ func TestProtonPassFakeCLI_RoundTripViaFactory(t *testing.T) {
 func TestProtonPassFakeCLI_OpenAndFactoryErrors(t *testing.T) {
 	bkPPFakeCLI(t)
 
-	_, err := bkPPFactory(t)(context.Background(), backend.BackendConfig{Settings: map[string]interface{}{"vault": "work"}})
-	assert.ErrorIs(t, err, backend.ErrUnavailable, "the factory refuses proton-pass in this release")
+	fb, err := bkPPFactory(t)(context.Background(), backend.BackendConfig{Settings: map[string]interface{}{"vault": "work"}})
+	require.NoError(t, err)
+	require.NoError(t, fb.Close())
 
 	explicit := filepath.Join(t.TempDir(), "custom-pass")
 	b, err := protonpass.Open(protonpass.Options{Bin: explicit, ItemPrefix: "kl/", Runner: kexec.DefaultRunner})

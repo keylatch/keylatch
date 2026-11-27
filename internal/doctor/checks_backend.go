@@ -62,9 +62,16 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 	return func(_ context.Context) Status {
 		cfgPath := paths.Config(env)
 		cfg, err := config.Load(cfgPath)
-		if err != nil {
-			// Config missing — use default.
-			cfg = config.Default()
+		if err != nil || cfg.Backend == "" {
+			return Status{
+				Name:    "backend.selected",
+				Section: "backends",
+				OK:      true,
+				Warn:    true,
+				Detail:  "no backend configured",
+				Fix:     "Run `keylatch setup` and pick one of: " + strings.Join(backend.SupportedManagers(), ", "),
+				Tags:    []string{"backend"},
+			}
 		}
 		canonical, ok := backend.CanonicalName(cfg.Backend)
 		if !ok {
@@ -83,7 +90,7 @@ func checkBackendSelected(env llmcontext.Lookup) Check {
 				Section: "backends",
 				OK:      false,
 				Detail:  fmt.Sprintf("backend=keychain is macOS-only; current platform=%s/%s", runtime.GOOS, runtime.GOARCH),
-				Fix:     "Use `keylatch config set backend file` (or op/bw) on this platform.",
+				Fix:     "Use `keylatch config set backend op` (or bw) on this platform.",
 				Tags:    []string{"backend"},
 			}
 		}

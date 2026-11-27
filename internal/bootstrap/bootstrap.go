@@ -32,7 +32,7 @@ import (
 type Options struct {
 	DryRun  bool
 	JSON    bool
-	Backend string // "file" (default) | "keychain" | "op" | "bw"
+	Backend string // required: "op" | "bw"; others only with the unsupported-backend opt-in
 	Env     llmcontext.Lookup
 	// Force re-initializes the keyring even if one already exists.
 	// Used by `keylatch bootstrap --force`. Prompts for confirmation unless
@@ -102,10 +102,9 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 		env = os.Getenv
 	}
 
-	// Default backend.
 	backendName := opts.Backend
 	if backendName == "" {
-		backendName = "file"
+		return Plan{}, fmt.Errorf("bootstrap: no backend chosen: pass --backend (supported: %s)", strings.Join(backendpkg.SupportedManagers(), ", "))
 	}
 
 	// Validate backend.
@@ -117,7 +116,11 @@ func Run(_ context.Context, opts Options) (Plan, error) {
 
 	// keychain is macOS-only.
 	if backendName == "keychain" && runtime.GOOS != "darwin" {
-		return Plan{}, fmt.Errorf("keychain backend is macOS-only; use file, op, bw, or another external backend on %s", runtime.GOOS)
+		return Plan{}, fmt.Errorf("keychain backend is macOS-only; use op or bw on %s", runtime.GOOS)
+	}
+
+	if err := backendpkg.CheckSupported(backendName); err != nil {
+		return Plan{}, err
 	}
 
 	var plan Plan

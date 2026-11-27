@@ -42,7 +42,7 @@ func plaintextInstall(t *testing.T) *keysFixture {
 	t.Cleanup(func() { keysIdentityStore = prev })
 
 	env := llmcontext.DefaultLookup
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, InsecureFileKEK: true, IdentityStore: store})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, InsecureFileKEK: true, IdentityStore: store})
 	require.NoError(t, err)
 
 	f := &keysFixture{store: store, vi: kek.VaultIdentity{Path: paths.KeyringIdentityPath(env), Store: store}}
@@ -105,7 +105,7 @@ func TestKeysStatusJSON(t *testing.T) {
 // A passphrase keyring opens only with a passphrase typed on a terminal.
 func TestPassphraseKEKRequiresTTY(t *testing.T) {
 	presenceTestEnv(t)
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		Env:        llmcontext.DefaultLookup,
 		KEKMode:    bootstrap.KEKModePassphrase,
 		Passphrase: func() ([]byte, error) { return []byte("a sufficiently long passphrase"), nil },

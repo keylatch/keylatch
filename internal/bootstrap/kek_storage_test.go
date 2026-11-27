@@ -40,7 +40,7 @@ func TestBootstrapNeverWritesPlaintextKEK(t *testing.T) {
 	env := makeEnv(t.TempDir(), nil)
 	store := testutil.NewMemoryIdentityStore()
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 
 	loc, onDisk := identityState(t, env, store)
@@ -58,7 +58,7 @@ func TestBootstrap_NoKeyringAndNoTerminalFails(t *testing.T) {
 	store := testutil.NewMemoryIdentityStore()
 	store.StoreErr = testutil.ErrKeyringLocked
 
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.ErrorIs(t, err, kek.ErrNoOSKeyring)
 	assert.Contains(t, err.Error(), "terminal")
 	assert.Contains(t, err.Error(), "passphrase")
@@ -76,7 +76,7 @@ func TestBootstrap_EnvironmentCannotOptIntoPlaintext(t *testing.T) {
 	store := testutil.NewMemoryIdentityStore()
 	store.StoreErr = testutil.ErrKeyringLocked
 
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.ErrorIs(t, err, kek.ErrNoOSKeyring)
 	_, statErr := os.Stat(paths.KeyringIdentityPath(env))
 	assert.True(t, os.IsNotExist(statErr))
@@ -85,7 +85,7 @@ func TestBootstrap_EnvironmentCannotOptIntoPlaintext(t *testing.T) {
 func TestBootstrap_InsecureFileKEKOptIn(t *testing.T) {
 	home := t.TempDir()
 	store := testutil.NewMemoryIdentityStore()
-	o := bootstrap.Options{Env: makeEnv(home, nil), InsecureFileKEK: true, IdentityStore: store}
+	o := bootstrap.Options{Backend: "file", Env: makeEnv(home, nil), InsecureFileKEK: true, IdentityStore: store}
 
 	plan, err := bootstrap.Run(context.Background(), o)
 	require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestBootstrap_PassphraseWhenNoKeyringButATerminal(t *testing.T) {
 	store.StoreErr = testutil.ErrKeyringLocked
 	asked := 0
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		Env: env, IdentityStore: store,
 		Passphrase: func() ([]byte, error) { asked++; return []byte("a long enough passphrase"), nil },
 	})
@@ -132,7 +132,7 @@ func TestBootstrap_PassphraseWhenNoKeyringButATerminal(t *testing.T) {
 	openPassphraseKeyring(t, env, "a long enough passphrase")
 
 	// Running again is a no-op and does not ask again.
-	_, err = bootstrap.Run(context.Background(), bootstrap.Options{
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		Env: env, IdentityStore: store,
 		Passphrase: func() ([]byte, error) { asked++; return nil, nil },
 	})
@@ -144,7 +144,7 @@ func TestBootstrap_PassphraseModeIsExplicit(t *testing.T) {
 	env := makeEnv(t.TempDir(), nil)
 	store := testutil.NewMemoryIdentityStore() // a keyring is available but not wanted
 
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		Env: env, IdentityStore: store, KEKMode: bootstrap.KEKModePassphrase,
 		Passphrase: func() ([]byte, error) { return []byte("another long passphrase"), nil },
 	})
@@ -152,9 +152,9 @@ func TestBootstrap_PassphraseModeIsExplicit(t *testing.T) {
 	assert.Zero(t, store.Len(), "the keyring must not be used in passphrase mode")
 	openPassphraseKeyring(t, env, "another long passphrase")
 
-	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Env: makeEnv(t.TempDir(), nil), IdentityStore: store, KEKMode: bootstrap.KEKModePassphrase})
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: makeEnv(t.TempDir(), nil), IdentityStore: store, KEKMode: bootstrap.KEKModePassphrase})
 	require.Error(t, err, "passphrase mode without a terminal must fail")
-	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Env: makeEnv(t.TempDir(), nil), KEKMode: "carrier-pigeon"})
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: makeEnv(t.TempDir(), nil), KEKMode: "carrier-pigeon"})
 	require.Error(t, err)
 }
 
@@ -163,7 +163,7 @@ func TestBootstrap_KeystoreModeNeverFallsBackToAPassphrase(t *testing.T) {
 	store := testutil.NewMemoryIdentityStore()
 	store.StoreErr = testutil.ErrKeyringLocked
 
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		Env: env, IdentityStore: store, KEKMode: bootstrap.KEKModeKeystore,
 		Passphrase: func() ([]byte, error) { return []byte("never used passphrase"), nil },
 	})
@@ -173,7 +173,7 @@ func TestBootstrap_KeystoreModeNeverFallsBackToAPassphrase(t *testing.T) {
 func legacyInstall(t *testing.T) func(string) string {
 	t.Helper()
 	env := makeEnv(t.TempDir(), nil)
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, InsecureFileKEK: true, IdentityStore: testutil.NewMemoryIdentityStore()})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, InsecureFileKEK: true, IdentityStore: testutil.NewMemoryIdentityStore()})
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(paths.KeyringIdentityPath(env)+".insecure"))
 	return env
@@ -183,7 +183,7 @@ func TestBootstrap_MigratesLegacyPlaintextIdentity(t *testing.T) {
 	env := legacyInstall(t)
 	store := testutil.NewMemoryIdentityStore()
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 	assert.Empty(t, plan.Warnings)
 
@@ -198,7 +198,7 @@ func TestBootstrap_LegacyWithoutKeyringWarnsAndKeepsWorking(t *testing.T) {
 	store := testutil.NewMemoryIdentityStore()
 	store.StoreErr = testutil.ErrKeyringLocked
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 	require.NotEmpty(t, plan.Warnings)
 	assert.Contains(t, plan.Warnings[0], "plaintext")
@@ -212,7 +212,7 @@ func TestBootstrap_InsecureFlagAcknowledgesLegacyIdentity(t *testing.T) {
 	env := legacyInstall(t)
 	store := testutil.NewMemoryIdentityStore()
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store, InsecureFileKEK: true})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store, InsecureFileKEK: true})
 	require.NoError(t, err)
 	require.Len(t, plan.Warnings, 1)
 
@@ -225,7 +225,7 @@ func TestBootstrap_DryRunLeavesKeyringUntouched(t *testing.T) {
 	env := legacyInstall(t)
 	store := testutil.NewMemoryIdentityStore()
 
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store, DryRun: true})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store, DryRun: true})
 	require.NoError(t, err)
 	assert.Zero(t, store.Len())
 	loc, _ := identityState(t, env, store)
@@ -235,10 +235,10 @@ func TestBootstrap_DryRunLeavesKeyringUntouched(t *testing.T) {
 func TestBootstrap_ForceReplacesKeyringItem(t *testing.T) {
 	env := makeEnv(t.TempDir(), nil)
 	store := testutil.NewMemoryIdentityStore()
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 
-	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store, Force: true, Confirm: true})
+	_, err = bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store, Force: true, Confirm: true})
 	require.NoError(t, err)
 	assert.Equal(t, 1, store.Len(), "the old keyring item must be deleted")
 	openKeyring(t, env, store)
@@ -247,7 +247,7 @@ func TestBootstrap_ForceReplacesKeyringItem(t *testing.T) {
 func TestBootstrap_PlantedFileIgnoredOnceInKeyring(t *testing.T) {
 	env := makeEnv(t.TempDir(), nil)
 	store := testutil.NewMemoryIdentityStore()
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 
 	planted := make([]byte, 32)
@@ -255,7 +255,7 @@ func TestBootstrap_PlantedFileIgnoredOnceInKeyring(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(paths.KeyringIdentityPath(env), planted, 0o600))
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Env: env, IdentityStore: store})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", Env: env, IdentityStore: store})
 	require.NoError(t, err)
 	require.NotEmpty(t, plan.Warnings)
 	openKeyring(t, env, store)

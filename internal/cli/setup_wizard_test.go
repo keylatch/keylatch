@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/store"
 	"github.com/spf13/cobra"
@@ -70,6 +71,7 @@ func TestSetupHeadless_BootstrapsFileBackendWithPrivatePerms(t *testing.T) {
 
 func TestSetupHeadless_CanonicalizesBackendAlias(t *testing.T) {
 	cfgDir := cbIsolate(t)
+	t.Setenv(backend.AllowUnsupportedEnv, "vault")
 	_, stderr, err := cbRun(t, "setup", "--headless", "--backend", "hashivault")
 	require.NoError(t, err)
 	var res setupHeadlessResult

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/cli"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -78,6 +79,9 @@ func runKeylatch(t *testing.T, env map[string]string, args ...string) (stdout, s
 	}
 	cmd.Env = filtered
 	cmd.Env = isolateFromKeyring(cmd.Env, env)
+	// The file backend is the fixture these scenarios run on; it opens only
+	// with the explicit opt-in, which a scenario may override.
+	cmd.Env = append(cmd.Env, backend.AllowUnsupportedEnv+"=file")
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}

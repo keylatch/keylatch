@@ -24,7 +24,8 @@ default-deny policy (kept if one exists) with safe defaults. Running bootstrap a
 is passed, which destroys and re-creates the cryptographic keyring after
 an interactive confirmation prompt. KEYLATCH_PASSPHRASE has no effect.
 
-For the file backend the vault identity, from which the key-encryption key
+With an unsupported backend opted into (KEYLATCH_ALLOW_UNSUPPORTED_BACKEND), such as
+file, the vault identity, from which the key-encryption key
 is derived, is stored in the OS keyring (macOS Keychain, Windows DPAPI or a
 freedesktop Secret Service). Without a usable keyring, bootstrap run from a
 terminal asks for a passphrase that wraps the key instead (--kek passphrase
@@ -94,7 +95,7 @@ older install into the keyring.`,
 
 	cmd.Flags().Bool("dry-run", false, "plan steps without writing any files")
 	cmd.Flags().Bool("json", false, "output plan as JSON")
-	cmd.Flags().String("backend", "file", "credential backend: file, keychain (macOS only), op, bw")
+	cmd.Flags().String("backend", "", "manager to connect: op or bw (required)")
 	cmd.Flags().Bool("force", false, "destroy existing keyring and re-initialize (prompts for confirmation)")
 	cmd.Flags().String("kek", "", "how the vault key is held: keystore or passphrase (default: keystore, then passphrase when no keyring is usable)")
 

@@ -6,25 +6,21 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	_ "github.com/keylatch/keylatch/internal/backend/opconnect" // trigger init()
+	"github.com/keylatch/keylatch/internal/config"
 )
 
-// TestSecurityRegression_ConnectUnselectable verifies the op-connect
-// backend cannot be instantiated through the registered factory (the path
-// every CLI/API/MCP entry point uses), so the duplicate-creating write path
-// is unreachable. The upsert defect itself is tracked
-// separately by TestSecurityRegression_ConnectUpsert (securitysuite).
+// TestSecurityRegression_ConnectUnselectable verifies the op-connect backend cannot be opened
+// through dispatch (the path every CLI/API/MCP entry point uses) without the
+// explicit opt-in, regardless of config.
 func TestSecurityRegression_ConnectUnselectable(t *testing.T) {
-	factory, ok := backend.Default.Get("op-connect")
-	if !ok {
+	if _, ok := backend.Default.Get("op-connect"); !ok {
 		t.Fatal("op-connect backend not registered; import side-effect missing")
 	}
 
-	_, err := factory(context.Background(), backend.BackendConfig{Name: "op-connect"})
-	if err == nil {
-		t.Fatal("expected op-connect factory to refuse instantiation, got nil error")
-	}
-	if !errors.Is(err, backend.ErrUnavailable) {
-		t.Errorf("expected ErrUnavailable, got: %v", err)
+	_, err := dispatch.Open(context.Background(), config.Config{Backend: "op-connect"}, func(string) string { return "" })
+	if !errors.Is(err, backend.ErrUnsupportedBackend) {
+		t.Errorf("expected ErrUnsupportedBackend, got: %v", err)
 	}
 }

@@ -25,7 +25,7 @@ func TestE2E_Bootstrap_DryRunJSON(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
-		"bootstrap", "--dry-run", "--json")
+		"bootstrap", "--backend", "file", "--dry-run", "--json")
 
 	require.Equal(t, 0, code, "bootstrap --dry-run --json must exit 0; stderr: %s", stderr)
 
@@ -55,7 +55,7 @@ func TestE2E_Bootstrap_WritesFiles(t *testing.T) {
 	homeDir := t.TempDir()
 	stdout, stderr, code := runKeylatch(t,
 		map[string]string{"HOME": homeDir},
-		"bootstrap")
+		"bootstrap", "--backend", "file")
 
 	require.Equal(t, 0, code, "bootstrap must exit 0; stderr: %s; stdout: %s", stderr, stdout)
 
@@ -87,14 +87,14 @@ func TestE2E_Bootstrap_NoKeyringAndNoTerminalFails(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir, noInsecureKEK: "1", "KEYLATCH_INSECURE_FILE_KEK": "1"}
 
-	_, stderr, code := runKeylatch(t, env, "bootstrap")
+	_, stderr, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.NotEqual(t, 0, code, "bootstrap without a keyring must fail")
 	assert.Contains(t, string(stderr), "passphrase")
 	assert.NotContains(t, string(stderr), "--insecure-file-kek")
 	_, err := os.Stat(filepath.Join(homeDir, ".keylatch", "keyring", "identity"))
 	assert.True(t, os.IsNotExist(err), "no plaintext identity without the operator's opt-in")
 
-	_, stderr, code = runKeylatch(t, env, "bootstrap", "--insecure-file-kek")
+	_, stderr, code = runKeylatch(t, env, "bootstrap", "--backend", "file", "--insecure-file-kek")
 	require.NotEqual(t, 0, code, "the flag no longer exists")
 	assert.Contains(t, string(stderr), "unknown flag")
 }
@@ -105,7 +105,7 @@ func TestE2E_Bootstrap_OperatorConfigAllowsAPlaintextKey(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
 
-	stdout, stderr, code := runKeylatch(t, env, "bootstrap")
+	stdout, stderr, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code, "stderr: %s", stderr)
 	assert.Contains(t, string(stdout), "INSECURE")
 	assertPathMode(t, filepath.Join(homeDir, ".keylatch", "keyring", "identity"), 0o600, false)
@@ -117,11 +117,11 @@ func TestE2E_Bootstrap_Idempotent(t *testing.T) {
 	env := map[string]string{"HOME": homeDir}
 
 	// First run.
-	_, _, code := runKeylatch(t, env, "bootstrap")
+	_, _, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code, "first bootstrap must exit 0")
 
 	// Second run with --json to verify all steps are noop.
-	stdout, stderr, code := runKeylatch(t, env, "bootstrap", "--json")
+	stdout, stderr, code := runKeylatch(t, env, "bootstrap", "--backend", "file", "--json")
 	require.Equal(t, 0, code, "second bootstrap must exit 0; stderr: %s", stderr)
 
 	var plan bootstrap.Plan
@@ -141,7 +141,7 @@ func TestE2E_Doctor_JSON(t *testing.T) {
 	env := map[string]string{"HOME": homeDir}
 
 	// Bootstrap first.
-	_, _, code := runKeylatch(t, env, "bootstrap")
+	_, _, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code)
 
 	// Now run doctor.
@@ -167,7 +167,7 @@ func TestE2E_NoHardcodedPaths(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
 
-	_, _, code := runKeylatch(t, env, "bootstrap")
+	_, _, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code)
 
 	keylatchDir := filepath.Join(homeDir, ".keylatch")
@@ -216,7 +216,7 @@ func TestE2E_Doctor_ExitsZero(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
 
-	_, _, code := runKeylatch(t, env, "bootstrap")
+	_, _, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code)
 
 	stdout, stderr, code := runKeylatch(t, env, "doctor", "--json")
@@ -249,7 +249,7 @@ func TestE2E_ConfigSet_Backend(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
 
-	_, _, code := runKeylatch(t, env, "bootstrap")
+	_, _, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code)
 
 	stdout, stderr, code := runKeylatch(t, env, "config", "set", "backend", "file")
@@ -278,7 +278,7 @@ func TestE2E_ConfigSet_CredentialKeyRejected(t *testing.T) {
 	homeDir := t.TempDir()
 	env := map[string]string{"HOME": homeDir}
 
-	_, _, code := runKeylatch(t, env, "bootstrap")
+	_, _, code := runKeylatch(t, env, "bootstrap", "--backend", "file")
 	require.Equal(t, 0, code)
 
 	stdout, stderr, code := runKeylatch(t, env, "config", "set", "api_key", "foo")

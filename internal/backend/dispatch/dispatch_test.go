@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
@@ -19,25 +20,55 @@ func fakeEnv(m map[string]string) func(string) string {
 func tempDirConfig(t *testing.T) config.Config {
 	t.Helper()
 	cfg := config.Default()
+	cfg.Backend = "file"
 	cfg.DataDir = t.TempDir()
 	return cfg
 }
 
-func TestSelect_Default(t *testing.T) {
+func TestSelect_NoImplicitDefault(t *testing.T) {
 	dispatch.ClearCached()
 	defer dispatch.ClearCached()
 
-	krPath := testutil.SetupTestKeyring(t)
 	cfg := tempDirConfig(t)
 	cfg.Backend = ""
-	env := fakeEnv(map[string]string{"KEYLATCH_KEYRING_PATH": krPath})
 
-	b, err := dispatch.Select(context.Background(), cfg, env)
-	if err != nil {
-		t.Fatalf("Select default: %v", err)
+	_, err := dispatch.Select(context.Background(), cfg, fakeEnv(nil))
+	if !errors.Is(err, dispatch.ErrNoBackend) {
+		t.Fatalf("no backend configured: got %v, want ErrNoBackend", err)
 	}
-	if b.Name() != "file" {
-		t.Errorf("default backend: got %q, want file", b.Name())
+	for _, id := range backend.SupportedManagers() {
+		if !strings.Contains(err.Error(), id) {
+			t.Errorf("error %q does not name supported manager %q", err, id)
+		}
+	}
+}
+
+func TestSelect_UnsupportedBackendNeedsOptIn(t *testing.T) {
+	dispatch.ClearCached()
+	defer dispatch.ClearCached()
+	t.Setenv(backend.AllowUnsupportedEnv, "")
+
+	cfg := tempDirConfig(t)
+	_, err := dispatch.Select(context.Background(), cfg, fakeEnv(nil))
+	if !errors.Is(err, backend.ErrUnsupportedBackend) {
+		t.Fatalf("file without opt-in: got %v, want ErrUnsupportedBackend", err)
+	}
+	for _, want := range []string{`"file"`, "not supported", "bw, op", backend.AllowUnsupportedEnv} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+func TestSelect_OptInNamesOnlyThatBackend(t *testing.T) {
+	dispatch.ClearCached()
+	defer dispatch.ClearCached()
+	t.Setenv(backend.AllowUnsupportedEnv, "keychain")
+
+	cfg := tempDirConfig(t)
+	_, err := dispatch.Select(context.Background(), cfg, fakeEnv(nil))
+	if !errors.Is(err, backend.ErrUnsupportedBackend) {
+		t.Fatalf("opt-in for keychain must not open file: got %v", err)
 	}
 }
 

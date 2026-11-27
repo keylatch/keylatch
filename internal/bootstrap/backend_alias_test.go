@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/testutil"
 )
 
 func TestRun_CanonicalizesBackendAlias(t *testing.T) {
+	t.Setenv(backend.AllowUnsupportedEnv, "aws-sm")
 	dir := t.TempDir()
 	env := func(k string) string {
 		if k == "KEYLATCH_CONFIG_DIR" {

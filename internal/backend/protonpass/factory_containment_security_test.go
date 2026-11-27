@@ -6,26 +6,21 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	_ "github.com/keylatch/keylatch/internal/backend/protonpass" // trigger init()
+	"github.com/keylatch/keylatch/internal/config"
 )
 
-// TestSecurityRegression_ProtonPassUnselectable verifies the
-// proton-pass backend cannot be instantiated through the registered factory
-// (the path every CLI/API/MCP entry point uses), regardless of config.
-// Closes the "unsupported managers unavailable" containment claim; the
-// cache-ownership defect itself is tracked separately in
-// internal/backend/securitysuite.
+// TestSecurityRegression_ProtonPassUnselectable verifies the proton-pass backend cannot be opened
+// through dispatch (the path every CLI/API/MCP entry point uses) without the
+// explicit opt-in, regardless of config.
 func TestSecurityRegression_ProtonPassUnselectable(t *testing.T) {
-	factory, ok := backend.Default.Get("proton-pass")
-	if !ok {
+	if _, ok := backend.Default.Get("proton-pass"); !ok {
 		t.Fatal("proton-pass backend not registered; import side-effect missing")
 	}
 
-	_, err := factory(context.Background(), backend.BackendConfig{Name: "proton-pass"})
-	if err == nil {
-		t.Fatal("expected proton-pass factory to refuse instantiation, got nil error")
-	}
-	if !errors.Is(err, backend.ErrUnavailable) {
-		t.Errorf("expected ErrUnavailable, got: %v", err)
+	_, err := dispatch.Open(context.Background(), config.Config{Backend: "proton-pass"}, func(string) string { return "" })
+	if !errors.Is(err, backend.ErrUnsupportedBackend) {
+		t.Errorf("expected ErrUnsupportedBackend, got: %v", err)
 	}
 }

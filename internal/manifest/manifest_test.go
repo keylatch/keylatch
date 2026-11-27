@@ -44,10 +44,10 @@ func TestCurrent_EveryEntryHasValidFields(t *testing.T) {
 func TestCurrent_BackendTiers(t *testing.T) {
 	m := manifest.Current()
 	tiers := map[manifest.Status][]string{
-		manifest.Supported:  {"bw", "op"},
-		manifest.Preview:    {"file"},
-		manifest.Community:  {"vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "opconnect", "bws", "sops"},
-		manifest.Deprecated: {"keychain", "keeper", "lastpass", "proton-pass"},
+		manifest.Supported:   {"bw", "op"},
+		manifest.Unavailable: {"file"},
+		manifest.Community:   {"vault", "aws-sm", "gcp-sm", "azure-kv", "doppler", "infisical", "op-connect", "bws", "sops"},
+		manifest.Deprecated:  {"keychain", "keeper", "lastpass", "proton-pass"},
 	}
 	total := 0
 	for status, ids := range tiers {
@@ -63,22 +63,22 @@ func TestCurrent_BackendTiers(t *testing.T) {
 // deprecated backends are listed but never enabled by the manifest.
 func TestCurrent_OnlySupportedAndPreviewAreEnabled(t *testing.T) {
 	m := manifest.Current()
-	for _, id := range []string{"op", "bw", "file", "linux", "macos", "windows"} {
+	for _, id := range []string{"op", "bw", "linux", "macos", "windows"} {
 		assert.True(t, m.Enabled(id), "%q must be enabled", id)
 	}
-	for _, id := range []string{"opconnect", "keeper", "proton-pass", "lastpass", "keychain", "vault"} {
+	for _, id := range []string{"file", "op-connect", "keeper", "proton-pass", "lastpass", "keychain", "vault"} {
 		assert.False(t, m.Enabled(id), "backend %q must not be enabled", id)
 	}
 	assert.Equal(t, manifest.Preview, m.Status("macos"))
 	assert.Equal(t, manifest.Preview, m.Status("windows"))
 }
 
-// TestCurrent_FileBackendIsUncertifiedPreview: the file backend works and is
-// the default store, so it stays enabled, but it is not certified yet.
-func TestCurrent_FileBackendIsUncertifiedPreview(t *testing.T) {
+// TestCurrent_FileBackendIsNotEnabled: the file backend is not a manager, so
+// it opens only through the explicit opt-in.
+func TestCurrent_FileBackendIsNotEnabled(t *testing.T) {
 	m := manifest.Current()
-	assert.Equal(t, manifest.Preview, m.Status("file"))
-	assert.True(t, m.Enabled("file"))
+	assert.Equal(t, manifest.Unavailable, m.Status("file"))
+	assert.False(t, m.Enabled("file"))
 }
 
 // TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy
