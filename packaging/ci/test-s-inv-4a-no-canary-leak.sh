@@ -91,6 +91,7 @@ export HOME="$CANARY_HOME"
 export KEYLATCH_CONFIG_DIR="$CANARY_HOME/.keylatch"
 export KEYLATCH_DATA_DIR="$CANARY_HOME/.keylatch/vault"
 export KEYLATCH_BACKEND="file"
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND="file"
 mkdir -p "$KEYLATCH_DATA_DIR"
 
 # ─── bootstrap keyring for file backend ───────────────────────────────────────

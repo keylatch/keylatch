@@ -60,6 +60,7 @@ jobs:
       - name: Run tests with coverage
         env:
           KEYLATCH_BACKEND: file
+          KEYLATCH_ALLOW_UNSUPPORTED_BACKEND: file
         run: go test -coverprofile=coverage.out ./... -race -count=1 -timeout 15m
       - name: coverage floors
         run: bash release-checks/coverage-threshold.sh --report coverage.out

@@ -53,6 +53,9 @@ require_cmd() {
 
 require_cmd go
 
+# The file backend is the fixture for this smoke test; it opens only with the opt-in.
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file
+
 # ─── parse args ───────────────────────────────────────────────────────────────
 
 KEYLATCH_BIN=""

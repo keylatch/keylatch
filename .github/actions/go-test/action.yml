@@ -27,6 +27,7 @@ runs:
       shell: bash
       env:
         KEYLATCH_BACKEND: file
+        KEYLATCH_ALLOW_UNSUPPORTED_BACKEND: file
         KEYLATCH_REQUIRE_REAL_CLIENTS: ${{ inputs.require-real-clients }}
       run: go test -short -coverprofile=coverage.out ./... -race -count=1 -timeout 600s
     - name: Upload coverage artifact
