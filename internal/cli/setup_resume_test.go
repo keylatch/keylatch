@@ -243,7 +243,8 @@ func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
 	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "test-token") // skips the live op signin probe
 	// A fake bw on PATH makes the recommendation deterministic.
 	fakeBin := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "bw"), []byte("#!/bin/sh\n"), 0o755)) //nolint:gosec // a test stub must be executable
+	stub, content := fakeExecutable(fakeBin, "bw", "exit 0")
+	require.NoError(t, os.WriteFile(stub, []byte(content), 0o755)) //nolint:gosec // a test stub must be executable
 	t.Setenv("PATH", fakeBin)
 
 	cfgPath := filepath.Join(configDir, "config.json")
