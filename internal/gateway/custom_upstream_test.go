@@ -30,6 +30,9 @@ func TestCustomUpstreamURLTakesHostFromTheRuleOnly(t *testing.T) {
 		_, err := build("api.acme.example", p, "")
 		assert.Error(t, err, "path %q", p)
 	}
+	got, err = build("api.acme.example", "/", "")
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.acme.example/", got)
 	// Characters that would end the path or start userinfo stay inside the path.
 	got, err = build("api.acme.example", "/v1/@evil.example/x?y#z", "")
 	require.NoError(t, err)

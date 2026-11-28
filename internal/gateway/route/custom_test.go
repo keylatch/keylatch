@@ -182,3 +182,15 @@ func TestCustomRouteSecondHostAndHostSegmentRefusals(t *testing.T) {
 		assert.False(t, ok, p)
 	}
 }
+
+func TestListedHostReturnsOnlyConfiguredEntries(t *testing.T) {
+	hosts := []string{"api.acme.example", "eu.acme.example"}
+	got, ok := listedHost(hosts, "eu.acme.example")
+	assert.True(t, ok)
+	assert.Equal(t, "eu.acme.example", got)
+	for _, h := range []string{"", "evil.example", "EU.acme.example", "eu.acme.example."} {
+		got, ok = listedHost(hosts, h)
+		assert.False(t, ok, "host %q", h)
+		assert.Empty(t, got)
+	}
+}

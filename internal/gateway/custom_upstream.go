@@ -3,7 +3,6 @@ package gateway
 import (
 	"errors"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/gateway/route"
@@ -17,13 +16,17 @@ var errCustomUpstream = errors.New("custom upstream URL rejected")
 // query after "?". The result is re-parsed and must still name that host.
 func customUpstreamURL(rt *route.Route, rawQuery string) (string, error) {
 	var host string
-	if i := slices.Index(rt.Custom.Hosts, rt.UpstreamHost); i >= 0 {
-		host = rt.Custom.Hosts[i]
+	for _, listed := range rt.Custom.Hosts {
+		if listed == rt.UpstreamHost {
+			host = listed
+			break
+		}
 	}
 	if host == "" || !safeUpstreamPath(rt.UpstreamPath) {
 		return "", errCustomUpstream
 	}
-	target := "https://" + host + (&url.URL{Path: rt.UpstreamPath}).EscapedPath()
+	// The "/" literal after the host keeps the request path from reaching the authority.
+	target := "https://" + host + "/" + strings.TrimPrefix((&url.URL{Path: rt.UpstreamPath}).EscapedPath(), "/")
 	if rawQuery != "" {
 		target += "?" + rawQuery
 	}

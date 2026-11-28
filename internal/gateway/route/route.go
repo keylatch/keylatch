@@ -323,6 +323,17 @@ func (r *Router) matchCustom(method, reqPath string) (*Route, bool) {
 	return &rt, true
 }
 
+// listedHost returns the rule's own entry equal to h, so the upstream host is
+// always a configured value and never a copy of request text.
+func listedHost(hosts []string, h string) (string, bool) {
+	for _, listed := range hosts {
+		if listed == h {
+			return listed, true
+		}
+	}
+	return "", false
+}
+
 // defaultCustomMethods apply when a custom secret lists none. TRACE and CONNECT
 // are never allowed, even when listed.
 var defaultCustomMethods = []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
