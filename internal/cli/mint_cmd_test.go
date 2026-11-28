@@ -92,7 +92,7 @@ func (g *githubStub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var repos []map[string]any
 		for _, n := range req["repositories"].([]any) {
-			repos = append(repos, map[string]any{"full_name": "patrikmichi/" + n.(string)})
+			repos = append(repos, map[string]any{"full_name": "example-org/" + n.(string)})
 		}
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -119,7 +119,7 @@ type mintEnv struct {
 func defaultMintPolicy() *config.GitHubAppMintPolicy {
 	return &config.GitHubAppMintPolicy{
 		DenyOwners:        []string{"abugodev"},
-		AllowOwners:       []string{"patrikmichi"},
+		AllowOwners:       []string{"example-org"},
 		AllowRepos:        []string{"abugodev/site"},
 		PermissionCeiling: map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"},
 		MaxTTL:            3600,
@@ -140,7 +140,7 @@ func setupMint(t *testing.T, policy *config.GitHubAppMintPolicy) *mintEnv {
 		store: &countingStore{data: map[string][]byte{
 			connections.SecretFieldPath("default", "code-hosting", "github-app", "private_key"):              keyPEM,
 			connections.ConfigFieldPath("default", "code-hosting", "github-app", "app_id"):                   []byte("1234"),
-			connections.ConfigFieldPath("default", "code-hosting", "github-app", "installation_patrikmichi"): []byte("777"),
+			connections.ConfigFieldPath("default", "code-hosting", "github-app", "installation_example-org"): []byte("777"),
 			connections.ConfigFieldPath("default", "code-hosting", "github-app", "installation_abugodev"):    []byte("777"),
 		}},
 		github:   &githubStub{},
@@ -206,7 +206,7 @@ func runMintArgs(t *testing.T, args ...string) (stdout, stderr string, code int)
 	return out.String(), errOut.String(), code
 }
 
-var okArgs = []string{"github-app", "--repo", "patrikmichi/keylatch", "--permission", "contents=write", "--permission", "metadata=read", "--format", "json"}
+var okArgs = []string{"github-app", "--repo", "example-org/keylatch", "--permission", "contents=write", "--permission", "metadata=read", "--format", "json"}
 
 func TestMintJSONShape(t *testing.T) {
 	env := setupMint(t, defaultMintPolicy())
@@ -219,7 +219,7 @@ func TestMintJSONShape(t *testing.T) {
 	var res mintResult
 	require.NoError(t, json.Unmarshal([]byte(stdout), &res))
 	assert.Equal(t, mintTestToken, res.Token)
-	assert.Equal(t, "patrikmichi/keylatch", res.Repository)
+	assert.Equal(t, "example-org/keylatch", res.Repository)
 	assert.Equal(t, map[string]string{"contents": "write", "metadata": "read"}, res.Permissions)
 	exp, err := time.Parse(time.RFC3339, res.ExpiresAt)
 	require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestMintOneAuditLineNoToken(t *testing.T) {
 	assert.Equal(t, audit.ActionMint, e.Action)
 	assert.Equal(t, audit.OutcomeOK, e.Outcome)
 	assert.Equal(t, "github-app", e.Extra["connection"])
-	assert.Equal(t, "patrikmichi/keylatch", e.Extra["repository"])
+	assert.Equal(t, "example-org/keylatch", e.Extra["repository"])
 	assert.Equal(t, "contents=write,metadata=read", e.Extra["permissions"])
 	assert.Equal(t, "host", e.Extra["caller_kind"])
 	assert.NotEmpty(t, e.Extra["expires_at"])
@@ -273,17 +273,17 @@ func TestMintRealAuditLogHasNoToken(t *testing.T) {
 func TestMintFlagErrors(t *testing.T) {
 	cases := map[string][]string{
 		"missing repo":          {"github-app", "--permission", "contents=read"},
-		"no permission":         {"github-app", "--repo", "patrikmichi/keylatch"},
-		"bad permission level":  {"github-app", "--repo", "patrikmichi/keylatch", "--permission", "contents=owner"},
-		"permission no level":   {"github-app", "--repo", "patrikmichi/keylatch", "--permission", "contents"},
-		"duplicate permission":  {"github-app", "--repo", "patrikmichi/keylatch", "--permission", "contents=read", "--permission", "contents=write"},
+		"no permission":         {"github-app", "--repo", "example-org/keylatch"},
+		"bad permission level":  {"github-app", "--repo", "example-org/keylatch", "--permission", "contents=owner"},
+		"permission no level":   {"github-app", "--repo", "example-org/keylatch", "--permission", "contents"},
+		"duplicate permission":  {"github-app", "--repo", "example-org/keylatch", "--permission", "contents=read", "--permission", "contents=write"},
 		"repo without owner":    {"github-app", "--repo", "keylatch", "--permission", "contents=read"},
 		"repo with extra path":  {"github-app", "--repo", "a/b/c", "--permission", "contents=read"},
-		"unsupported format":    {"github-app", "--repo", "patrikmichi/keylatch", "--permission", "contents=read", "--format", "env"},
-		"not a mint connection": {"github", "--repo", "patrikmichi/keylatch", "--permission", "contents=read"},
-		"no connection":         {"--repo", "patrikmichi/keylatch", "--permission", "contents=read"},
-		"two connections":       {"github-app", "other", "--repo", "patrikmichi/keylatch", "--permission", "contents=read"},
-		"unknown flag":          {"github-app", "--repo", "patrikmichi/keylatch", "--permission", "contents=read", "--ttl", "5m"},
+		"unsupported format":    {"github-app", "--repo", "example-org/keylatch", "--permission", "contents=read", "--format", "env"},
+		"not a mint connection": {"github", "--repo", "example-org/keylatch", "--permission", "contents=read"},
+		"no connection":         {"--repo", "example-org/keylatch", "--permission", "contents=read"},
+		"two connections":       {"github-app", "other", "--repo", "example-org/keylatch", "--permission", "contents=read"},
+		"unknown flag":          {"github-app", "--repo", "example-org/keylatch", "--permission", "contents=read", "--ttl", "5m"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -322,8 +322,8 @@ func TestMintPolicyRefusalsBeforeKeyRead(t *testing.T) {
 	cases := map[string]tc{
 		"no policy":              {policy: func() *config.GitHubAppMintPolicy { return nil }},
 		"owner not allowed":      {policy: defaultMintPolicy, args: []string{"github-app", "--repo", "someone/repo", "--permission", "contents=read"}},
-		"permission not in cap":  {policy: defaultMintPolicy, args: []string{"github-app", "--repo", "patrikmichi/keylatch", "--permission", "workflows=write"}},
-		"permission above cap":   {policy: defaultMintPolicy, args: []string{"github-app", "--repo", "patrikmichi/keylatch", "--permission", "metadata=write"}},
+		"permission not in cap":  {policy: defaultMintPolicy, args: []string{"github-app", "--repo", "example-org/keylatch", "--permission", "workflows=write"}},
+		"permission above cap":   {policy: defaultMintPolicy, args: []string{"github-app", "--repo", "example-org/keylatch", "--permission", "metadata=write"}},
 		"max_ttl over an hour":   {policy: withPolicy(func(p *config.GitHubAppMintPolicy) { p.MaxTTL = 7200 })},
 		"caller kind not listed": {policy: withPolicy(func(p *config.GitHubAppMintPolicy) { p.Callers = []string{"service"} })},
 		"human by default":       {policy: defaultMintPolicy, human: true},

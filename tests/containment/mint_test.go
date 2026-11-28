@@ -68,7 +68,7 @@ func setupMint(t *testing.T) *mintEnv {
 		root: root, bin: filepath.Join(root, "bin"), runtimeDir: filepath.Join(root, "run"), state: filepath.Join(root, "state"),
 	}}
 	e.work = filepath.Join(root, "work")
-	e.bare = filepath.Join(root, "remote", "patrikmichi", "app.git")
+	e.bare = filepath.Join(root, "remote", "example-org", "app.git")
 	for _, d := range []string{e.bin, e.runtimeDir, e.state, filepath.Join(root, "home"), e.work, e.bare} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			t.Fatal(err)
@@ -113,10 +113,10 @@ func setupMint(t *testing.T) *mintEnv {
 		case r.URL.Path == "/user":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"login":"octo"}`)
-		case r.URL.Path == "/repos/patrikmichi/app/pulls" && r.Method == http.MethodPost:
+		case r.URL.Path == "/repos/example-org/app/pulls" && r.Method == http.MethodPost:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `{"number":7,"html_url":"https://github.com/patrikmichi/app/pull/7"}`)
+			_, _ = io.WriteString(w, `{"number":7,"html_url":"https://github.com/example-org/app/pull/7"}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -188,7 +188,7 @@ func (e *mintEnv) sandboxed(t *testing.T, env map[string]string, keylatchArgs ..
 
 func (e *mintEnv) runApp(t *testing.T, env map[string]string, script string) (string, string, int) {
 	t.Helper()
-	return e.sandboxed(t, env, "run", "--tier", "D3", "--repo", "patrikmichi/app",
+	return e.sandboxed(t, env, "run", "--tier", "D3", "--repo", "example-org/app",
 		"--permission", "contents=write", "--permission", "pull_requests=write", "github-app", "--", "sh", "-c", script)
 }
 
@@ -211,8 +211,8 @@ func TestMintedTokenThroughPlaceholder(t *testing.T) {
 			e := setupMint(t)
 			script := `env | grep -E '^(GH_TOKEN|GITHUB_TOKEN)=';
 gh api user --jq .login || exit 1
-gh api -X POST repos/patrikmichi/app/pulls -f title=t -f head=feature -f base=main --jq .html_url || exit 1
-git -C ` + e.work + ` remote add origin https://github.com/patrikmichi/app.git
+gh api -X POST repos/example-org/app/pulls -f title=t -f head=feature -f base=main --jq .html_url || exit 1
+git -C ` + e.work + ` remote add origin https://github.com/example-org/app.git
 git -C ` + e.work + ` push origin HEAD:refs/heads/feature || exit 1
 printf 'protocol=https\nhost=github.com\n\n' | git credential fill`
 			out, errOut, code := e.runApp(t, env, script)
@@ -221,7 +221,7 @@ printf 'protocol=https\nhost=github.com\n\n' | git credential fill`
 				t.Fatal("the run failed")
 			}
 			e.leaks(t, out, errOut)
-			for _, want := range []string{"GH_TOKEN=ghs_klph_", "GITHUB_TOKEN=ghs_klph_", "octo", "https://github.com/patrikmichi/app/pull/7", "username=x-access-token", "password=ghs_klph_"} {
+			for _, want := range []string{"GH_TOKEN=ghs_klph_", "GITHUB_TOKEN=ghs_klph_", "octo", "https://github.com/example-org/app/pull/7", "username=x-access-token", "password=ghs_klph_"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("output lacks %q", want)
 				}
@@ -256,7 +256,7 @@ printf 'protocol=https\nhost=github.com\n\n' | git credential fill`
 func TestMintToStdoutRefusedInsideSandbox(t *testing.T) {
 	e := setupMint(t)
 	for name, env := range map[string]map[string]string{"agent": {"CLAUDECODE": "1"}, "host": nil} {
-		out, errOut, code := e.sandboxed(t, env, "mint", "github-app", "--repo", "patrikmichi/app", "--permission", "contents=write", "--format", "json")
+		out, errOut, code := e.sandboxed(t, env, "mint", "github-app", "--repo", "example-org/app", "--permission", "contents=write", "--format", "json")
 		if code != 2 || out != "" {
 			t.Errorf("%s: exit %d stdout %q stderr %q", name, code, out, errOut)
 		}
@@ -268,8 +268,8 @@ func TestMintedRunOutsidePolicyIsRefused(t *testing.T) {
 	e := setupMint(t)
 	for _, args := range [][]string{
 		{"--repo", "other/app", "--permission", "contents=write"},
-		{"--repo", "patrikmichi/app", "--permission", "contents=admin"},
-		{"--repo", "patrikmichi/app", "--permission", "administration=write"},
+		{"--repo", "example-org/app", "--permission", "contents=admin"},
+		{"--repo", "example-org/app", "--permission", "administration=write"},
 	} {
 		out, errOut, code := e.sandboxed(t, map[string]string{"CLAUDECODE": "1"},
 			append(append([]string{"run", "--tier", "D3"}, args...), "github-app", "--", "true")...)

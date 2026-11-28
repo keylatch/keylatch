@@ -254,20 +254,20 @@ func TestMintedRunIsRefusedByPolicy(t *testing.T) {
 		args   []string
 		code   string
 	}{
-		"no policy": {nil, true, []string{"--repo", "patrikmichi/app", "--permission", "contents=write"}, CodeRefused},
+		"no policy": {nil, true, []string{"--repo", "example-org/app", "--permission", "contents=write"}, CodeRefused},
 		"agent not listed": {func() *config.GitHubAppMintPolicy {
 			p := agentPolicy()
 			p.PlaceholderCallers = []string{"human"}
 			return p
-		}(), true, []string{"--repo", "patrikmichi/app", "--permission", "contents=write"}, CodeRefused},
+		}(), true, []string{"--repo", "example-org/app", "--permission", "contents=write"}, CodeRefused},
 		"agent listed only for minting to stdout": {func() *config.GitHubAppMintPolicy {
 			p := agentPolicy()
 			p.PlaceholderCallers = nil
 			p.Callers = []string{"host"}
 			return p
-		}(), true, []string{"--repo", "patrikmichi/app", "--permission", "contents=write"}, CodeRefused},
+		}(), true, []string{"--repo", "example-org/app", "--permission", "contents=write"}, CodeRefused},
 		"repository outside the allowlist": {agentPolicy(), true, []string{"--repo", "other/app", "--permission", "contents=write"}, CodeRefused},
-		"permission above the ceiling":     {agentPolicy(), true, []string{"--repo", "patrikmichi/app", "--permission", "contents=admin"}, CodeRefused},
+		"permission above the ceiling":     {agentPolicy(), true, []string{"--repo", "example-org/app", "--permission", "contents=admin"}, CodeRefused},
 		"no repository named":              {agentPolicy(), true, []string{"--permission", "contents=write"}, CodeBadRequest},
 	}
 	for name, tc := range cases {
@@ -304,7 +304,7 @@ func TestMintToStdoutStaysRefusedForAgents(t *testing.T) {
 	g.env["CLAUDECODE"] = "1"
 	var out, errOut bytes.Buffer
 	code, handled := Handle(context.Background(), lookupOf(g.env),
-		[]string{"mint", "github-app", "--repo", "patrikmichi/app", "--permission", "contents=write", "--format", "json"}, IO{Out: &out, ErrOut: &errOut})
+		[]string{"mint", "github-app", "--repo", "example-org/app", "--permission", "contents=write", "--format", "json"}, IO{Out: &out, ErrOut: &errOut})
 	if !handled || code != 2 || out.Len() != 0 || !strings.Contains(errOut.String(), "not available to agent callers") {
 		t.Fatalf("handled=%v code=%d stdout=%q stderr=%q", handled, code, out.String(), errOut.String())
 	}
@@ -319,7 +319,7 @@ func TestMintedTemplateCannotBeServedWithoutMinting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, _ := c.RunSession(RunRequest{Connection: "github-app", Repository: "patrikmichi/app", Command: []string{"true"}})
+	resp, _ := c.RunSession(RunRequest{Connection: "github-app", Repository: "example-org/app", Command: []string{"true"}})
 	if resp.OK || resp.Code != CodeUnavailable || !strings.Contains(resp.Error, "mints its credential") {
 		t.Fatalf("got %+v", resp)
 	}
@@ -329,7 +329,7 @@ func TestGitCredentialHelperReturnsOnlyThePlaceholder(t *testing.T) {
 	g := startGitHubDaemon(t, agentPolicy())
 	g.env["CLAUDECODE"] = "1"
 	client := g.connect(t)
-	resp, err := client.RunSession(RunRequest{Connection: "github-app", Repository: "patrikmichi/app", Permissions: []string{"contents=write"}, Command: []string{"git"}})
+	resp, err := client.RunSession(RunRequest{Connection: "github-app", Repository: "example-org/app", Permissions: []string{"contents=write"}, Command: []string{"git"}})
 	if err != nil || !resp.OK {
 		t.Fatalf("%+v %v", resp, err)
 	}
@@ -388,7 +388,7 @@ func TestGitCredentialVerbPrintsThePlaceholder(t *testing.T) {
 	g := startGitHubDaemon(t, agentPolicy())
 	g.env["CLAUDECODE"] = "1"
 	client := g.connect(t)
-	resp, _ := client.RunSession(RunRequest{Connection: "github-app", Repository: "patrikmichi/app", Permissions: []string{"contents=write"}, Command: []string{"git"}})
+	resp, _ := client.RunSession(RunRequest{Connection: "github-app", Repository: "example-org/app", Permissions: []string{"contents=write"}, Command: []string{"git"}})
 	if !resp.OK {
 		t.Fatalf("%+v", resp)
 	}

@@ -13,7 +13,7 @@ import (
 func basePolicy() *config.GitHubAppMintPolicy {
 	return &config.GitHubAppMintPolicy{
 		DenyOwners:        []string{"abugodev"},
-		AllowOwners:       []string{"patrikmichi"},
+		AllowOwners:       []string{"example-org"},
 		AllowRepos:        []string{"keylatch/keylatch", "abugodev/site"},
 		PermissionCeiling: map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"},
 		MaxTTL:            3600,
@@ -37,29 +37,29 @@ func TestMintDenyOwnerWinsOverAllowRepos(t *testing.T) {
 
 func TestMintAllowlistAndCeiling(t *testing.T) {
 	p := basePolicy()
-	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", contentsWrite)))
+	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", contentsWrite)))
 	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerHost, req("keylatch/keylatch", map[string]string{"contents": "read"})))
 
 	err := mint.CheckGitHubApp(p, mint.CallerService, req("keylatch/other", contentsWrite))
 	assert.ErrorIs(t, err, mint.ErrDenied, "repo neither owner-allowed nor listed")
 
-	err = mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"workflows": "write"}))
+	err = mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", map[string]string{"workflows": "write"}))
 	assert.ErrorIs(t, err, mint.ErrDenied, "permission absent from the ceiling")
 
-	err = mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"metadata": "write"}))
+	err = mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", map[string]string{"metadata": "write"}))
 	assert.ErrorIs(t, err, mint.ErrDenied, "level above the ceiling")
 
-	err = mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"contents": "admin"}))
+	err = mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", map[string]string{"contents": "admin"}))
 	assert.ErrorIs(t, err, mint.ErrDenied)
 
-	err = mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", nil))
+	err = mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", nil))
 	assert.ErrorIs(t, err, mint.ErrDenied, "empty permission set")
 }
 
 func TestMintEmptyAllowlistsDenyEverything(t *testing.T) {
 	p := basePolicy()
 	p.AllowOwners, p.AllowRepos = nil, nil
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", contentsWrite)), mint.ErrDenied)
 
 }
 
@@ -67,48 +67,48 @@ func TestMintDefaultCeilingWhenUnset(t *testing.T) {
 	p := basePolicy()
 	p.PermissionCeiling = nil
 	assert.Equal(t, map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"}, mint.EffectiveCeiling(p))
-	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"})))
+	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"})))
 	for _, perms := range []map[string]string{
 		{"contents": "admin"}, {"metadata": "write"}, {"workflows": "write"}, {"actions": "read"},
 		{"administration": "read"}, {"organization_administration": "read"},
 	} {
-		assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", perms)), mint.ErrDenied, "%v", perms)
+		assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", perms)), mint.ErrDenied, "%v", perms)
 	}
 	// An explicit ceiling replaces the default; it does not add to it.
 	p.PermissionCeiling = map[string]string{"contents": "read"}
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/any", map[string]string{"pull_requests": "write"})), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/any", map[string]string{"pull_requests": "write"})), mint.ErrDenied)
 	assert.Equal(t, []string{"service", "host"}, mint.EffectiveCallers(p))
 }
 
 func TestMintNilPolicyDenies(t *testing.T) {
-	assert.ErrorIs(t, mint.CheckGitHubApp(nil, mint.CallerService, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(nil, mint.CallerService, req("example-org/any", contentsWrite)), mint.ErrDenied)
 }
 
 func TestMintAgentDeniedByDefault(t *testing.T) {
 	p := basePolicy()
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerAgent, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
-	assert.ErrorIs(t, mint.CheckGitHubApp(nil, mint.CallerAgent, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerAgent, req("example-org/any", contentsWrite)), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(nil, mint.CallerAgent, req("example-org/any", contentsWrite)), mint.ErrDenied)
 
 	p.Callers = []string{"agent"}
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerAgent, req("patrikmichi/any", contentsWrite)), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerAgent, req("example-org/any", contentsWrite)), mint.ErrDenied)
 	assert.ErrorIs(t, mint.Validate(p), mint.ErrInvalidPolicy)
 }
 
 func TestMintCallerKinds(t *testing.T) {
 	p := basePolicy()
-	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/a", contentsWrite)))
-	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerHost, req("patrikmichi/a", contentsWrite)))
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerHuman, req("patrikmichi/a", contentsWrite)), mint.ErrDenied,
+	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/a", contentsWrite)))
+	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerHost, req("example-org/a", contentsWrite)))
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerHuman, req("example-org/a", contentsWrite)), mint.ErrDenied,
 		"humans are not in the default caller set")
 
 	p.Callers = []string{"service"}
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerHost, req("patrikmichi/a", contentsWrite)), mint.ErrDenied)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerHost, req("example-org/a", contentsWrite)), mint.ErrDenied)
 
 	p.Callers = []string{"human"}
-	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerHuman, req("patrikmichi/a", contentsWrite)))
+	assert.NoError(t, mint.CheckGitHubApp(p, mint.CallerHuman, req("example-org/a", contentsWrite)))
 
 	p.Callers = []string{"robot"}
-	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/a", contentsWrite)), mint.ErrInvalidPolicy)
+	assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/a", contentsWrite)), mint.ErrInvalidPolicy)
 }
 
 func TestMintMaxTTLValidated(t *testing.T) {
@@ -116,7 +116,7 @@ func TestMintMaxTTLValidated(t *testing.T) {
 		p := basePolicy()
 		p.MaxTTL = ttl
 		assert.ErrorIs(t, mint.Validate(p), mint.ErrInvalidPolicy, "max_ttl %d", ttl)
-		assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("patrikmichi/a", contentsWrite)), mint.ErrInvalidPolicy)
+		assert.ErrorIs(t, mint.CheckGitHubApp(p, mint.CallerService, req("example-org/a", contentsWrite)), mint.ErrInvalidPolicy)
 	}
 	p := basePolicy()
 	p.MaxTTL = 0
@@ -137,9 +137,9 @@ func TestMintInvalidCeilingOrRepoInPolicy(t *testing.T) {
 }
 
 func TestParseRepository(t *testing.T) {
-	o, n, err := mint.ParseRepository("patrikmichi/keylatch.go")
+	o, n, err := mint.ParseRepository("example-org/keylatch.go")
 	require.NoError(t, err)
-	assert.Equal(t, "patrikmichi", o)
+	assert.Equal(t, "example-org", o)
 	assert.Equal(t, "keylatch.go", n)
 	for _, bad := range []string{"", "a", "a/", "/b", "a/b/c", "a/..", "-a/b", "a b/c", "a/b?x"} {
 		_, _, err := mint.ParseRepository(bad)

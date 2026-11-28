@@ -25,7 +25,7 @@ import (
 )
 
 // Owner is the account the fake App is installed on.
-const Owner = "patrikmichi"
+const Owner = "example-org"
 
 // Token returns the n-th token the fake API issues, counting from one.
 func Token(n int) string {

@@ -207,9 +207,9 @@ func TestNoHardcodedPaths(t *testing.T) {
 		paths.Policy(env),
 	}
 	for _, p := range allPaths {
-		assert.NotContains(t, p, "/Users/patrikmichalicka",
+		assert.NotContains(t, p, "/Users/example-user",
 			"resolved path must not contain hardcoded home: %s", p)
-		assert.NotContains(t, p, "/home/patrikmichalicka",
+		assert.NotContains(t, p, "/home/example-user",
 			"resolved path must not contain hardcoded home: %s", p)
 	}
 }
