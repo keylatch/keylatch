@@ -87,3 +87,18 @@ func TestEmbedLoader_AllExistingYAML(t *testing.T) {
 		assert.Equal(t, registry.SourceEmbed, lt.Source)
 	}
 }
+
+// A template file must not be able to declare a user-defined endpoint: custom
+// secrets exist only through `keylatch secret add`.
+func TestEmbedLoader_RejectsCustomEndpointInTemplateFile(t *testing.T) {
+	memFS := fstest.MapFS{
+		"custom.yaml": {Data: []byte(validMinimalTemplate + `
+custom:
+  hosts: [api.example.com]
+  paths: ["/"]
+`)},
+	}
+	loader := &registry.EmbedLoader{FS: memFS, Tier: registry.TierCore}
+	_, err := loader.LoadAll(context.Background())
+	require.Error(t, err)
+}

@@ -103,7 +103,12 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 	defer revoke()
 
 	// Step 2: Build child env: base URL + session token. No provider key.
-	childEnv := GatewaySessionEnv(runtime.RuntimeGatewaySDK, tmpl, "http://"+d.server.Addr(), jwtStr).
+	baseURL := "http://" + d.server.Addr()
+	if tmpl.Custom != nil {
+		// Custom services are reached under their own gateway prefix.
+		baseURL += "/sdk/" + tmpl.Provider + "/v1"
+	}
+	childEnv := GatewaySessionEnv(runtime.RuntimeGatewaySDK, tmpl, baseURL, jwtStr).
 		Apply(os.Environ(), req.CleanEnv, req.ExtraEnvVars)
 	childEnv = mergeEnvPairs(childEnv, req.LocalEnv)
 
@@ -177,6 +182,9 @@ func (d *gatewaySdkDriver) Run(ctx context.Context, req ExecRequest, tmpl regist
 // sdkBaseURLVar returns the SDK-specific environment variable name for the
 // gateway base URL. Defaults to OPENAI_BASE_URL for unknown providers.
 func sdkBaseURLVar(tmpl registry.ConnectionTemplate) string {
+	if tmpl.Custom != nil && tmpl.Custom.BaseURLEnv != "" {
+		return tmpl.Custom.BaseURLEnv
+	}
 	switch tmpl.Provider {
 	case "openai":
 		return "OPENAI_BASE_URL"

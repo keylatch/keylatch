@@ -172,6 +172,7 @@ Read the reported rule violations and fix them in `docs/api/openapi.yaml`. See
 | KL-0400–0499 | Gateway | Gateway not running, token expired, SSRF blocked |
 | KL-0500–0599 | Security | LLM session block, access denied |
 | KL-0600–0699 | Audit | Audit log write failure, chain verification error |
+| KL-4100–4199 | Approvals and approver passphrase | `approve`, `deny`, `grant`, `launch`, `secret approve|reject|add`: no terminal (4105, 4123), agent session (4101, 4122), no approver passphrase set (4106, 4124), wrong passphrase (4107, 4125) |
 
 Error codes are stamped on structured errors returned by internal packages. Use
 `--json` to see the `code` field in machine-readable output.

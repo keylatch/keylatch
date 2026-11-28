@@ -171,9 +171,25 @@ type TestExpectation struct {
 
 // AuthPlacement describes where authentication credentials are placed in requests.
 type AuthPlacement struct {
-	In     string `json:"in"               yaml:"in"`               // "header" | "query" | "body"
-	Name   string `json:"name"             yaml:"name"`             // header/param name, e.g. "Authorization"
+	In     string `json:"in"               yaml:"in"`               // "header" | "query" | "body" | "basic"
+	Name   string `json:"name"             yaml:"name"`             // header/param name, e.g. "Authorization"; the user name for "basic"
 	Scheme string `json:"scheme,omitempty" yaml:"scheme,omitempty"` // e.g. "Bearer"
+	// Format, when set on a header placement, is the whole header value with
+	// "{value}" standing for the credential; it takes precedence over Scheme.
+	Format string `json:"format,omitempty" yaml:"format,omitempty"`
+}
+
+// CustomEndpoint describes a user-defined service that is forwarded by prefix
+// rather than through fixed gateway actions.
+type CustomEndpoint struct {
+	// Hosts are the allowed upstream hosts; requests go to the first one.
+	Hosts []string `json:"hosts" yaml:"hosts"`
+	// Paths are the allowed upstream path prefixes.
+	Paths []string `json:"paths" yaml:"paths"`
+	// Methods are the allowed HTTP methods; empty allows any.
+	Methods []string `json:"methods,omitempty" yaml:"methods,omitempty"`
+	// BaseURLEnv names the env var that receives the gateway URL for this service.
+	BaseURLEnv string `json:"base_url_env,omitempty" yaml:"base_url_env,omitempty"`
 }
 
 // RateLimitSpec describes rate-limiting parameters.
@@ -286,6 +302,10 @@ type ConnectionTemplate struct {
 
 	// Test strategy
 	TestStrategy TestStrategy `json:"test_strategy" yaml:"test_strategy"`
+
+	// Custom is set only for user-defined secrets. The template schema has no
+	// "custom" key, so a template file cannot set it.
+	Custom *CustomEndpoint `json:"custom,omitempty" yaml:"custom,omitempty"`
 }
 
 // GatewayCapabilities lists the capabilities a gateway session for t may hold:

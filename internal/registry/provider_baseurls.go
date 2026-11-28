@@ -22,6 +22,13 @@ var AllowedProviderBaseURLs = map[string][]string{
 	"hashicorp-vault": {}, // runtime-configured; validated separately
 }
 
+// AllowProviderHosts registers the upstream hosts of a user-defined provider so
+// the gateway SSRF gate accepts them. Call it before the gateway starts: the
+// allowlist is read without locking.
+func AllowProviderHosts(provider string, hosts []string) {
+	AllowedProviderBaseURLs[provider] = append([]string(nil), hosts...)
+}
+
 // SSRFDenyRanges contains all networks that upstream targets must not resolve to.
 // Includes RFC 1918, link-local, loopback, CGN, multicast, and unspecified.
 var SSRFDenyRanges []*net.IPNet

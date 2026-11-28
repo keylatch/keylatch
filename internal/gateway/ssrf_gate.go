@@ -19,9 +19,9 @@ var errUnpinnedDial = errors.New("ssrf_gate: dial to a host that was not validat
 
 // SSRFGate validates upstream hosts against the provider allowlist and deny ranges.
 type SSRFGate struct {
-	allowedBaseURLs map[string][]string // from registry.AllowedProviderBaseURLs
-	denyRanges      []*net.IPNet        // from registry.SSRFDenyRanges
-	lookup          func(host string) ([]string, error)
+	allowedBaseURLs map[string][]string                 // from registry.AllowedProviderBaseURLs
+	denyRanges      []*net.IPNet                        // from registry.SSRFDenyRanges
+	lookup          func(host string) ([]string, error) // nil: net.LookupHost
 }
 
 // NewSSRFGate creates an SSRFGate using the compiled-in allowlist and deny ranges.
@@ -72,7 +72,12 @@ func (g *SSRFGate) verifyHost(host string) ([]net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return []net.IP{ip}, g.checkIP(ip)
 	}
-	addrs, err := g.lookup(host)
+	// DNS resolve.
+	lookup := g.lookup
+	if lookup == nil {
+		lookup = net.LookupHost
+	}
+	addrs, err := lookup(host) //nolint:gosec // G704: host is the value being validated; this IS the SSRF gate performing DNS resolution to check resolved IPs against deny-ranges
 	if err != nil {
 		return nil, fmt.Errorf("ssrf_gate: DNS lookup %q: %w", host, err)
 	}
