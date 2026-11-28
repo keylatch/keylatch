@@ -6,37 +6,24 @@ Each client uses a separate temporary `BITWARDENCLI_APPDATA_DIR`. A test HTTPS r
 
 ## Run locally
 
-Start a disposable Vaultwarden service on a loopback port, with registration enabled and no persistent volume. In this monorepo, use `infractl dev services` with this project declaration in `.claude/test-services.json`:
-
-```json
-{
-  "engine": "podman",
-  "ttlMinutes": 60,
-  "services": {
-    "vaultwarden": {
-      "image": "docker.io/vaultwarden/server:1.37.4",
-      "port": 8080,
-      "hostPort": 18280,
-      "env": {"ROCKET_PORT": "8080", "SIGNUPS_ALLOWED": "true"},
-      "tmpfs": ["/data"],
-      "readySeconds": 30
-    }
-  }
-}
-```
+Start a disposable Vaultwarden service on a loopback port, with registration enabled and no persistent volume. Use `podman` or `docker`; the commands below are the same for both.
 
 Run these commands with the absolute checkout path substituted for `/path/to/keylatch`:
 
 ```sh
-infractl dev services up /path/to/keylatch vaultwarden
+docker run -d --rm --name keylatch-vaultwarden \
+  -p 127.0.0.1:18280:8080 \
+  -e ROCKET_PORT=8080 -e SIGNUPS_ALLOWED=true \
+  --tmpfs /data \
+  docker.io/vaultwarden/server:1.37.4
 npm --prefix /path/to/keylatch/tests/e2e/bitwarden ci --ignore-scripts --no-audit --no-fund
 env KEYLATCH_E2E_VAULTWARDEN_URL=http://127.0.0.1:18280 \
   KEYLATCH_E2E_BW_BIN=/path/to/keylatch/tests/e2e/bitwarden/node_modules/.bin/bw \
   make -C /path/to/keylatch test-e2e-bw
-infractl dev services down /path/to/keylatch
+docker stop keylatch-vaultwarden
 ```
 
-The service stores only generated test accounts and data; stopping it discards them. Use an unused host port if 18280 is occupied. The fixture refuses remote addresses, embedded credentials, query parameters, and non-HTTP upstream origins.
+Allow up to 30 seconds for the service to accept connections before running the tests. The service stores only generated test accounts and data; stopping it discards them. Use an unused host port if 18280 is occupied. The fixture refuses remote addresses, embedded credentials, query parameters, and non-HTTP upstream origins.
 
 ## What runs
 

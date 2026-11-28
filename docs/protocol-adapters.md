@@ -149,16 +149,29 @@ client against a real server. Each child receives only the session token, and it
 return the stored upstream role. The CI job `adapters` provides the server and Node 26. Without
 the server the tests skip and name what is missing; skipped tests provide no conformance evidence.
 
-For a local run, start the declared PostgreSQL service with `infractl dev services up <checkout>`.
+For a local run, start a disposable PostgreSQL service:
+
+```sh
+docker run -d --rm --name keylatch-test-postgres -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=app_owner -e POSTGRES_PASSWORD=test -e POSTGRES_DB=appdb \
+  --tmpfs /var/lib/postgresql docker.io/library/postgres:18-alpine
+```
+
 Install and generate the Prisma fixture with `npm ci --prefix tests/adapters/prisma` and
 `npm run generate --prefix tests/adapters/prisma`. Set `KEYLATCH_TEST_PG_ADDR=127.0.0.1:55432`,
 `KEYLATCH_TEST_PG_USER=app_owner`, `KEYLATCH_TEST_PG_PASSWORD=test`,
 `KEYLATCH_TEST_PG_DATABASE=appdb` and `KEYLATCH_TEST_NODE_PG` to the absolute
 `tests/adapters/prisma/node_modules` path. Run `go test -tags adapters -count=1 ./tests/adapters/...`.
-Stop the service with `infractl dev services down <checkout>`; its data is temporary.
+Stop the PostgreSQL service with `docker stop keylatch-test-postgres`; its data is temporary.
 
-The same managed service declaration provides Redis on `127.0.0.1:56379`. Set
-`KEYLATCH_TEST_REDIS_ADDR` to that address and `KEYLATCH_TEST_REDIS_PASSWORD=test` to run
+Start Redis the same way (stop it with `docker stop keylatch-test-redis`):
+
+```sh
+docker run -d --rm --name keylatch-test-redis -p 127.0.0.1:56379:6379 \
+  docker.io/library/redis:8-alpine redis-server --requirepass test --save "" --appendonly no
+```
+
+Set `KEYLATCH_TEST_REDIS_ADDR` to that address and `KEYLATCH_TEST_REDIS_PASSWORD=test` to run
 the Redis CLI conformance test. It checks RESP2, RESP3, the upstream ACL identity, and refusal
 of the stored password at the adapter. Unit tests additionally verify TLS, credential wiping,
 bounded frame parsing, failure sanitization and cancellation.

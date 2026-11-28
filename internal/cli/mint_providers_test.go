@@ -211,15 +211,15 @@ func TestMintProviderRefusesAnAgentSession(t *testing.T) {
 
 func TestMintGitHubAppScopeFlag(t *testing.T) {
 	env := setupMint(t, defaultMintPolicy())
-	stdout, stderr, code := runMintArgs(t, "github-app", "--scope", "repo=patrikmichi/keylatch", "--scope", "contents=write", "--permission", "metadata=read")
+	stdout, stderr, code := runMintArgs(t, "github-app", "--scope", "repo=example-org/keylatch", "--scope", "contents=write", "--permission", "metadata=read")
 	require.Equal(t, exitcode.OK, code, stderr)
 	var res mintResult
 	require.NoError(t, json.Unmarshal([]byte(stdout), &res))
-	assert.Equal(t, "patrikmichi/keylatch", res.Repository)
+	assert.Equal(t, "example-org/keylatch", res.Repository)
 	assert.Equal(t, map[string]string{"contents": "write", "metadata": "read"}, res.Permissions)
 	require.Len(t, env.github.posts, 1)
 
-	_, _, code = runMintArgs(t, "github-app", "--repo", "patrikmichi/keylatch", "--scope", "repo=patrikmichi/other", "--scope", "contents=read")
+	_, _, code = runMintArgs(t, "github-app", "--repo", "example-org/keylatch", "--scope", "repo=example-org/other", "--scope", "contents=read")
 	assert.Equal(t, exitcode.UserError, code)
 	_, _, code = runMintArgs(t, "github-app", "--scope", "repo", "--permission", "contents=read")
 	assert.Equal(t, exitcode.UserError, code)

@@ -75,26 +75,26 @@ func TestOpenRefusals(t *testing.T) {
 		usage  bool
 		text   string
 	}{
-		{"no policy", func() *config.GitHubAppMintPolicy { return nil }, req("patrikmichi/app", "contents=write"), true, false, "no mint.github_app policy"},
+		{"no policy", func() *config.GitHubAppMintPolicy { return nil }, req("example-org/app", "contents=write"), true, false, "no mint.github_app policy"},
 		{"agent not listed", func() *config.GitHubAppMintPolicy {
 			p := policy()
 			p.PlaceholderCallers = nil
 			return p
-		}, req("patrikmichi/app", "contents=write"), true, false, "not allowed to use minted tokens"},
-		{"host not listed", policy, mintsession.Request{Connection: "github-app", Repository: "patrikmichi/app", Permissions: []string{"contents=write"}, Caller: mint.CallerHost}, true, false, `"host"`},
+		}, req("example-org/app", "contents=write"), true, false, "not allowed to use minted tokens"},
+		{"host not listed", policy, mintsession.Request{Connection: "github-app", Repository: "example-org/app", Permissions: []string{"contents=write"}, Caller: mint.CallerHost}, true, false, `"host"`},
 		{"denied owner", func() *config.GitHubAppMintPolicy {
 			p := policy()
 			p.AllowOwners = append(p.AllowOwners, "blocked")
 			return p
 		}, req("blocked/app", "contents=write"), true, false, "deny list"},
 		{"owner not allowed", policy, req("other/app", "contents=write"), true, false, "not in allow_owners"},
-		{"above ceiling", policy, req("patrikmichi/app", "contents=admin"), true, false, "above the ceiling"},
-		{"permission not granted", policy, req("patrikmichi/app", "workflows=write"), true, false, "above the ceiling"},
+		{"above ceiling", policy, req("example-org/app", "contents=admin"), true, false, "above the ceiling"},
+		{"permission not granted", policy, req("example-org/app", "workflows=write"), true, false, "above the ceiling"},
 		{"no repository", policy, req("", "contents=write"), false, true, "--repo"},
 		{"bad repository", policy, req("nonsense", "contents=write"), false, true, "owner/name"},
-		{"bad permission", policy, req("patrikmichi/app", "contents"), false, true, "permission"},
-		{"duplicate permission", policy, req("patrikmichi/app", "contents=read", "contents=write"), false, true, "more than once"},
-		{"not a minting connection", policy, mintsession.Request{Connection: "stripe", Repository: "patrikmichi/app", Caller: mint.CallerAgent}, false, true, "mints tokens"},
+		{"bad permission", policy, req("example-org/app", "contents"), false, true, "permission"},
+		{"duplicate permission", policy, req("example-org/app", "contents=read", "contents=write"), false, true, "more than once"},
+		{"not a minting connection", policy, mintsession.Request{Connection: "stripe", Repository: "example-org/app", Caller: mint.CallerAgent}, false, true, "mints tokens"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,7 +113,7 @@ func TestOpenRefusals(t *testing.T) {
 func TestOpenDefaultsToTheOnlyAllowedRepoAndTheCeiling(t *testing.T) {
 	p := policy()
 	p.AllowOwners = nil
-	p.AllowRepos = []string{"patrikmichi/only"}
+	p.AllowRepos = []string{"example-org/only"}
 	f := setup(t, p)
 	cred, err := f.m.Open(context.Background(), req(""))
 	require.NoError(t, err)
@@ -133,14 +133,14 @@ func TestOpenRefusesWithoutAuditLog(t *testing.T) {
 		cfg.Connections = map[string]config.ConnectionPolicy{"github-app": {Mint: &config.MintPolicy{GitHubApp: policy()}}}
 		return cfg, nil
 	}})
-	_, err := m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	_, err := m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "audit")
 }
 
 func TestValueMintsLazilyCachesAndReturnsCopies(t *testing.T) {
 	f := setup(t, policy())
-	cred, err := f.m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	cred, err := f.m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.NoError(t, err)
 	t.Cleanup(cred.Close)
 
@@ -165,7 +165,7 @@ func TestValueMintsLazilyCachesAndReturnsCopies(t *testing.T) {
 func TestValueRefreshesShortlyBeforeExpiry(t *testing.T) {
 	f := setup(t, policy())
 	f.stub.Lifetime = 90 * time.Second
-	cred, err := f.m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	cred, err := f.m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.NoError(t, err)
 	t.Cleanup(cred.Close)
 
@@ -179,7 +179,7 @@ func TestValueRefreshesShortlyBeforeExpiry(t *testing.T) {
 
 func TestValueRejectsOtherFieldsAndWidenedTokens(t *testing.T) {
 	f := setup(t, policy())
-	cred, err := f.m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	cred, err := f.m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.NoError(t, err)
 	t.Cleanup(cred.Close)
 	_, err = cred.Value(context.Background(), "private_key")
@@ -198,7 +198,7 @@ func TestValueRejectsOtherFieldsAndWidenedTokens(t *testing.T) {
 
 func TestCloseRevokesAndWipes(t *testing.T) {
 	f := setup(t, policy())
-	cred, err := f.m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	cred, err := f.m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.NoError(t, err)
 	_, err = cred.Value(context.Background(), mintsession.TokenField)
 	require.NoError(t, err)
@@ -214,7 +214,7 @@ func TestCloseRevokesAndWipes(t *testing.T) {
 
 func TestCloseBeforeFirstUseRevokesNothing(t *testing.T) {
 	f := setup(t, policy())
-	cred, err := f.m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	cred, err := f.m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.NoError(t, err)
 	cred.Close()
 	assert.Empty(t, f.stub.Revoked())
@@ -235,7 +235,7 @@ func TestUnauditedTokenIsRevoked(t *testing.T) {
 	cfg := config.Default()
 	cfg.Connections = map[string]config.ConnectionPolicy{"github-app": {Mint: &config.MintPolicy{GitHubApp: policy()}}}
 	m := mintsession.New(mintsession.Config{Store: f.store, APIBase: f.stub.URL, Policy: func() (config.Config, error) { return cfg, nil }, Audit: &failingAudit{after: 0}})
-	cred, err := m.Open(context.Background(), req("patrikmichi/app", "contents=write"))
+	cred, err := m.Open(context.Background(), req("example-org/app", "contents=write"))
 	require.NoError(t, err)
 	_, err = cred.Value(context.Background(), mintsession.TokenField)
 	require.Error(t, err)

@@ -36,11 +36,11 @@ func connectGitHubApp(t *testing.T, store *mockStore, keyPEM []byte, extra map[s
 func TestGitHubAppConnectStoresInstallationsByOwner(t *testing.T) {
 	store := newMockStore()
 	connectGitHubApp(t, store, testAppKeyPEM(t), map[string][]byte{
-		"installation_PatrikMichi": []byte("111"),
+		"installation_Example-Org": []byte("111"),
 		"installation_keylatch":    []byte("222"),
 	})
 
-	v, ok := store.storedValue("work/code-hosting/github-app/config/installation_patrikmichi")
+	v, ok := store.storedValue("work/code-hosting/github-app/config/installation_example-org")
 	require.True(t, ok, "owner suffix is lower-cased")
 	assert.Equal(t, "111", string(v))
 	v, ok = store.storedValue("work/code-hosting/github-app/config/installation_keylatch")
