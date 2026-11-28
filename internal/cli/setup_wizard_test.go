@@ -139,7 +139,7 @@ func TestSetupInteractive_BasicMenuChoices(t *testing.T) {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
 				assert.NotContains(t, err.Error(), "--backend")
-				assert.Equal(t, "", cbLoadConfig(t, cfgDir).Backend)
+				assert.NoFileExists(t, filepath.Join(cfgDir, "config.json"))
 				return
 			}
 			require.NoError(t, err)
