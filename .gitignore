@@ -34,16 +34,6 @@ coverage/
 .env.*
 !.env.example
 
-# Local agent and editor tooling
-/.claude/
-/.claude-*.json
-/.claudeignore
-/.rgignore
-/.mcp.json
-/.agents/
-/.codex/
+# Editor settings
 /.idea/
 /.vscode/
-/CLAUDE.md
-/AGENTS.md
-.agent-handoff.json
