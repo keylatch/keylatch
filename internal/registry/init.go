@@ -52,6 +52,9 @@ func InitFromConfig(ctx context.Context, env llmcontext.Lookup) error {
 		if regErr := Register(lt.Template); regErr != nil {
 			return regErr
 		}
+		if lt.Source == SourceEmbed {
+			allowEmbeddedTemplateHosts(lt.Template)
+		}
 	}
 	return nil
 }

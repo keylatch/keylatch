@@ -228,12 +228,12 @@ keylatch run --dry-run --json openrouter -- python3 call_provider.py
 
 ## CI environments
 
-In CI, use a service account or a one-time token rather than an interactive session. Store the encrypted vault file in a CI secret, then bootstrap:
+In CI, use a service account or a one-time token rather than an interactive session. Export the service account token as a CI secret, then bootstrap:
 
 ```bash
 # CI step — configure backend and run
-export KEYLATCH_BACKEND=file
-export KEYLATCH_VAULT_PATH=/path/to/ci-vault.age
+export OP_SERVICE_ACCOUNT_TOKEN="ops_..."
+keylatch bootstrap --backend op
 
 keylatch gateway up --detach
 keylatch run --clean-env --runtime gateway_typed openrouter -- python3 call_provider.py  # gateway_typed is the default; stated explicitly for clarity

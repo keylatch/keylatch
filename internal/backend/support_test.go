@@ -68,3 +68,40 @@ func TestCheckSupported_OptInIsPerBackendAndWarnsOnce(t *testing.T) {
 		t.Errorf("aws-sm notice missing or does not say what is unproven:\n%s", out.String())
 	}
 }
+
+func TestUnsupportedError_NamesTheBackendAndItsDoc(t *testing.T) {
+	t.Setenv(AllowUnsupportedEnv, "")
+	cases := []struct {
+		name, doc, optIn string
+		wantOptIn        bool
+	}{
+		{"file", "docs/backends/moving-off-file.md", AllowUnsupportedEnv + "=file", true},
+		{"vault", "docs/backends/moving-off-file.md#other-opt-in-backends", AllowUnsupportedEnv + "=vault", true},
+		{"keychain", "docs/backends/moving-off-file.md#backends-that-cannot-be-enabled", "", false},
+	}
+	for _, c := range cases {
+		err := CheckSupported(c.name)
+		var ue *UnsupportedError
+		if !errors.As(err, &ue) {
+			t.Fatalf("%s: want UnsupportedError, got %v", c.name, err)
+		}
+		msg := err.Error()
+		if ue.OptIn != c.wantOptIn || !strings.Contains(msg, `"`+c.name+`"`) || !strings.HasSuffix(msg, c.doc) {
+			t.Errorf("%s: unexpected message %q", c.name, msg)
+		}
+		if strings.Contains(msg, AllowUnsupportedEnv+"=") != c.wantOptIn {
+			t.Errorf("%s: opt-in hint mismatch in %q", c.name, msg)
+		}
+	}
+}
+
+func TestOptInEnvValue_KeepsOnlyBackendsTheManifestOpensToOptIn(t *testing.T) {
+	t.Setenv(AllowUnsupportedEnv, " file, keychain,awssm,file,bw,bogus")
+	if got := OptInEnvValue(); got != "file,aws-sm" {
+		t.Errorf("OptInEnvValue = %q, want file,aws-sm", got)
+	}
+	t.Setenv(AllowUnsupportedEnv, "")
+	if got := OptInEnvValue(); got != "" {
+		t.Errorf("OptInEnvValue = %q, want empty", got)
+	}
+}

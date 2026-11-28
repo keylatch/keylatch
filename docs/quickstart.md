@@ -28,7 +28,7 @@ Other platforms: binary download, Scoop (Windows), or Docker — see [README.md]
 ## Step 2 — Bootstrap
 
 ```bash
-keylatch bootstrap
+keylatch bootstrap --backend op   # or: bw
 ```
 
 `bootstrap` creates `~/.keylatch/` with mode `0700` and writes a default `config.json`. It initializes the encrypted vault directory (`~/.keylatch/vault/`), generates a salt for key derivation, and verifies the chosen backend is reachable. Safe to run multiple times — it is idempotent.
@@ -38,7 +38,7 @@ This step is required. Running `keylatch run` on a machine that has not been boo
 **Single-command bootstrap** (CI and scripted environments):
 
 ```bash
-keylatch bootstrap --backend file   # or: keychain, op, bw
+keylatch bootstrap --backend op   # or: bw
 ```
 
 **Interactive wizard** (recommended for first-time users):

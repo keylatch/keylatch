@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
+	"slices"
+	"strings"
 )
 
 // AllowedProviderBaseURLs maps provider IDs to their allowed upstream hostnames.
@@ -27,6 +30,34 @@ var AllowedProviderBaseURLs = map[string][]string{
 // allowlist is read without locking.
 func AllowProviderHosts(provider string, hosts []string) {
 	AllowedProviderBaseURLs[provider] = append([]string(nil), hosts...)
+}
+
+var exactHostname = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+
+// allowEmbeddedTemplateHosts adds the hosts an embedded template declares (its
+// secret-substitution hosts and its HTTPS test endpoint) to the allowlist,
+// next to any hand-written entry. Entries with an empty list stay
+// operator-configured. Call it before the gateway starts.
+func allowEmbeddedTemplateHosts(t ConnectionTemplate) {
+	declared := append([]string(nil), t.Hosts...)
+	if u, err := url.Parse(t.TestStrategy.Endpoint); err == nil && u.Scheme == "https" {
+		declared = append(declared, u.Host)
+	}
+	existing, known := AllowedProviderBaseURLs[t.Provider]
+	if known && len(existing) == 0 {
+		return
+	}
+	merged := slices.Clone(existing)
+	for _, h := range declared {
+		h = strings.ToLower(h)
+		if exactHostname.MatchString(h) && !slices.Contains(merged, h) {
+			merged = append(merged, h)
+		}
+	}
+	if len(merged) == 0 || (known && len(merged) == len(existing)) {
+		return
+	}
+	AllowedProviderBaseURLs[t.Provider] = merged
 }
 
 // SSRFDenyRanges contains all networks that upstream targets must not resolve to.

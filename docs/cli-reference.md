@@ -747,8 +747,8 @@ keylatch config set <key> <value>
 ```bash
 keylatch config list
 keylatch config get backend
-keylatch config set backend file
-keylatch config set backend keychain
+keylatch config set backend op
+keylatch config set backend bw
 ```
 
 Credential keys are rejected — use `keylatch set` for credentials.

@@ -36,7 +36,7 @@ prints the resolved locations.
 ```json
 {
   "version": 1,
-  "backend": "keychain",
+  "backend": "op",
   "audit": {
     "enabled": true,
     "retention_days": 90,
@@ -90,8 +90,8 @@ keylatch config list
 keylatch config get backend
 
 # Set a key
-keylatch config set backend file
-keylatch config set backend keychain
+keylatch config set backend op
+keylatch config set backend bw
 ```
 
 Credential values are rejected by `config set` — use `keylatch set` for credentials.

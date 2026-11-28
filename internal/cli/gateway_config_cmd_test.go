@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/paths"
@@ -229,6 +230,21 @@ func TestGatewayLaunchd_UnitHoldsNoSettings(t *testing.T) {
 	f.backendCred = []string{"x=LD_PRELOAD"}
 	_, err = f.launchdSpec(home)
 	assert.Error(t, err)
+}
+
+func TestGatewayLaunchd_CarriesTheUnsupportedBackendOptIn(t *testing.T) {
+	home, binary := systemdTestEnv(t)
+	f := gatewayServiceFlags{binary: binary}
+
+	t.Setenv(backend.AllowUnsupportedEnv, "file")
+	spec, err := f.launchdSpec(home)
+	require.NoError(t, err)
+	assert.Contains(t, spec.render(), "<key>EnvironmentVariables</key><dict><key>"+backend.AllowUnsupportedEnv+"</key><string>file</string></dict>")
+
+	t.Setenv(backend.AllowUnsupportedEnv, "")
+	spec, err = f.launchdSpec(home)
+	require.NoError(t, err)
+	assert.NotContains(t, spec.render(), "EnvironmentVariables")
 }
 
 func TestKeychainSecret_ReadsViaSecurityTool(t *testing.T) {

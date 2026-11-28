@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -30,12 +31,39 @@ type UnsupportedError struct {
 
 func (e *UnsupportedError) Error() string {
 	if !e.OptIn {
-		return fmt.Sprintf("backend %q is not supported (%s) and cannot be enabled. Supported managers: %s",
-			e.Name, e.Status, strings.Join(e.Supported, ", "))
+		return fmt.Sprintf("backend %q is not supported (%s) and cannot be enabled. Supported managers: %s. To move off it, see %s",
+			e.Name, e.Status, strings.Join(e.Supported, ", "), MigrationDoc(e.Name, false))
 	}
 	return fmt.Sprintf("backend %q is not supported (%s). Supported managers: %s. "+
-		"To keep using it for now, set %s=%s; to move off it, see docs/backends/moving-off-file.md",
-		e.Name, e.Status, strings.Join(e.Supported, ", "), AllowUnsupportedEnv, e.Name)
+		"To keep using it for now, set %s=%s in the environment of every keylatch process, including a gateway service; to move off it, see %s",
+		e.Name, e.Status, strings.Join(e.Supported, ", "), AllowUnsupportedEnv, e.Name, MigrationDoc(e.Name, true))
+}
+
+// MigrationDoc is the page that explains how to move off name; optIn says
+// whether the manifest lets the operator keep it through AllowUnsupportedEnv.
+func MigrationDoc(name string, optIn bool) string {
+	const doc = "docs/backends/moving-off-file.md"
+	switch {
+	case !optIn:
+		return doc + "#backends-that-cannot-be-enabled"
+	case name == "file":
+		return doc
+	}
+	return doc + "#other-opt-in-backends"
+}
+
+// OptInEnvValue is the opt-in list of this process reduced to the backends the
+// manifest lets an operator opt into, for a service definition that must carry
+// the opt-in the process was started with. It is empty when none applies.
+func OptInEnvValue() string {
+	var kept []string
+	for _, item := range strings.Split(os.Getenv(AllowUnsupportedEnv), ",") {
+		name, ok := CanonicalName(strings.TrimSpace(item))
+		if ok && OptInAllowed(name) && !slices.Contains(kept, name) {
+			kept = append(kept, name)
+		}
+	}
+	return strings.Join(kept, ",")
 }
 
 // Is also matches ErrUnavailable for a backend that cannot be enabled, as its

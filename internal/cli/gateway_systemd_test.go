@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/stretchr/testify/assert"
@@ -300,4 +301,19 @@ func TestGatewaySystemdInstall_RejectsBadAllowSourceAndConnection(t *testing.T) 
 		_, err := runSystemd(t, args...)
 		require.Error(t, err, extra)
 	}
+}
+
+func TestGatewaySystemdPrint_CarriesTheUnsupportedBackendOptIn(t *testing.T) {
+	_, binary := systemdTestEnv(t)
+	installFakeUserManager(t)
+
+	t.Setenv(backend.AllowUnsupportedEnv, "file,keychain")
+	out, err := runSystemd(t, "print", "--binary", binary)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Environment="+backend.AllowUnsupportedEnv+"=file\n")
+
+	t.Setenv(backend.AllowUnsupportedEnv, "")
+	out, err = runSystemd(t, "print", "--binary", binary)
+	require.NoError(t, err)
+	assert.NotContains(t, out, backend.AllowUnsupportedEnv)
 }

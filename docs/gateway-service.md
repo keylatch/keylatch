@@ -29,7 +29,7 @@ umask 077
 head -c 32 /dev/urandom > "$XDG_RUNTIME_DIR/kek"
 systemd-creds encrypt --user --name=kek --with-key=tpm2 \
   "$XDG_RUNTIME_DIR/kek" ~/.config/keylatch/gateway/kek.cred
-KEYLATCH_AGE_IDENTITY="$XDG_RUNTIME_DIR/kek" keylatch bootstrap
+KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file KEYLATCH_AGE_IDENTITY="$XDG_RUNTIME_DIR/kek" keylatch bootstrap --backend file
 shred -u "$XDG_RUNTIME_DIR/kek"
 ```
 
@@ -88,6 +88,10 @@ never into the unit. The unit's `ExecStart` is `keylatch gateway up` plus the
 a config change. `keylatch gateway systemd print` shows the unit without writing anything,
 `status` reports the unit, its state, the credentials and whether lingering is on, and
 `uninstall` removes the unit but keeps the config and the credentials.
+
+When `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` is set where `install` or `print` runs, the unit carries it as an
+`Environment=` line, so a service on a backend that is no longer supported keeps starting; see
+[moving off the file backend](backends/moving-off-file.md).
 
 ### macOS
 
