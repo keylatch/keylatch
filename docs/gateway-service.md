@@ -89,6 +89,10 @@ a config change. `keylatch gateway systemd print` shows the unit without writing
 `status` reports the unit, its state, the credentials and whether lingering is on, and
 `uninstall` removes the unit but keeps the config and the credentials.
 
+When `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` is set where `install` or `print` runs, the unit carries it as an
+`Environment=` line, so a service on a backend that is no longer supported keeps starting; see
+[moving off the file backend](backends/moving-off-file.md).
+
 ### macOS
 
 `keylatch gateway install` with the same settings flags (`--listen`, `--allow-source`,

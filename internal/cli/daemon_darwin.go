@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/keylatch/keylatch/internal/backend"
 )
 
 const (
@@ -34,7 +36,7 @@ const launchdPlistContentTpl = `<?xml version="1.0" encoding="UTF-8"?>
 <dict>
     <key>Label</key><string>io.keylatch.keylatchd</string>
     <key>ProgramArguments</key><array><string>%s</string></array>
-    <key>RunAtLoad</key><true/>
+%s    <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>StandardOutPath</key><string>%s/Library/Logs/keylatchd.log</string>
     <key>StandardErrorPath</key><string>%s/Library/Logs/keylatchd.log</string>
@@ -89,7 +91,11 @@ func installLaunchdPlist(plistPath string) error {
 		return fmt.Errorf("install launchd plist: mkdir %q: %w", launchAgentsDir, mkErr)
 	}
 
-	content := fmt.Sprintf(launchdPlistContentTpl, keylatchdPath, home, home)
+	env := ""
+	if optIn := backend.OptInEnvValue(); optIn != "" {
+		env = "    <key>EnvironmentVariables</key><dict><key>" + backend.AllowUnsupportedEnv + "</key><string>" + xmlString(optIn) + "</string></dict>\n"
+	}
+	content := fmt.Sprintf(launchdPlistContentTpl, keylatchdPath, env, home, home)
 	if writeErr := os.WriteFile(plistPath, []byte(content), 0o644); writeErr != nil {
 		return fmt.Errorf("install launchd plist: write %q: %w", plistPath, writeErr)
 	}

@@ -312,15 +312,15 @@ func checkBackendTier(env llmcontext.Lookup) Check {
 		case backend.OptedIn(name):
 			st.Warn = true
 			st.Detail += ", in use through " + backend.AllowUnsupportedEnv + ": " + entry.Note
-			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + ": docs/backends/moving-off-file.md"
+			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + ": " + backend.MigrationDoc(name, true)
 		case backend.OptInAllowed(name):
 			st.OK = false
 			st.Detail += ": " + entry.Note
-			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + " (docs/backends/moving-off-file.md), or set " + backend.AllowUnsupportedEnv + "=" + name + " for now."
+			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + " (" + backend.MigrationDoc(name, true) + "), or set " + backend.AllowUnsupportedEnv + "=" + name + " for now."
 		default:
 			st.OK = false
 			st.Detail += ": " + entry.Note
-			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + "; this backend cannot be enabled."
+			st.Fix = "Move to " + strings.Join(backend.SupportedManagers(), " or ") + "; this backend cannot be enabled (" + backend.MigrationDoc(name, false) + ")."
 		}
 		return st
 	}

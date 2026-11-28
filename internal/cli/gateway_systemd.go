@@ -11,6 +11,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 	"github.com/spf13/cobra"
@@ -44,6 +45,9 @@ type gatewayUnitSpec struct {
 	// ExecArgs are the arguments after the binary: `gateway up` plus the
 	// backend credential wiring. Settings live in the operator config.
 	ExecArgs string
+	// OptIn is the unsupported-backend opt-in the unit carries so the service
+	// opens the same backend its installer does.
+	OptIn string
 }
 
 var gatewayUnitTemplate = template.Must(template.New("unit").Parse(`[Unit]
@@ -58,6 +62,9 @@ Type=simple
 # vault opens without a login session, keyring or plaintext key file.
 LoadCredentialEncrypted={{.Credential}}:{{.CredentialFile}}
 Environment=KEYLATCH_AGE_IDENTITY=%d/{{.Credential}}
+{{- if .OptIn}}
+Environment={{.OptInEnv}}={{.OptIn}}
+{{- end}}
 {{- range .BackendCredentials}}
 # Backend secret, sealed the same way. keylatch reads it from $CREDENTIALS_DIRECTORY
 # at start and keeps it in its own process environment only.
@@ -81,7 +88,8 @@ func (s gatewayUnitSpec) render() (string, error) {
 	err := gatewayUnitTemplate.Execute(&b, struct {
 		gatewayUnitSpec
 		Credential string
-	}{s, systemdCredentialKEK})
+		OptInEnv   string
+	}{s, systemdCredentialKEK, backend.AllowUnsupportedEnv})
 	return b.String(), err
 }
 
@@ -229,7 +237,7 @@ func (f *gatewaySystemdFlags) spec(env llmcontext.Lookup) (gatewayUnitSpec, erro
 	if _, err := parseBackendCredentials(credFlags(backendCreds)); err != nil {
 		return gatewayUnitSpec{}, err
 	}
-	spec := gatewayUnitSpec{ExecArgs: gatewayExecArgs(backendCreds), Binary: bin, CredentialFile: gatewayCredentialPath(env), BackendCredentials: unitCreds}
+	spec := gatewayUnitSpec{ExecArgs: gatewayExecArgs(backendCreds), Binary: bin, CredentialFile: gatewayCredentialPath(env), BackendCredentials: unitCreds, OptIn: backend.OptInEnvValue()}
 	unitPaths := []string{spec.Binary, spec.CredentialFile}
 	for _, c := range spec.BackendCredentials {
 		unitPaths = append(unitPaths, c.File)

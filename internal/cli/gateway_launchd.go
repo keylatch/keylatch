@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +20,8 @@ const gatewayLaunchdLabel = "io.keylatch.gateway"
 type gatewayLaunchdSpec struct {
 	Binary, Home string
 	Args         []string
+	// OptIn is the unsupported-backend opt-in the agent carries.
+	OptIn string
 }
 
 func xmlString(s string) string {
@@ -32,6 +35,10 @@ func (s gatewayLaunchdSpec) render() string {
 	for _, a := range append([]string{s.Binary}, s.Args...) {
 		args.WriteString("        <string>" + xmlString(a) + "</string>\n")
 	}
+	env := ""
+	if s.OptIn != "" {
+		env = "    <key>EnvironmentVariables</key><dict><key>" + backend.AllowUnsupportedEnv + "</key><string>" + xmlString(s.OptIn) + "</string></dict>\n"
+	}
 	log := xmlString(filepath.Join(s.Home, "Library", "Logs", "keylatch-gateway.log"))
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,7 +48,7 @@ func (s gatewayLaunchdSpec) render() string {
     <key>ProgramArguments</key>
     <array>
 ` + args.String() + `    </array>
-    <key>RunAtLoad</key><true/>
+` + env + `    <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>StandardOutPath</key><string>` + log + `</string>
     <key>StandardErrorPath</key><string>` + log + `</string>
@@ -85,7 +92,7 @@ func (f *gatewayServiceFlags) launchdSpec(home string) (gatewayLaunchdSpec, erro
 	if err != nil {
 		return gatewayLaunchdSpec{}, err
 	}
-	return gatewayLaunchdSpec{Binary: bin, Home: home, Args: strings.Fields(gatewayExecArgs(creds))}, nil
+	return gatewayLaunchdSpec{Binary: bin, Home: home, Args: strings.Fields(gatewayExecArgs(creds)), OptIn: backend.OptInEnvValue()}, nil
 }
 
 // installGatewayLaunchd writes and loads the gateway LaunchAgent.
