@@ -299,10 +299,11 @@ func (r *Router) matchCustom(method, reqPath string) (*Route, bool) {
 		host, upstream = base.Custom.Hosts[0], "/"+strings.TrimPrefix(tail, "v1/")
 	case strings.HasPrefix(tail, "h/"):
 		h, p, found := strings.Cut(strings.TrimPrefix(tail, "h/"), "/")
-		if !found || !contains(base.Custom.Hosts, h) {
+		listed, ok := listedHost(base.Custom.Hosts, h)
+		if !found || !ok {
 			return nil, false
 		}
-		host, upstream = h, "/"+p
+		host, upstream = listed, "/"+p
 	default:
 		return nil, false
 	}
