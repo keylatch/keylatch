@@ -26,47 +26,24 @@ dist/
 # graphify code-graph tool output (local dev only, not a build artifact)
 graphify-out/
 
-# BEGIN GENERATED: agent-os
-# Managed by infractl repo sync; add your own entries outside this block.
-/.worktrees/
-node_modules/
-.next/
-dist/
+# Build output and local environments
 build/
-.turbo/
 coverage/
-.vite/
-.cache/
 .venv/
-.zig-cache/
-zig-out/
 .env
 .env.*
 !.env.example
-.agent-handoff.json
-/.bashrc
-/.bash_profile
-/.profile
-/.zshrc
-/.zprofile
-/.gitconfig
-/.gitmodules
-/.ripgreprc
+
+# Local agent and editor tooling
+/.claude/
+/.claude-*.json
+/.claudeignore
+/.rgignore
 /.mcp.json
-/.idea/.keep
-/.vscode/.keep
-/.agents/.keep
-/.aws/.keep
-/.codex/.keep
-/.claude/agents/.keep
-/.claude/commands/.keep
-/.claude/launch.json
-/.claude/loop.md
-/.claude/output-styles/.keep
-/.claude/routines/.keep
-/.claude/scheduled_tasks.json
-/.claude/workflows/.keep
-/.claude-custom-oauth.json
-/.claude-local-oauth.json
-/.claude-staging-oauth.json
-# END GENERATED: agent-os
+/.agents/
+/.codex/
+/.idea/
+/.vscode/
+/CLAUDE.md
+/AGENTS.md
+.agent-handoff.json
