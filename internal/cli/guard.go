@@ -36,6 +36,7 @@ import (
 // | runner/driver_brokered.go → vault.Get             | runner/driver_brokered.go:101 | A | same — runner path, guarded by GuardRuntime at entry   |
 // | internal/backend/vault/vault.go → client.Get      | backend/vault/vault.go    | C     | called only via dispatchedStore which is always mediated|
 // |                                                    |                           |       | by one of the guards above                              |
+// | newSecretAddCmd / newSecretRmCmd → vault.Set/Delete | secret_cmd.go           | B     | write-only; a change is live only when stdin is a terminal and the approver passphrase unlocks, else it is a pending proposal; list/show read metadata only |
 //
 // Any new store.Get caller MUST be classified here and added to TestSINV2_AllSixCommands.
 

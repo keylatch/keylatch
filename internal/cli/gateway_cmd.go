@@ -23,6 +23,7 @@ import (
 	"github.com/keylatch/keylatch/internal/budget"
 	"github.com/keylatch/keylatch/internal/callerkind"
 	"github.com/keylatch/keylatch/internal/config"
+	"github.com/keylatch/keylatch/internal/customsecret"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/exitcode"
 	"github.com/keylatch/keylatch/internal/gateway"
@@ -546,6 +547,14 @@ func newGatewayUpCmd() *cobra.Command {
 				// this does not change behavior for operators who have
 				// never created a policy file.
 				PolicyPath: paths.Policy(env),
+			}
+
+			if custom, loadErr := customsecret.Load(paths.CustomSecrets(env)); loadErr == nil {
+				for _, cs := range custom {
+					if !cs.Active() {
+						fmt.Fprintf(c.ErrOrStderr(), "gateway: custom secret %s is pending approval and is not served (keylatch secret approve %s)\n", cs.Name, cs.Name)
+					}
+				}
 			}
 
 			srv, err := gateway.New(opts)

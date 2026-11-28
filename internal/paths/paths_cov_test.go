@@ -38,6 +38,7 @@ func TestPathGetters_UnderConfigDir(t *testing.T) {
 		{"GrantAccessorKey", paths.GrantAccessorKey(lk), ""},
 		{"Actors", paths.Actors(lk), ""},
 		{"Projects", paths.Projects(lk), ""},
+		{"CustomSecrets", paths.CustomSecrets(lk), "custom-secrets.json"},
 		{"KeyringDir", paths.KeyringDir(lk), ""},
 		{"KeyringPath", paths.KeyringPath(lk), ""},
 		{"KeyringIdentityPath", paths.KeyringIdentityPath(lk), ""},

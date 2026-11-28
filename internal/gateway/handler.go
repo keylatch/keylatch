@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -395,12 +396,24 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Step 9: Build upstream request.
-	upstreamURL := "https://" + rt.UpstreamHost + rt.UpstreamPath //nolint:gosec // G704: UpstreamHost is validated by ssrfGate.Validate above before this point
+	var target string
+	if rt.Custom != nil {
+		// Custom secrets forward the caller's query; any credential-shaped
+		// parameter was already refused by substitution.CheckRequest.
+		var urlErr error
+		target, urlErr = customUpstreamURL(rt, r.URL.RawQuery)
+		if urlErr != nil {
+			writeError(w, http.StatusBadRequest, "upstream_url_rejected", "request path is not allowed for this secret")
+			return
+		}
+	} else {
+		target = (&url.URL{Scheme: "https", Host: rt.UpstreamHost, Path: rt.UpstreamPath}).String()
+	}
 	upstreamMethod := rt.Method
 	if upstreamMethod == "" {
 		upstreamMethod = "POST"
 	}
-	upstreamReq, err := http.NewRequestWithContext(ctx, upstreamMethod, upstreamURL, strings.NewReader(string(body))) //nolint:gosec // G704: upstreamURL built from SSRF-gate-validated UpstreamHost
+	upstreamReq, err := http.NewRequestWithContext(ctx, upstreamMethod, target, strings.NewReader(string(body))) //nolint:gosec // G704: the host is the SSRF-gate-validated UpstreamHost
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "upstream_build_error", "failed to build upstream request")
 		return
@@ -417,6 +430,13 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	if client == nil {
 		client = s.defaultHTTPClient
 	}
+	if rt.Custom != nil {
+		// A redirect would carry the injected credential to whatever origin the
+		// upstream names; hand the 3xx back to the caller instead of following it.
+		noRedirect := *client
+		noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &noRedirect
+	}
 	resp, err := client.Do(upstreamReq) //nolint:gosec // G704: upstreamReq URL was built from SSRF-gate-validated host above
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "upstream_error", "upstream request failed")
@@ -427,9 +447,17 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := readUpstreamBody(resp, rt.MaxBodyBytes)
+	var scrub *credentialScrubber
+	if rt.Custom != nil {
+		scrub = newCredentialScrubber(rt.AuthPlacement, accessToken.Value)
+	}
+	respBody, err := readUpstreamBody(resp, rt.MaxBodyBytes, rt.Custom != nil)
 	if errors.Is(err, errUnsupportedEncoding) {
 		writeError(w, http.StatusBadGateway, "upstream_encoding_unsupported", "upstream response uses a content encoding the gateway cannot redact")
+		return
+	}
+	if errors.Is(err, errBodyTooLarge) {
+		writeError(w, http.StatusBadGateway, "upstream_too_large", "upstream response exceeds the size limit")
 		return
 	}
 	if err != nil {
@@ -437,11 +465,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if scrub != nil {
+		respBody = scrub.bytes(respBody)
+	}
+
 	// Step 11: Redact response.
 	// Leakage reduction only, not a primary security control.
 	redactedHeaders := redact.Headers(resp.Header)
 	for _, h := range responseHeadersDroppedAfterDecode {
 		redactedHeaders.Del(h)
+	}
+	if scrub != nil {
+		scrub.headers(redactedHeaders)
 	}
 
 	// Collect redaction patterns from route.
@@ -459,12 +494,18 @@ func (s *Server) gatewayHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Step 12: Audit log.
 	durationMS := time.Since(start).Milliseconds()
-	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, map[string]any{
+	okExtra := map[string]any{
 		"provider":    rt.Provider,
 		"capability":  rt.Capability,
 		"status_code": resp.StatusCode,
 		"duration_ms": durationMS,
-	})
+	}
+	if rt.Custom != nil {
+		okExtra["host"] = rt.UpstreamHost
+		okExtra["path"] = rt.UpstreamPath
+		okExtra["method"] = rt.Method
+	}
+	s.logAudit(ctx, audit.ActionGatewayCall, audit.OutcomeOK, okExtra)
 	outcome = audit.OutcomeOK
 
 	// Step 13: Write redacted response to client.
@@ -486,7 +527,9 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 
 	switch placement.In {
 	case "header":
-		if placement.Scheme != "" {
+		if placement.Format != "" {
+			req.Header.Set(placement.Name, strings.Replace(placement.Format, "{value}", tokenStr, 1))
+		} else if placement.Scheme != "" {
 			req.Header.Set(placement.Name, placement.Scheme+" "+tokenStr)
 		} else {
 			req.Header.Set(placement.Name, tokenStr)
@@ -495,6 +538,8 @@ func injectAuth(req *http.Request, placement registry.AuthPlacement, tokenBytes 
 		q := req.URL.Query()
 		q.Set(placement.Name, tokenStr)
 		req.URL.RawQuery = q.Encode()
+	case "basic":
+		req.SetBasicAuth(placement.Name, tokenStr)
 	case "body":
 		// Body injection not yet implemented; use header fallback.
 		req.Header.Set("Authorization", "Bearer "+tokenStr)

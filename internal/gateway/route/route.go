@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/keylatch/keylatch/internal/registry"
@@ -54,6 +55,9 @@ type Route struct {
 	// SecretRef is the vault path for the provider root credential.
 	// Built from the template's first InjectionRule source field during Compile.
 	SecretRef string
+	// Custom is set for user-defined secrets, whose upstream path and method
+	// come from the request instead of a fixed action.
+	Custom *registry.CustomEndpoint
 	// DenyRoutes and ForwardHeaders are the template's deny_routes and
 	// forward_headers.
 	DenyRoutes     []string
@@ -75,6 +79,7 @@ type Request struct {
 type Router struct {
 	routes    map[string]*Route // key: "METHOD /path"
 	sdkRoutes map[string]*Route
+	custom    map[string]*Route // key: provider name
 }
 
 // Compile builds a Router from a slice of ConnectionTemplates.
@@ -93,9 +98,15 @@ func Compile(templates []registry.ConnectionTemplate) (*Router, error) {
 	r := &Router{
 		routes:    make(map[string]*Route),
 		sdkRoutes: make(map[string]*Route),
+		custom:    make(map[string]*Route),
 	}
 
 	for _, tmpl := range templates {
+		if tmpl.Custom != nil {
+			r.custom[tmpl.Provider] = customRoute(tmpl)
+			continue
+		}
+
 		// Only compile gateway-supporting templates.
 		pref := tmpl.RuntimeSupport.Preferred
 		if pref != registry.RuntimeGatewayTyped &&
@@ -243,12 +254,126 @@ func (r *Router) Match(method, path string) (*Route, bool) {
 	if rt, ok := r.sdkRoutes[key]; ok {
 		return rt, true
 	}
-	return nil, false
+	return r.matchCustom(method, path)
+}
+
+// customRoute is the route of a user-defined secret. LLM sessions may use it
+// within the secret's hosts, paths and methods, like a built-in non-high-risk action.
+func customRoute(tmpl registry.ConnectionTemplate) *Route {
+	return &Route{
+		Capability:       tmpl.Provider + ".request",
+		Provider:         tmpl.Provider,
+		PathTemplate:     "/sdk/" + tmpl.Provider + "/v1/",
+		UpstreamHost:     tmpl.Custom.Hosts[0],
+		AuthPlacement:    tmpl.AuthPlacement,
+		RiskLabel:        "custom",
+		ExchangeStrategy: registry.ExchangeStaticGatewayOnly,
+		MaskingProfile:   "basic",
+		MaxBodyBytes:     defaultMaxBodyBytes,
+		SecretRef:        vaultSecretRef(tmpl),
+		Custom:           tmpl.Custom,
+	}
+}
+
+// matchCustom resolves /sdk/<name>/v1/<path> (first host) and
+// /sdk/<name>/h/<host>/<path> (any listed host) for a user-defined secret. The
+// host segment must equal a listed host exactly: no case folding, trailing dot,
+// port, userinfo or IP form is accepted. The returned route is a per-request
+// copy carrying the upstream host, path and method.
+func (r *Router) matchCustom(method, reqPath string) (*Route, bool) {
+	rest, ok := strings.CutPrefix(reqPath, "/sdk/")
+	if !ok {
+		return nil, false
+	}
+	name, tail, ok := strings.Cut(rest, "/")
+	if !ok {
+		return nil, false
+	}
+	base, ok := r.custom[name]
+	if !ok {
+		return nil, false
+	}
+	var host, upstream string
+	switch {
+	case strings.HasPrefix(tail, "v1/"):
+		host, upstream = base.Custom.Hosts[0], "/"+strings.TrimPrefix(tail, "v1/")
+	case strings.HasPrefix(tail, "h/"):
+		h, p, found := strings.Cut(strings.TrimPrefix(tail, "h/"), "/")
+		listed, ok := listedHost(base.Custom.Hosts, h)
+		if !found || !ok {
+			return nil, false
+		}
+		host, upstream = listed, "/"+p
+	default:
+		return nil, false
+	}
+	// A non-canonical path (dot or empty segments) could slip past the prefix check.
+	if upstream != "/" && path.Clean(upstream) != strings.TrimSuffix(upstream, "/") {
+		return nil, false
+	}
+	if !customMethodAllowed(base.Custom.Methods, method) {
+		return nil, false
+	}
+	if !pathAllowed(base.Custom.Paths, upstream) {
+		return nil, false
+	}
+	rt := *base
+	rt.Method = method
+	rt.UpstreamHost = host
+	rt.UpstreamPath = upstream
+	return &rt, true
+}
+
+// listedHost returns the rule's own entry equal to h, so the upstream host is
+// always a configured value and never a copy of request text.
+func listedHost(hosts []string, h string) (string, bool) {
+	for _, listed := range hosts {
+		if listed == h {
+			return listed, true
+		}
+	}
+	return "", false
+}
+
+// defaultCustomMethods apply when a custom secret lists none. TRACE and CONNECT
+// are never allowed, even when listed.
+var defaultCustomMethods = []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+
+func customMethodAllowed(listed []string, method string) bool {
+	if method == "TRACE" || method == "CONNECT" {
+		return false
+	}
+	if len(listed) == 0 {
+		listed = defaultCustomMethods
+	}
+	return contains(listed, method)
+}
+
+// pathAllowed reports whether p equals an allowed prefix or sits below it on a segment boundary.
+func pathAllowed(prefixes []string, p string) bool {
+	for _, pre := range prefixes {
+		if pre == "/" || p == pre || strings.HasPrefix(p, pre+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(list []string, v string) bool {
+	for _, e := range list {
+		if e == v {
+			return true
+		}
+	}
+	return false
 }
 
 // Routes returns all compiled routes.
 func (r *Router) Routes() []*Route {
-	all := make([]*Route, 0, len(r.routes)+len(r.sdkRoutes))
+	all := make([]*Route, 0, len(r.routes)+len(r.sdkRoutes)+len(r.custom))
+	for _, rt := range r.custom {
+		all = append(all, rt)
+	}
 	for _, rt := range r.routes {
 		all = append(all, rt)
 	}

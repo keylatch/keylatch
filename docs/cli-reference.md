@@ -349,6 +349,29 @@ On a `dev` or `test` connection, fields named `*_SECRET`, `*_SIGNING_KEY`, `*_EN
 
 ---
 
+### `keylatch secret`
+
+Manage custom secrets: an API key (or an `op://`, `aws-sm://` or `hashivault://` reference)
+for a service that has no provider template, with the hosts, paths and methods it may be
+sent to and how it is injected.
+
+```bash
+keylatch secret add <name> (--value-stdin | --ref <uri>) [--replace] --host <host> [--host ...] \
+  [--path <prefix> ...] [--method <M> ...] \
+  (--header "<Name>: <format with {value}>" | --query <param> | --basic <user>) \
+  [--base-url-env <ENV>]
+keylatch secret list [--json]
+keylatch secret show <name> [--json]
+keylatch secret rm <name> [--force]
+keylatch secret approve <name>
+keylatch secret reject <name>
+```
+
+`add` takes effect at once only from a terminal with the approver passphrase; otherwise (and always in an LLM session) it only proposes the secret, pending until `approve`; `rm`, `approve` and `reject` are blocked there (exit 2); `approve` and `reject` need the approver passphrase. The value is never accepted as an
+argument. `list` and `show` print metadata only. See [custom-secrets.md](./custom-secrets.md).
+
+---
+
 ### `keylatch backup`
 
 Export an AEAD-encrypted backup of all enrolled connections (T-12-02).

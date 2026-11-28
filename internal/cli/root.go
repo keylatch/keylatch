@@ -118,6 +118,7 @@ func NewRootCommand() *cobra.Command {
 				slog.Error("registry init failed", "error", err)
 				os.Exit(exitcode.OperationFailed)
 			}
+			registerCustomSecrets(llmcontext.DefaultLookup)
 			return nil
 		},
 	}
@@ -184,6 +185,7 @@ func Register(root *cobra.Command) {
 	addCmd(root, newSetupCmd(), "start")
 	addCmd(root, newInitCmd(), "start")
 	addCmd(root, newConnectCmd(), "start")
+	addCmd(root, newSecretCmd(), "start")
 	addCmd(root, newAgentCmd(), "start")
 	addCmd(root, newDoctorCmdImpl(), "start")
 	addCmd(root, newVersionCmd(), "start")

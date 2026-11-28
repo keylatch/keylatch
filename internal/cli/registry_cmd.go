@@ -153,6 +153,7 @@ func newRegistryReloadCmd() *cobra.Command {
 			if err := registry.InitFromConfig(ctx, llmcontext.DefaultLookup); err != nil {
 				return fmt.Errorf("registry reload: %w", err)
 			}
+			registerCustomSecrets(llmcontext.DefaultLookup)
 			templates := registry.List()
 			fmt.Fprintf(c.OutOrStdout(), "registry: loaded %d templates\n", len(templates))
 

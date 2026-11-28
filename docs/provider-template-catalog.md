@@ -155,3 +155,6 @@ keylatch registry validate templates/providers/my-provider.yaml
 ```
 
 See [provider-templates.md](./provider-templates.md) for the full template format reference.
+
+To use a service that has no template with one static API key, you do not need a
+template: add it with `keylatch secret add`. See [custom-secrets.md](./custom-secrets.md).
