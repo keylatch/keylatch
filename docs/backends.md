@@ -10,7 +10,7 @@ since: 0.1.0
 
 The index covers:
 
-- Capabilities matrix for all 14 backends (encrypted, biometric, team sharing, offline, required binary)
-- Full setup snippets for `file`, `keychain`, `op`, and `bw`
-- One-liner references with docs links for the remaining 10 backends
+- Capabilities matrix for all backends (encrypted, biometric, team sharing, offline, required binary)
+- Full setup snippets for `op` and `bw`
+- One-liner references with docs links for the other backends
 - Diagnostics and backend switching instructions

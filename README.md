@@ -1,6 +1,6 @@
 # Keylatch
 
-**Keylatch keeps API keys out of model context and out of casual agent reach.** It stores credentials in an encrypted backend (1Password, Bitwarden, or an encrypted file) and injects them into subprocesses at run time. On Linux with systemd, the broker daemon keeps the keys under a separate OS user: agents get capabilities, never keys.
+**Keylatch keeps API keys out of model context and out of casual agent reach.** It stores credentials in an encrypted backend (1Password or Bitwarden) and injects them into subprocesses at run time. On Linux with systemd, the broker daemon keeps the keys under a separate OS user: agents get capabilities, never keys.
 
 > **In-user mode is not a security boundary.** Without the broker, Keylatch runs as the same user as your agent. Detection, the guard hook and the policy file raise the cost of leaking a key; a determined agent running as you can still read what you can read. On Linux, `sudo keylatch broker install` and `keylatch broker adopt` move the keys out of your account (see [the broker guide](docs/guides/broker-linux.md)). See [SECURITY.md](SECURITY.md) and [docs/security.md](docs/security.md) for what is and is not protected.
 
@@ -170,7 +170,7 @@ The full reference is [docs/cli-reference.md](docs/cli-reference.md). The common
 
 ```bash
 keylatch setup                               # guided first-time setup
-keylatch bootstrap [--dry-run] [--json]      # scriptable initialisation
+keylatch bootstrap --backend <op|bw> [--dry-run] [--json]  # scriptable initialisation
 keylatch doctor [--json]                     # diagnose configuration and environment
 keylatch connect <provider>                  # store a credential
 keylatch connect <provider> --provider-ref api_key=op://vault/item/field

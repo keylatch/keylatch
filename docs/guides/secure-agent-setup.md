@@ -21,7 +21,7 @@ Other platforms and checksum verification: [Installation](../installation.md), [
 keylatch setup
 ```
 
-Setup picks the recommended backend (Bitwarden, then 1Password, else the encrypted file), writes a default-deny policy and ends with a doctor report. For scripts use the headless form, for example `keylatch setup --non-interactive --backend op`. Ready-made configs are in [examples/config](https://github.com/keylatch/keylatch/tree/main/examples/config).
+Setup picks the recommended backend (Bitwarden or 1Password, whichever is installed), writes a default-deny policy and ends with a doctor report. For scripts use the headless form, for example `keylatch setup --non-interactive --backend op`. Ready-made configs are in [examples/config](https://github.com/keylatch/keylatch/tree/main/examples/config).
 
 ## 3. Connect a provider
 

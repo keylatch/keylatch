@@ -88,7 +88,7 @@ When Claude Code runs inside a Keylatch-managed session:
 
 ```bash
 # 1. Install Keylatch and initialize
-keylatch bootstrap
+keylatch bootstrap --backend op   # or: bw
 
 # 2. Store your API credentials
 keylatch connect openrouter api_key YOUR_KEY

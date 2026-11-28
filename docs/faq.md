@@ -87,12 +87,10 @@ The subprocess that `keylatch run` already started continues to run — it recei
 
 That depends on your configured backend:
 
-- **file** — encrypted blobs in `~/.keylatch/vault/` (XChaCha20-Poly1305, Argon2id key derivation)
-- **keychain** — macOS Keychain via the Security framework (`login.keychain-db`)
 - **op** — your 1Password vault (Keylatch writes items tagged `Keylatch`)
 - **bw** — your Bitwarden / Vaultwarden vault
 
-Run `keylatch doctor --json` to see the active backend and vault path. See [Backends](backends/index.md) for full detail.
+Installs that still use a backend that is no longer supported are covered in [moving off the file backend](backends/moving-off-file.md). Run `keylatch doctor --json` to see the active backend and vault path. See [Backends](backends/index.md) for full detail.
 
 ---
 

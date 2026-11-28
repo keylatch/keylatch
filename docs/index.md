@@ -26,7 +26,7 @@ brew install keylatch/tap/keylatch
 keylatch setup
 
 # Or scriptable setup
-keylatch bootstrap
+keylatch bootstrap --backend op   # or: bw
 keylatch connect openrouter
 
 # Preview what would be injected

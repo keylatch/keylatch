@@ -34,7 +34,7 @@ By default, `keylatch run` starts the daemon automatically. Start it manually if
 ### 2. Backend unavailable (KL-0100–0199)
 
 **Symptom:** Exit code 4 (`BackendUnavailable`). Error message like
-`backend: keychain unavailable`.
+`backend: op unavailable`.
 
 **Fix:**
 ```bash
@@ -93,8 +93,8 @@ Or set `gateway.endpoint` in `~/.keylatch/config.json`:
 
 **Fix:**
 ```bash
-keylatch bootstrap --dry-run  # diagnose without making changes
-keylatch bootstrap             # repair
+keylatch bootstrap --backend op --dry-run  # diagnose without making changes (or --backend bw)
+keylatch bootstrap --backend op            # repair
 ```
 
 If the issue persists, check that `~/.keylatch/` is writable and that you have
@@ -108,7 +108,7 @@ network access for provider template download.
 
 **Fix:**
 ```bash
-keylatch bootstrap  # loads embedded provider templates
+keylatch bootstrap --backend op  # loads embedded provider templates
 keylatch registry reload  # reloads from all template sources
 ```
 

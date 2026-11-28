@@ -63,7 +63,7 @@ Override the vault directory:
 export KEYLATCH_VAULT_PATH=/custom/path/vault
 ```
 
-The `file` backend is suitable for CI headless use. The vault is encrypted at rest
+The `file` backend is not a supported manager; existing installs may keep it with the opt-in above. The vault is encrypted at rest
 (XChaCha20-Poly1305; AES-256-GCM in FIPS builds compiled with `-tags=fips`) and
 requires no external services. See [backends/file.md](file.md) for full security
 invariants.
@@ -72,14 +72,7 @@ invariants.
 
 ### `keychain` — macOS Keychain (deprecated)
 
-Deprecated: the macOS Keychain stays as a key store for the file backend's vault identity, not as a credential backend, and the backend will be removed. It is macOS only and reads the value from stdin, never from an argument.
-
-```bash
-keylatch config set backend keychain
-printf '%s' "$OPENROUTER_KEY" | keylatch connect openrouter -f api_key=@-
-```
-
-Migrate to `op` or `bw`. iCloud Keychain sync is not enabled — local keychain only.
+Deprecated and refused: Keylatch no longer opens it, and `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` cannot enable it. The macOS Keychain stays only as a key store for the file backend's vault identity. Migrate to `op` or `bw`; see [moving off a refused backend](moving-off-file.md).
 
 ---
 
@@ -206,7 +199,7 @@ Limits: only age recipients are read (not KMS, PGP, passphrase or plugin recipie
 
 ## Headless CI — using the encrypted vault without a prompt
 
-The `file` backend derives its KEK from a vault identity in the OS keyring, or from a
+The `file` backend (opt-in only, see above) derives its KEK from a vault identity in the OS keyring, or from a
 plaintext identity file when the operator's config allows one (`scripts/ci-operator-config.sh`
 does that on CI runners). No passphrase is required then. In CI you have two options:
 

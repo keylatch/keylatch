@@ -40,13 +40,13 @@ go install github.com/keylatch/keylatch/cmd/keylatch@latest
 `bootstrap` creates the local configuration directory (`~/.keylatch/`) with correct permissions, initializes the config file, and sets up the audit log. This must be run before `keylatch run` or `keylatch setup`.
 
 ```bash
-keylatch bootstrap
+keylatch bootstrap --backend op   # or: bw
 ```
 
 To preview what bootstrap will do without writing anything:
 
 ```bash
-keylatch bootstrap --dry-run --json
+keylatch bootstrap --backend op --dry-run --json
 ```
 
 ### 2. Run the setup wizard
@@ -76,7 +76,7 @@ keylatch setup
 Non-interactive (CI-safe):
 
 ```bash
-keylatch setup --non-interactive --backend file
+keylatch setup --non-interactive --backend op
 ```
 
 **Reference branch** — stores a URI that resolves at runtime via an external password manager. Supported URI schemes: `op://`, `aws-sm://`, `hashivault://`.

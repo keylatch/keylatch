@@ -29,7 +29,7 @@ umask 077
 head -c 32 /dev/urandom > "$XDG_RUNTIME_DIR/kek"
 systemd-creds encrypt --user --name=kek --with-key=tpm2 \
   "$XDG_RUNTIME_DIR/kek" ~/.config/keylatch/gateway/kek.cred
-KEYLATCH_AGE_IDENTITY="$XDG_RUNTIME_DIR/kek" keylatch bootstrap
+KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file KEYLATCH_AGE_IDENTITY="$XDG_RUNTIME_DIR/kek" keylatch bootstrap --backend file
 shred -u "$XDG_RUNTIME_DIR/kek"
 ```
 

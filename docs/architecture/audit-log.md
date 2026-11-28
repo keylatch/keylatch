@@ -122,7 +122,7 @@ Audit is required, not best-effort. The broker and the vault refuse any
 operation that carries no audit emitter. `keylatch gateway up`, `keylatch set`
 and `keylatch list --raw` open the audit log first and exit with a security
 error when it cannot be opened, for example before the keyring exists; run
-`keylatch bootstrap` (file backend) or `keylatch keyring init` (other backends).
+`keylatch bootstrap --backend <op|bw>`.
 
 ### Cross-File Chain Invariant
 

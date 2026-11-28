@@ -87,11 +87,11 @@ docker run --rm \
 `KEYLATCH_UI_LISTEN` refuses to bind a non-loopback address automatically
 when an LLM session is detected inside the container.
 
-**What works in-container:** the `file` backend, and cloud backends reachable
-over plain HTTPS (`aws-sm`, `vault`). **What does not work:** any CLI-driven
-backend the distroless image does not ship a binary for — `op`, `bw`,
-`keychain`, `lastpass`, `keeper`, `proton-pass`. Use a native install for
-those.
+**What works in-container:** cloud backends reachable over plain HTTPS
+(`aws-sm`, `vault`; opt-in only, see [moving off the file backend](backends/moving-off-file.md)).
+**What does not work:** any CLI-driven backend the distroless image does not
+ship a binary for, including the supported `op` and `bw`. Use a native install
+for those.
 
 ## Verify the installation
 
@@ -112,7 +112,7 @@ keylatch 0.1.0 (abc1234) built 2025-01-01T00:00:00Z
 Run the setup wizard:
 
 ```bash
-keylatch bootstrap
+keylatch setup
 ```
 
 Then open the browser UI to connect your first credential provider:
