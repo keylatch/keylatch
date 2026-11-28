@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.10] - 2026-11-28
+
 ### Added
 
 - macOS cgo builds store vault identities in the data protection keychain with native user-presence access control. Legacy login-keychain identities migrate only after presence and successful read-back; a migration failure retains the legacy item and fails closed. Non-cgo macOS builds require passphrase protection.
@@ -116,6 +118,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keylatch service enroll <connection> --unit <unit>... [--scope system|user] [--allow-transient]` (presence), `service revoke`, `service list --json` and `service render-unit-lines <connection> --format json|ini` give systemd units their credentials through the broker. Enrollment records each unit's name, scope, a SHA-256 over its file and drop-ins read through the service manager, `ExecStart` and whether transient units are allowed, and seals a random 256-bit capability (stored only as a keyed hash) into `/etc/credstore.encrypted/keylatch-<connection>.cred` or `~/.config/credstore.encrypted/` with `systemd-creds`; the file never holds the secret. Inside the unit, `keylatch run <connection> --runtime service -- <command>` presents the capability and the broker releases the connection only when the peer's control group is the enrolled unit, the unit is not transient (unless enrolled so) and its files and `ExecStart` still equal the enrollment. Any mismatch is refused and audited as `security.block`; a release is audited as `release` with the unit and caller kind `service`. System accounts outside the broker's user range are served for this one request. `keylatch doctor` fails for an enrolled unit that changed and prints the re-enroll command. See `docs/guides/service-credentials-systemd.md`.
 - `keylatch machine issue --domain <ns> --name <n> --caps call --ttl <d> --out <file>`, `machine revoke <name>` and `machine list --json` give a remote guest a credential: an Ed25519 key made on this host and a certificate from the broker's machine CA that carries the domain, capabilities and expiry. `keylatch config set gateway.machine_listen <host:port>` (presence; wildcard addresses need `--allow-wildcard`) starts a TLS 1.3 listener that accepts only that CA's certificates and checks revocation on every request, and `keylatch call --remote <addr> --machine-key <file> <connection> <action>` runs an action there. The domain is the certificate's, a cross-domain request is refused and audited, and calls are audited with caller kind `machine`. See `docs/guides/machine-credentials.md`.
 - Verbs the Linux broker runs for a user (`call`, `mint`) read that user's partition through a socket the daemon passes them, so `call` reaches stored secrets through the broker; `mint` is served by the daemon for human callers. With the broker installed, `connect`, `disconnect` and deletes write through its presence-gated operations.
+- The gateway resolves `op://`, `aws-sm://` and `hashivault://` references at request time, so a connection can point at a value in an external store instead of holding a copy.
+- Custom secrets: `keylatch secret add|list|show|rm|approve|reject` register a value (or an `op://`, `aws-sm://` or `hashivault://` reference) with the hosts and paths it may be sent to and how it is injected. The gateway serves it at `/sdk/<name>/v1/<path>` without a provider template; an agent session can only propose a secret, which stays pending until the owner runs `secret approve`. See `docs/custom-secrets.md`.
+- `keylatch gateway systemd install|print`, `keylatch gateway install` and the keylatchd LaunchAgent copy `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` from the environment they run in into the service definition, so a service on an opted-in backend keeps starting.
 
 ### Changed
 
@@ -126,6 +131,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Command patterns in `policy.json` match exactly unless they end in `*`: `pnpm test` no longer allows `pnpm test -- anything`.
 - `keylatch ui` opens with the `read` scope. Any wider scope (`setup`, `admin`, `token-minting`) needs presence. The one-time bootstrap URL is printed only when stdout is a terminal and is otherwise handed only to the OS browser opener; `--no-open` without a terminal is refused.
 - The deny corpus covers environment and history managers: `direnv exec <dir> env`, `direnv export`, `direnv dump`, `mise env`, `mise exec -- env`, a bare `mise set`, `atuin search`, `atuin history`, and reads of `~/.*_history` and `~/.local/share/atuin`.
+- Features that are not finished (`team`, `trust` and its hardware adapters, the vault team backend) compile only with the `experimental` build tag; release binaries contain none of them.
+- `keylatch backend list [--json]` prints every backend with its support tier: supported (`bw`, `op`), unavailable (`file`), community, deprecated.
+- The version comes from the release tag; builds made with `go install` read it from the Go build information. `scripts/set-version.sh` stamps the desktop shell and web package from the same tag.
+- `keylatch doctor` reports the root cause first and marks dependent checks skipped. New checks cover the guard hook, the default-deny policy, agent-readable backend credentials, the audit chain, the backend tier and the deployment mode. `--json` follows `schemas/doctor.schema.json`.
+- `keylatch setup` recommends a backend (Bitwarden, then 1Password; with neither installed, pass `--backend op|bw`), writes a default-deny policy and ends with a doctor report. Headless flags: `--server`, `--organization-id`, `--namespace`, `--install-guard`.
+- Every GitHub Action is pinned to a commit SHA, golangci-lint is pinned, Dependabot covers Docker, and CodeQL runs on every push and weekly. A scenario harness with fake agent processes runs the attacker scenarios on three operating systems.
+- The README, SECURITY.md and the documentation state that in-user mode is not a security boundary, and a test checks every documented command and flag against the command tree.
+- **Breaking:** backends that are not password managers are refused. Only `op` and `bw` are supported. `file`, `lastpass`, `vault`, `aws-sm`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`, `bws` and `sops` open only when `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` names them (a notice on stderr says what is unproven); `keychain`, `op-connect`, `keeper` and `proton-pass` cannot be enabled at all. `keylatch bootstrap` has no default backend: pass `--backend op|bw`. Existing installs on a refused backend stop at the next command; see `docs/backends/moving-off-file.md`.
+- The refusal names the backend, says whether the opt-in applies to it and links the migration page for that backend. The migration page now also covers the other opt-in backends and the ones that cannot be enabled.
+- The quickstart, getting-started, troubleshooting and CI documentation and the README use `keylatch bootstrap --backend op|bw` and no longer list the encrypted file as a backend; the audit-log refusal points to `keylatch bootstrap --backend <op|bw>`.
 
 ### Security
 
@@ -170,27 +185,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Any shell command that names a protected path through `~`, `~user`, `$HOME`, `${HOME}`, `$USERPROFILE`, `%USERPROFILE%` or the absolute home is denied, except `ls`, `stat`, `ssh`, `scp -i`, `ssh-add`, `ssh-keygen`, `git` transport commands, `chmod`, `chown`, `mkdir` and `touch` as the whole command, and `kubectl`, `helm` and `gh` with the path as `--kubeconfig` or `--config`. Redirections into protected files stay denied. Recursive reads of the whole home directory remain a known gap, covering `/bin/cat`, quoted and `//` spellings, `cd ~ && cat .ssh/...`, `tar`, `dd`, `diff`, redirections and `python3 -c` with a literal path. Claude Code `Grep` and `Glob`, Gemini `read_many_files`, `glob` and `search_file_content`, and Copilot `view` and `grep` are guarded as file reads. `mise set` with only flags is denied. Known gaps are listed in the guard README.
 - Claude Code on Windows installs the `bash "<path>"` hook command, every installer quotes the script path (a home directory with a space works), the contrib Cursor installer registers `beforeReadFile`, and installs replace entries and scripts left by older versions (`*-guard.sh`, the Cursor `settings.json` entry, a bare script path). `keylatch-hook-version` is now `6`.
 - Contracts follow [Claude Code](https://code.claude.com/docs/en/hooks), [Cursor](https://cursor.com/docs/hooks), [Windsurf/Devin](https://docs.devin.ai/desktop/cascade/hooks.md), [Antigravity](https://antigravity.google/docs/hooks/) and [Gemini CLI](https://geminicli.com/docs/hooks/reference/) docs; none of it has been exercised in the real applications.
+- The gateway refused every provider that had no hand-written allowlist entry (`ssrf_blocked`, 403): 36 of the 41 provider templates, including Anthropic, Stripe, Linear, Notion and GitLab. Each embedded template now allows the exact HTTPS hosts it declares, next to the existing entries; the DNS re-check and the deny ranges are unchanged, and a test resolves every compiled route through the gate.
 
 ### Removed
 
 - The Aider guard installer: Aider has no hook API. Use `keylatch launch -- aider`.
-
-### Removed
-
 - Commands that did nothing: `get --masked`, `get-masked`, `share`, `receipts`, `rules`, `sessions`, `projects`, `sandbox run`, and the `gateway up --with-proxy` listener. The duplicate `verify` registration and `runner.OK` are gone too.
 - Telemetry in every form: the `telemetry` operating mode, `KEYLATCH_TELEMETRY_*` variables, the setup prompt and the telemetry settings in the UI. Keylatch sends no telemetry.
 - The classic sandboxed runtime (`direct_classic_sandboxed`), its driver and its documentation. Selecting it now fails as an unknown runtime mode. Three runtime modes remain.
 - Windsurf: the guard script, `install-guard windsurf`, the integration pages and the harness marker. Windsurf exposes no hook API.
-
-### Changed
-
-- Features that are not finished (`team`, `trust` and its hardware adapters, the vault team backend) compile only with the `experimental` build tag; release binaries contain none of them.
-- `keylatch backend list [--json]` prints every backend with its support tier: supported (`bw`, `op`, `file`), community, deprecated.
-- The version comes from the release tag; builds made with `go install` read it from the Go build information. `scripts/set-version.sh` stamps the desktop shell and web package from the same tag.
-- `keylatch doctor` reports the root cause first and marks dependent checks skipped. New checks cover the guard hook, the default-deny policy, agent-readable backend credentials, the audit chain, the backend tier and the deployment mode. `--json` follows `schemas/doctor.schema.json`.
-- `keylatch setup` recommends a backend (Bitwarden, then 1Password, else the file store), writes a default-deny policy and ends with a doctor report. Headless flags: `--server`, `--organization-id`, `--namespace`, `--install-guard`.
-- Every GitHub Action is pinned to a commit SHA, golangci-lint is pinned, Dependabot covers Docker, and CodeQL runs on every push and weekly. A scenario harness with fake agent processes runs the attacker scenarios on three operating systems.
-- The README, SECURITY.md and the documentation state that in-user mode is not a security boundary, and a test checks every documented command and flag against the command tree.
 
 ## [0.9.9] - 2026-10-05
 
