@@ -22,6 +22,7 @@ import (
 	"github.com/keylatch/keylatch/internal/bootstrap"
 	"github.com/keylatch/keylatch/internal/connections"
 	"github.com/keylatch/keylatch/internal/harness"
+	"github.com/keylatch/keylatch/internal/manifest"
 	"github.com/keylatch/keylatch/internal/registry"
 )
 
@@ -137,7 +138,7 @@ type BackendListItem struct {
 	InstallHint string `json:"install_hint,omitempty"`
 }
 
-// BackendsHandler handles GET /v1/backends.
+// BackendsHandler handles GET /v1/backends. It lists the supported managers only.
 func (h *WizardHandlers) BackendsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -147,6 +148,9 @@ func (h *WizardHandlers) BackendsHandler(w http.ResponseWriter, r *http.Request)
 	names := backend.Default.List()
 	items := make([]BackendListItem, 0, len(names))
 	for _, name := range names {
+		if !manifest.Current().Enabled(name) {
+			continue // only supported managers are offered
+		}
 		meta, ok := backendMeta[name]
 		displayName := name
 		hint := ""
@@ -166,7 +170,7 @@ func (h *WizardHandlers) BackendsHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // BootstrapHandler handles POST /v1/bootstrap.
-// Accepts {"backend": "keychain"|"file"|"op"|"bw"} and runs bootstrap.Run().
+// Accepts {"backend": "op"|"bw"} and runs bootstrap.Run().
 func (h *WizardHandlers) BootstrapHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

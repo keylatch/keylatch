@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/doctor"
 )
 
@@ -15,6 +16,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	doctor.OverrideManagedSettingsDir(managed)
+	// The file backend is the fixture most doctor tests bootstrap.
+	if err := os.Setenv(backend.AllowUnsupportedEnv, "file"); err != nil {
+		panic(err)
+	}
 	code := m.Run()
 	_ = os.RemoveAll(managed)
 	os.Exit(code)

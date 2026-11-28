@@ -158,7 +158,7 @@ func TestRecommendedBackend(t *testing.T) {
 		have []string
 		want string
 	}{
-		{"nothing installed uses the file store", nil, "file"},
+		{"nothing installed recommends nothing", nil, ""},
 		{"bitwarden is preferred", []string{"bw", "op"}, "bw"},
 		{"1password when it is the only manager", []string{"op"}, "op"},
 	} {
@@ -167,8 +167,8 @@ func TestRecommendedBackend(t *testing.T) {
 			if got != tc.want {
 				t.Errorf("backend = %q, want %q", got, tc.want)
 			}
-			if desc == "" {
-				t.Error("expected a description")
+			if (desc == "") != (tc.want == "") {
+				t.Errorf("description %q does not match backend %q", desc, tc.want)
 			}
 		})
 	}
@@ -217,5 +217,17 @@ func TestReadFieldFromStdin_PreservesInternalNewlines(t *testing.T) {
 	}
 	if string(result) != "line1\nline2" {
 		t.Errorf("expected 'line1\\nline2', got: %q", string(result))
+	}
+}
+
+func TestErrNoBackendChosen_NamesSupportedManagers(t *testing.T) {
+	msg := errNoBackendChosen().Error()
+	for _, want := range []string{"--backend", "bw", "op"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q does not contain %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, "file") {
+		t.Errorf("message %q must not offer file", msg)
 	}
 }

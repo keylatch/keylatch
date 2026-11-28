@@ -2,7 +2,10 @@
 // of one keylatch process. Resolution order (first non-empty wins):
 //  1. cfg.Backend (from ~/.keylatch/config.json)
 //  2. KEYLATCH_BACKEND env var
-//  3. default: "file"
+//
+// There is no default: with neither set, selection fails and names the
+// supported managers. A backend the support manifest does not enable opens
+// only through the opt-in checked by backend.CheckSupported.
 //
 // Backends are registered via init() side-effects (import the
 // internal/backend/all package to pull in all built-in backends).
@@ -10,6 +13,7 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -20,6 +24,9 @@ import (
 	"github.com/keylatch/keylatch/internal/llmcontext"
 	"github.com/keylatch/keylatch/internal/paths"
 )
+
+// ErrNoBackend is returned when neither the config nor the environment names a backend.
+var ErrNoBackend = errors.New("no backend configured")
 
 // ErrUnknownBackend is returned when the requested backend name is not
 // registered in backend.Default. Known lists the registered backend names at
@@ -85,19 +92,23 @@ func selectBackend(ctx context.Context, cfg config.Config, env llmcontext.Lookup
 			return st, nil
 		}
 	}
-	// Resolution order: cfg.Backend → env("KEYLATCH_BACKEND") → "file"
+	// Resolution order: cfg.Backend → env("KEYLATCH_BACKEND"); no default.
 	name := cfg.Backend
 	if name == "" && env != nil {
 		name = env("KEYLATCH_BACKEND")
 	}
 	if name == "" {
-		name = "file"
+		return nil, fmt.Errorf("%w: run 'keylatch setup' and pick a manager (supported: %s)",
+			ErrNoBackend, strings.Join(backend.SupportedManagers(), ", "))
 	}
 	canonicalName, ok := backend.CanonicalName(name)
 	if !ok {
 		return nil, ErrUnknownBackend{Name: name, Known: backend.KnownCanonicalNames()}
 	}
 	name = canonicalName
+	if err := backend.CheckSupported(name); err != nil {
+		return nil, err
+	}
 
 	// Build Settings from config fields so factory functions can decode them.
 	// Credentials come from the stored credential_ref, never from the

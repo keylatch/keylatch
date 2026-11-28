@@ -119,14 +119,15 @@ func TestSetupResume_Switch_RequiresConfirmation(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
 	setupResumeClearLLMEnv(t)
+	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "test-token") // skips the live op signin probe
 
 	require.NoError(t, config.Save(filepath.Join(configDir, "config.json"), config.Config{
 		Version:          1,
-		Backend:          "op",
+		Backend:          "bw",
 		DefaultNamespace: "default",
 	}))
 
-	// storage branch, decline keep-current, pick "1" (file) from the basic
+	// storage branch, decline keep-current, pick "1" (op) from the basic
 	// menu, confirm "switch", mode choice, provider pick, open-UI.
 	setupResumeStdin(t, "", "n", "1", "switch", "", "", "")
 
@@ -138,12 +139,12 @@ func TestSetupResume_Switch_RequiresConfirmation(t *testing.T) {
 	root.SetArgs([]string{"setup", "--no-daemon-start"})
 
 	require.NoError(t, root.Execute())
-	require.Contains(t, stdout.String(), `WARNING: switching backend from "op" to "file"`)
+	require.Contains(t, stdout.String(), `WARNING: switching backend from "bw" to "op"`)
 	require.Contains(t, stdout.String(), "Type \"switch\" to confirm")
 
 	cfg, err := config.Load(filepath.Join(configDir, "config.json"))
 	require.NoError(t, err)
-	require.Equal(t, "file", cfg.Backend)
+	require.Equal(t, "op", cfg.Backend)
 }
 
 // TestSetupResume_DeclineSwitch_KeepsOldBackend verifies that declining the
@@ -152,14 +153,15 @@ func TestSetupResume_DeclineSwitch_KeepsOldBackend(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
 	setupResumeClearLLMEnv(t)
+	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "test-token") // skips the live op signin probe
 
 	require.NoError(t, config.Save(filepath.Join(configDir, "config.json"), config.Config{
 		Version:          1,
-		Backend:          "op",
+		Backend:          "bw",
 		DefaultNamespace: "default",
 	}))
 
-	// storage branch, decline keep-current, pick "1" (file), decline the
+	// storage branch, decline keep-current, pick "1" (op), decline the
 	// switch confirmation, mode choice, provider pick, open-UI.
 	setupResumeStdin(t, "", "n", "1", "", "", "", "")
 
@@ -171,12 +173,12 @@ func TestSetupResume_DeclineSwitch_KeepsOldBackend(t *testing.T) {
 	root.SetArgs([]string{"setup", "--no-daemon-start"})
 
 	require.NoError(t, root.Execute())
-	require.Contains(t, stdout.String(), `WARNING: switching backend from "op" to "file"`)
-	require.Contains(t, stdout.String(), `Keeping current backend "op"`)
+	require.Contains(t, stdout.String(), `WARNING: switching backend from "bw" to "op"`)
+	require.Contains(t, stdout.String(), `Keeping current backend "bw"`)
 
 	cfg, err := config.Load(filepath.Join(configDir, "config.json"))
 	require.NoError(t, err)
-	require.Equal(t, "op", cfg.Backend)
+	require.Equal(t, "bw", cfg.Backend)
 }
 
 // TestSetupResume_UnreadableConfig_AbortsSetup verifies the review-flagged
@@ -238,13 +240,19 @@ func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("KEYLATCH_CONFIG_DIR", configDir)
 	setupResumeClearLLMEnv(t)
+	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN", "test-token") // skips the live op signin probe
+	// A fake bw on PATH makes the recommendation deterministic.
+	fakeBin := t.TempDir()
+	stub, content := fakeExecutable(fakeBin, "bw", "exit 0")
+	require.NoError(t, os.WriteFile(stub, []byte(content), 0o755)) //nolint:gosec // a test stub must be executable
+	t.Setenv("PATH", fakeBin)
 
 	cfgPath := filepath.Join(configDir, "config.json")
 	data := `{"version":99,"backend":"op","default_namespace":"work","audit":{"enabled":true,"max_size_bytes":5242880},"ui":{"bind":"127.0.0.1"}}`
 	require.NoError(t, os.WriteFile(cfgPath, []byte(data), 0o600))
 
 	// storage branch, decline the recommended backend (avoids macOS keychain
-	// in CI), pick "1" (file) from the basic menu, mode choice, provider
+	// in CI), pick "1" (op) from the basic menu, mode choice, provider
 	// pick, open-UI.
 	setupResumeStdin(t, "", "n", "1", "", "", "")
 
@@ -264,7 +272,7 @@ func TestSetupResume_UnusableConfig_TreatedAsFreshWithWarning(t *testing.T) {
 
 	cfg, err := config.Load(cfgPath)
 	require.NoError(t, err)
-	require.Equal(t, "file", cfg.Backend)
+	require.Equal(t, "op", cfg.Backend)
 
 	matches, globErr := filepath.Glob(cfgPath + ".bak.*")
 	require.NoError(t, globErr)

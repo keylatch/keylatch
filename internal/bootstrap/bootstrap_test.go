@@ -40,7 +40,7 @@ func TestBootstrap_FreshHome(t *testing.T) {
 	t.Setenv("HOME", tmp)
 	env := makeEnv(tmp, nil)
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		IdentityStore: testutil.NewMemoryIdentityStore(),
 		Env:           env,
 	})
@@ -86,11 +86,11 @@ func TestBootstrap_Idempotent(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	// First run.
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	// Second run — all steps should be noop.
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	for _, s := range plan.Steps {
@@ -103,7 +103,7 @@ func TestBootstrap_DryRun(t *testing.T) {
 	t.Setenv("HOME", tmp)
 	env := makeEnv(tmp, nil)
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		IdentityStore: testutil.NewMemoryIdentityStore(),
 		DryRun:        true,
 		Env:           env,
@@ -161,7 +161,7 @@ func TestBootstrap_RenderJSON(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		IdentityStore: testutil.NewMemoryIdentityStore(),
 		DryRun:        true,
 		Env:           makeEnv(tmp, nil),
@@ -179,7 +179,7 @@ func TestBootstrap_RenderText(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		IdentityStore: testutil.NewMemoryIdentityStore(),
 		Env:           makeEnv(tmp, nil),
 	})
@@ -198,7 +198,7 @@ func TestBootstrap_ForceReinit(t *testing.T) {
 	env := makeEnv(tmp, nil)
 
 	// First run — creates keyring.
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err)
 
 	krPath := paths.KeyringPath(env)
@@ -206,7 +206,7 @@ func TestBootstrap_ForceReinit(t *testing.T) {
 	require.NoError(t, err)
 
 	// Force re-init — must overwrite the keyring with fresh random material.
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file",
 		IdentityStore: testutil.NewMemoryIdentityStore(),
 		Env:           env,
 		Force:         true,
@@ -244,7 +244,7 @@ func TestBootstrap_PassphraseEnvIgnored(t *testing.T) {
 	})
 
 	// Bootstrap must succeed despite the passphrase env var being set.
-	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
+	plan, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 	require.NoError(t, err, "bootstrap must not use KEYLATCH_PASSPHRASE")
 
 	// The keyring must be created normally.

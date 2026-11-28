@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Bootstrap keylatch configuration (creates ~/.keylatch/config.json)
-keylatch bootstrap
+keylatch bootstrap --backend op   # or: --backend bw
 
 # Register a credential for the openrouter provider.
 # Use --provider-ref to pull the key from an external store (recommended),

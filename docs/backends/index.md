@@ -42,7 +42,7 @@ keylatch config set backend <name>
 
 ## Setup — top 4 backends
 
-### `file` — Encrypted file (default)
+### `file` — Encrypted file (unsupported, opt-in)
 
 Stores credentials in `~/.keylatch/vault/` as XChaCha20-Poly1305 AEAD-encrypted blobs.
 The encryption key (DEK) is wrapped by a KEK derived from a vault identity held in the
@@ -51,8 +51,9 @@ asked on a terminal; only the operator's config can allow a plaintext identity f
 [File backend](file.md#where-the-vault-identity-lives).
 
 ```bash
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file   # required: file is not a supported manager
 keylatch config set backend file
-keylatch bootstrap          # creates ~/.keylatch/vault/ with mode 0700 and initializes keyring
+keylatch bootstrap --backend file   # creates ~/.keylatch/vault/ with mode 0700 and initializes keyring
 keylatch connect openrouter api_key YOUR_KEY
 ```
 
@@ -78,7 +79,7 @@ keylatch config set backend keychain
 printf '%s' "$OPENROUTER_KEY" | keylatch connect openrouter -f api_key=@-
 ```
 
-Migrate to `op`, `bw` or `file`. iCloud Keychain sync is not enabled — local keychain only.
+Migrate to `op` or `bw`. iCloud Keychain sync is not enabled — local keychain only.
 
 ---
 

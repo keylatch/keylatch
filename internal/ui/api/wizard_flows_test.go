@@ -64,15 +64,12 @@ func TestBackendsHandler_AvailabilityFollowsPATH(t *testing.T) {
 		got[it.Name] = it
 	}
 
-	assert.True(t, got["file"].Available)
-	assert.True(t, got["vault"].Available, "networked backends need no local binary")
 	assert.True(t, got["bw"].Available, "bw is on PATH")
 	assert.False(t, got["op"].Available, "op is not on PATH")
 	assert.Equal(t, "Install: brew install 1password-cli", got["op"].InstallHint)
-	assert.False(t, got["keeper"].Available)
-	assert.False(t, got["lastpass"].Available, "lastpass is never detectable")
-	assert.True(t, got["zz-custom"].Available, "unknown backends are assumed available")
-	assert.Equal(t, "zz-custom", got["zz-custom"].DisplayName)
+	for _, hidden := range []string{"file", "vault", "keeper", "lastpass", "zz-custom"} {
+		assert.NotContains(t, got, hidden, "only supported managers are offered")
+	}
 }
 
 func TestBootstrapHandler(t *testing.T) {

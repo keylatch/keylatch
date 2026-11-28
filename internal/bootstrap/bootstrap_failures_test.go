@@ -48,7 +48,7 @@ func mxFile(t *testing.T) string {
 
 func TestRun_ForceRequiresConfirm(t *testing.T) {
 	dir := t.TempDir()
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Force: true, Env: mxEnv(dir, nil)})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Force: true, Env: mxEnv(dir, nil)})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Confirm=true")
 	_, statErr := os.Stat(filepath.Join(dir, ".keylatch"))
@@ -75,7 +75,7 @@ func TestRun_KeychainRejectedOffMacOS(t *testing.T) {
 
 func TestRun_DryRunTouchesNothing(t *testing.T) {
 	dir := t.TempDir()
-	res, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), DryRun: true, Env: mxEnv(dir, nil)})
+	res, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), DryRun: true, Env: mxEnv(dir, nil)})
 	require.NoError(t, err)
 	require.NotEmpty(t, res.Steps)
 	for _, s := range res.Steps {
@@ -108,7 +108,7 @@ func TestRun_ExistingConfigIsNeverOverwritten(t *testing.T) {
 	}
 	for name, tc := range cases {
 		require.NoError(t, os.WriteFile(cfgPath, []byte(tc.body), 0o600))
-		res, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
+		res, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: env})
 		require.NoError(t, err, name)
 		require.Len(t, res.Warnings, 1, name)
 		assert.Contains(t, res.Warnings[0], tc.warning)
@@ -128,14 +128,14 @@ func TestRun_ForceRecreatesKeyMaterial(t *testing.T) {
 	dir := t.TempDir()
 	env := mxEnv(dir, nil)
 	store := testutil.NewMemoryIdentityStore()
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: store, Env: env})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: store, Env: env})
 	require.NoError(t, err)
 
 	krDir := filepath.Join(dir, ".keylatch", "keyring")
 	before, err := os.ReadFile(filepath.Join(krDir, "keyring.json"))
 	require.NoError(t, err)
 
-	res, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: store, Env: env, Force: true, Confirm: true})
+	res, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: store, Env: env, Force: true, Confirm: true})
 	require.NoError(t, err)
 	after, err := os.ReadFile(filepath.Join(krDir, "keyring.json"))
 	require.NoError(t, err)
@@ -200,7 +200,7 @@ func TestRun_FilesystemConflicts(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mxSkipDarwinKeychain(t)
 			dir := t.TempDir()
-			_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: mxEnv(dir, tc.overrides(t, dir))})
+			_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: mxEnv(dir, tc.overrides(t, dir))})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
 		})
@@ -211,7 +211,7 @@ func TestRun_CreatesMissingConfigDirectory(t *testing.T) {
 	mxSkipDarwinKeychain(t)
 	dir := t.TempDir()
 	cfg := filepath.Join(t.TempDir(), "missing", "config.json")
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: mxEnv(dir, map[string]string{"KEYLATCH_CONFIG": cfg})})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: mxEnv(dir, map[string]string{"KEYLATCH_CONFIG": cfg})})
 	require.NoError(t, err)
 	_, err = os.Stat(cfg)
 	require.NoError(t, err)

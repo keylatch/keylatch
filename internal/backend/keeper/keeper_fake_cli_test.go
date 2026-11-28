@@ -123,8 +123,9 @@ func TestKeeperFakeCLI_FallsBackToKsm(t *testing.T) {
 func TestKeeperFakeCLI_OpenAndFactoryErrors(t *testing.T) {
 	bkKPFakeCLI(t, "keeper")
 
-	_, err := bkKPFactory(t)(context.Background(), backend.BackendConfig{Settings: map[string]interface{}{"account_uid": "acct-7"}})
-	assert.ErrorIs(t, err, backend.ErrUnavailable, "the factory refuses keeper in this release")
+	fb, err := bkKPFactory(t)(context.Background(), backend.BackendConfig{Settings: map[string]interface{}{"account_uid": "acct-7"}})
+	require.NoError(t, err)
+	require.NoError(t, fb.Close())
 
 	_, err = keeper.Open(keeper.Options{Bin: filepath.Join(t.TempDir(), "k"), Runner: kexec.DefaultRunner})
 	require.NoError(t, err)

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
@@ -69,8 +70,9 @@ func mxWriteConfig(t *testing.T, env llmcontext.Lookup, mutate func(*config.Conf
 func TestCheckBackendSelected(t *testing.T) {
 	_, env := mxDoctorEnv(t, nil)
 	st := checkBackendSelected(env)(context.Background())
-	assert.True(t, st.OK, "missing config falls back to the default file backend")
-	assert.Contains(t, st.Detail, "backend=file")
+	assert.True(t, st.OK, "missing config is a warning, not a failure")
+	assert.True(t, st.Warn, "missing config means no backend is chosen")
+	assert.Contains(t, st.Detail, "no backend configured")
 
 	mxWriteConfig(t, env, func(c *config.Config) { c.Backend = "carrier-pigeon" })
 	st = checkBackendSelected(env)(context.Background())
@@ -397,4 +399,20 @@ func TestSmallHelpers(t *testing.T) {
 	assert.NotContains(t, red, "home")
 	assert.Equal(t, red, redactPathsInString("/home/user/.keylatch"), "redaction is stable")
 	assert.NotEmpty(t, version())
+}
+
+func TestCheckBackendTier_UnsupportedNeedsOptIn(t *testing.T) {
+	_, lookup := mxDoctorEnv(t, nil)
+	mxWriteConfig(t, lookup, func(c *config.Config) { c.Backend = "file" })
+
+	t.Setenv(backend.AllowUnsupportedEnv, "")
+	st := checkBackendTier(lookup)(context.Background())
+	assert.False(t, st.OK)
+	assert.Contains(t, st.Fix, backend.AllowUnsupportedEnv+"=file")
+	assert.Contains(t, st.Fix, "bw or op")
+
+	t.Setenv(backend.AllowUnsupportedEnv, "file")
+	st = checkBackendTier(lookup)(context.Background())
+	assert.True(t, st.OK)
+	assert.True(t, st.Warn)
 }

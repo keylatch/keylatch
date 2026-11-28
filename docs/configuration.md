@@ -21,7 +21,7 @@ prints the resolved locations.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `backend` | string | `file` | Credential storage backend. One of `file`, `keychain`, `op`, `bw`, `proton-pass`, `keeper`, `lastpass`, `vault`, `aws-sm`, `op-connect`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`. |
+| `backend` | string | none | Password manager Keylatch brokers. Supported: `op`, `bw`. `file`, `lastpass`, `vault`, `aws-sm`, `gcp-sm`, `azure-kv`, `doppler`, `infisical`, `bws` and `sops` open only with `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` naming them; `keychain`, `proton-pass`, `keeper` and `op-connect` cannot be enabled at all; see [moving off the file backend](backends/moving-off-file.md). |
 | `mode` | string | `standard` | **Operating mode** — controls canary injection and experimental gates. One of `standard`, `canary`, `custom`. See [Operating Modes](./operating-modes.md) for the full reference. |
 | `audit.enabled` | bool | `true` | Whether to write a tamper-evident audit log. Disabling is not recommended in production. |
 | `audit.retain_days` | int | `365` | Number of days to retain rotated audit log files. Valid range: 1–3650. Rotated files older than this threshold are deleted by the retention sweep. `audit.retention_days` is the older name for the same setting and is still read; `retain_days` wins when both are set. |
@@ -57,7 +57,7 @@ rule. Verify against the source (`internal/backend/dispatch/dispatch.go`,
 
 | Subsystem | Precedence (highest first) |
 |-----------|-----------------------------|
-| Backend selection | `backend` (config.json) → `KEYLATCH_BACKEND` → default (`file`). **Config wins over env.** |
+| Backend selection | `backend` (config.json) → `KEYLATCH_BACKEND`; no default, and a backend the manifest does not enable needs `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=<name>[,<name>]`. **Config wins over env.** |
 | Backend settings (e.g. `KEYLATCH_OP_VAULT`, `KEYLATCH_VAULT_ADDR`) | Config field (e.g. `op.vault`) → `KEYLATCH_*` env var → non-`KEYLATCH_*` alias (e.g. `VAULT_ADDR`) → default. |
 | Operating mode | `--mode` flag → `KEYLATCH_MODE` env var → `mode` (config.json) → default (`standard`). **Env (and flag) win over config.** See [Operating Modes](./operating-modes.md). |
 | Path overrides (`KEYLATCH_CONFIG_DIR`, `KEYLATCH_DATA_DIR`, `KEYLATCH_AUDIT_PATH`, etc.) | `KEYLATCH_*` env var only — these have no config.json equivalent. |

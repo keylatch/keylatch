@@ -100,7 +100,7 @@ func newListCmdImpl() *cobra.Command {
 			}
 
 			b, bErr := dispatch.Select(ctx, cfg, env)
-			backendName := "file"
+			backendName := "unknown"
 			if bErr == nil {
 				backendName = b.Name()
 			}

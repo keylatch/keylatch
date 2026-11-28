@@ -44,10 +44,10 @@ func TestCurrent_EveryEntryHasValidFields(t *testing.T) {
 func TestCurrent_BackendTiers(t *testing.T) {
 	m := manifest.Current()
 	tiers := map[manifest.Status][]string{
-		manifest.Supported:  {"bw", "op"},
-		manifest.Preview:    {"file"},
-		manifest.Community:  {"vault", "awssm", "gcpsm", "azurekv", "doppler", "infisical", "opconnect", "bws", "sops"},
-		manifest.Deprecated: {"keychain", "keeper", "lastpass", "proton-pass"},
+		manifest.Supported:   {"bw", "op"},
+		manifest.Unavailable: {"file"},
+		manifest.Community:   {"vault", "aws-sm", "gcp-sm", "azure-kv", "doppler", "infisical", "op-connect", "bws", "sops"},
+		manifest.Deprecated:  {"keychain", "keeper", "lastpass", "proton-pass"},
 	}
 	total := 0
 	for status, ids := range tiers {
@@ -63,22 +63,22 @@ func TestCurrent_BackendTiers(t *testing.T) {
 // deprecated backends are listed but never enabled by the manifest.
 func TestCurrent_OnlySupportedAndPreviewAreEnabled(t *testing.T) {
 	m := manifest.Current()
-	for _, id := range []string{"op", "bw", "file", "linux", "macos", "windows"} {
+	for _, id := range []string{"op", "bw", "linux", "macos", "windows"} {
 		assert.True(t, m.Enabled(id), "%q must be enabled", id)
 	}
-	for _, id := range []string{"opconnect", "keeper", "proton-pass", "lastpass", "keychain", "vault"} {
+	for _, id := range []string{"file", "op-connect", "keeper", "proton-pass", "lastpass", "keychain", "vault"} {
 		assert.False(t, m.Enabled(id), "backend %q must not be enabled", id)
 	}
 	assert.Equal(t, manifest.Preview, m.Status("macos"))
 	assert.Equal(t, manifest.Preview, m.Status("windows"))
 }
 
-// TestCurrent_FileBackendIsUncertifiedPreview: the file backend works and is
-// the default store, so it stays enabled, but it is not certified yet.
-func TestCurrent_FileBackendIsUncertifiedPreview(t *testing.T) {
+// TestCurrent_FileBackendIsNotEnabled: the file backend is not a manager, so
+// it opens only through the explicit opt-in.
+func TestCurrent_FileBackendIsNotEnabled(t *testing.T) {
 	m := manifest.Current()
-	assert.Equal(t, manifest.Preview, m.Status("file"))
-	assert.True(t, m.Enabled("file"))
+	assert.Equal(t, manifest.Unavailable, m.Status("file"))
+	assert.False(t, m.Enabled("file"))
 }
 
 // TestCurrent_RuntimeCohort locks in the excluded runtimes: gateway_proxy
@@ -144,4 +144,26 @@ func TestByCategory(t *testing.T) {
 func TestEntryString(t *testing.T) {
 	e := manifest.Entry{ID: "op", Category: manifest.CategoryManager, Status: manifest.Supported, Note: "example"}
 	assert.Equal(t, "op: supported (example)", e.String())
+}
+
+// knownFailingBackends have a KNOWN-FAILING security test (op-connect: the
+// duplicate-creating upsert; keeper and proton-pass: the shared cache slice)
+// or are platform-gated (keychain); none may be opened by any opt-in.
+var knownFailingBackends = []string{"op-connect", "keeper", "proton-pass", "keychain"}
+
+func TestCurrent_NoKnownFailingBackendCanBeOptedInto(t *testing.T) {
+	m := manifest.Current()
+	for _, id := range knownFailingBackends {
+		e, ok := m.Lookup(id)
+		require.True(t, ok, id)
+		assert.False(t, e.OptIn, "%s must not carry the opt-in marker", id)
+		assert.False(t, m.OptInAllowed(id), id)
+	}
+	for _, e := range m.Entries {
+		if e.OptIn {
+			assert.Equal(t, manifest.CategoryManager, e.Category, "%s: only managers take the marker", e.ID)
+			assert.False(t, m.Enabled(e.ID), "%s: an enabled entry needs no marker", e.ID)
+		}
+	}
+	assert.True(t, m.OptInAllowed("file"))
 }

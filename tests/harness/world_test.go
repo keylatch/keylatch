@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/keylatch/keylatch/internal/paths"
 )
@@ -127,6 +128,7 @@ func (w *world) humanEnv() []string {
 		"KEYLATCH_E2E_OPERATOR_HOME="+w.operatorHome(),
 		"KEYLATCH_API_KEY="+canarySecret,
 		"KEYLATCH_BACKEND=file",
+		backend.AllowUnsupportedEnv+"=file",
 	)
 }
 
@@ -247,7 +249,7 @@ func (w *world) runAgent(hooksOnly bool, profile, tool string, input map[string]
 	// The agent finds keylatch on PATH, as it does after an install; stand-in
 	// vendor CLIs in <home>/bin come first.
 	path := strings.Join([]string{filepath.Join(w.home, "bin"), filepath.Dir(binaries.keylatch), os.Getenv("PATH")}, string(os.PathListSeparator))
-	env := append([]string{"KEYLATCH_CONFIG_DIR=" + w.config, "PATH=" + path}, noKeyringEnv()...)
+	env := append([]string{"KEYLATCH_CONFIG_DIR=" + w.config, "PATH=" + path, backend.AllowUnsupportedEnv + "=file"}, noKeyringEnv()...)
 	env = append(env, extraEnv...)
 	cmd, cancel := boundedCommand(binaries.fakeagent,
 		"--profile", profile, "--home", w.home, "--tool", tool, "--input", string(in),

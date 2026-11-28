@@ -3,6 +3,8 @@ package dispatch_test
 import (
 	"os"
 	"testing"
+
+	"github.com/keylatch/keylatch/internal/backend"
 )
 
 // Some tests here open the file backend through the default config paths;
@@ -14,6 +16,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	if err := os.Setenv("KEYLATCH_CONFIG_DIR", dir); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv(backend.AllowUnsupportedEnv, "file"); err != nil {
 		panic(err)
 	}
 	code := m.Run()

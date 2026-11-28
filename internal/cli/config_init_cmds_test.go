@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ import (
 func TestConfigCmd_SetGetListPersist(t *testing.T) {
 	cfgDir := cbIsolate(t)
 	require.NoError(t, os.MkdirAll(cfgDir, 0o700))
+	t.Setenv(backend.AllowUnsupportedEnv, "aws-sm")
 
 	out, _, err := cbRun(t, "config", "get", "backend")
 	require.NoError(t, err)
@@ -138,7 +140,7 @@ func TestInitCI_WriteForceAndIdempotence(t *testing.T) {
 
 func TestBootstrapCmd_DryRunJSONWritesNothing(t *testing.T) {
 	cfgDir := cbIsolate(t)
-	out, _, err := cbRun(t, "bootstrap", "--dry-run", "--json")
+	out, _, err := cbRun(t, "bootstrap", "--backend", "file", "--dry-run", "--json")
 	require.NoError(t, err)
 	parsed, err := ParseBootstrapPlan([]byte(out))
 	require.NoError(t, err)
@@ -152,14 +154,14 @@ func TestBootstrapCmd_DryRunJSONWritesNothing(t *testing.T) {
 
 func TestBootstrapCmd_ForceRequiresConfirmation(t *testing.T) {
 	cfgDir := cbIsolate(t)
-	out, _, err := cbRun(t, "bootstrap")
+	out, _, err := cbRun(t, "bootstrap", "--backend", "file")
 	require.NoError(t, err)
 	assert.NotEmpty(t, out)
 	krPath := filepath.Join(cfgDir, "keyring", "keyring.json")
 	original, err := os.ReadFile(krPath)
 	require.NoError(t, err)
 
-	out, _, err = cbRunIn(t, "n\n", "bootstrap", "--force")
+	out, _, err = cbRunIn(t, "n\n", "bootstrap", "--backend", "file", "--force")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Destroy existing keyring and re-initialize? [y/N]: ")
 	assert.Contains(t, out, "Aborted.")
@@ -167,7 +169,7 @@ func TestBootstrapCmd_ForceRequiresConfirmation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, original, kept)
 
-	out, _, err = cbRunIn(t, "YES\n", "bootstrap", "--force")
+	out, _, err = cbRunIn(t, "YES\n", "bootstrap", "--backend", "file", "--force")
 	require.NoError(t, err)
 	assert.NotContains(t, out, "Aborted.")
 	recreated, err := os.ReadFile(krPath)

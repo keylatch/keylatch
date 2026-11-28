@@ -14,7 +14,7 @@ import (
 func TestDefault(t *testing.T) {
 	c := config.Default()
 	assert.Equal(t, 1, c.Version)
-	assert.Equal(t, "file", c.Backend)
+	assert.Empty(t, c.Backend, "no implicit default backend")
 	assert.Equal(t, "default", c.DefaultNamespace)
 	assert.True(t, c.Audit.Enabled)
 	assert.Equal(t, int64(5*1024*1024), c.Audit.MaxSize)

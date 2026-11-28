@@ -6,25 +6,22 @@ import (
 	"testing"
 
 	"github.com/keylatch/keylatch/internal/backend"
+	"github.com/keylatch/keylatch/internal/backend/dispatch"
 	_ "github.com/keylatch/keylatch/internal/backend/keeper" // trigger init()
+	"github.com/keylatch/keylatch/internal/config"
 )
 
-// TestSecurityRegression_KeeperUnselectable verifies the keeper
-// backend cannot be instantiated through the registered factory (the path
-// every CLI/API/MCP entry point uses), regardless of config. Closes the
-// "unsupported managers unavailable" containment claim; the cache-ownership defect
-// itself is tracked separately in internal/backend/securitysuite.
+// TestSecurityRegression_KeeperUnselectable verifies the keeper backend cannot be opened
+// through dispatch (the path every CLI/API/MCP entry point uses) without the
+// explicit opt-in, regardless of config.
 func TestSecurityRegression_KeeperUnselectable(t *testing.T) {
-	factory, ok := backend.Default.Get("keeper")
-	if !ok {
+	if _, ok := backend.Default.Get("keeper"); !ok {
 		t.Fatal("keeper backend not registered; import side-effect missing")
 	}
 
-	_, err := factory(context.Background(), backend.BackendConfig{Name: "keeper"})
-	if err == nil {
-		t.Fatal("expected keeper factory to refuse instantiation, got nil error")
-	}
-	if !errors.Is(err, backend.ErrUnavailable) {
-		t.Errorf("expected ErrUnavailable, got: %v", err)
+	t.Setenv(backend.AllowUnsupportedEnv, "keeper") // naming it must not enable it
+	_, err := dispatch.Open(context.Background(), config.Config{Backend: "keeper"}, func(string) string { return "" })
+	if !errors.Is(err, backend.ErrUnsupportedBackend) {
+		t.Errorf("expected ErrUnsupportedBackend, got: %v", err)
 	}
 }

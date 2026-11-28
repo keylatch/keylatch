@@ -5,16 +5,13 @@ since: 0.1.0
 
 # File Backend (`file`)
 
-The `file` backend is the default keylatch credential store. It stores credentials
-in `~/.keylatch/vault/` as AEAD-encrypted blobs on the local filesystem. No
-external services or binaries are required.
+The `file` backend is Keylatch's own encrypted store. It keeps credentials in `~/.keylatch/vault/` as AEAD-encrypted blobs on the local filesystem. No external services or binaries are required.
+
+Keylatch is the layer between a password manager and an agent, not a password manager, so `file` is not a supported backend. It is not a default, setup does not offer it, and it opens only when you name it in `KEYLATCH_ALLOW_UNSUPPORTED_BACKEND` (a notice on stderr says what is unproven). Existing installs keep working that way until you move to `op` or `bw`; see [moving off the file backend](moving-off-file.md). The tests use it as a fixture.
 
 ## Support status
 
-`keylatch scope` lists the `file` backend as **preview**: it works, it is the default
-store and nothing in the build blocks it, but it is not certified. Recovery, integrity and
-migration checks are still pending, so do not read it as a guarantee. Only entries listed
-as `supported` are certified; community and deprecated backends are listed but never enabled.
+`keylatch backend list` lists `file` as **unavailable**: recovery, integrity and migration checks are pending, and only the entries marked `supported` (`op`, `bw`) are certified.
 
 ## Security properties
 
@@ -34,7 +31,8 @@ under a FIPS build). The on-disk `value.enc` contains only ciphertext.
 ## Setup
 
 ```bash
-keylatch bootstrap          # creates ~/.keylatch/ with 0700, keyring with 0600
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file
+keylatch bootstrap --backend file   # creates ~/.keylatch/ with 0700, keyring with 0600
 keylatch connect openrouter api_key YOUR_KEY
 ```
 
@@ -128,6 +126,7 @@ can no longer open the vault.
 ## Configuration
 
 ```bash
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file
 keylatch config set backend file
 
 # Override the vault directory
@@ -142,7 +141,7 @@ export KEYLATCH_CONFIG_DIR=/custom/path/.keylatch
 To destroy and recreate the cryptographic keyring (e.g. after a KEK rotation):
 
 ```bash
-keylatch bootstrap --force
+keylatch bootstrap --backend file --force
 ```
 
 This prompts for confirmation before removing the existing keyring. All
@@ -161,14 +160,16 @@ The `file` backend works in headless CI environments:
   run: |
     # A CI runner has no keyring and no terminal; the operator's config allows a plaintext key.
     bash scripts/ci-operator-config.sh
-    keylatch bootstrap
+    keylatch bootstrap --backend file
   env:
     KEYLATCH_CONFIG_DIR: /tmp/.keylatch
+    KEYLATCH_ALLOW_UNSUPPORTED_BACKEND: file
 
 - name: store secret
   run: printf '%s' "$API_KEY" | keylatch connect openrouter api_key=@-
   env:
     KEYLATCH_CONFIG_DIR: /tmp/.keylatch
+    KEYLATCH_ALLOW_UNSUPPORTED_BACKEND: file
 ```
 
 CI runners usually have no OS keyring, so the plaintext identity file is the

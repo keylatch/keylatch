@@ -94,9 +94,10 @@ func setupSecurityBlockMessage(env llmcontext.Lookup) string {
 	return b.String()
 }
 
-// recommendedBackend returns the backend setup proposes and a short
-// description. It prefers a password manager that is already installed
-// (Bitwarden, then 1Password) and otherwise the encrypted file store.
+// recommendedBackend returns the supported manager setup proposes and a short
+// description. It prefers one that is already installed (Bitwarden, then
+// 1Password) and returns empty strings when none is: setup never picks a
+// backend the user did not name.
 func recommendedBackend(lookPath func(string) (string, error)) (name, desc string) {
 	if _, err := lookPath("bw"); err == nil {
 		return "bw", "Bitwarden CLI (detected)"
@@ -104,7 +105,12 @@ func recommendedBackend(lookPath func(string) (string, error)) (name, desc strin
 	if _, err := lookPath("op"); err == nil {
 		return "op", "1Password CLI (detected)"
 	}
-	return "file", "encrypted file (~/.keylatch/) with the key held in the OS keystore"
+	return "", ""
+}
+
+// errNoBackendChosen names the supported managers a setup run can connect.
+func errNoBackendChosen() error {
+	return fmt.Errorf("no backend chosen: pass --backend with one of: %s", strings.Join(backend.SupportedManagers(), ", "))
 }
 
 // newSetupCmd returns the `keylatch setup` wizard command.
@@ -124,8 +130,8 @@ func newSetupCmd() *cobra.Command {
 
 Non-interactive / headless usage:
 
-  keylatch setup --headless --backend=keychain
-  keylatch setup --headless --backend=keychain --config=./keylatch.yaml
+  keylatch setup --headless --backend=bw
+  keylatch setup --headless --backend=op --config=./keylatch.yaml
 
 Advanced mode (all backend options):
 
@@ -269,7 +275,7 @@ Exit codes:
 		},
 	}
 	cmd.Flags().Bool("force", false, "re-run setup even if already configured")
-	cmd.Flags().String("backend", "", "credential backend (for example: file, keychain, op, bw, vault, aws-sm)")
+	cmd.Flags().String("backend", "", "manager to connect: op or bw (required with --headless)")
 	cmd.Flags().Bool("headless", false, "headless mode: no prompts, JSON result on stderr, deterministic exit codes")
 	cmd.Flags().Bool("non-interactive", false, "fail instead of prompting when required fields are missing")
 	cmd.Flags().Bool("from-env", false, "read field values from KEYLATCH_<FIELD_NAME> environment variables")
@@ -289,9 +295,6 @@ Exit codes:
 // §2.4 headless submode.
 func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 	selectedBackend, _ := c.Flags().GetString("backend")
-	if selectedBackend == "" {
-		selectedBackend, _ = recommendedBackend(exec.LookPath)
-	}
 	if canonical, ok := backend.CanonicalName(selectedBackend); ok {
 		selectedBackend = canonical
 	}
@@ -304,6 +307,10 @@ func runSetupHeadless(c *cobra.Command, ctx context.Context) error {
 		write(setupHeadlessResult{Backend: selectedBackend, Error: msg})
 		os.Exit(code)
 		return nil
+	}
+
+	if selectedBackend == "" {
+		return fail(exitcode.UserError, errNoBackendChosen().Error())
 	}
 
 	server, _ := c.Flags().GetString("server")
@@ -483,7 +490,11 @@ func setupStep1DetectPlatform(c *cobra.Command, advanced bool) (string, error) {
 	}
 
 	recommended, recDesc := recommendedBackend(exec.LookPath)
-	fmt.Fprintf(c.OutOrStdout(), "  Recommended backend: %s (%s)\n", recommended, recDesc)
+	if recommended == "" {
+		fmt.Fprintf(c.OutOrStdout(), "  No supported password manager CLI found (%s).\n", strings.Join(backend.SupportedManagers(), ", "))
+	} else {
+		fmt.Fprintf(c.OutOrStdout(), "  Recommended backend: %s (%s)\n", recommended, recDesc)
+	}
 	fmt.Fprintln(c.OutOrStdout())
 
 	return recommended, nil
@@ -534,6 +545,8 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		} else {
 			chosen = configuredBackend
 		}
+	case recommended == "":
+		chosen = setupPromptBasicBackend(c, "")
 	default:
 		// Fresh install: prompt "Use recommended backend? (Y/n)".
 		fmt.Fprintf(c.OutOrStdout(), "  Use recommended backend [%s]? (Y/n): ", recommended)
@@ -543,6 +556,9 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		}
 	}
 
+	if chosen == "" {
+		return "", fmt.Errorf("no password manager chosen: run setup again and pick one of: %s", strings.Join(backend.SupportedManagers(), ", "))
+	}
 	canonical, ok := backend.CanonicalName(chosen)
 	if !ok {
 		return "", fmt.Errorf("unknown backend %q (valid: %s)", chosen, strings.Join(backend.KnownCanonicalNames(), ", "))
@@ -595,24 +611,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		if initErr := kb.Init(ctx, "default"); initErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "  Error: keychain-init: %v\n", initErr)
 			fmt.Fprintln(c.ErrOrStderr(), "  macOS Keychain may be locked or unavailable in this terminal.")
-			fmt.Fprintf(c.OutOrStdout(), "  Use encrypted file backend instead? (Y/n): ")
-			ans := strings.ToLower(strings.TrimSpace(readLine()))
-			if ans == "" || ans == "y" || ans == "yes" {
-				chosen = "file"
-				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
-				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
-					DryRun:          false,
-					Backend:         chosen,
-					Env:             llmcontext.DefaultLookup,
-					InsecureFileKEK: insecureFileKEKAllowed(),
-					Passphrase:      vaultPassphraseOption(),
-				}); fallbackErr != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
-					return "", fmt.Errorf("keychain init failed (%w); fallback bootstrap failed: %w", initErr, fallbackErr)
-				}
-			} else {
-				return "", fmt.Errorf("keychain init: %w", initErr)
-			}
+			return "", fmt.Errorf("keychain init: %w", initErr)
 		}
 	}
 
@@ -627,22 +626,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 		if unlockErr := setupUnlockBW(c, ctx, llmcontext.DefaultLookup); unlockErr != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "  Error: %v\n", unlockErr)
 			fmt.Fprintln(c.ErrOrStderr(), "  Bitwarden vault could not be unlocked in this terminal.")
-			fmt.Fprintf(c.OutOrStdout(), "  Use encrypted file backend instead? (Y/n): ")
-			ans := strings.ToLower(strings.TrimSpace(readLine()))
-			if ans == "" || ans == "y" || ans == "yes" {
-				chosen = "file"
-				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
-				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
-					DryRun:  false,
-					Backend: chosen,
-					Env:     llmcontext.DefaultLookup,
-				}); fallbackErr != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
-					return "", fmt.Errorf("bw unlock failed (%w); fallback bootstrap failed: %w", unlockErr, fallbackErr)
-				}
-			} else {
-				return "", fmt.Errorf("bw unlock: %w", unlockErr)
-			}
+			return "", fmt.Errorf("bw unlock: %w", unlockErr)
 		}
 	}
 
@@ -658,22 +642,7 @@ func setupStep2BackendSetup(c *cobra.Command, ctx context.Context, recommended s
 			fmt.Fprintf(c.ErrOrStderr(), "  Warning: 1Password is not signed in (%v).\n", authErr)
 			fmt.Fprintln(c.ErrOrStderr(), "  Run `op signin` (or set OP_SERVICE_ACCOUNT_TOKEN) before connecting a")
 			fmt.Fprintln(c.ErrOrStderr(), "  provider, or step 4 below will fail.")
-			fmt.Fprintf(c.OutOrStdout(), "  Use encrypted file backend instead? (Y/n): ")
-			ans := strings.ToLower(strings.TrimSpace(readLine()))
-			if ans == "" || ans == "y" || ans == "yes" {
-				chosen = "file"
-				fmt.Fprintln(c.OutOrStdout(), "  Falling back to encrypted file backend...")
-				if _, fallbackErr := bootstrap.Run(ctx, bootstrap.Options{
-					DryRun:  false,
-					Backend: chosen,
-					Env:     llmcontext.DefaultLookup,
-				}); fallbackErr != nil {
-					fmt.Fprintf(c.ErrOrStderr(), "  fallback bootstrap: %v\n", fallbackErr)
-					return "", fmt.Errorf("op not authenticated (%w); fallback bootstrap failed: %w", authErr, fallbackErr)
-				}
-			}
-			// Otherwise proceed with op anyway — the user may complete
-			// signin themselves before reaching step 4.
+			// Proceed with op anyway: the user may complete signin before step 4.
 		}
 	}
 
@@ -848,22 +817,20 @@ func loadConfiguredBackend(c *cobra.Command, cfgPath string) (string, error) {
 	return cfg.Backend, nil
 }
 
-// setupPromptBasicBackend shows the standard 4-option backend menu.
+// setupPromptBasicBackend shows the supported password managers. An empty
+// recommended means there is no default: Enter picks nothing.
 func setupPromptBasicBackend(c *cobra.Command, recommended string) string {
-	isMacOS := runtime.GOOS == "darwin"
-
-	fmt.Fprintln(c.OutOrStdout(), "  Choose a backend:")
-	fmt.Fprintln(c.OutOrStdout(), "    1) Encrypted file in ~/.keylatch/   (works everywhere)")
-	fmt.Fprintln(c.OutOrStdout(), "    2) macOS Keychain                    (macOS only)")
-	fmt.Fprintln(c.OutOrStdout(), "    3) 1Password (1password-cli required, "+detectCLI("op")+")")
-	fmt.Fprintln(c.OutOrStdout(), "    4) Bitwarden (bitwarden-cli required, "+detectCLI("bw")+")")
+	fmt.Fprintln(c.OutOrStdout(), "  Which password manager do you want to connect?")
+	fmt.Fprintln(c.OutOrStdout(), "    1) 1Password (1password-cli required, "+detectCLI("op")+")")
+	fmt.Fprintln(c.OutOrStdout(), "    2) Bitwarden (bitwarden-cli required, "+detectCLI("bw")+")")
 	fmt.Fprintln(c.OutOrStdout())
 
-	defaultChoice := "1"
-	if isMacOS {
-		defaultChoice = "2"
+	defaultChoice := map[string]string{"op": "1", "bw": "2"}[recommended]
+	if defaultChoice != "" {
+		fmt.Fprintf(c.OutOrStdout(), "  Choose [%s]: ", defaultChoice)
+	} else {
+		fmt.Fprint(c.OutOrStdout(), "  Choose: ")
 	}
-	fmt.Fprintf(c.OutOrStdout(), "  Choose [%s]: ", defaultChoice)
 
 	choice := readLine()
 	if choice == "" {
@@ -872,27 +839,19 @@ func setupPromptBasicBackend(c *cobra.Command, recommended string) string {
 
 	switch choice {
 	case "1":
-		return "file"
-	case "2":
-		if !isMacOS {
-			fmt.Fprintln(c.ErrOrStderr(), "  macOS Keychain is only available on macOS. Using file backend.")
-			return "file"
-		}
-		return "keychain"
-	case "3":
 		return "op"
-	case "4":
+	case "2":
 		return "bw"
 	default:
-		fmt.Fprintf(c.OutOrStdout(), "  Invalid choice — using %q.\n", recommended)
-		return recommended
+		fmt.Fprintln(c.OutOrStdout(), "  No supported manager chosen.")
+		return ""
 	}
 }
 
 // setupPromptAdvancedBackend shows all available backend options (--advanced mode).
 func setupPromptAdvancedBackend(c *cobra.Command, recommended string) string {
 	fmt.Fprintln(c.OutOrStdout(), "  Advanced backend options:")
-	fmt.Fprintln(c.OutOrStdout(), "    1)  file            — encrypted file in ~/.keylatch/")
+	fmt.Fprintln(c.OutOrStdout(), "    (only op and bw are supported; the others need KEYLATCH_ALLOW_UNSUPPORTED_BACKEND)")
 	fmt.Fprintln(c.OutOrStdout(), "    2)  keychain        — macOS Keychain (macOS only)")
 	fmt.Fprintln(c.OutOrStdout(), "    3)  op              — 1Password CLI")
 	fmt.Fprintln(c.OutOrStdout(), "    4)  bw              — Bitwarden CLI")
@@ -914,7 +873,7 @@ func setupPromptAdvancedBackend(c *cobra.Command, recommended string) string {
 	// commands once setup has created the baseline config.
 
 	advancedMap := map[string]string{
-		"1": "file", "2": "keychain", "3": "op", "4": "bw",
+		"2": "keychain", "3": "op", "4": "bw",
 		"5": "proton-pass", "6": "keeper", "7": "lastpass",
 		"8": "vault", "9": "aws-sm", "10": "gcp-sm",
 		"11": "azure-kv", "12": "doppler", "13": "infisical",
@@ -1264,11 +1223,11 @@ func setupSafeDefaults(c *cobra.Command) {
 //
 // The storage branch lets users choose local encrypted storage or an external reference.
 func setupPromptStorageBranch(c *cobra.Command) (string, error) {
-	fmt.Fprintln(c.OutOrStdout(), "How would you like to store credentials?")
-	fmt.Fprintln(c.OutOrStdout(), "  local     — encrypt and store the secret locally (AEAD)")
+	fmt.Fprintln(c.OutOrStdout(), "How would you like to connect credentials?")
+	fmt.Fprintln(c.OutOrStdout(), "  local     — connect a password manager (op, bw) and let Keylatch broker it")
 	fmt.Fprintln(c.OutOrStdout(), "  reference — reference a secret from a password manager (op://, aws-sm://, hashivault://, bw://)")
 	fmt.Fprintln(c.OutOrStdout())
-	fmt.Fprintf(c.OutOrStdout(), "  Store credentials locally (AEAD) or reference from a password manager? [local/reference/q]: ")
+	fmt.Fprintf(c.OutOrStdout(), "  Connect a password manager or reference a secret from one? [local/reference/q]: ")
 
 	for {
 		answer := strings.ToLower(strings.TrimSpace(readLine()))

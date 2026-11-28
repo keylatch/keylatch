@@ -13,7 +13,6 @@ import (
 	"github.com/keylatch/keylatch/internal/backend"
 	kexec "github.com/keylatch/keylatch/internal/exec"
 	"github.com/keylatch/keylatch/internal/llmcontext"
-	"github.com/keylatch/keylatch/internal/manifest"
 )
 
 // KeychainConfig holds the typed configuration for the keychain backend.
@@ -31,13 +30,6 @@ func init() {
 }
 
 func keychainFactory(_ context.Context, cfg backend.BackendConfig) (backend.Backend, error) {
-	// macOS is not a certified platform — refuse
-	// selection here too, not just via the darwin build tag, so the backend
-	// stays unreachable even from a darwin build of an unreleased profile.
-	if !manifest.Current().Enabled("keychain") {
-		return nil, fmt.Errorf("%w: keychain is not supported in this release", backend.ErrUnavailable)
-	}
-
 	// Extract non-mapstructure keys before decoding.
 	settings := backend.StripNonStringSettings(cfg.Settings)
 

@@ -73,7 +73,7 @@ func bootstrappedHome(t *testing.T) (string, llmcontext.Lookup) {
 		}
 		return ""
 	}
-	_, err := bootstrap.Run(context.Background(), bootstrap.Options{IdentityStore: testutil.NewMemoryIdentityStore(), Env: fullEnv})
+	_, err := bootstrap.Run(context.Background(), bootstrap.Options{Backend: "file", IdentityStore: testutil.NewMemoryIdentityStore(), Env: fullEnv})
 	require.NoError(t, err)
 	// A set-up install also has the default-deny policy `keylatch setup` writes.
 	require.NoError(t, policy.Save(paths.Policy(fullEnv), policy.Policy{

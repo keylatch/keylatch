@@ -513,7 +513,6 @@ func Migrate(c Config) (Config, error) {
 func Default() Config {
 	return Config{
 		Version:          currentVersion,
-		Backend:          "file",
 		DefaultNamespace: "default",
 		Audit: AuditConfig{
 			Enabled:            true,

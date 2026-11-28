@@ -33,7 +33,9 @@ jq --arg c "$connection" --arg repo "$repo" \
 mv "$tmp" "$config"
 chmod 600 "$config"
 
-"$bin" bootstrap >/dev/null
+# The smoke runs on a throwaway file vault, which opens only with the explicit opt-in.
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND=file
+"$bin" bootstrap --backend file >/dev/null
 "$bin" policy init >/dev/null
 printf '%s' "$private_key" | "$bin" connect "$connection" --non-interactive --no-test \
   -f private_key=@- -f "app_id=$app_id" -f "installation_$owner=$installation_id" >/dev/null

@@ -75,15 +75,18 @@ func bkocNoToken(t *testing.T, err error) {
 	assert.NotContains(t, err.Error(), bkocToken())
 }
 
-func TestOPConnectFactory_RefusedInThisRelease(t *testing.T) {
+func TestOPConnectFactory_BuildsFromSettings(t *testing.T) {
 	f, ok := backend.Default.Get("op-connect")
 	require.True(t, ok)
-	_, err := f(context.Background(), backend.BackendConfig{Name: "op-connect", Settings: map[string]interface{}{
+	b, err := f(context.Background(), backend.BackendConfig{Name: "op-connect", Settings: map[string]interface{}{
 		"connect_url": "http://connect.example:8080",
 		"token":       bkocToken(),
 		"vault_id":    bkocVault,
 	}})
-	assert.ErrorIs(t, err, backend.ErrUnavailable)
+	require.NoError(t, err)
+	assert.Equal(t, "op-connect:connect.example:8080/"+bkocVault, b.ID())
+
+	_, err = f(context.Background(), backend.BackendConfig{Name: "op-connect", Settings: map[string]interface{}{"token": bkocToken()}})
 	bkocNoToken(t, err)
 }
 

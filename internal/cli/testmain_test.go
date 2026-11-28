@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/keylatch/keylatch/internal/backend"
 	"github.com/keylatch/keylatch/internal/doctor"
 	"github.com/keylatch/keylatch/internal/policy/enforce"
 	"github.com/keylatch/keylatch/internal/presence"
@@ -25,6 +26,13 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 		if err := os.Setenv("KEYLATCH_CONFIG_DIR", dir); err != nil {
+			panic(err)
+		}
+	}
+	// The file backend is the fixture most tests here run on; it opens only
+	// with the explicit opt-in.
+	if os.Getenv(backend.AllowUnsupportedEnv) == "" {
+		if err := os.Setenv(backend.AllowUnsupportedEnv, "file"); err != nil {
 			panic(err)
 		}
 	}

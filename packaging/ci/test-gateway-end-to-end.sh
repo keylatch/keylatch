@@ -132,6 +132,7 @@ export HOME="$GATEWAY_HOME"
 export KEYLATCH_CONFIG_DIR="$GATEWAY_HOME/.keylatch"
 export KEYLATCH_DATA_DIR="$KEYLATCH_CONFIG_DIR/vault"
 export KEYLATCH_BACKEND="file"
+export KEYLATCH_ALLOW_UNSUPPORTED_BACKEND="file"
 mkdir -p "$KEYLATCH_DATA_DIR"
 
 # ─── bootstrap vault ──────────────────────────────────────────────────────────
